@@ -51,7 +51,16 @@ Expected Phase 1 plan slices:
 - Plan 1.6 — health check endpoint
 - Plan 1.7 — production runbook for PM2, Nginx, server/worker, and Admin subdomain
 
-**Plans**: TBD (split per the slices above)
+**Plans**: 7 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Medusa local bootstrap e infraestrutura Wave 0
+- [ ] 01-02-PLAN.md — Estratégia Supabase/Postgres e migrations direct/session
+- [ ] 01-03-PLAN.md — Event bus, cache e workflow engine Redis
+- [ ] 01-04-PLAN.md — Logger estruturado e política de redaction
+- [ ] 01-05-PLAN.md — Integração Sentry backend saneada
+- [ ] 01-06-PLAN.md — Endpoints de liveness e readiness
+- [ ] 01-07-PLAN.md — Runbook PM2/Nginx, server/worker e Admin dedicado
 
 ### Phase 2: Catalog & Media
 **Goal**: Operators can model BRL-priced products/variants that carry mandatory Gelato metadata, with product images in Supabase Storage, exposed as a stable API contract — plus a Gelato snapshot builder/helper/contract ready for future Order creation. Actual `LineItem.metadata.gelato_snapshot` persistence is NOT in scope here because Order creation does not yet exist (it arrives in Phase 6).
@@ -192,7 +201,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Observability | 0/TBD | Not started | - |
+| 1. Foundation & Observability | 0/7 | Not started | - |
 | 2. Catalog & Media | 0/TBD | Not started | - |
 | 3. Cart & Checkout (pre-Order) | 0/TBD | Not started | - |
 | 4. Stripe Payments & PaymentAttempt | 0/TBD | Not started | - |
