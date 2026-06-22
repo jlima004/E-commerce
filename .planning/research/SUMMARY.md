@@ -5,6 +5,8 @@
 **Researched:** 2026-06-22
 **Confidence:** HIGH
 
+> Note: This research summary predates or may not fully reflect the final ROADMAP.md phase numbering. ROADMAP.md is the canonical source for phase numbers, phase names, dependencies, and execution order. Research findings remain valid, but phase references in this file are advisory only.
+
 ## Executive Summary
 
 This is a **backend-only**, headless commerce system for selling print-on-demand t-shirts in Brazil, built on **Medusa v2** and fulfilled by **Gelato**. It is not a generic store: its entire reason for existing is the **payment → order → fulfillment correctness boundary**. Experts build this kind of money-handling backend by inverting Medusa's default checkout: instead of creating the Order when the storefront returns from Stripe, the Order is born **only** from the canonical, signature-verified, idempotent Stripe webhook (`payment_intent.succeeded`). Everything downstream — analytics, email, Gelato production — is gated on durable, local state, never on external service success. The 12 architecture invariants in the seed are the product; the research is unanimous that violating any of them (eager Order creation, weak webhook dedup, treating Pix as synchronous, coupling fulfillment to PostHog) is the dominant failure mode of naive POD shops.

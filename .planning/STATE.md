@@ -18,6 +18,30 @@ See: .planning/PROJECT.md (updated 2026-06-22)
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
 **Current focus:** Phase 1 — Foundation & Observability
 
+## Execution Policy
+
+Execution is manual-review gated.
+
+No phase may be executed automatically. Each phase must stop after CONTEXT, RESEARCH, PLAN, SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW, and CLOSURE for human review before continuing.
+
+The GSD auto chain must not continue through all phases.
+
+**Enforcement settings (config.json):**
+- `mode` was changed from `yolo` to `interactive` so GSD shows gates and confirmations instead of running autonomously. (`manual`/`controlled` are not valid GSD enum values; `interactive` is the schema-valid manual-gated mode.)
+- `workflow.auto_advance` remains `false`.
+- `workflow._auto_chain_active` remains `false`.
+- `parallelization` remains `false`.
+
+Phase 1 must NOT be executed until its CONTEXT, RESEARCH, PLAN, and SPEC/SDD are generated and reviewed by a human. The next allowed action is Phase 1 CONTEXT generation only — never implementation.
+
+**Branch policy (before Phase 1 execution):**
+
+Before Phase 1 execution, create a dedicated branch manually or rely on the configured phase-based branching.
+
+Recommended branch: `gsd/phase-1-foundation-observability`
+
+`git.branching_strategy` was changed from `none` to `phase` (GSD-supported). With the existing `phase_branch_template` (`gsd/phase-{phase}-{slug}`), `execute-phase` will create the dedicated phase branch automatically at execution start — never during planning/CONTEXT.
+
 ## Current Position
 
 Phase: 1 of 12 (Foundation & Observability)
@@ -56,6 +80,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Order created only by the canonical Stripe webhook; webhook ingest (P5) lands before Order creation (P6).
 - [Roadmap]: purchase_completed is a durable backend outbox event (P7); Gelato fulfillment (P9) gates on the local `recorded` record, never on PostHog success.
 - [Roadmap]: Refund updates financial state only post-webhook and never auto-cancels the order (P11).
+- [Governance]: For implementation, PRD Backend v1.1 + DB_MODEL v1.21 override older SRS wording that suggests Order/awaiting_payment before confirmed payment. Pre-payment state lives in Cart, PaymentCollection, PaymentSession, and PaymentAttempt. Order exists only after canonical Stripe webhook payment confirmation. (Also recorded in PROJECT.md Key Decisions for planning-agent visibility.)
+- [Governance]: Phase 2 (Catalog & Media) delivers only the Gelato snapshot builder/helper/contract + unit tests; actual `LineItem.metadata.gelato_snapshot` persistence is verified in Phase 6 where Order creation exists.
 
 ### Pending Todos
 

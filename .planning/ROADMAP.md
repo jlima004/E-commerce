@@ -13,7 +13,7 @@ This roadmap builds a headless Medusa v2 POD backend (Brazil/BRL) around a singl
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation & Observability** - Medusa v2 + Supabase/Redis + Admin subdomain + PM2/Nginx + Sentry, structured logs with redaction, health check
-- [ ] **Phase 2: Catalog & Media** - BRL products/variants with mandatory Gelato metadata, Supabase Storage images, order-time Gelato snapshot
+- [ ] **Phase 2: Catalog & Media** - BRL products/variants with mandatory Gelato metadata, Supabase Storage images, and a Gelato snapshot builder/contract for future Order creation (no Order LineItem persistence yet — verified in Phase 6)
 - [ ] **Phase 3: Cart & Checkout (pre-Order)** - Guest + authenticated cart and checkout data collection that creates no Order
 - [ ] **Phase 4: Stripe Payments & PaymentAttempt** - Card + async Pix via Payment Collection/Session, every try tracked in PaymentAttempt
 - [ ] **Phase 5: Stripe Webhook Ingestion & Idempotency** - Raw-body signature-verified `/hooks/stripe` + WebhookEventLog DB-level dedup
@@ -38,19 +38,33 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Backend errors are reported to Sentry and the app emits structured logs with secrets, full card data, and plaintext tokens redacted (a grep of logs finds no `sk_live`/`whsec`/PAN/raw token).
   4. A health-check endpoint reports service and dependency (Postgres/Redis) health.
   5. Database migrations run on the direct/session Supabase connection (not the transaction pooler) without prepared-statement errors.
-**Plans**: TBD
+
+Phase 1 is valid but too large for a single Cursor execution. Planning MUST split it into small, independently reviewable plan slices. These may be planned and executed incrementally and must NOT be implemented as one large uncontrolled change.
+
+Expected Phase 1 plan slices:
+
+- Plan 1.1 — Medusa local bootstrap
+- Plan 1.2 — Supabase/Postgres connection strategy and migrations connection
+- Plan 1.3 — Redis-backed event bus/cache/workflow engine
+- Plan 1.4 — structured logger and redaction policy
+- Plan 1.5 — Sentry backend integration
+- Plan 1.6 — health check endpoint
+- Plan 1.7 — production runbook for PM2, Nginx, server/worker, and Admin subdomain
+
+**Plans**: TBD (split per the slices above)
 
 ### Phase 2: Catalog & Media
-**Goal**: Operators can model BRL-priced products/variants that carry mandatory Gelato metadata, with product images in Supabase Storage and an immutable order-time Gelato snapshot, exposed as a stable API contract.
+**Goal**: Operators can model BRL-priced products/variants that carry mandatory Gelato metadata, with product images in Supabase Storage, exposed as a stable API contract — plus a Gelato snapshot builder/helper/contract ready for future Order creation. Actual `LineItem.metadata.gelato_snapshot` persistence is NOT in scope here because Order creation does not yet exist (it arrives in Phase 6).
 **Mode:** mvp
 **Depends on**: Phase 1
 **Requirements**: CAT-01, CAT-02, CAT-03, CAT-04, MEDIA-01
+**Scope note**: Phase 2 delivers only: (a) required Gelato metadata definition; (b) validation of sellable variants with mandatory `gelato_*` metadata; (c) Supabase Storage image references; (d) a stable catalog API contract; (e) a snapshot builder/helper/contract for future Order creation; (f) unit tests for the snapshot builder (if applicable). It does NOT require actual Order LineItem persistence — real persistence of `LineItem.metadata.gelato_snapshot` is verified in Phase 6.
 **Success Criteria** (what must be TRUE):
   1. Operator can create a product with variants priced in BRL (integer centavos) via the Admin.
-  2. A variant missing required `gelato_*` metadata is flagged/rejected at create/update time.
+  2. A variant missing required `gelato_*` metadata is flagged/rejected at create/update time (validation of sellable variants).
   3. Product images upload to Supabase Storage and the API returns URL references (no binaries stored in the database).
   4. The Store catalog API returns products, variants, and BRL prices in a stable shape suitable for the future storefront.
-  5. Order line items capture an immutable Gelato snapshot taken at order time, so later catalog edits do not corrupt in-flight orders.
+  5. A Gelato snapshot builder/helper exists that produces an immutable snapshot from validated `ProductVariant` metadata, with a documented contract for Phase 6 Order creation to consume; unit tests cover the builder where applicable. (No Order LineItem persistence is required or verified in this phase.)
 **Plans**: TBD
 
 ### Phase 3: Cart & Checkout (pre-Order)
@@ -99,6 +113,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Replaying or concurrently delivering the same `payment_intent.succeeded` yields exactly one Order (CheckoutCompletionLog unique on `idempotency_key`).
   3. Order creation, CheckoutCompletionLog update, and PaymentAttempt.order_id correlation occur in one transaction.
   4. Order exposes decoupled `order_status` and `payment_status`, recomputed transactionally.
+  5. Order creation captures immutable Gelato snapshot data into each Order LineItem from the validated ProductVariant metadata, and later catalog edits do not alter existing Order LineItems.
 **Plans**: TBD
 
 ### Phase 7: Analytics Outbox (purchase_completed)
