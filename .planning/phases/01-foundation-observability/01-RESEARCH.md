@@ -230,7 +230,7 @@ Deploy migration
 │       ├── .env.template            # nomes/placeholders do backend
 │       ├── src/
 │       │   ├── api/
-│       │   │   ├── middlewares.ts   # correlation ID + error handler
+│       │   │   ├── middlewares.ts   # correlation ID + HTTP log + error handler
 │       │   │   └── health/
 │       │   │       ├── live/route.ts
 │       │   │       └── ready/route.ts
@@ -238,6 +238,7 @@ Deploy migration
 │       │   │   ├── env.ts           # schema local/production
 │       │   │   └── __tests__/
 │       │   ├── observability/
+│       │   │   ├── grouping.ts      # rota/job normalizado + chave de agrupamento
 │       │   │   ├── logger.ts        # Pino base
 │       │   │   ├── medusa-logger.ts # adapter da interface Logger
 │       │   │   ├── sanitize.ts      # strings/erro/cause
@@ -500,17 +501,15 @@ Em falha, manter a mesma shape, trocar `status` para `not_ready`, o check afetad
 | A4 | `APP_VERSION` deve usar release/commit SHA do deploy. | Code Examples | Sem pipeline definido, o valor pode ficar `unknown`; o runbook deve torná-lo obrigatório em produção. |
 | A5 | Rate limit de `5r/s` com burst 10 e retenção diária por sete rotações são adequados ao MVP. | Defaults operacionais | Pode bloquear automação legítima ou reter dados por tempo inadequado; revisar após tráfego real. |
 
-## Open Questions
+## Open Questions — RESOLVED
 
-1. **Qual dependência local fornecerá Postgres e Redis?**
-   - O que sabemos: Node 22.23.0 e npm 10.9.8 estão disponíveis; Redis, `psql`, PM2, Nginx e Certbot não estão instalados; o binário Docker existe via Windows, mas a integração WSL não funciona.
-   - Lacuna: não há hoje infraestrutura local executável para o scaffold.
-   - Recomendação: Plan 1.1 deve começar com checkpoint humano para habilitar Docker Desktop no WSL ou fornecer URLs de desenvolvimento externas; não esconder essa ausência com mocks.
+1. **Infraestrutura local de Postgres e Redis — RESOLVED**
+   - Contrato operacional escolhido: antes de qualquer smoke dependente de serviços reais, o operador deve satisfazer uma de duas condições: (a) Postgres e Redis executando via Docker quando a integração Docker Desktop/WSL estiver disponível; ou (b) `DATABASE_URL` e os quatro contratos Redis apontando para serviços externos de desenvolvimento fornecidos fora do Git.
+   - Os planos não escolhem fornecedor, não inventam credenciais e não aceitam mocks como substituto do smoke real. O checkpoint bloqueante do plano 01-02 comprova a condição escolhida; o plano 01-03 comprova conectividade Redis antes de concluir o wiring.
 
-2. **Onde serão provisionados Redis e Sentry de produção?**
-   - O que sabemos: os contratos estão definidos, mas credenciais/serviços não foram inspecionados por segurança.
-   - Lacuna: execução real de smoke deploy depende de recursos externos.
-   - Recomendação: templates e testes locais entram na fase; deploy real recebe checkpoint humano com URLs/secrets fornecidos fora do git.
+2. **Redis e Sentry de produção — RESOLVED**
+   - Contrato operacional escolhido: `REDIS_URL`, `CACHE_REDIS_URL`, `EVENTS_REDIS_URL`, `WE_REDIS_URL` e `SENTRY_DSN` de produção são provisionados pelo operador fora do Git, sem fornecedor imposto por esta fase.
+   - Checkpoints bloqueantes nos planos 01-03 e 01-05 exigem as URLs/DSN antes dos respectivos smokes externos. O checkpoint final do plano 01-07 exige que esses valores estejam presentes no ambiente do VPS antes de TLS, reboot e readiness reais.
 
 ## Environment Availability
 
@@ -546,14 +545,14 @@ Em falha, manter a mesma shape, trocar `status` para `not_ready`, o check afetad
 
 | Req ID | Comportamento | Tipo | Comando automatizado | Arquivo existe? |
 |--------|---------------|------|---------------------|-----------------|
-| SETUP-01 | Scaffold compila, inicia e migração usa URL permitida | unit + smoke | `cd apps/backend && npm run build && npm run test:unit -- --runTestsByPath src/config/__tests__/env.unit.spec.ts` | ❌ Wave 0 |
-| SETUP-02 | Produção exige os quatro contratos Redis e configura providers | unit + integration | `cd apps/backend && npm run test:unit -- --runTestsByPath src/config/__tests__/env.unit.spec.ts src/infrastructure/__tests__/redis-config.unit.spec.ts` | ❌ Wave 0 |
-| SETUP-03 | API não serve `/app`; Admin serve `/app` e não serve webhooks | smoke Nginx | `bash ops/tests/nginx-routing-smoke.sh` | ❌ Wave 0 |
-| SETUP-04 | Ecosystem contém server/worker e worker desabilita Admin | contract test | `node --test ops/tests/pm2-config.test.mjs` | ❌ Wave 0 |
-| SETUP-05 | Canários sensíveis não aparecem em logs | unit | `cd apps/backend && npm run test:unit -- --runTestsByPath src/observability/__tests__/redaction.unit.spec.ts` | ❌ Wave 0 |
-| OBS-01 | Error handler captura evento saneado e preserva resposta Medusa | unit + integration | `cd apps/backend && npm run test:integration:http -- --runTestsByPath integration-tests/http/sentry.spec.ts` | ❌ Wave 0 |
-| OBS-02 | Produção gera JSON; local pretty; níveis e correlation ID corretos | unit | `cd apps/backend && npm run test:unit -- --runTestsByPath src/observability/__tests__/logger.unit.spec.ts` | ❌ Wave 0 |
-| OBS-03 | live=200; ready=200/503; checks paralelos e resposta mínima | integration | `cd apps/backend && npm run test:integration:http -- --runTestsByPath integration-tests/http/health.spec.ts` | ❌ Wave 0 |
+| SETUP-01 | Scaffold compila, inicia e migração usa URL permitida | unit + smoke | `cd apps/backend && npm run build && npm run test:unit -- --runTestsByPath src/config/__tests__/env.unit.spec.ts` | ❌ criado test-first em 01-01/01-02 |
+| SETUP-02 | Produção exige os quatro contratos Redis e configura providers | unit + integration | `cd apps/backend && npm run test:unit -- --runTestsByPath src/config/__tests__/env.unit.spec.ts src/infrastructure/__tests__/redis-config.unit.spec.ts` | ❌ criado test-first em 01-03 |
+| SETUP-03 | API não serve `/app`; Admin serve `/app` e não serve webhooks | smoke Nginx | `bash ops/tests/nginx-routing-smoke.sh` | ❌ criado test-first em 01-07 |
+| SETUP-04 | Ecosystem contém server/worker, bind loopback e worker sem Admin/HTTP | contract test | `node --test ops/tests/pm2-config.test.mjs` | ❌ criado test-first em 01-07 |
+| SETUP-05 | Canários sensíveis não aparecem em logs | unit | `cd apps/backend && npm run test:unit -- --runTestsByPath src/observability/__tests__/redaction.unit.spec.ts` | ❌ criado test-first em 01-04 |
+| OBS-01 | Error handler captura evento saneado e preserva resposta Medusa | unit + integration | `cd apps/backend && npm run test:integration:http -- --runTestsByPath integration-tests/http/sentry.spec.ts` | ❌ criado test-first em 01-05 |
+| OBS-02 | Produção gera JSON; HTTP propaga correlation ID e agrupamento controla cardinalidade | unit + integration | `cd apps/backend && npm run test:unit -- --runTestsByPath src/observability/__tests__/logger.unit.spec.ts && npm run test:integration:http -- --runTestsByPath integration-tests/http/logging.spec.ts` | ❌ criado test-first em 01-04 |
+| OBS-03 | live=200; ready=200/503; checks paralelos e resposta mínima | integration | `cd apps/backend && npm run test:integration:http -- --runTestsByPath integration-tests/http/health.spec.ts` | ❌ criado test-first em 01-06 |
 
 ### Sampling Rate
 
@@ -563,14 +562,8 @@ Em falha, manter a mesma shape, trocar `status` para `not_ready`, o check afetad
 
 ### Wave 0 Gaps
 
-- [ ] Scaffold Medusa e scripts de teste oficiais.
-- [ ] `apps/backend/jest.config.js` e `apps/backend/integration-tests/setup.js`.
-- [ ] Fixtures de env local/production sem valores reais.
-- [ ] Capturador de destino Pino em memória para assertions.
-- [ ] Transporte Sentry de teste/mocks que nunca envia rede.
-- [ ] Fakes controláveis para probe Postgres/Redis.
-- [ ] Script smoke de Nginx executável quando Nginx/container estiver disponível.
-- [ ] Teste de contrato do ecosystem PM2 sem iniciar processos.
+- [ ] Scaffold Medusa, `apps/backend/jest.config.js`, `apps/backend/integration-tests/setup.js` e `bootstrap.spec.ts`.
+- [ ] Todos os demais testes, fakes, transports e scripts de contrato são criados test-first no próprio plano 01-02..01-07 antes da implementação correspondente.
 
 ## Security Domain
 

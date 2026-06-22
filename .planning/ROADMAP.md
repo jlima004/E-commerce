@@ -54,7 +54,7 @@ Expected Phase 1 plan slices:
 **Plans**: 7 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Medusa local bootstrap e infraestrutura Wave 0
+- [ ] 01-01-PLAN.md — Scaffold Medusa backend-only e runner/setup mínimo
 - [ ] 01-02-PLAN.md — Estratégia Supabase/Postgres e migrations direct/session
 - [ ] 01-03-PLAN.md — Event bus, cache e workflow engine Redis
 - [ ] 01-04-PLAN.md — Logger estruturado e política de redaction

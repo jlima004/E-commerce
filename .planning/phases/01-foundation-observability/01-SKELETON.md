@@ -34,7 +34,7 @@
 ## Walking Skeleton Execution Path
 
 1. O executor valida a legitimidade dos pacotes recentes antes de cada instalação.
-2. O scaffold Medusa é importado sem storefront e cria a infraestrutura Wave 0.
+2. O scaffold Medusa é importado sem storefront e cria somente o runner/setup compartilhado; cada slice posterior cria seu teste específico test-first.
 3. Migrations usam `DATABASE_MIGRATION_URL` somente no subprocesso e o runtime volta a usar `DATABASE_URL`.
 4. Cache, event bus e workflow engine usam Redis em produção.
 5. Logger e Sentry saneiam telemetria antes de qualquer saída.
@@ -64,4 +64,3 @@
 - Processamento assíncrono futuro pertence ao processo `worker`; HTTP/Admin pertence ao processo `server`.
 - Rotas futuras de webhook existem somente no host API e dependem de raw body intacto.
 - Toda nova dependência de readiness deve ser explicitamente aprovada; Stripe, Gelato, Resend, PostHog e Sentry permanecem fora do readiness.
-
