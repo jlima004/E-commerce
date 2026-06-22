@@ -87,7 +87,7 @@
   "project_code": null,
   "phase_naming": "sequential",
   "agent_skills": {},
-  "claude_md_path": "./.claude/.cursor/rules/",
+  "claude_md_path": "./AGENTS.md",
   "plan_review": {
     "source_grounding": true,
     "source_grounding_authority": "grep"
