@@ -238,8 +238,7 @@ Deploy migration
 │       │   │   ├── env.ts           # schema local/production
 │       │   │   └── __tests__/
 │       │   ├── observability/
-│       │   │   ├── grouping.ts      # rota/job normalizado + chave de agrupamento
-│       │   │   ├── logger.ts        # Pino base
+│       │   │   ├── logger.ts        # Pino + rota/job normalizado + chave de agrupamento
 │       │   │   ├── medusa-logger.ts # adapter da interface Logger
 │       │   │   ├── sanitize.ts      # strings/erro/cause
 │       │   │   └── __tests__/
