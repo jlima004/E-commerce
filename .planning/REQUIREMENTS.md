@@ -137,56 +137,56 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SETUP-01 | TBD | Pending |
-| SETUP-02 | TBD | Pending |
-| SETUP-03 | TBD | Pending |
-| SETUP-04 | TBD | Pending |
-| SETUP-05 | TBD | Pending |
-| CAT-01 | TBD | Pending |
-| CAT-02 | TBD | Pending |
-| CAT-03 | TBD | Pending |
-| CAT-04 | TBD | Pending |
-| MEDIA-01 | TBD | Pending |
-| CART-01 | TBD | Pending |
-| CART-02 | TBD | Pending |
-| CART-03 | TBD | Pending |
-| CART-04 | TBD | Pending |
-| PAY-01 | TBD | Pending |
-| PAY-02 | TBD | Pending |
-| PAY-03 | TBD | Pending |
-| PAY-04 | TBD | Pending |
-| WHK-01 | TBD | Pending |
-| WHK-02 | TBD | Pending |
-| WHK-03 | TBD | Pending |
-| ORD-01 | TBD | Pending |
-| ORD-02 | TBD | Pending |
-| ORD-03 | TBD | Pending |
-| ANL-01 | TBD | Pending |
-| ANL-02 | TBD | Pending |
-| ANL-03 | TBD | Pending |
-| EMAIL-01 | TBD | Pending |
-| EMAIL-02 | TBD | Pending |
-| FUL-01 | TBD | Pending |
-| FUL-02 | TBD | Pending |
-| FUL-03 | TBD | Pending |
-| FUL-04 | TBD | Pending |
-| TRK-01 | TBD | Pending |
-| TRK-02 | TBD | Pending |
-| REF-01 | TBD | Pending |
-| REF-02 | TBD | Pending |
-| EXC-01 | TBD | Pending |
-| EXC-02 | TBD | Pending |
-| OPS-01 | TBD | Pending |
-| OPS-02 | TBD | Pending |
-| OBS-01 | TBD | Pending |
-| OBS-02 | TBD | Pending |
-| OBS-03 | TBD | Pending |
-| TEST-01 | TBD | Pending |
+| SETUP-01 | Phase 1 | Pending |
+| SETUP-02 | Phase 1 | Pending |
+| SETUP-03 | Phase 1 | Pending |
+| SETUP-04 | Phase 1 | Pending |
+| SETUP-05 | Phase 1 | Pending |
+| CAT-01 | Phase 2 | Pending |
+| CAT-02 | Phase 2 | Pending |
+| CAT-03 | Phase 2 | Pending |
+| CAT-04 | Phase 2 | Pending |
+| MEDIA-01 | Phase 2 | Pending |
+| CART-01 | Phase 3 | Pending |
+| CART-02 | Phase 3 | Pending |
+| CART-03 | Phase 3 | Pending |
+| CART-04 | Phase 3 | Pending |
+| PAY-01 | Phase 4 | Pending |
+| PAY-02 | Phase 4 | Pending |
+| PAY-03 | Phase 4 | Pending |
+| PAY-04 | Phase 4 | Pending |
+| WHK-01 | Phase 5 | Pending |
+| WHK-02 | Phase 5 | Pending |
+| WHK-03 | Phase 9 | Pending |
+| ORD-01 | Phase 6 | Pending |
+| ORD-02 | Phase 6 | Pending |
+| ORD-03 | Phase 6 | Pending |
+| ANL-01 | Phase 7 | Pending |
+| ANL-02 | Phase 7 | Pending |
+| ANL-03 | Phase 7 | Pending |
+| EMAIL-01 | Phase 8 | Pending |
+| EMAIL-02 | Phase 8 | Pending |
+| FUL-01 | Phase 9 | Pending |
+| FUL-02 | Phase 9 | Pending |
+| FUL-03 | Phase 9 | Pending |
+| FUL-04 | Phase 9 | Pending |
+| TRK-01 | Phase 10 | Pending |
+| TRK-02 | Phase 10 | Pending |
+| REF-01 | Phase 11 | Pending |
+| REF-02 | Phase 11 | Pending |
+| EXC-01 | Phase 11 | Pending |
+| EXC-02 | Phase 11 | Pending |
+| OPS-01 | Phase 12 | Pending |
+| OPS-02 | Phase 12 | Pending |
+| OBS-01 | Phase 1 | Pending |
+| OBS-02 | Phase 1 | Pending |
+| OBS-03 | Phase 1 | Pending |
+| TEST-01 | Phase 12 | Pending |
 
 **Coverage:**
-- v1 requirements: 44 total
-- Mapped to phases: 0 (assigned by roadmapper)
-- Unmapped: 44 ⚠️ (resolved during roadmap creation)
+- v1 requirements: 45 total (corrected from "44"; the v1 list contains 45 distinct REQ-IDs)
+- Mapped to phases: 45 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-22*
