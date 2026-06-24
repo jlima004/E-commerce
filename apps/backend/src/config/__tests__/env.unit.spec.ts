@@ -149,6 +149,24 @@ describe("environment configuration", () => {
         ["supersecret"]
       )
     })
+
+    it.each([
+      "REDIS_URL",
+      "CACHE_REDIS_URL",
+      "EVENTS_REDIS_URL",
+      "WE_REDIS_URL",
+    ] as const)("requires %s without leaking Redis URL values", (variableName) => {
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            productionFixture({
+              [variableName]: undefined,
+            })
+          ),
+        variableName,
+        ["redis://redis.example.com:6379"]
+      )
+    })
   })
 
   describe("local defaults", () => {

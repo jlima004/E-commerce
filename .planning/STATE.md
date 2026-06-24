@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: foundation-observability
 status: pending-review
-stopped_at: Plan 01-02 complete; 01-02-SUMMARY.md awaiting human review
-last_updated: "2026-06-24T23:15:00.000Z"
+stopped_at: Plan 01-03 complete; 01-03-SUMMARY.md closed; next allowed after approval: 01-04
+last_updated: "2026-06-24T21:00:00.000Z"
 last_activity: 2026-06-24
-last_activity_desc: Plan 01-02 Task 3 smoke confirmed; summary written
+last_activity_desc: Plan 01-03 closed — projectConfig.redisUrl + locking-redis; runtime smoke pass
 progress:
   total_phases: 12
   completed_phases: 0
   total_plans: 7
-  completed_plans: 2
-  percent: 29
+  completed_plans: 3
+  percent: 43
 ---
 
 # Project State
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observability`. CONTEXT, RESEARCH, PLAN, and SPEC/SDD for Phase 01 were generated and reviewed; implementation proceeds plan-by-plan under manual-review gating.
 
-**Current gate:** Plan 01-02 is complete (`6330853` + Task 3 smoke confirmed). Review `01-02-SUMMARY.md` before closure. The next allowed action after approval is Plan 01-03 only — never auto-advancing.
+**Current gate:** Plan 01-03 is complete. Review `01-03-SUMMARY.md`. The next allowed action after approval is Plan 01-04 only — never auto-advancing.
 
 **Branch policy:**
 
@@ -52,17 +52,17 @@ Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observabi
 ## Current Position
 
 Phase: 01 (foundation-observability) — PENDING REVIEW
-Plan: 2 of 7 complete (01-02); next allowed after approval: 01-03
-Status: Plan 01-02 stopped for human review
-Last activity: 2026-06-24 — Task 3 migration smoke confirmed
+Plan: 3 of 7 complete (01-03); next allowed after approval: 01-04
+Status: Plan 01-03 stopped for human review
+Last activity: 2026-06-24 — locking-redis + projectConfig.redisUrl; runtime smoke pass
 
-Progress: [██░░░░░░░░] 29%
+Progress: [████░░░░░░] 43%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 2
+- Total plans completed: 3
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -91,6 +91,7 @@ Recent decisions affecting current work:
 - [Roadmap]: Refund updates financial state only post-webhook and never auto-cancels the order (P11).
 - [Governance]: For implementation, PRD Backend v1.1 + DB_MODEL v1.21 override older SRS wording that suggests Order/awaiting_payment before confirmed payment. Pre-payment state lives in Cart, PaymentCollection, PaymentSession, and PaymentAttempt. Order exists only after canonical Stripe webhook payment confirmation. (Also recorded in PROJECT.md Key Decisions for planning-agent visibility.)
 - [Governance]: Phase 2 (Catalog & Media) delivers only the Gelato snapshot builder/helper/contract + unit tests; actual `LineItem.metadata.gelato_snapshot` persistence is verified in Phase 6 where Order creation exists.
+- [Plan 01-03]: Locking module uses `REDIS_URL` via `@medusajs/medusa/locking-redis`; no fifth Redis contract in Phase 01.
 
 ### Pending Todos
 
@@ -117,5 +118,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-24
-Stopped at: Plan 01-02 complete; review 01-02-SUMMARY.md before Plan 01-03
+Stopped at: Plan 01-03 complete; review 01-03-SUMMARY.md before Plan 01-04
 Resume file: None
