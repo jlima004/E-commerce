@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: foundation-observability
 status: executing
-stopped_at: Plan 01-01 GREEN + summary approved; commit pending
-last_updated: "2026-06-24T20:10:00.000Z"
+stopped_at: Plan 01-01 complete; next allowed action is Plan 01-02 under manual-review gating
+last_updated: "2026-06-24T20:12:00.000Z"
 last_activity: 2026-06-24
-last_activity_desc: Plan 01-01 approved; GREEN delta and summary ready to commit
+last_activity_desc: Plan 01-01 GREEN committed (fec7f9d)
 progress:
   total_phases: 12
   completed_phases: 0
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observability`. CONTEXT, RESEARCH, PLAN, and SPEC/SDD for Phase 01 were generated and reviewed; implementation proceeds plan-by-plan under manual-review gating.
 
-**Current gate:** Plan 01-01 GREEN delta and summary were human-approved. After the GREEN commit lands, the next allowed action is Plan 01-02 only — never auto-advancing to later plans or phases.
+**Current gate:** Plan 01-01 is complete (`fec7f9d`). The next allowed action is Plan 01-02 only — never auto-advancing to later plans or phases.
 
 **Branch policy:**
 
@@ -52,9 +52,9 @@ Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observabi
 ## Current Position
 
 Phase: 01 (foundation-observability) — EXECUTING (supervised)
-Plan: 1 of 7 complete (01-01); next allowed: 01-02 after GREEN commit
-Status: Plan 01-01 approved; committing GREEN delta + summary
-Last activity: 2026-06-24 — Plan 01-01 human review approved
+Plan: 1 of 7 complete (01-01); next allowed: 01-02
+Status: Plan 01-01 closed; awaiting supervised execution of Plan 01-02
+Last activity: 2026-06-24 — Plan 01-01 GREEN committed
 
 Progress: [█░░░░░░░░░] 14%
 
@@ -117,5 +117,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-24
-Stopped at: Plan 01-01 approved; GREEN commit in progress
+Stopped at: Plan 01-01 complete; ready for Plan 01-02 under manual-review gating
 Resume file: None
