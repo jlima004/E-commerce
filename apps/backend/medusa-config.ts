@@ -4,10 +4,12 @@ import {
   buildRedisModules,
   resolveProjectRedisUrl,
 } from "./src/infrastructure/redis-config"
+import { medusaLogger } from "./src/observability/medusa-logger"
 
 const projectRedisUrl = resolveProjectRedisUrl(env)
 
 module.exports = defineConfig({
+  logger: medusaLogger,
   admin: {
     path: "/app",
     backendUrl: env.API_PUBLIC_URL,
