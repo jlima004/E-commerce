@@ -1,19 +1,21 @@
-import { loadEnv, defineConfig } from '@medusajs/framework/utils'
-
-loadEnv(process.env.NODE_ENV || 'development', process.cwd())
+import { defineConfig } from "@medusajs/framework/utils"
+import { env } from "./src/config/env"
 
 module.exports = defineConfig({
   admin: {
     path: "/app",
+    backendUrl: env.API_PUBLIC_URL,
+    disable: env.ADMIN_DISABLED,
   },
   projectConfig: {
-    databaseUrl: process.env.DATABASE_URL,
+    databaseUrl: env.DATABASE_URL,
+    workerMode: env.WORKER_MODE,
     http: {
-      storeCors: process.env.STORE_CORS!,
-      adminCors: process.env.ADMIN_CORS!,
-      authCors: process.env.AUTH_CORS!,
-      jwtSecret: process.env.JWT_SECRET,
-      cookieSecret: process.env.COOKIE_SECRET,
-    }
-  }
+      storeCors: env.STORE_CORS,
+      adminCors: env.ADMIN_CORS,
+      authCors: env.AUTH_CORS,
+      jwtSecret: env.JWT_SECRET,
+      cookieSecret: env.COOKIE_SECRET,
+    },
+  },
 })
