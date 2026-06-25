@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: foundation-observability
 status: pending-review
-stopped_at: Plan 01-05 complete; review 01-05-SUMMARY.md before Plan 01-06
-last_updated: "2026-06-25T15:23:11.000Z"
+stopped_at: Plan 01-06 complete; review 01-06-SUMMARY.md before Plan 01-07
+last_updated: "2026-06-25T15:51:53.823Z"
 last_activity: 2026-06-25
-last_activity_desc: Plan 01-05 executed - Sentry SDK integration with scrubbing and selective capture
+last_activity_desc: Plan 01-06 executed - health endpoints with Postgres/Redis readiness
 progress:
   total_phases: 12
   completed_phases: 0
   total_plans: 7
-  completed_plans: 5
-  percent: 71
+  completed_plans: 6
+  percent: 86
 ---
 
 # Project State
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observability`. CONTEXT, RESEARCH, PLAN, and SPEC/SDD for Phase 01 were generated and reviewed; implementation proceeds plan-by-plan under manual-review gating.
 
-**Current gate:** Plan 01-05 is complete. Review `01-05-SUMMARY.md`. The next allowed action after approval is Plan 01-06 only — never auto-advancing.
+**Current gate:** Plan 01-06 is complete. Review `01-06-SUMMARY.md`. The next allowed action after approval is Plan 01-07 only — never auto-advancing.
 
 **Branch policy:**
 
@@ -52,17 +52,17 @@ Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observabi
 ## Current Position
 
 Phase: 01 (foundation-observability) — PENDING REVIEW
-Plan: 5 of 7 complete (01-05); next allowed after approval: 01-06
-Status: Plan 01-05 stopped for human review
-Last activity: 2026-06-25 - Sentry SDK integration with scrubbing and selective capture
+Plan: 6 of 7 complete (01-06); next allowed after approval: 01-07
+Status: Plan 01-06 stopped for human review
+Last activity: 2026-06-25 - health endpoints with Postgres/Redis readiness
 
-Progress: [███████░░░] 71%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -94,6 +94,7 @@ Recent decisions affecting current work:
 - [Plan 01-03]: Locking module uses `REDIS_URL` via `@medusajs/medusa/locking-redis`; no fifth Redis contract in Phase 01.
 - [Plan 01-04]: Logging uses allowlist-first sanitization with exact-pinned `pino@10.3.1` and dev-only `pino-pretty@13.1.3`; audit findings remain documented and non-blocking because fixes require broad dependency changes outside Plan 01-04.
 - [Plan 01-05]: Sentry uses exact-pinned `@sentry/node@10.59.0`, `sendDefaultPii=false`, allowlist scrubbing hooks, and a single Medusa-delegating error capture path keyed by sanitized grouping metadata.
+- [Plan 01-06]: Health readiness checks only Postgres and Redis in parallel; expected dependency failures are sanitized warnings and do not create Sentry events by default.
 
 ### Pending Todos
 
@@ -119,6 +120,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25
-Stopped at: Plan 01-05 complete; review 01-05-SUMMARY.md before Plan 01-06
+Last session: 2026-06-25T15:51:53.791Z
+Stopped at: Plan 01-06 complete; review 01-06-SUMMARY.md before Plan 01-07
 Resume file: None

@@ -54,29 +54,29 @@ Expected Phase 1 plan slices:
 - Plan 1.6 — health check endpoint
 - Plan 1.7 — production runbook for PM2, Nginx, server/worker, and Admin subdomain
 
-**Plans**: 7 plans
+**Plans**: 6/7 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Scaffold Medusa backend-only e runner/setup mínimo
+- [x] 01-01-PLAN.md — Scaffold Medusa backend-only e runner/setup mínimo
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Estratégia Supabase/Postgres e migrations direct/session
+- [x] 01-02-PLAN.md — Estratégia Supabase/Postgres e migrations direct/session
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — Event bus, cache e workflow engine Redis
+- [x] 01-03-PLAN.md — Event bus, cache e workflow engine Redis
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 01-04-PLAN.md — Logger estruturado e política de redaction
+- [x] 01-04-PLAN.md — Logger estruturado e política de redaction
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 01-05-PLAN.md — Integração Sentry backend saneada
-- [ ] 01-06-PLAN.md — Endpoints de liveness e readiness
+- [x] 01-05-PLAN.md — Integração Sentry backend saneada
+- [x] 01-06-PLAN.md — Endpoints de liveness e readiness
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -254,7 +254,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Observability | 0/7 | Not started | - |
+| 1. Foundation & Observability | 6/7 | In Progress | - |
 | 2. Catalog & Media | 0/TBD | Not started | - |
 | 3. Cart & Checkout (pre-Order) | 0/TBD | Not started | - |
 | 4. Stripe Payments & PaymentAttempt | 0/TBD | Not started | - |
