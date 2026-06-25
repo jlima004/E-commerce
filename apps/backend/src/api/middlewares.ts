@@ -1,15 +1,27 @@
 import { randomUUID } from "crypto"
 import {
   defineMiddlewares,
+  errorHandler,
+  formatException,
   type MedusaNextFunction,
   type MedusaRequest,
   type MedusaResponse,
 } from "@medusajs/framework/http"
+import * as Sentry from "@sentry/node"
+import { MedusaError } from "@medusajs/utils"
 import type { Logger as PinoLogger } from "pino"
-import { childLogger, normalizeRouteOrJob } from "../observability/logger"
+import { env } from "../config/env"
+import {
+  childLogger,
+  normalizeRouteOrJob,
+} from "../observability/logger"
+import { buildSentryCaptureContext, shouldCaptureError } from "../observability/sentry-scrub"
 
 const CORRELATION_HEADER = "x-correlation-id"
 const CORRELATION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
+const QUERY_RUNNER_RELEASED = "QueryRunnerAlreadyReleasedError"
+const TRANSACTION_STARTED = "TransactionAlreadyStartedError"
+const TRANSACTION_NOT_STARTED = "TransactionNotStartedError"
 
 type RequestWithLogging = MedusaRequest & {
   correlationId?: string
@@ -18,6 +30,19 @@ type RequestWithLogging = MedusaRequest & {
 
 type AccessLogMiddlewareDeps = {
   createChildLogger: typeof childLogger
+}
+
+type CaptureExceptionInput = Parameters<typeof Sentry.captureException>[1]
+
+type SentryErrorHandlerDeps = {
+  captureException?: (error: unknown, context?: CaptureExceptionInput) => string
+  medusaErrorHandler?: (
+    error: unknown,
+    req: MedusaRequest,
+    res: MedusaResponse,
+    next: MedusaNextFunction
+  ) => void
+  processRole?: string
 }
 
 function resolveCorrelationId(headerValue: unknown): string {
@@ -52,12 +77,121 @@ function getRouteTemplate(req: MedusaRequest): string {
   return req.originalUrl || req.url || "/unknown"
 }
 
+export function resolveRequestRouteOrJob(req: MedusaRequest): string {
+  return normalizeRouteOrJob(getRouteTemplate(req))
+}
+
 function shouldSkipSuccessfulHealthLog(route: string, statusCode: number): boolean {
   if (statusCode >= 400) {
     return false
   }
 
   return route === "/health/live" || route === "/health/ready"
+}
+
+function extractStringField(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined
+}
+
+function resolveErrorStatusCode(error: unknown): number {
+  const formattedError = formatException(error as Error & { code?: string })
+  const errorType = formattedError.type || formattedError.name
+
+  switch (errorType) {
+    case QUERY_RUNNER_RELEASED:
+    case TRANSACTION_STARTED:
+    case TRANSACTION_NOT_STARTED:
+    case MedusaError.Types.CONFLICT:
+      return 409
+    case MedusaError.Types.UNAUTHORIZED:
+      return 401
+    case MedusaError.Types.FORBIDDEN:
+      return 403
+    case MedusaError.Types.PAYMENT_AUTHORIZATION_ERROR:
+    case MedusaError.Types.DUPLICATE_ERROR:
+      return 422
+    case MedusaError.Types.NOT_ALLOWED:
+    case MedusaError.Types.INVALID_DATA:
+      return 400
+    case MedusaError.Types.NOT_FOUND:
+      return 404
+    default:
+      return 500
+  }
+}
+
+function buildSentryOperation(
+  error: unknown,
+  req: MedusaRequest
+): string {
+  return (
+    extractStringField((error as { operation?: unknown })?.operation) ??
+    `http.${req.method.toLowerCase()}`
+  )
+}
+
+function buildSentryIntegration(error: unknown): string | undefined {
+  return extractStringField((error as { integration?: unknown })?.integration)
+}
+
+function buildSentryErrorClass(error: unknown): string {
+  return (
+    extractStringField((error as { type?: unknown })?.type) ??
+    extractStringField((error as { name?: unknown })?.name) ??
+    "Error"
+  )
+}
+
+export function createSentryErrorHandler(
+  deps: SentryErrorHandlerDeps = {}
+) {
+  const medusaHandler = deps.medusaErrorHandler ?? errorHandler()
+  const captureException = deps.captureException ?? Sentry.captureException
+  const processRole = deps.processRole ?? env.WORKER_MODE
+
+  return function sentryErrorHandler(
+    error: unknown,
+    req: MedusaRequest,
+    res: MedusaResponse,
+    next: MedusaNextFunction
+  ) {
+    const formattedError = formatException(error as Error & { code?: string })
+    const statusCode = resolveErrorStatusCode(formattedError)
+    const level = statusCode >= 500 ? "error" : "warn"
+    const persistent =
+      (formattedError as { persistent?: boolean }).persistent === true
+    const expected =
+      (formattedError as { expected?: boolean }).expected ?? (statusCode < 500 && !persistent)
+
+    if (
+      shouldCaptureError({
+        level,
+        expected,
+        persistent,
+      })
+    ) {
+      const routeOrJob = resolveRequestRouteOrJob(req)
+      const operation = buildSentryOperation(formattedError, req)
+      const integration = buildSentryIntegration(formattedError)
+      const errorClass = buildSentryErrorClass(formattedError)
+      const captureContext = buildSentryCaptureContext({
+        errorClass,
+        operation,
+        integration,
+        routeOrJob,
+        correlationId: (req as RequestWithLogging).correlationId,
+        processRole,
+      })
+
+      captureException(formattedError, {
+        fingerprint: captureContext.fingerprint,
+        tags: captureContext.tags,
+        extra: captureContext.extra,
+      })
+    }
+
+    medusaHandler(error, req, res, next)
+  }
 }
 
 export function createCorrelationAndAccessLogMiddleware(
@@ -103,7 +237,10 @@ export function createCorrelationAndAccessLogMiddleware(
 export const correlationAndAccessLogMiddleware =
   createCorrelationAndAccessLogMiddleware()
 
+export const sentryErrorMiddleware = createSentryErrorHandler()
+
 export default defineMiddlewares({
+  errorHandler: sentryErrorMiddleware,
   routes: [
     {
       matcher: /.*/,

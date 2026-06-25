@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: foundation-observability
 status: pending-review
-stopped_at: Plan 01-04 complete; 01-04-SUMMARY.md closed; next allowed after approval: 01-05
-last_updated: "2026-06-24T22:25:00.000Z"
-last_activity: 2026-06-24
-last_activity_desc: Plan 01-04 closed - sanitized structured logging and redaction
+stopped_at: Plan 01-05 complete; review 01-05-SUMMARY.md before Plan 01-06
+last_updated: "2026-06-25T15:23:11.000Z"
+last_activity: 2026-06-25
+last_activity_desc: Plan 01-05 executed - Sentry SDK integration with scrubbing and selective capture
 progress:
   total_phases: 12
   completed_phases: 0
   total_plans: 7
-  completed_plans: 4
-  percent: 57
+  completed_plans: 5
+  percent: 71
 ---
 
 # Project State
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observability`. CONTEXT, RESEARCH, PLAN, and SPEC/SDD for Phase 01 were generated and reviewed; implementation proceeds plan-by-plan under manual-review gating.
 
-**Current gate:** Plan 01-04 is complete. Review `01-04-SUMMARY.md`. The next allowed action after approval is Plan 01-05 only — never auto-advancing.
+**Current gate:** Plan 01-05 is complete. Review `01-05-SUMMARY.md`. The next allowed action after approval is Plan 01-06 only — never auto-advancing.
 
 **Branch policy:**
 
@@ -52,17 +52,17 @@ Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observabi
 ## Current Position
 
 Phase: 01 (foundation-observability) — PENDING REVIEW
-Plan: 4 of 7 complete (01-04); next allowed after approval: 01-05
-Status: Plan 01-04 stopped for human review
-Last activity: 2026-06-24 - sanitized structured logging and redaction
+Plan: 5 of 7 complete (01-05); next allowed after approval: 01-06
+Status: Plan 01-05 stopped for human review
+Last activity: 2026-06-25 - Sentry SDK integration with scrubbing and selective capture
 
-Progress: [██████░░░░] 57%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 3
+- Total plans completed: 5
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -93,6 +93,7 @@ Recent decisions affecting current work:
 - [Governance]: Phase 2 (Catalog & Media) delivers only the Gelato snapshot builder/helper/contract + unit tests; actual `LineItem.metadata.gelato_snapshot` persistence is verified in Phase 6 where Order creation exists.
 - [Plan 01-03]: Locking module uses `REDIS_URL` via `@medusajs/medusa/locking-redis`; no fifth Redis contract in Phase 01.
 - [Plan 01-04]: Logging uses allowlist-first sanitization with exact-pinned `pino@10.3.1` and dev-only `pino-pretty@13.1.3`; audit findings remain documented and non-blocking because fixes require broad dependency changes outside Plan 01-04.
+- [Plan 01-05]: Sentry uses exact-pinned `@sentry/node@10.59.0`, `sendDefaultPii=false`, allowlist scrubbing hooks, and a single Medusa-delegating error capture path keyed by sanitized grouping metadata.
 
 ### Pending Todos
 
@@ -118,6 +119,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-24
-Stopped at: Plan 01-04 complete; review 01-04-SUMMARY.md before Plan 01-05
+Last session: 2026-06-25
+Stopped at: Plan 01-05 complete; review 01-05-SUMMARY.md before Plan 01-06
 Resume file: None
