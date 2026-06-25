@@ -77,17 +77,19 @@ function logExpectedDependencyFailure(
   error: unknown,
   options: ProbeOptions = {}
 ): void {
-  logAllowlisted(
-    options.logger ?? appLogger,
-    "warn",
-    {
-      check,
-      operation,
-      correlation_id: options.correlationId,
-      error_class: toErrorClass(error),
-    },
-    "health dependency unavailable"
-  )
+  const payload = {
+    check,
+    operation,
+    correlation_id: options.correlationId,
+    error_class: toErrorClass(error),
+  }
+
+  if (options.logger) {
+    options.logger.warn(payload, "health dependency unavailable")
+    return
+  }
+
+  logAllowlisted(appLogger, "warn", payload, "health dependency unavailable")
 }
 
 export function withTimeout<T>(
