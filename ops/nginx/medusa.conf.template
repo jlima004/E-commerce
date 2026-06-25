@@ -1,0 +1,250 @@
+# Medusa API + Admin virtual hosts (template)
+#
+# Render placeholders before installing:
+#   sed -e 's/__API_HOST__/api.example.com/g' \
+#       -e 's/__ADMIN_HOST__/admin.example.com/g' \
+#       -e 's/__UPSTREAM__/127.0.0.1:9000/g' \
+#       ops/nginx/medusa.conf.template > /etc/nginx/sites-available/medusa.conf
+#
+# No real domains, IPs, or secrets belong in this file.
+
+# Selective rate limit for authentication surfaces only (never global).
+limit_req_zone $binary_remote_addr zone=medusa_auth:10m rate=10r/m;
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    "" close;
+}
+
+upstream medusa_upstream {
+    server __UPSTREAM__;
+    keepalive 32;
+}
+
+# --- API host (store + future webhooks) ------------------------------------
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __API_HOST__;
+
+    # Certbot HTTP-01 challenge (managed by certbot --nginx)
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name __API_HOST__;
+
+    # TLS certificates — paths filled by Certbot
+    ssl_certificate     /etc/letsencrypt/live/__API_HOST__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__API_HOST__/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Security headers (D-05)
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Strict-Transport-Security "max-age=15552000" always;
+
+    client_max_body_size 2m;
+
+    # Admin UI must not be reachable on the API host (D-01 / SETUP-03)
+    location ^~ /app {
+        return 404;
+    }
+
+    # Health probes — no auth rate limit (OBS-03 / D-05)
+    location = /health/live {
+        proxy_pass http://medusa_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
+    location = /health/ready {
+        proxy_pass http://medusa_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
+    # Future Stripe/Gelato webhooks — preserve raw request body (D-06)
+    location ^~ /hooks/ {
+        client_max_body_size 2m;
+        proxy_pass http://medusa_upstream;
+        proxy_http_version 1.1;
+        proxy_pass_request_body on;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Content-Length $content_length;
+        proxy_set_header Content-Type $content_type;
+        proxy_set_header Stripe-Signature $http_stripe_signature;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_request_buffering on;
+    }
+
+    location ^~ /webhooks/ {
+        client_max_body_size 2m;
+        proxy_pass http://medusa_upstream;
+        proxy_http_version 1.1;
+        proxy_pass_request_body on;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Content-Length $content_length;
+        proxy_set_header Content-Type $content_type;
+        proxy_set_header Stripe-Signature $http_stripe_signature;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_request_buffering on;
+    }
+
+    # Selective rate limit on auth/login only (D-05)
+    location ~ ^/(auth|admin/auth|store/auth) {
+        limit_req zone=medusa_auth burst=5 nodelay;
+        proxy_pass http://medusa_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
+    location / {
+        proxy_pass http://medusa_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+}
+
+# --- Admin host (dashboard only) -------------------------------------------
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __ADMIN_HOST__;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name __ADMIN_HOST__;
+
+    ssl_certificate     /etc/letsencrypt/live/__ADMIN_HOST__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__ADMIN_HOST__/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Strict-Transport-Security "max-age=15552000" always;
+
+    client_max_body_size 10m;
+
+    # Webhooks must not be published on the Admin host (D-02)
+    location ^~ /hooks {
+        return 404;
+    }
+
+    location ^~ /webhooks {
+        return 404;
+    }
+
+    location = /health/live {
+        proxy_pass http://medusa_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
+    location = /health/ready {
+        proxy_pass http://medusa_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
+    location = / {
+        return 301 https://$host/app;
+    }
+
+    location ^~ /app {
+        client_max_body_size 10m;
+        proxy_pass http://medusa_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
+    location / {
+        return 404;
+    }
+}

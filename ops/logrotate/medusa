@@ -1,0 +1,19 @@
+# Logrotate policy for PM2-managed Medusa stdout/stderr on the VPS.
+# Install: sudo cp ops/logrotate/medusa /etc/logrotate.d/medusa
+#
+# Adjust paths after rendering APP_USER and APP_ROOT on the target host.
+
+/srv/<APP_USER>/logs/medusa-*.log
+/srv/<APP_USER>/.pm2/logs/medusa-*.log
+<APP_ROOT>/logs/medusa-*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    maxsize 100M
+    copytruncate
+    dateext
+    dateformat -%Y%m%d
+}
