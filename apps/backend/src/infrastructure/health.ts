@@ -153,11 +153,28 @@ export async function checkPostgres(
   }
 }
 
+function buildRedisOptions(url: string, options: RedisOptions): RedisOptions {
+  const parsedUrl = new URL(url)
+
+  if (parsedUrl.protocol !== "rediss:") {
+    return options
+  }
+
+  return {
+    ...options,
+    tls: {
+      ...options.tls,
+      rejectUnauthorized:
+        process.env.REDIS_TLS_REJECT_UNAUTHORIZED !== "false",
+    },
+  }
+}
+
 function createRedisProbeClient(
   url: string,
   options: RedisOptions
 ): RedisProbeClient {
-  return new Redis(url, options)
+  return new Redis(url, buildRedisOptions(url, options))
 }
 
 async function pingRedisUrl(
