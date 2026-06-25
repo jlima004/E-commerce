@@ -5,6 +5,15 @@ export type MedusaModuleDescriptor = {
   options?: Record<string, unknown>
 }
 
+type RedisModuleOptions = {
+  redisUrl: string
+  redisOptions?: {
+    tls: {
+      rejectUnauthorized: boolean
+    }
+  }
+}
+
 const CACHING_MODULE = "@medusajs/medusa/caching"
 const CACHING_REDIS_PROVIDER = "@medusajs/caching-redis"
 const EVENT_BUS_REDIS = "@medusajs/medusa/event-bus-redis"
@@ -61,6 +70,41 @@ export function uniqueRedisUrls(env: AppEnv): string[] {
   return [...new Set(urls)]
 }
 
+function redisOptionsForUrl(
+  redisUrl: string
+): RedisModuleOptions["redisOptions"] {
+  let parsedUrl: URL
+
+  try {
+    parsedUrl = new URL(redisUrl)
+  } catch {
+    return undefined
+  }
+
+  if (parsedUrl.protocol !== "rediss:") {
+    return undefined
+  }
+
+  if (process.env.REDIS_TLS_REJECT_UNAUTHORIZED !== "false") {
+    return undefined
+  }
+
+  return {
+    tls: {
+      rejectUnauthorized: false,
+    },
+  }
+}
+
+function buildRedisModuleOptions(redisUrl: string): RedisModuleOptions {
+  const trimmedRedisUrl = redisUrl.trim()
+  const redisOptions = redisOptionsForUrl(trimmedRedisUrl)
+
+  return redisOptions
+    ? { redisUrl: trimmedRedisUrl, redisOptions }
+    : { redisUrl: trimmedRedisUrl }
+}
+
 export function buildRedisModules(env: AppEnv): MedusaModuleDescriptor[] {
   if (!shouldWireRedisModules(env)) {
     return []
@@ -83,9 +127,7 @@ export function buildRedisModules(env: AppEnv): MedusaModuleDescriptor[] {
             resolve: CACHING_REDIS_PROVIDER,
             id: "caching-redis",
             is_default: true,
-            options: {
-              redisUrl: env.CACHE_REDIS_URL!.trim(),
-            },
+            options: buildRedisModuleOptions(env.CACHE_REDIS_URL!),
           },
         ],
       },
@@ -98,25 +140,19 @@ export function buildRedisModules(env: AppEnv): MedusaModuleDescriptor[] {
             resolve: LOCKING_REDIS_PROVIDER,
             id: "locking-redis",
             is_default: true,
-            options: {
-              redisUrl: lockingRedisUrl,
-            },
+            options: buildRedisModuleOptions(lockingRedisUrl),
           },
         ],
       },
     },
     {
       resolve: EVENT_BUS_REDIS,
-      options: {
-        redisUrl: env.EVENTS_REDIS_URL!.trim(),
-      },
+      options: buildRedisModuleOptions(env.EVENTS_REDIS_URL!),
     },
     {
       resolve: WORKFLOW_ENGINE_REDIS,
       options: {
-        redis: {
-          redisUrl: env.WE_REDIS_URL!.trim(),
-        },
+        redis: buildRedisModuleOptions(env.WE_REDIS_URL!),
       },
     },
   ]

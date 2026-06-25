@@ -160,12 +160,15 @@ function buildRedisOptions(url: string, options: RedisOptions): RedisOptions {
     return options
   }
 
+  if (process.env.REDIS_TLS_REJECT_UNAUTHORIZED !== "false") {
+    return options
+  }
+
   return {
     ...options,
     tls: {
       ...options.tls,
-      rejectUnauthorized:
-        process.env.REDIS_TLS_REJECT_UNAUTHORIZED !== "false",
+      rejectUnauthorized: false,
     },
   }
 }

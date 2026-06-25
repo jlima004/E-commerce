@@ -1,5 +1,6 @@
 import { parseEnv } from "../../config/env"
 import type { AppEnv } from "../../config/env"
+import type { MedusaModuleDescriptor } from "../redis-config"
 import {
   assertNoInMemoryInfrastructure,
   buildRedisModules,
@@ -14,6 +15,22 @@ const sharedRedisUrl = "redis://redis.example.com:6379"
 const cacheRedisUrl = "redis://cache.example.com:6379"
 const eventsRedisUrl = "redis://events.example.com:6379"
 const workflowRedisUrl = "redis://workflow.example.com:6379"
+const sharedRedissUrl = "rediss://redis.example.com:6379"
+const cacheRedissUrl = "rediss://cache.example.com:6379"
+const eventsRedissUrl = "rediss://events.example.com:6379"
+const workflowRedissUrl = "rediss://workflow.example.com:6379"
+
+type RedisModuleOptions = {
+  redisUrl: string
+  redisOptions?: {
+    tls: {
+      rejectUnauthorized: boolean
+    }
+  }
+}
+
+const originalRedisTlsRejectUnauthorized =
+  process.env.REDIS_TLS_REJECT_UNAUTHORIZED
 
 function productionFixture(
   overrides: Record<string, string | undefined> = {}
@@ -81,6 +98,45 @@ function expectErrorWithoutValues(
   }
 }
 
+function restoreRedisTlsEnv() {
+  if (originalRedisTlsRejectUnauthorized === undefined) {
+    delete process.env.REDIS_TLS_REJECT_UNAUTHORIZED
+    return
+  }
+
+  process.env.REDIS_TLS_REJECT_UNAUTHORIZED =
+    originalRedisTlsRejectUnauthorized
+}
+
+function getRedisModuleOptions(modules: MedusaModuleDescriptor[]) {
+  const cachingProviders = modules[0].options?.providers as Array<{
+    resolve: string
+    id: string
+    is_default: boolean
+    options: RedisModuleOptions
+  }>
+  const lockingProviders = modules[1].options?.providers as Array<{
+    resolve: string
+    id: string
+    is_default: boolean
+    options: RedisModuleOptions
+  }>
+  const workflowOptions = modules[3].options as {
+    redis: RedisModuleOptions
+  }
+
+  return {
+    cache: cachingProviders[0].options,
+    locking: lockingProviders[0].options,
+    events: modules[2].options as RedisModuleOptions,
+    workflow: workflowOptions.redis,
+  }
+}
+
+afterEach(() => {
+  restoreRedisTlsEnv()
+})
+
 describe("redis module wiring", () => {
   it("builds caching, locking, event bus, and workflow engine Redis modules", () => {
     const modules = buildRedisModules(parseProductionEnv())
@@ -98,7 +154,7 @@ describe("redis module wiring", () => {
       resolve: string
       id: string
       is_default: boolean
-      options: { redisUrl: string }
+      options: RedisModuleOptions
     }>
 
     expect(cachingProviders).toHaveLength(1)
@@ -114,7 +170,7 @@ describe("redis module wiring", () => {
       resolve: string
       id: string
       is_default: boolean
-      options: { redisUrl: string }
+      options: RedisModuleOptions
     }>
 
     expect(lockingProviders).toHaveLength(1)
@@ -131,6 +187,71 @@ describe("redis module wiring", () => {
     })
   })
 
+  it("does not add redisOptions for redis:// URLs", () => {
+    process.env.REDIS_TLS_REJECT_UNAUTHORIZED = "false"
+
+    const modules = buildRedisModules(parseProductionEnv())
+    const options = getRedisModuleOptions(modules)
+
+    expect(options.cache).toEqual({ redisUrl: sharedRedisUrl })
+    expect(options.locking).toEqual({ redisUrl: sharedRedisUrl })
+    expect(options.events).toEqual({ redisUrl: sharedRedisUrl })
+    expect(options.workflow).toEqual({ redisUrl: sharedRedisUrl })
+  })
+
+  it("does not relax TLS for rediss:// URLs without explicit Redis TLS override", () => {
+    delete process.env.REDIS_TLS_REJECT_UNAUTHORIZED
+
+    const env = parseProductionEnv({
+      REDIS_URL: sharedRedissUrl,
+      CACHE_REDIS_URL: cacheRedissUrl,
+      EVENTS_REDIS_URL: eventsRedissUrl,
+      WE_REDIS_URL: workflowRedissUrl,
+    })
+    const modules = buildRedisModules(env)
+    const options = getRedisModuleOptions(modules)
+
+    expect(options.cache).toEqual({ redisUrl: cacheRedissUrl })
+    expect(options.locking).toEqual({ redisUrl: sharedRedissUrl })
+    expect(options.events).toEqual({ redisUrl: eventsRedissUrl })
+    expect(options.workflow).toEqual({ redisUrl: workflowRedissUrl })
+  })
+
+  it("relaxes TLS for rediss:// URLs when Redis TLS verification is disabled", () => {
+    process.env.REDIS_TLS_REJECT_UNAUTHORIZED = "false"
+
+    const env = parseProductionEnv({
+      REDIS_URL: sharedRedissUrl,
+      CACHE_REDIS_URL: cacheRedissUrl,
+      EVENTS_REDIS_URL: eventsRedissUrl,
+      WE_REDIS_URL: workflowRedissUrl,
+    })
+    const modules = buildRedisModules(env)
+    const options = getRedisModuleOptions(modules)
+    const redisOptions = {
+      tls: {
+        rejectUnauthorized: false,
+      },
+    }
+
+    expect(options.cache).toEqual({
+      redisUrl: cacheRedissUrl,
+      redisOptions,
+    })
+    expect(options.locking).toEqual({
+      redisUrl: sharedRedissUrl,
+      redisOptions,
+    })
+    expect(options.events).toEqual({
+      redisUrl: eventsRedissUrl,
+      redisOptions,
+    })
+    expect(options.workflow).toEqual({
+      redisUrl: workflowRedissUrl,
+      redisOptions,
+    })
+  })
+
   it("uses module-specific Redis contracts even when they share the same endpoint", () => {
     const env = parseProductionEnv({
       REDIS_URL: sharedRedisUrl,
@@ -141,10 +262,10 @@ describe("redis module wiring", () => {
 
     const modules = buildRedisModules(env)
     const cachingProviders = modules[0].options?.providers as Array<{
-      options: { redisUrl: string }
+      options: RedisModuleOptions
     }>
     const lockingProviders = modules[1].options?.providers as Array<{
-      options: { redisUrl: string }
+      options: RedisModuleOptions
     }>
 
     expect(cachingProviders[0].options.redisUrl).toBe(cacheRedisUrl)
