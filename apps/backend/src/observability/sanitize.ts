@@ -25,6 +25,7 @@ export const ALLOWLISTED_CONTEXT_KEYS = new Set([
   "status",
   "duration_ms",
   "operation",
+  "check",
   "integration",
   "error_class",
   "grouping_key",

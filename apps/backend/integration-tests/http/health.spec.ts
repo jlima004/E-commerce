@@ -244,6 +244,7 @@ describe("health HTTP contracts", () => {
       },
     }))
     jest.doMock("../../src/infrastructure/health", () => ({
+      SERVICE_NAME: "medusa-backend",
       checkReadiness: jest.fn(async () => readiness),
     }))
 
