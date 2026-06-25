@@ -123,3 +123,9 @@ Items acknowledged and carried forward from previous milestone close:
 Last session: 2026-06-25T15:51:53.791Z
 Stopped at: Plan 01-06 complete; review 01-06-SUMMARY.md before Plan 01-07
 Resume file: None
+
+## Quick Tasks Completed
+
+| Date | Task | Summary |
+|------|------|---------|
+| 2026-06-25 | 260625-i9n-remover-canary-de-stripe-com-formato-rea | Removed a Stripe-shaped test canary from observability tests and rewrote the local 01-04 commit with autosquash so GitHub Push Protection can accept the branch push. |
