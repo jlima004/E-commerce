@@ -2,11 +2,13 @@ import { defineConfig } from "@medusajs/framework/utils"
 import { env } from "./src/config/env"
 import {
   buildRedisModules,
+  redisOptionsForUrl,
   resolveProjectRedisUrl,
 } from "./src/infrastructure/redis-config"
 import { medusaLogger } from "./src/observability/medusa-logger"
 
 const projectRedisUrl = resolveProjectRedisUrl(env)
+const projectRedisOptions = redisOptionsForUrl(projectRedisUrl)
 
 module.exports = defineConfig({
   logger: medusaLogger,
@@ -19,6 +21,7 @@ module.exports = defineConfig({
     databaseUrl: env.DATABASE_URL,
     workerMode: env.WORKER_MODE,
     ...(projectRedisUrl ? { redisUrl: projectRedisUrl } : {}),
+    ...(projectRedisOptions ? { redisOptions: projectRedisOptions } : {}),
     http: {
       storeCors: env.STORE_CORS,
       adminCors: env.ADMIN_CORS,

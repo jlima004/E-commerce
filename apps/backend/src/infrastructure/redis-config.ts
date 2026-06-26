@@ -7,10 +7,12 @@ export type MedusaModuleDescriptor = {
 
 type RedisModuleOptions = {
   redisUrl: string
-  redisOptions?: {
-    tls: {
-      rejectUnauthorized: boolean
-    }
+  redisOptions?: RedisConnectionOptions
+}
+
+export type RedisConnectionOptions = {
+  tls: {
+    rejectUnauthorized: boolean
   }
 }
 
@@ -70,13 +72,17 @@ export function uniqueRedisUrls(env: AppEnv): string[] {
   return [...new Set(urls)]
 }
 
-function redisOptionsForUrl(
-  redisUrl: string
-): RedisModuleOptions["redisOptions"] {
+export function redisOptionsForUrl(
+  redisUrl: string | undefined
+): RedisConnectionOptions | undefined {
+  if (!isNonEmptyUrl(redisUrl)) {
+    return undefined
+  }
+
   let parsedUrl: URL
 
   try {
-    parsedUrl = new URL(redisUrl)
+    parsedUrl = new URL(redisUrl.trim())
   } catch {
     return undefined
   }

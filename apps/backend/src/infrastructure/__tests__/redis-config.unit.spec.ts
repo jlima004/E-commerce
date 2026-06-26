@@ -5,6 +5,7 @@ import {
   assertNoInMemoryInfrastructure,
   buildRedisModules,
   hasRedisModuleContracts,
+  redisOptionsForUrl,
   resolveProjectRedisUrl,
   shouldWireRedisModules,
   uniqueRedisUrls,
@@ -135,6 +136,30 @@ function getRedisModuleOptions(modules: MedusaModuleDescriptor[]) {
 
 afterEach(() => {
   restoreRedisTlsEnv()
+})
+
+describe("redisOptionsForUrl", () => {
+  it("relaxes TLS for rediss:// URLs when Redis TLS verification is disabled", () => {
+    process.env.REDIS_TLS_REJECT_UNAUTHORIZED = "false"
+
+    expect(redisOptionsForUrl(sharedRedissUrl)).toEqual({
+      tls: {
+        rejectUnauthorized: false,
+      },
+    })
+  })
+
+  it("does not add Redis options for redis:// URLs", () => {
+    process.env.REDIS_TLS_REJECT_UNAUTHORIZED = "false"
+
+    expect(redisOptionsForUrl(sharedRedisUrl)).toBeUndefined()
+  })
+
+  it("does not relax TLS when the Redis TLS override is absent", () => {
+    delete process.env.REDIS_TLS_REJECT_UNAUTHORIZED
+
+    expect(redisOptionsForUrl(sharedRedissUrl)).toBeUndefined()
+  })
 })
 
 describe("redis module wiring", () => {
