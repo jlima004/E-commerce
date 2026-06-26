@@ -49,6 +49,10 @@ export function shouldWireRedisModules(env: AppEnv): boolean {
   return hasRedisModuleContracts(env)
 }
 
+export function shouldWireRedisCachingProvider(): boolean {
+  return process.env.REDIS_CACHE_PROVIDER_DISABLED !== "true"
+}
+
 export function resolveProjectRedisUrl(env: AppEnv): string | undefined {
   if (!shouldWireRedisModules(env)) {
     return undefined
@@ -124,8 +128,10 @@ export function buildRedisModules(env: AppEnv): MedusaModuleDescriptor[] {
 
   const lockingRedisUrl = resolveProjectRedisUrl(env)!
 
-  return [
-    {
+  const modules: MedusaModuleDescriptor[] = []
+
+  if (shouldWireRedisCachingProvider()) {
+    modules.push({
       resolve: CACHING_MODULE,
       options: {
         providers: [
@@ -137,7 +143,10 @@ export function buildRedisModules(env: AppEnv): MedusaModuleDescriptor[] {
           },
         ],
       },
-    },
+    })
+  }
+
+  modules.push(
     {
       resolve: LOCKING_MODULE,
       options: {
@@ -161,7 +170,9 @@ export function buildRedisModules(env: AppEnv): MedusaModuleDescriptor[] {
         redis: buildRedisModuleOptions(env.WE_REDIS_URL!),
       },
     },
-  ]
+  )
+
+  return modules
 }
 
 export function assertNoInMemoryInfrastructure(
