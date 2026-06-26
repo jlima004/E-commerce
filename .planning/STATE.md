@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02
 current_phase_name: catalog-media
-status: phase-02-plan-02-awaiting-manual-review
-stopped_at: Completed 02-02 sellable/publish gate; manual gate before 02-03
-last_updated: "2026-06-26T19:33:00.000Z"
+status: phase-02-plan-03-awaiting-human-gate
+stopped_at: 02-03 Task 1 supply-chain verified; blocking human gate for Supabase bucket/credentials
+last_updated: "2026-06-26T20:08:00.000Z"
 last_activity: 2026-06-26
-last_activity_desc: Executed 02-02 plan — sellable/publish gate + integration tests; awaiting manual gate
+last_activity_desc: Executed 02-03 through supply-chain gate; paused before install/configure (Tasks 2-3 blocked)
 progress:
   total_phases: 12
   completed_phases: 1
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 02 — catalog-media (02-02 executed, manual gate)
+**Current focus:** Phase 02 — catalog-media (02-03 at human gate; Tasks 2-3 blocked)
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** 02-02 complete. Review SUMMARY + code, then approve before executing 02-03. No auto-advance.
+**Current gate:** 02-03 Task 1 — provision public Supabase Storage bucket + S3 credentials outside Git, then reply `done` to continue Tasks 2-3. No auto-advance to 02-04.
 
 **Branch policy:**
 
@@ -51,10 +51,10 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 02 (catalog-media) — 02-02 EXECUTED / MANUAL GATE
-Plan: 5 plans defined; 2 executed (02-01, 02-02); Phase 01 closed (7/7)
-Status: Sellable/publish gate implemented and tested; awaiting human review before 02-03
-Last activity: 2026-06-26 - 02-02 SUMMARY created
+Phase: 02 (catalog-media) — 02-03 CHECKPOINT (human gate)
+Plan: 5 plans defined; 2 complete (02-01, 02-02); 02-03 paused at Task 1 gate; Phase 01 closed (7/7)
+Status: @medusajs/file-s3@2.16.0 supply-chain verified; awaiting bucket/credentials provisioning
+Last activity: 2026-06-26 - 02-03-SUMMARY created at blocking checkpoint
 
 Progress: [█---------] 8%
 
@@ -131,8 +131,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T19:33:00.000Z
-Stopped at: Completed 02-02 sellable/publish gate; manual gate before 02-03
+Last session: 2026-06-26T20:08:00.000Z
+Stopped at: 02-03 supply-chain gate passed; human gate before Tasks 2-3 (install/configure)
 Resume file: None
 
 ## Quick Tasks Completed
