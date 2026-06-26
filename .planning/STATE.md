@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 01
 current_phase_name: foundation-observability
-status: pending-review
-stopped_at: Plan 01-06 complete; review 01-06-SUMMARY.md before Plan 01-07
-last_updated: "2026-06-25T15:51:53.823Z"
-last_activity: 2026-06-25
-last_activity_desc: Plan 01-06 executed - health endpoints with Postgres/Redis readiness
+status: pending-production-smoke
+stopped_at: Heroku/Supabase/Redis deployment checkpoint documented; next cycle is production backend smoke test
+last_updated: "2026-06-26T00:00:00.000Z"
+last_activity: 2026-06-26
+last_activity_desc: Heroku/Supabase/Redis deployment stabilized as technical checkpoint
 progress:
   total_phases: 12
   completed_phases: 0
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observability`. CONTEXT, RESEARCH, PLAN, and SPEC/SDD for Phase 01 were generated and reviewed; implementation proceeds plan-by-plan under manual-review gating.
 
-**Current gate:** Plan 01-06 is complete. Review `01-06-SUMMARY.md`. The next allowed action after approval is Plan 01-07 only — never auto-advancing.
+**Current gate:** The Heroku/Supabase/Redis production deployment checkpoint is documented and stabilized. The next allowed cycle is **Smoke Test backend em produção** only — never auto-advancing to Phase 02.
 
 **Branch policy:**
 
@@ -51,12 +51,12 @@ Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observabi
 
 ## Current Position
 
-Phase: 01 (foundation-observability) — PENDING REVIEW
-Plan: 6 of 7 complete (01-06); next allowed after approval: 01-07
-Status: Plan 01-06 stopped for human review
-Last activity: 2026-06-25 - health endpoints with Postgres/Redis readiness
+Phase: 01 (foundation-observability) — PENDING PRODUCTION SMOKE
+Plan: 7 of 7 complete; next allowed cycle: production backend smoke test
+Status: Heroku/Supabase/Redis deployment checkpoint documented and stabilized
+Last activity: 2026-06-26 - Heroku/Supabase/Redis deployment checkpoint
 
-Progress: [█████████░] 86%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -95,6 +95,11 @@ Recent decisions affecting current work:
 - [Plan 01-04]: Logging uses allowlist-first sanitization with exact-pinned `pino@10.3.1` and dev-only `pino-pretty@13.1.3`; audit findings remain documented and non-blocking because fixes require broad dependency changes outside Plan 01-04.
 - [Plan 01-05]: Sentry uses exact-pinned `@sentry/node@10.59.0`, `sendDefaultPii=false`, allowlist scrubbing hooks, and a single Medusa-delegating error capture path keyed by sanitized grouping metadata.
 - [Plan 01-06]: Health readiness checks only Postgres and Redis in parallel; expected dependency failures are sanitized warnings and do not create Sentry events by default.
+- [Plan 01-07 / Deployment checkpoint]: The original VPS/PM2/Nginx route was superseded in this cycle by Heroku as the current production target. The validated app is `espacoliminar`, release `v27`, deployed commit `d02fd70`, with `APP_VERSION=d02fd70`.
+- [Plan 01-07 / Deployment checkpoint]: Current production operations use Heroku web/worker dynos, Supabase Postgres through the pooler, Heroku Redis with TLS, and Heroku release phase for `db:migrate:safe`.
+- [Plan 01-07 / Deployment checkpoint]: `REDIS_CACHE_PROVIDER_DISABLED=true` is active on Heroku; the `@medusajs/caching-redis` provider remains temporarily disabled by flag to avoid the Heroku TLS/self-signed loop. Redis remains active for health checks and the remaining Redis-backed modules.
+- [Plan 01-07 / Deployment checkpoint]: `/health/live` and `/health/ready` were validated in production with HTTP 200; readiness reports Postgres `up` and Redis `up`; `web.1` and `worker.1` are up.
+- [Plan 01-07 / Deployment checkpoint]: Local branch `gsd/phase-01-foundation-observability`, `origin/gsd-...`, and `heroku/main` are synchronized on `d02fd70`.
 
 ### Pending Todos
 
@@ -109,6 +114,7 @@ None yet.
 - [Roadmap]: REQUIREMENTS.md summary previously stated "44 total"; the v1 list actually contains 45 distinct REQ-IDs. Count corrected to 45 during roadmap creation.
 - [Phase 4/5]: MEDIUM confidence on whether Medusa's bundled Stripe provider fully supports Pix's async lifecycle vs needing a custom provider — flag for planning spike.
 - [Phase 9]: Gelato has no official Medusa provider/SDK; draft→confirm pattern and webhook signature scheme need API-level verification during planning.
+- [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
 ## Deferred Items
 
@@ -120,8 +126,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25T15:51:53.791Z
-Stopped at: Plan 01-06 complete; review 01-06-SUMMARY.md before Plan 01-07
+Last session: 2026-06-26T00:00:00.000Z
+Stopped at: Heroku/Supabase/Redis deployment checkpoint documented; next cycle is production backend smoke test
 Resume file: None
 
 ## Quick Tasks Completed
@@ -129,3 +135,4 @@ Resume file: None
 | Date | Task | Summary |
 |------|------|---------|
 | 2026-06-25 | 260625-i9n-remover-canary-de-stripe-com-formato-rea | Removed a Stripe-shaped test canary from observability tests and rewrote the local 01-04 commit with autosquash so GitHub Push Protection can accept the branch push. |
+| 2026-06-26 | 260626-hsr-heroku-supabase-redis-checkpoint | Documented the Heroku/Supabase/Redis deployment stabilization checkpoint and recorded the next cycle as production backend smoke test. |

@@ -64,7 +64,7 @@ Um pedido (Order) só existe e só é enviado à produção (Gelato) após confi
 ## Context
 
 - **Stack alvo**: Medusa v2, Node.js, TypeScript, PostgreSQL/Supabase, Supabase Storage, Redis, Stripe, Resend, Gelato, Sentry, PostHog.
-- **Infra**: VPS Linux com PM2 (ou equivalente) e Nginx (ou equivalente); Admin em subdomínio dedicado.
+- **Infra**: VPS Linux com PM2 (ou equivalente) e Nginx (ou equivalente); Admin em subdomínio dedicado. **Checkpoint atual (2026-06-26):** produção validada em Heroku app `espacoliminar`, com web/worker dynos, Supabase Postgres via pooler e Heroku Redis com TLS; a rota VPS/PM2/Nginx fica como blueprint portável.
 - **Arquitetura**: headless — backend expõe contratos de API que o storefront futuro consumirá (PRD Frontend v1.1 é referência de contrato, não escopo de build).
 - **Domínio**: e-commerce POD exige separação rígida entre confirmação de pagamento (Stripe) e disparo de produção (Gelato), com logs de outbox/idempotência para evitar cobrança fantasma, pedido duplicado e fulfillment indevido.
 - **Analytics**: purchase_completed é um evento de domínio do backend (outbox durável), independente do sucesso do PostHog no frontend.
@@ -93,6 +93,7 @@ Um pedido (Order) só existe e só é enviado à produção (Gelato) após confi
 | Tokens de tracking armazenados com hash/criptografia, nunca em texto puro | Segurança de acesso de convidados | — Pending |
 | Backend-only MVP com contratos de API para storefront futura | Frontend é milestone posterior | — Pending |
 | PRD Backend v1.1 + DB_MODEL v1.21 sobrepõem a redação mais antiga da SRS que sugere Order/awaiting_payment antes do pagamento confirmado | Estado pré-pagamento vive em Cart, PaymentCollection, PaymentSession e PaymentAttempt; Order só existe após confirmação canônica do webhook Stripe | — Decided (must be honored by all future planning) |
+| Heroku é o runtime de produção atual para o checkpoint da Fase 01 | A rota VPS/PM2/Nginx planejada foi substituída neste ciclo por Heroku/Supabase/Heroku Redis já estabilizados | — Decided (current production target) |
 
 > **Decision (SRS wording override):** For implementation, PRD Backend v1.1 + DB_MODEL v1.21 override older SRS wording that suggests Order/awaiting_payment before confirmed payment. Pre-payment state lives in Cart, PaymentCollection, PaymentSession, and PaymentAttempt. Order exists only after canonical Stripe webhook payment confirmation. This decision must be visible to and honored by future planning agents.
 

@@ -3,6 +3,8 @@
 Este documento descreve como operar o Walking Skeleton em **local** e **production**.  
 **Staging** é apenas uma convenção futura — não há provisionamento nesta fase.
 
+> **Status operacional (2026-06-26):** este runbook VPS/PM2/Nginx permanece como blueprint portável da Fase 01, mas a rota de produção validada neste ciclo foi substituída por Heroku. O checkpoint atual está em `.planning/phases/01-foundation-observability/01-07-SUMMARY.md` e usa Heroku app `espacoliminar`, Supabase Postgres via pooler e Heroku Redis com TLS.
+
 Nenhum secret, domínio real, IP público ou URL privada deve ser commitado.  
 Todos os exemplos usam placeholders.
 

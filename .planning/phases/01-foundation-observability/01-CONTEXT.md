@@ -50,6 +50,17 @@ Entregar a fundação executável, segura e observável do backend Medusa v2: bo
 - **D-28:** Health endpoints serão públicos, sem autenticação, baratos, fora dos rate limits sensíveis e sem logs por chamada saudável.
 - **D-29:** Falhas esperadas de dependência poderão gerar `warn`, sem Sentry por padrão. Mudanças de estado, degradações relevantes e erros inesperados serão registrados com contexto saneado; erros inesperados de implementação poderão ir ao Sentry.
 
+### Adendo operacional: Heroku/Supabase/Redis (2026-06-26)
+- **D-30:** A rota original VPS/PM2/Nginx foi substituída neste ciclo por Heroku como alvo atual de produção. O app validado é `espacoliminar`.
+- **D-31:** A release estabilizada é `v27`, commit `d02fd70`, com `APP_VERSION=d02fd70`.
+- **D-32:** O runtime atual usa Heroku web/worker dynos: `web.1` e `worker.1` validados como `up`.
+- **D-33:** O Postgres de produção permanece Supabase via pooler; migrations rodam pela release phase Heroku com `cd apps/backend && npm run db:migrate:safe`.
+- **D-34:** O Redis de produção atual é Heroku Redis com TLS. Redis segue ativo para health e módulos Redis restantes.
+- **D-35:** `REDIS_CACHE_PROVIDER_DISABLED=true` está ativo no Heroku; o provider `@medusajs/caching-redis` fica temporariamente desativado por flag para evitar loop TLS/self-signed no Heroku.
+- **D-36:** `/health/live` e `/health/ready` foram validados em produção com HTTP 200; `/health/ready` reporta Postgres `up` e Redis `up`.
+- **D-37:** Logs filtrados de web/worker para `Redis cache connection error`, `self-signed certificate`, `MaxRetriesPerRequestError` e `ECONNRESET` retornaram vazio.
+- **D-38:** Pendência menor: o release dyno ainda pode emitir `ECONNRESET`/`ioredis` durante `db:migrate:safe`. Isso não bloqueou a release nem apareceu no runtime web/worker; investigar depois se migrations podem rodar sem inicializar providers Redis desnecessários.
+
 ### the agent's Discretion
 - Escolha exata das bibliotecas de schema, logging e integração Sentry, desde que preserve integralmente os contratos acima e as versões compatíveis com Medusa v2.
 - Valores exatos de timeouts, limites de body, políticas de retenção do PM2/sistema e formato visual do logger local devem ser definidos na pesquisa/plano com defaults conservadores.

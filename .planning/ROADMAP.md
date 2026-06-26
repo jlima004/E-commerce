@@ -30,7 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Phase 1: Foundation & Observability
 
-**Goal**: A secure, observable Medusa v2 backend runs locally and in production on Postgres/Supabase + Redis, with the Admin on its own subdomain and log redaction active from day one.
+**Goal**: A secure, observable Medusa v2 backend runs locally and in production on Postgres/Supabase + Redis, with the Admin on its own production surface and log redaction active from day one.
 **Mode:** mvp
 **Depends on**: Nothing (first phase)
 **Requirements**: SETUP-01, SETUP-02, SETUP-03, SETUP-04, SETUP-05, OBS-01, OBS-02, OBS-03
@@ -44,6 +44,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Phase 1 is valid but too large for a single Cursor execution. Planning MUST split it into small, independently reviewable plan slices. These may be planned and executed incrementally and must NOT be implemented as one large uncontrolled change.
 
+**Production target update (2026-06-26):** The original VPS/PM2/Nginx route from Phase 01 planning was superseded in this cycle by Heroku as the current production target. The portable VPS/Nginx artifacts remain useful runbook/templates, but the validated production checkpoint is Heroku app `espacoliminar`, release `v27`, deployed commit `d02fd70`, with Supabase Postgres via pooler, Heroku Redis with TLS, Heroku release phase for migrations, and web/worker dynos up.
+
 Expected Phase 1 plan slices:
 
 - Plan 1.1 — Medusa local bootstrap
@@ -54,7 +56,7 @@ Expected Phase 1 plan slices:
 - Plan 1.6 — health check endpoint
 - Plan 1.7 — production runbook for PM2, Nginx, server/worker, and Admin subdomain
 
-**Plans**: 6/7 plans executed
+**Plans**: 7/7 plans executed
 
 Plans:
 **Wave 1**
@@ -80,7 +82,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 01-07-PLAN.md — Runbook PM2/Nginx, server/worker e Admin dedicado
+- [x] 01-07-PLAN.md — Runbook PM2/Nginx, server/worker e Admin dedicado; current production checkpoint stabilized on Heroku/Supabase/Redis
 
 ### Phase 2: Catalog & Media
 
@@ -254,7 +256,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Observability | 6/7 | In Progress | - |
+| 1. Foundation & Observability | 7/7 | Pending production smoke | - |
 | 2. Catalog & Media | 0/TBD | Not started | - |
 | 3. Cart & Checkout (pre-Order) | 0/TBD | Not started | - |
 | 4. Stripe Payments & PaymentAttempt | 0/TBD | Not started | - |

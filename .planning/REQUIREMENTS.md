@@ -14,7 +14,7 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 - [ ] **SETUP-01**: Medusa v2 backend runs locally and in production with PostgreSQL/Supabase as the database
 - [ ] **SETUP-02**: Redis is wired for the event bus, cache, and workflow engine (no in-memory defaults in production)
 - [ ] **SETUP-03**: Medusa Admin is served on a dedicated subdomain
-- [ ] **SETUP-04**: A separate worker process runs subscribers/scheduled jobs (PM2-managed), with Nginx reverse proxy
+- [ ] **SETUP-04**: A separate worker process runs subscribers/scheduled jobs in the production runtime. Current checkpoint uses Heroku web/worker dynos; the original PM2/Nginx route remains a portable blueprint.
 - [ ] **SETUP-05**: Central log redaction guarantees secrets, full card data, and plaintext tokens never appear in logs (INV-12)
 
 ### Catalog
@@ -93,7 +93,7 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 - [ ] **OBS-01**: Backend errors are reported to Sentry
 - [ ] **OBS-02**: The backend emits structured logs (redacted per SETUP-05)
-- [ ] **OBS-03**: A health-check endpoint reports service/dependency health for the VPS/PM2/Nginx stack
+- [ ] **OBS-03**: A health-check endpoint reports service/dependency health for the active production runtime. Current checkpoint validates Heroku/Supabase/Redis; the VPS/PM2/Nginx stack remains documented as a portable blueprint.
 
 ### Critical Tests
 
