@@ -5,6 +5,7 @@ import {
   redisOptionsForUrl,
   resolveProjectRedisUrl,
 } from "./src/infrastructure/redis-config"
+import { buildStorageModule } from "./src/infrastructure/storage-config"
 import { medusaLogger } from "./src/observability/medusa-logger"
 
 const projectRedisUrl = resolveProjectRedisUrl(env)
@@ -30,5 +31,5 @@ module.exports = defineConfig({
       cookieSecret: env.COOKIE_SECRET,
     },
   },
-  modules: [...buildRedisModules(env)],
+  modules: [...buildRedisModules(env), ...buildStorageModule(env)],
 })

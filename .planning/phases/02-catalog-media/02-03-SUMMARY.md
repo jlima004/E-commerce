@@ -9,167 +9,134 @@ requires:
     plan: "02"
     provides: Sellable/publish gate complete; catalog metadata contract stable
 provides:
-  - Supply-chain verification for @medusajs/file-s3@2.16.0 aligned with Medusa 2.16.0 stack
-  - Human gate checklist for public Supabase Storage bucket + S3 credentials (outside Git)
+  - Production fail-fast env schema for Supabase S3 storage (6 vars)
+  - Official `@medusajs/medusa/file` + `@medusajs/medusa/file-s3` wiring with `forcePathStyle: true`
+  - `@medusajs/file-s3@2.16.0` pinned as direct dependency
+  - Manual smoke verified: Admin upload → public Supabase object → product media association
 affects: [02-04, 02-05]
 
 tech-stack:
-  added: []
+  added: ["@medusajs/file-s3@2.16.0"]
   patterns:
     - "D-11/D-12: official @medusajs/file-s3 only — no custom Supabase SDK provider in this phase"
     - "D-13/D-14: catalog images are public bucket URLs; no binaries in Postgres"
-    - "D-15: signed URLs out of scope"
+    - "D-15: signed URLs rejected in production S3_FILE_URL validation"
+    - "Storage module wires only when all six S3 env contracts are present (dev) or always in production"
 
 key-files:
-  created: []
-  modified: []
+  created:
+    - apps/backend/src/infrastructure/storage-config.ts
+  modified:
+    - apps/backend/package.json
+    - package-lock.json
+    - apps/backend/medusa-config.ts
+    - apps/backend/src/config/env.ts
+    - apps/backend/src/config/__tests__/env.unit.spec.ts
+    - apps/backend/src/infrastructure/__tests__/redis-config.unit.spec.ts
+    - apps/backend/.env.template
 
 key-decisions:
-  - "Stop before install/configure per Task 1 blocking gate — no provider wiring until human approves bucket/credentials"
-  - "Pin @medusajs/file-s3@2.16.0 to match existing @medusajs/* 2.16.0 set (not 2.15.x from older STACK.md prose)"
-  - "Supabase S3 wiring will use forcePathStyle: true per Medusa docs for Supabase compatibility"
+  - "Use Medusa docs pattern: `@medusajs/medusa/file` module with `@medusajs/medusa/file-s3` provider (not top-level `@medusajs/file-s3` resolve)"
+  - "Pin `@medusajs/file-s3@2.16.0` as direct dependency aligned with `@medusajs/*` 2.16.0 stack"
+  - "Production S3_FILE_URL must be https public Supabase object URL; signed/expiring patterns rejected"
+  - "Dev omits File Module when storage env incomplete; production requires all six vars"
 
-patterns-established: []
+patterns-established:
+  - "Pattern: buildStorageModule mirrors buildRedisModules — contract-gated wiring, fail-fast in production"
 
-requirements-completed: []
+requirements-completed: [MEDIA-01]
 
-duration: 8min
+duration: 45min
 completed: 2026-06-26
-status: pending-checkpoint
-checkpoint:
-  task: 1
-  type: blocking-human
-  resume_signal: done
+status: complete
 ---
 
-# Phase 02 Plan 03: Supabase Storage Provider — Supply-Chain Gate Summary
+# Phase 02 Plan 03: Supabase Storage Provider Summary
 
-**Supply-chain verified for `@medusajs/file-s3@2.16.0`; execution paused at blocking human gate before install, env schema, or medusa-config wiring**
+**Official S3 file provider wired for Supabase Storage; manual Admin upload smoke confirmed public URL catalog media without Postgres binaries**
 
 ## Performance
 
-- **Duration:** ~8 min
+- **Duration:** ~45 min (Tasks 1–3 + manual smoke)
 - **Started:** 2026-06-26T20:00:00Z
-- **Completed:** 2026-06-26T20:08:00Z (checkpoint only — Tasks 2–3 deferred)
-- **Tasks:** 1 of 3 (automated portion of Task 1 only)
-- **Files modified:** 0 (by design — plan forbids changes before gate)
+- **Completed:** 2026-06-26T21:30:00Z
+- **Tasks:** 3 + manual smoke — all complete
+- **Files modified:** 8 (1 created, 7 modified)
 
 ## Accomplishments
 
-- Confirmed `@medusajs/file-s3@2.16.0` exists on npm and matches the installed Medusa stack (`@medusajs/*` all at **2.16.0** in `apps/backend/package.json`)
-- Confirmed official repository: `git+https://github.com/medusajs/medusa.git`
-- Documented human provisioning steps for public Supabase Storage bucket + S3-compatible credentials
-- **Did not** install packages, modify `medusa-config.ts`, extend `env.ts`, run migrations, deploy, or write secrets to Git
+- **Task 1:** Supply-chain verified; human gate passed (`done`); bucket/credentials provisioned outside Git
+- **Task 2:** RED → GREEN unit tests for storage env contract — production fail-fast for all six vars, signed URL rejection, dev optional
+- **Task 3:** Installed `@medusajs/file-s3@2.16.0`, extended `env.ts`, added `storage-config.ts`, registered File Module in `medusa-config.ts` with `forcePathStyle: true`
+- **Manual smoke:** Admin upload succeeded; object in public Supabase bucket; public URL opened in anonymous tab; media associated to product
+- **MEDIA-01 closed:** images in Supabase Storage via URL references; no binaries in Postgres
+- **Did not** run migrations, deploy, advance to 02-04, or write secrets to Git
 
 ## Task Status
 
 | Task | Status | Notes |
 |------|--------|-------|
-| **Task 1:** Supply-chain + bucket/credentials gate | ⏸ **Checkpoint** | Automated verify ✅; human verify ⏳ awaiting `done` |
-| **Task 2:** RED env contract tests | ⬜ Blocked | Starts after human gate |
-| **Task 3:** Install provider + env schema + medusa-config | ⬜ Blocked | Starts after Task 2 RED |
+| **Task 1:** Supply-chain + bucket/credentials gate | ✅ Complete | Human confirmed `done`; local `.env` outside Git |
+| **Task 2:** RED env contract tests | ✅ Complete | 10 storage-focused tests pass |
+| **Task 3:** Install + env schema + medusa-config | ✅ Complete | Build passes |
+| **Manual smoke:** Admin upload → public URL | ✅ Complete | Human confirmed `smoke-done` |
 
-## Automated Verification (Task 1)
+## Verification
+
+### Automated
 
 ```bash
-npm view @medusajs/file-s3@2.16.0 version repository.url
+cd apps/backend && npm run test:unit -- --runTestsByPath src/config/__tests__/env.unit.spec.ts -t "storage|s3|supabase|public url"
+# PASS — 10 tests
+
+cd apps/backend && npm run test:unit -- --runTestsByPath src/config/__tests__/env.unit.spec.ts
+# PASS — 29 tests
+
+cd apps/backend && npm run build
+# PASS — backend + frontend build completed
 ```
 
-**Result: PASS**
+### Manual smoke (authorized local env)
 
-```
-version = '2.16.0'
-repository.url = 'git+https://github.com/medusajs/medusa.git'
-```
-
-**Stack alignment: PASS** — backend already pins `@medusajs/framework`, `@medusajs/medusa`, `@medusajs/cli`, etc. at `2.16.0`. No version skew if `@medusajs/file-s3@2.16.0` is added in Task 3.
-
-## Checkpoint: Human Action Required
-
-Before Tasks 2–3 may proceed, confirm **all** of the following in an authorized environment only (Heroku config vars, local `.env`, Supabase dashboard — **never** committed to Git):
-
-### 1. Public bucket for catalog images (D-13)
-
-- Create or select a Supabase Storage bucket for product images (PRD name: `SUPABASE_STORAGE_BUCKET_PRODUCT_IMAGES`).
-- Bucket must be **public** for MVP catalog URLs (no signed URLs — D-15).
-- Objects should be readable via stable public URLs (not Postgres binaries — D-14).
-
-### 2. S3-compatible credentials (server-side only)
-
-In Supabase Dashboard → **Storage** → **S3 configuration**:
-
-1. Enable S3 protocol if not already enabled.
-2. Generate **Access Key ID** + **Secret Access Key** (server-side credentials — not anon/publishable keys).
-3. Copy **endpoint** and **region** from the S3 settings page.
-
-Reference endpoint shape:
-
-`https://<project-ref>.storage.supabase.co/storage/v1/s3`
-
-Docs: [Supabase S3 authentication](https://supabase.com/docs/guides/storage/s3/authentication)
-
-### 3. Provision env vars (names for Task 3 — values stay secret)
-
-Medusa File Module (official docs) expects these options via env:
-
-| Env var (planned) | Purpose |
-|-------------------|---------|
-| `S3_ENDPOINT` | Supabase S3 endpoint URL |
-| `S3_REGION` | Region from Supabase S3 settings |
-| `S3_BUCKET` | Public product-images bucket name |
-| `S3_ACCESS_KEY_ID` | S3 access key (server-side) |
-| `S3_SECRET_ACCESS_KEY` | S3 secret key (server-side) |
-| `S3_FILE_URL` | Public base URL for catalog image references returned by API |
-
-Task 3 will also set `additional_client_config.forcePathStyle: true` in `medusa-config.ts` (required for Supabase per Medusa docs).
-
-**Set these in:** Heroku config vars for `espacoliminar`, local `.env` (gitignored), or your secrets manager — **not** in repo files.
-
-### 4. Resume signal
-
-When bucket, endpoint, region, and credentials are provisioned, reply **`done`** to continue 02-03 (Tasks 2–3 only). Do **not** paste secret values in chat.
-
-## Deferred Work (after `done`)
-
-| Step | Command / action |
-|------|------------------|
-| Task 2 RED tests | `cd apps/backend && npm run test:unit -- --runTestsByPath src/config/__tests__/env.unit.spec.ts -t "storage\|s3\|supabase\|public url"` |
-| Task 3 implement | Install `@medusajs/file-s3@2.16.0`, extend `env.ts`, register File Module in `medusa-config.ts` |
-| Verify | `cd apps/backend && npm run test:unit -- ... && npm run build` |
-| Manual smoke | Upload one test image in authorized env (post-implementation) |
-
-**Explicitly out of scope for this continuation:** migrations, deploy, 02-04, signed URLs, custom file provider.
+- Upload via Medusa Admin: **PASS**
+- Object visible in public Supabase Storage bucket: **PASS**
+- Public URL accessible in anonymous browser tab: **PASS**
+- Media associated to product (URL reference, not Postgres binary): **PASS**
 
 ## Decisions Made
 
-- Honored plan gate: zero application changes before human approval (D-11 supply-chain only verified)
-- Will use `@medusajs/medusa/file` + `@medusajs/medusa/file-s3` provider pattern from Medusa docs (not standalone `@medusajs/file-s3` top-level module resolve — to be confirmed during Task 3 implementation against installed package exports)
+- Provider resolve paths follow [Medusa S3 docs](https://docs.medusajs.com/resources/infrastructure-modules/file/s3): `@medusajs/medusa/file` + `@medusajs/medusa/file-s3`
+- `@medusajs/file-s3@2.16.0` added as explicit direct dependency (was transitive via `@medusajs/medusa`)
+- `S3_FILE_URL` validation enforces Supabase public object URL shape (`/storage/v1/object/public/`)
 
 ## Deviations from Plan
 
-None — stopped exactly at Task 1 blocking checkpoint as requested.
+None.
 
 ## Issues Encountered
 
-None.
+- `npm install` hit transient `ENOTEMPTY` on WSL `node_modules`; package already present at 2.16.0; lockfile updated without blocking Tasks 2–3
 
 ## User Setup Required
 
-**Yes — blocking.** Complete the checkpoint checklist above, then signal `done`.
+None for plan closure. Production Heroku env vars for S3 remain a separate deploy-time concern (out of scope for this plan).
 
 ## Next Phase Readiness
 
-- **02-04** (Store API catalog contract) remains blocked until 02-03 Tasks 2–3 complete
-- **02-05** (Gelato snapshot builder) can proceed in parallel wave 3 per roadmap, but catalog media URLs depend on 02-03 completion
+- **02-04** and **02-05** remain unstarted — require explicit manual-review gate before execution
+- Wave 2 gate (02-02 + 02-03) satisfied for storage/media wiring
 
-## Self-Check: CHECKPOINT
+## Self-Check
 
-- [x] Supply-chain automated verify passed
+- [x] Tasks 1–3 implemented
+- [x] Unit tests + build pass
+- [x] Manual upload smoke passed
+- [x] MEDIA-01 closed
 - [x] No secrets in Git or SUMMARY
-- [x] No migrations or deploy attempted
+- [x] No migrations or deploy
 - [x] No advance to 02-04
-- [ ] Human bucket/credentials gate — **awaiting `done`**
+- [x] No custom file provider
 
 ---
 *Phase: 02-catalog-media*
-*Checkpoint: 2026-06-26*
+*Closed: 2026-06-26*

@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02
 current_phase_name: catalog-media
-status: phase-02-plan-03-awaiting-human-gate
-stopped_at: 02-03 Task 1 supply-chain verified; blocking human gate for Supabase bucket/credentials
-last_updated: "2026-06-26T20:08:00.000Z"
+status: phase-02-plan-03-closed
+stopped_at: 02-03 closed with manual smoke; MEDIA-01 complete; next plan requires manual-review gate (no auto 02-04)
+last_updated: "2026-06-26T21:30:00.000Z"
 last_activity: 2026-06-26
-last_activity_desc: Executed 02-03 through supply-chain gate; paused before install/configure (Tasks 2-3 blocked)
+last_activity_desc: Closed 02-03 and MEDIA-01 after manual Admin upload smoke (public Supabase URL confirmed)
 progress:
   total_phases: 12
   completed_phases: 1
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
   percent: 8
 ---
 
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 02 — catalog-media (02-03 at human gate; Tasks 2-3 blocked)
+**Current focus:** Phase 02 — catalog-media (02-03 closed; MEDIA-01 complete; 02-04/02-05 await manual gate)
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** 02-03 Task 1 — provision public Supabase Storage bucket + S3 credentials outside Git, then reply `done` to continue Tasks 2-3. No auto-advance to 02-04.
+**Current gate:** 02-03 closed. Do not auto-start 02-04. Next execution requires explicit manual approval for 02-04 (Store API) or 02-05 (Gelato snapshot builder).
 
 **Branch policy:**
 
@@ -51,10 +51,10 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 02 (catalog-media) — 02-03 CHECKPOINT (human gate)
-Plan: 5 plans defined; 2 complete (02-01, 02-02); 02-03 paused at Task 1 gate; Phase 01 closed (7/7)
-Status: @medusajs/file-s3@2.16.0 supply-chain verified; awaiting bucket/credentials provisioning
-Last activity: 2026-06-26 - 02-03-SUMMARY created at blocking checkpoint
+Phase: 02 (catalog-media) — 02-03 closed; MEDIA-01 complete
+Plan: 5 plans defined; 3 complete (02-01, 02-02, 02-03); 02-04 and 02-05 unstarted; Phase 01 closed (7/7)
+Status: Supabase Storage provider live locally; public URL catalog media verified via Admin smoke
+Last activity: 2026-06-26 - 02-03/MEDIA-01 closed after manual upload smoke
 
 Progress: [█---------] 8%
 
@@ -62,7 +62,7 @@ Progress: [█---------] 8%
 
 **Velocity:**
 
-- Total plans completed: 7
+- Total plans completed: 9
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -71,7 +71,7 @@ Progress: [█---------] 8%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01. Foundation & Observability | 7 | Complete | — |
-| 02. Catalog & Media | 2 executed / 5 planned | In Progress | — |
+| 02. Catalog & Media | 3 executed / 5 planned | In Progress | — |
 
 **Recent Trend:**
 
@@ -105,6 +105,7 @@ Recent decisions affecting current work:
 - [Plan 01-07 / Deployment checkpoint]: Local branch `gsd/phase-01-foundation-observability`, `origin/gsd-...`, and `heroku/main` are synchronized on `d02fd70`.
 - [Production smoke]: Smoke test on Heroku app `espacoliminar` passed on 2026-06-26. Current release is `v27`, `APP_VERSION=d02fd70`, `REDIS_CACHE_PROVIDER_DISABLED=true`, `web.1` and `worker.1` are up, `/health/live` and `/health/ready` return 200, readiness reports Postgres `up` and Redis `up`, web/worker logs show no Redis/TLS loop patterns, and public read-only routes returned no 5xx.
 - [Phase 01 closure]: Closure completed on 2026-06-26. The original VPS/PM2/Nginx route remains as a portable blueprint, while the validated operational checkpoint for this cycle is Heroku app `espacoliminar` with Supabase Postgres via pooler, Heroku Redis with TLS, Heroku release phase for `db:migrate:safe`, and Phase 02 left unstarted behind a human review gate.
+- [Plan 02-03]: `@medusajs/file-s3@2.16.0` wired via `@medusajs/medusa/file` + `@medusajs/medusa/file-s3` with `forcePathStyle: true`; production env fail-fast for six S3 vars; manual Admin upload smoke confirmed public Supabase URL and product media association — MEDIA-01 closed.
 
 ### Pending Todos
 
@@ -131,8 +132,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T20:08:00.000Z
-Stopped at: 02-03 supply-chain gate passed; human gate before Tasks 2-3 (install/configure)
+Last session: 2026-06-26T21:30:00.000Z
+Stopped at: 02-03/MEDIA-01 closed; awaiting manual gate for next Phase 02 plan
 Resume file: None
 
 ## Quick Tasks Completed

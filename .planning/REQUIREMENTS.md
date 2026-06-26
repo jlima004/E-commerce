@@ -26,7 +26,7 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Media
 
-- [ ] **MEDIA-01**: Product images are stored in Supabase Storage and exposed via URL references through the API (binaries are not stored in the database)
+- [x] **MEDIA-01**: Product images are stored in Supabase Storage and exposed via URL references through the API (binaries are not stored in the database)
 
 ### Cart & Checkout
 
@@ -146,7 +146,7 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | CAT-02 | Phase 2 | Pending |
 | CAT-03 | Phase 2 | Pending |
 | CAT-04 | Phase 2 | Pending |
-| MEDIA-01 | Phase 2 | Pending |
+| MEDIA-01 | Phase 2 | Complete (02-03) |
 | CART-01 | Phase 3 | Pending |
 | CART-02 | Phase 3 | Pending |
 | CART-03 | Phase 3 | Pending |

@@ -14,6 +14,10 @@ import {
 
 const productionSecret = "a".repeat(32)
 const sharedRedisUrl = "redis://redis.example.com:6379"
+const storageEndpoint =
+  "https://exampleproject.storage.supabase.co/storage/v1/s3"
+const storagePublicUrl =
+  "https://exampleproject.supabase.co/storage/v1/object/public/product-images"
 const cacheRedisUrl = "redis://cache.example.com:6379"
 const eventsRedisUrl = "redis://events.example.com:6379"
 const workflowRedisUrl = "redis://workflow.example.com:6379"
@@ -58,6 +62,12 @@ function productionFixture(
     APP_VERSION: "2026.06.24+abc1234",
     WORKER_MODE: "server",
     ADMIN_DISABLED: "false",
+    S3_ENDPOINT: storageEndpoint,
+    S3_REGION: "auto",
+    S3_BUCKET: "product-images",
+    S3_ACCESS_KEY_ID: "example-access-key-id",
+    S3_SECRET_ACCESS_KEY: "example-secret-access-key-value",
+    S3_FILE_URL: storagePublicUrl,
     ...overrides,
   }
 }

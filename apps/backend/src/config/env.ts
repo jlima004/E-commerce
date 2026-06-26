@@ -37,6 +37,12 @@ export type AppEnv = {
   APP_VERSION: string
   WORKER_MODE: WorkerMode
   ADMIN_DISABLED: boolean
+  S3_ENDPOINT: string | undefined
+  S3_REGION: string | undefined
+  S3_BUCKET: string | undefined
+  S3_ACCESS_KEY_ID: string | undefined
+  S3_SECRET_ACCESS_KEY: string | undefined
+  S3_FILE_URL: string | undefined
 }
 
 function isProduction(input: Record<string, string | undefined>): boolean {
@@ -113,6 +119,39 @@ function assertProductionUrl(value: string | undefined, fieldName: string): stri
   return assertNonEmpty(value, fieldName)
 }
 
+const SIGNED_STORAGE_URL_MARKERS = [
+  "/object/sign/",
+  "X-Amz-",
+  "token=",
+  "signature=",
+  "expires=",
+] as const
+
+function assertProductionPublicStorageUrl(
+  value: string | undefined,
+  fieldName: string
+): string {
+  const url = assertProductionUrl(value, fieldName)
+
+  if (!url.startsWith("https://")) {
+    throw new Error(`Invalid ${fieldName}: must use https for public catalog URLs`)
+  }
+
+  if (!url.includes("/storage/v1/object/public/")) {
+    throw new Error(
+      `Invalid ${fieldName}: must use a public Supabase Storage object URL`
+    )
+  }
+
+  for (const marker of SIGNED_STORAGE_URL_MARKERS) {
+    if (url.includes(marker)) {
+      throw new Error(`Invalid ${fieldName}: signed or expiring URLs are not allowed`)
+    }
+  }
+
+  return url
+}
+
 function formatZodIssues(error: z.ZodError): string {
   const fieldNames = [...new Set(error.issues.map((issue) => issue.path.join(".")))]
   return `Invalid environment configuration: ${fieldNames.join(", ")}`
@@ -146,6 +185,12 @@ export function parseEnv(
     assertProductionAppVersion(normalized.APP_VERSION)
     assertProductionSecret(normalized.JWT_SECRET, "JWT_SECRET")
     assertProductionSecret(normalized.COOKIE_SECRET, "COOKIE_SECRET")
+    assertProductionUrl(normalized.S3_ENDPOINT, "S3_ENDPOINT")
+    assertProductionUrl(normalized.S3_REGION, "S3_REGION")
+    assertProductionUrl(normalized.S3_BUCKET, "S3_BUCKET")
+    assertProductionUrl(normalized.S3_ACCESS_KEY_ID, "S3_ACCESS_KEY_ID")
+    assertProductionUrl(normalized.S3_SECRET_ACCESS_KEY, "S3_SECRET_ACCESS_KEY")
+    assertProductionPublicStorageUrl(normalized.S3_FILE_URL, "S3_FILE_URL")
   }
 
   const baseSchema = z.object({
@@ -164,6 +209,12 @@ export function parseEnv(
     COOKIE_SECRET: z.string().default("supersecret"),
     SENTRY_DSN: z.string().optional(),
     APP_VERSION: z.string().default("dev"),
+    S3_ENDPOINT: z.string().optional(),
+    S3_REGION: z.string().optional(),
+    S3_BUCKET: z.string().optional(),
+    S3_ACCESS_KEY_ID: z.string().optional(),
+    S3_SECRET_ACCESS_KEY: z.string().optional(),
+    S3_FILE_URL: z.string().optional(),
   })
 
   const parsed = baseSchema.safeParse(normalized)
@@ -192,6 +243,12 @@ export function parseEnv(
     APP_VERSION: data.APP_VERSION,
     WORKER_MODE: parseWorkerMode(normalized.WORKER_MODE, "WORKER_MODE"),
     ADMIN_DISABLED: parseBoolean(normalized.ADMIN_DISABLED, "ADMIN_DISABLED"),
+    S3_ENDPOINT: data.S3_ENDPOINT,
+    S3_REGION: data.S3_REGION,
+    S3_BUCKET: data.S3_BUCKET,
+    S3_ACCESS_KEY_ID: data.S3_ACCESS_KEY_ID,
+    S3_SECRET_ACCESS_KEY: data.S3_SECRET_ACCESS_KEY,
+    S3_FILE_URL: data.S3_FILE_URL,
   }
 }
 

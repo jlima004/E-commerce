@@ -112,7 +112,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 02-02-PLAN.md - Gate de validacao sellable/publish para produto/variante no Admin
-- [ ] 02-03-PLAN.md - Provider oficial `@medusajs/file-s3` para Supabase Storage e contrato de env
+- [x] 02-03-PLAN.md - Provider oficial `@medusajs/file-s3` para Supabase Storage e contrato de env
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

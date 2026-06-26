@@ -7,6 +7,12 @@ const backendRoot = path.resolve(__dirname, "../../..")
 const templatePath = path.join(backendRoot, ".env.template")
 
 const productionSecret = "a".repeat(32)
+const storageEndpoint =
+  "https://exampleproject.storage.supabase.co/storage/v1/s3"
+const storagePublicUrl =
+  "https://exampleproject.supabase.co/storage/v1/object/public/product-images"
+const storageAccessKeyId = "example-access-key-id"
+const storageSecretAccessKey = "example-secret-access-key-value"
 const runtimeDatabaseUrl =
   "postgresql://runtime-user:runtime-pass@db.example.com:5432/postgres"
 const migrationDatabaseUrl =
@@ -35,6 +41,12 @@ function productionFixture(
     APP_VERSION: "2026.06.24+abc1234",
     WORKER_MODE: "server",
     ADMIN_DISABLED: "false",
+    S3_ENDPOINT: storageEndpoint,
+    S3_REGION: "auto",
+    S3_BUCKET: "product-images",
+    S3_ACCESS_KEY_ID: storageAccessKeyId,
+    S3_SECRET_ACCESS_KEY: storageSecretAccessKey,
+    S3_FILE_URL: storagePublicUrl,
     ...overrides,
   }
 }
@@ -166,6 +178,78 @@ describe("environment configuration", () => {
         variableName,
         ["redis://redis.example.com:6379"]
       )
+    })
+  })
+
+  describe("storage / s3 / supabase public url contract", () => {
+    it.each([
+      "S3_ENDPOINT",
+      "S3_REGION",
+      "S3_BUCKET",
+      "S3_ACCESS_KEY_ID",
+      "S3_SECRET_ACCESS_KEY",
+      "S3_FILE_URL",
+    ] as const)(
+      "requires %s in production without leaking configured values",
+      (variableName) => {
+        expectErrorWithoutValues(
+          () =>
+            parseEnv(
+              productionFixture({
+                [variableName]: undefined,
+              })
+            ),
+          variableName,
+          [
+            storageEndpoint,
+            storagePublicUrl,
+            storageAccessKeyId,
+            storageSecretAccessKey,
+            "product-images",
+          ]
+        )
+      }
+    )
+
+    it("requires S3_FILE_URL to use a public https catalog URL shape", () => {
+      const env = parseEnv(productionFixture())
+
+      expect(env.S3_FILE_URL).toMatch(/^https:\/\//)
+      expect(env.S3_FILE_URL).toContain("/storage/v1/object/public/")
+    })
+
+    it("rejects signed or expiring storage URLs in production", () => {
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            productionFixture({
+              S3_FILE_URL:
+                "https://exampleproject.supabase.co/storage/v1/object/sign/product-images/file.jpg?token=abc",
+            })
+          ),
+        "S3_FILE_URL",
+        ["token=abc"]
+      )
+    })
+
+    it("allows missing storage env in local development", () => {
+      const env = parseEnv(
+        localFixture({
+          S3_ENDPOINT: undefined,
+          S3_REGION: undefined,
+          S3_BUCKET: undefined,
+          S3_ACCESS_KEY_ID: undefined,
+          S3_SECRET_ACCESS_KEY: undefined,
+          S3_FILE_URL: undefined,
+        })
+      )
+
+      expect(env.S3_ENDPOINT).toBeUndefined()
+      expect(env.S3_REGION).toBeUndefined()
+      expect(env.S3_BUCKET).toBeUndefined()
+      expect(env.S3_ACCESS_KEY_ID).toBeUndefined()
+      expect(env.S3_SECRET_ACCESS_KEY).toBeUndefined()
+      expect(env.S3_FILE_URL).toBeUndefined()
     })
   })
 
@@ -317,5 +401,17 @@ describe(".env.template contract", () => {
     expect(template).toMatch(/APP_VERSION=/)
     expect(template).not.toMatch(/sk_live_/)
     expect(template).not.toMatch(/whsec_/)
+  })
+
+  it("documents Supabase storage env keys without real credentials", () => {
+    const template = fs.readFileSync(templatePath, "utf8")
+
+    expect(template).toMatch(/S3_ENDPOINT=/)
+    expect(template).toMatch(/S3_REGION=/)
+    expect(template).toMatch(/S3_BUCKET=/)
+    expect(template).toMatch(/S3_ACCESS_KEY_ID=/)
+    expect(template).toMatch(/S3_SECRET_ACCESS_KEY=/)
+    expect(template).toMatch(/S3_FILE_URL=/)
+    expect(template).not.toMatch(/s3_secret_access_key=[A-Za-z0-9+/]{20,}/)
   })
 })
