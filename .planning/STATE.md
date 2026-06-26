@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 01
 current_phase_name: foundation-observability
-status: pending-production-smoke
-stopped_at: Heroku/Supabase/Redis deployment checkpoint documented; next cycle is production backend smoke test
-last_updated: "2026-06-26T00:00:00.000Z"
+status: pending-phase-01-closure
+stopped_at: Production backend smoke passed; next cycle is Phase 01 closure only
+last_updated: "2026-06-26T15:26:58.000Z"
 last_activity: 2026-06-26
-last_activity_desc: Heroku/Supabase/Redis deployment stabilized as technical checkpoint
+last_activity_desc: Production backend smoke passed for Heroku/Supabase/Redis runtime
 progress:
   total_phases: 12
   completed_phases: 0
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observability`. CONTEXT, RESEARCH, PLAN, and SPEC/SDD for Phase 01 were generated and reviewed; implementation proceeds plan-by-plan under manual-review gating.
 
-**Current gate:** The Heroku/Supabase/Redis production deployment checkpoint is documented and stabilized. The next allowed cycle is **Smoke Test backend em produção** only — never auto-advancing to Phase 02.
+**Current gate:** The Heroku/Supabase/Redis production deployment checkpoint and production backend smoke are documented and passed. The next allowed cycle is **Phase 01 closure** only — never auto-advancing to Phase 02.
 
 **Branch policy:**
 
@@ -51,10 +51,10 @@ Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observabi
 
 ## Current Position
 
-Phase: 01 (foundation-observability) — PENDING PRODUCTION SMOKE
-Plan: 7 of 7 complete; next allowed cycle: production backend smoke test
-Status: Heroku/Supabase/Redis deployment checkpoint documented and stabilized
-Last activity: 2026-06-26 - Heroku/Supabase/Redis deployment checkpoint
+Phase: 01 (foundation-observability) — PENDING PHASE 01 CLOSURE
+Plan: 7 of 7 complete; production backend smoke passed; next allowed cycle: Phase 01 closure
+Status: Heroku/Supabase/Redis deployment checkpoint and production smoke documented
+Last activity: 2026-06-26 - Production backend smoke passed
 
 Progress: [██████████] 100%
 
@@ -100,6 +100,7 @@ Recent decisions affecting current work:
 - [Plan 01-07 / Deployment checkpoint]: `REDIS_CACHE_PROVIDER_DISABLED=true` is active on Heroku; the `@medusajs/caching-redis` provider remains temporarily disabled by flag to avoid the Heroku TLS/self-signed loop. Redis remains active for health checks and the remaining Redis-backed modules.
 - [Plan 01-07 / Deployment checkpoint]: `/health/live` and `/health/ready` were validated in production with HTTP 200; readiness reports Postgres `up` and Redis `up`; `web.1` and `worker.1` are up.
 - [Plan 01-07 / Deployment checkpoint]: Local branch `gsd/phase-01-foundation-observability`, `origin/gsd-...`, and `heroku/main` are synchronized on `d02fd70`.
+- [Production smoke]: Smoke test on Heroku app `espacoliminar` passed on 2026-06-26. Current release is `v27`, `APP_VERSION=d02fd70`, `REDIS_CACHE_PROVIDER_DISABLED=true`, `web.1` and `worker.1` are up, `/health/live` and `/health/ready` return 200, readiness reports Postgres `up` and Redis `up`, web/worker logs show no Redis/TLS loop patterns, and public read-only routes returned no 5xx.
 
 ### Pending Todos
 
@@ -126,8 +127,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T00:00:00.000Z
-Stopped at: Heroku/Supabase/Redis deployment checkpoint documented; next cycle is production backend smoke test
+Last session: 2026-06-26T15:26:58.000Z
+Stopped at: Production backend smoke passed; next cycle is Phase 01 closure only
 Resume file: None
 
 ## Quick Tasks Completed
@@ -136,3 +137,4 @@ Resume file: None
 |------|------|---------|
 | 2026-06-25 | 260625-i9n-remover-canary-de-stripe-com-formato-rea | Removed a Stripe-shaped test canary from observability tests and rewrote the local 01-04 commit with autosquash so GitHub Push Protection can accept the branch push. |
 | 2026-06-26 | 260626-hsr-heroku-supabase-redis-checkpoint | Documented the Heroku/Supabase/Redis deployment stabilization checkpoint and recorded the next cycle as production backend smoke test. |
+| 2026-06-26 | 2026-06-26-production-backend-smoke | Validated production backend smoke on Heroku/Supabase/Redis with health, version, dynos, logs, public read-only routes, and no business-data mutation; Phase 01 is ready for closure while Phase 02 remains blocked. |
