@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02
 current_phase_name: catalog-media
-status: phase-02-planned-awaiting-manual-review
-stopped_at: Phase 02 planning artifacts created; execution remains blocked pending human review
-last_updated: "2026-06-26T19:30:00.000Z"
+status: phase-02-plan-01-awaiting-manual-review
+stopped_at: Completed 02-01 Gelato metadata helper; manual gate before 02-02
+last_updated: "2026-06-26T17:45:00.000Z"
 last_activity: 2026-06-26
-last_activity_desc: Phase 02 planning artifacts created from the approved catalog-media context
+last_activity_desc: Executed 02-01 plan — typed Gelato metadata helper + unit tests; awaiting manual gate
 progress:
   total_phases: 12
   completed_phases: 1
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 02 — catalog-media (planned, not started)
+**Current focus:** Phase 02 — catalog-media (02-01 executed, manual gate)
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 02 planning is complete. Execution must start only after explicit human review of the plan artifacts; no auto-advance is permitted.
+**Current gate:** 02-01 complete. Review SUMMARY + code, then approve before executing 02-02. No auto-advance.
 
 **Branch policy:**
 
@@ -51,10 +51,10 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 02 (catalog-media) — PLANNED / MANUAL EXECUTION START REQUIRED
-Plan: 5 plans defined; 0 executed; Phase 01 remains closed with 7 of 7 plans complete
-Status: Phase 02 planning completed and documented; execution is still blocked behind manual review
-Last activity: 2026-06-26 - Phase 02 plan artifacts created
+Phase: 02 (catalog-media) — 02-01 EXECUTED / MANUAL GATE
+Plan: 5 plans defined; 1 executed (02-01); Phase 01 closed (7/7)
+Status: Gelato metadata helper implemented and tested; awaiting human review before 02-02
+Last activity: 2026-06-26 - 02-01 SUMMARY created
 
 Progress: [█---------] 8%
 
@@ -71,7 +71,7 @@ Progress: [█---------] 8%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01. Foundation & Observability | 7 | Complete | — |
-| 02. Catalog & Media | 5 planned / 0 executed | Planned | — |
+| 02. Catalog & Media | 1 executed / 5 planned | In Progress | — |
 
 **Recent Trend:**
 
@@ -131,8 +131,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T19:30:00.000Z
-Stopped at: Phase 02 planning artifacts created; execution remains blocked pending human review
+Last session: 2026-06-26T17:45:00.000Z
+Stopped at: Completed 02-01 Gelato metadata helper; manual gate before 02-02
 Resume file: None
 
 ## Quick Tasks Completed
