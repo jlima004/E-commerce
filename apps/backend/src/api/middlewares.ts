@@ -10,6 +10,12 @@ import {
 import * as Sentry from "@sentry/node"
 import { MedusaError } from "@medusajs/utils"
 import type { Logger as PinoLogger } from "pino"
+import {
+  sellableGateProductCreateMiddleware,
+  sellableGateProductUpdateMiddleware,
+  sellableGateVariantCreateMiddleware,
+  sellableGateVariantUpdateMiddleware,
+} from "./admin/products/sellable-gate-middleware"
 import { env } from "../config/env"
 import {
   childLogger,
@@ -245,6 +251,26 @@ export default defineMiddlewares({
     {
       matcher: /.*/,
       middlewares: [correlationAndAccessLogMiddleware],
+    },
+    {
+      method: ["POST"],
+      matcher: "/admin/products/:id/variants/:variant_id",
+      middlewares: [sellableGateVariantUpdateMiddleware],
+    },
+    {
+      method: ["POST"],
+      matcher: "/admin/products/:id/variants",
+      middlewares: [sellableGateVariantCreateMiddleware],
+    },
+    {
+      method: ["POST"],
+      matcher: "/admin/products/:id",
+      middlewares: [sellableGateProductUpdateMiddleware],
+    },
+    {
+      method: ["POST"],
+      matcher: "/admin/products",
+      middlewares: [sellableGateProductCreateMiddleware],
     },
   ],
 })
