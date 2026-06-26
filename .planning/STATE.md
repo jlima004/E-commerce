@@ -4,15 +4,15 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02
 current_phase_name: catalog-media
-status: phase-01-closed-awaiting-manual-phase-02-start
-stopped_at: Phase 01 closure completed; Phase 02 is the next allowed manual cycle and remains not started
-last_updated: "2026-06-26T16:00:54.000Z"
+status: phase-02-planned-awaiting-manual-review
+stopped_at: Phase 02 planning artifacts created; execution remains blocked pending human review
+last_updated: "2026-06-26T19:30:00.000Z"
 last_activity: 2026-06-26
-last_activity_desc: Phase 01 closure completed for the Heroku/Supabase/Redis checkpoint
+last_activity_desc: Phase 02 planning artifacts created from the approved catalog-media context
 progress:
   total_phases: 12
   completed_phases: 1
-  total_plans: 7
+  total_plans: 12
   completed_plans: 7
   percent: 8
 ---
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 02 — catalog-media (next manual cycle, not started)
+**Current focus:** Phase 02 — catalog-media (planned, not started)
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 01 closure is complete. Phase 02 is the next allowed cycle, but it must start only after explicit human review; no auto-advance is permitted.
+**Current gate:** Phase 02 planning is complete. Execution must start only after explicit human review of the plan artifacts; no auto-advance is permitted.
 
 **Branch policy:**
 
@@ -51,10 +51,10 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 02 (catalog-media) — NOT STARTED / MANUAL START REQUIRED
-Plan: not started; Phase 01 closed with 7 of 7 plans complete
-Status: Phase 01 completed and documented; Phase 02 is permitted only as the next manual cycle
-Last activity: 2026-06-26 - Phase 01 closure completed
+Phase: 02 (catalog-media) — PLANNED / MANUAL EXECUTION START REQUIRED
+Plan: 5 plans defined; 0 executed; Phase 01 remains closed with 7 of 7 plans complete
+Status: Phase 02 planning completed and documented; execution is still blocked behind manual review
+Last activity: 2026-06-26 - Phase 02 plan artifacts created
 
 Progress: [█---------] 8%
 
@@ -71,6 +71,7 @@ Progress: [█---------] 8%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01. Foundation & Observability | 7 | Complete | — |
+| 02. Catalog & Media | 5 planned / 0 executed | Planned | — |
 
 **Recent Trend:**
 
@@ -91,6 +92,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Refund updates financial state only post-webhook and never auto-cancels the order (P11).
 - [Governance]: For implementation, PRD Backend v1.1 + DB_MODEL v1.21 override older SRS wording that suggests Order/awaiting_payment before confirmed payment. Pre-payment state lives in Cart, PaymentCollection, PaymentSession, and PaymentAttempt. Order exists only after canonical Stripe webhook payment confirmation. (Also recorded in PROJECT.md Key Decisions for planning-agent visibility.)
 - [Governance]: Phase 2 (Catalog & Media) delivers only the Gelato snapshot builder/helper/contract + unit tests; actual `LineItem.metadata.gelato_snapshot` persistence is verified in Phase 6 where Order creation exists.
+- [Phase 02 planning]: Phase 02 was decomposed into 5 plans across 3 waves: central Gelato metadata contract, sellable/publish gate, Supabase Storage provider wiring, public Store API contract, and pure Gelato snapshot builder with future Phase 6 contract.
+- [Phase 02 planning]: The phase remains planning-only at this checkpoint. No application code, migrations, deploys, or runtime changes were started; manual review is required before executing any 02-0x plan.
 - [Plan 01-03]: Locking module uses `REDIS_URL` via `@medusajs/medusa/locking-redis`; no fifth Redis contract in Phase 01.
 - [Plan 01-04]: Logging uses allowlist-first sanitization with exact-pinned `pino@10.3.1` and dev-only `pino-pretty@13.1.3`; audit findings remain documented and non-blocking because fixes require broad dependency changes outside Plan 01-04.
 - [Plan 01-05]: Sentry uses exact-pinned `@sentry/node@10.59.0`, `sendDefaultPii=false`, allowlist scrubbing hooks, and a single Medusa-delegating error capture path keyed by sanitized grouping metadata.
@@ -128,8 +131,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T16:00:54.000Z
-Stopped at: Phase 01 closure completed; Phase 02 is the next allowed manual cycle and remains not started
+Last session: 2026-06-26T19:30:00.000Z
+Stopped at: Phase 02 planning artifacts created; execution remains blocked pending human review
 Resume file: None
 
 ## Quick Tasks Completed
@@ -140,3 +143,4 @@ Resume file: None
 | 2026-06-26 | 260626-hsr-heroku-supabase-redis-checkpoint | Documented the Heroku/Supabase/Redis deployment stabilization checkpoint and recorded the next cycle as production backend smoke test. |
 | 2026-06-26 | 2026-06-26-production-backend-smoke | Validated production backend smoke on Heroku/Supabase/Redis with health, version, dynos, logs, public read-only routes, and no business-data mutation; Phase 01 is ready for closure while Phase 02 remains blocked. |
 | 2026-06-26 | phase-01-closure | Closed Phase 01 with sanitized evidence, preserved the release-dyno Redis migration debt as deferred investigation, and left Phase 02 available only as the next manual-review-gated cycle. |
+| 2026-06-26 | phase-02-planning | Planned only the Catalog & Media phase from the approved 02-CONTEXT.md, producing 5 execution plans plus validation strategy, while keeping execution blocked behind manual review. |

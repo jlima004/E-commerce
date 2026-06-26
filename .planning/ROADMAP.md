@@ -102,7 +102,24 @@ Plans:
   4. The Store catalog API returns products, variants, and BRL prices in a stable shape suitable for the future storefront.
   5. A Gelato snapshot builder/helper exists that produces an immutable snapshot from validated `ProductVariant` metadata, with a documented contract for Phase 6 Order creation to consume; unit tests cover the builder where applicable. (No Order LineItem persistence is required or verified in this phase.)
 
-**Plans**: TBD
+**Plans**: 0/5 plans executed
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md - Contrato tipado central da metadata Gelato e predicado `is_sellable`
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md - Gate de validacao sellable/publish para produto/variante no Admin
+- [ ] 02-03-PLAN.md - Provider oficial `@medusajs/file-s3` para Supabase Storage e contrato de env
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 02-04-PLAN.md - Contrato publico estavel da Store API para catalogo e midia
+- [ ] 02-05-PLAN.md - Snapshot builder/helper puro e contrato consumivel pela Phase 6
+
+**Planning status (2026-06-26):** A Phase 02 foi planejada usando o `02-CONTEXT.md` aprovado. Nenhuma implementacao, migration, deploy ou execucao da fase foi iniciada; o proximo passo permanece manual-review gated.
 
 ### Phase 3: Cart & Checkout (pre-Order)
 
