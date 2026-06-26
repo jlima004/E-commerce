@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 01
-current_phase_name: foundation-observability
-status: pending-phase-01-closure
-stopped_at: Production backend smoke passed; next cycle is Phase 01 closure only
-last_updated: "2026-06-26T15:26:58.000Z"
+current_phase: 02
+current_phase_name: catalog-media
+status: phase-01-closed-awaiting-manual-phase-02-start
+stopped_at: Phase 01 closure completed; Phase 02 is the next allowed manual cycle and remains not started
+last_updated: "2026-06-26T16:00:54.000Z"
 last_activity: 2026-06-26
-last_activity_desc: Production backend smoke passed for Heroku/Supabase/Redis runtime
+last_activity_desc: Phase 01 closure completed for the Heroku/Supabase/Redis checkpoint
 progress:
   total_phases: 12
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 7
   completed_plans: 7
-  percent: 100
+  percent: 8
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 01 — foundation-observability
+**Current focus:** Phase 02 — catalog-media (next manual cycle, not started)
 
 ## Execution Policy
 
@@ -41,9 +41,9 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observability`. CONTEXT, RESEARCH, PLAN, and SPEC/SDD for Phase 01 were generated and reviewed; implementation proceeds plan-by-plan under manual-review gating.
+Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** The Heroku/Supabase/Redis production deployment checkpoint and production backend smoke are documented and passed. The next allowed cycle is **Phase 01 closure** only — never auto-advancing to Phase 02.
+**Current gate:** Phase 01 closure is complete. Phase 02 is the next allowed cycle, but it must start only after explicit human review; no auto-advance is permitted.
 
 **Branch policy:**
 
@@ -51,18 +51,18 @@ Phase 01 is in supervised execution on branch `gsd/phase-01-foundation-observabi
 
 ## Current Position
 
-Phase: 01 (foundation-observability) — PENDING PHASE 01 CLOSURE
-Plan: 7 of 7 complete; production backend smoke passed; next allowed cycle: Phase 01 closure
-Status: Heroku/Supabase/Redis deployment checkpoint and production smoke documented
-Last activity: 2026-06-26 - Production backend smoke passed
+Phase: 02 (catalog-media) — NOT STARTED / MANUAL START REQUIRED
+Plan: not started; Phase 01 closed with 7 of 7 plans complete
+Status: Phase 01 completed and documented; Phase 02 is permitted only as the next manual cycle
+Last activity: 2026-06-26 - Phase 01 closure completed
 
-Progress: [██████████] 100%
+Progress: [█---------] 8%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -70,7 +70,7 @@ Progress: [██████████] 100%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01. Foundation & Observability | 7 | Complete | — |
 
 **Recent Trend:**
 
@@ -101,6 +101,7 @@ Recent decisions affecting current work:
 - [Plan 01-07 / Deployment checkpoint]: `/health/live` and `/health/ready` were validated in production with HTTP 200; readiness reports Postgres `up` and Redis `up`; `web.1` and `worker.1` are up.
 - [Plan 01-07 / Deployment checkpoint]: Local branch `gsd/phase-01-foundation-observability`, `origin/gsd-...`, and `heroku/main` are synchronized on `d02fd70`.
 - [Production smoke]: Smoke test on Heroku app `espacoliminar` passed on 2026-06-26. Current release is `v27`, `APP_VERSION=d02fd70`, `REDIS_CACHE_PROVIDER_DISABLED=true`, `web.1` and `worker.1` are up, `/health/live` and `/health/ready` return 200, readiness reports Postgres `up` and Redis `up`, web/worker logs show no Redis/TLS loop patterns, and public read-only routes returned no 5xx.
+- [Phase 01 closure]: Closure completed on 2026-06-26. The original VPS/PM2/Nginx route remains as a portable blueprint, while the validated operational checkpoint for this cycle is Heroku app `espacoliminar` with Supabase Postgres via pooler, Heroku Redis with TLS, Heroku release phase for `db:migrate:safe`, and Phase 02 left unstarted behind a human review gate.
 
 ### Pending Todos
 
@@ -127,8 +128,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T15:26:58.000Z
-Stopped at: Production backend smoke passed; next cycle is Phase 01 closure only
+Last session: 2026-06-26T16:00:54.000Z
+Stopped at: Phase 01 closure completed; Phase 02 is the next allowed manual cycle and remains not started
 Resume file: None
 
 ## Quick Tasks Completed
@@ -138,3 +139,4 @@ Resume file: None
 | 2026-06-25 | 260625-i9n-remover-canary-de-stripe-com-formato-rea | Removed a Stripe-shaped test canary from observability tests and rewrote the local 01-04 commit with autosquash so GitHub Push Protection can accept the branch push. |
 | 2026-06-26 | 260626-hsr-heroku-supabase-redis-checkpoint | Documented the Heroku/Supabase/Redis deployment stabilization checkpoint and recorded the next cycle as production backend smoke test. |
 | 2026-06-26 | 2026-06-26-production-backend-smoke | Validated production backend smoke on Heroku/Supabase/Redis with health, version, dynos, logs, public read-only routes, and no business-data mutation; Phase 01 is ready for closure while Phase 02 remains blocked. |
+| 2026-06-26 | phase-01-closure | Closed Phase 01 with sanitized evidence, preserved the release-dyno Redis migration debt as deferred investigation, and left Phase 02 available only as the next manual-review-gated cycle. |

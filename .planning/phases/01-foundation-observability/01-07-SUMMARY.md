@@ -221,8 +221,9 @@ cd apps/backend && TMPDIR=/tmp npm run test:unit
 ## Next Cycle Readiness
 
 - **Heroku/Supabase/Redis checkpoint:** Documented and stabilized.
-- **Next allowed cycle:** Smoke Test backend em produção.
-- **Phase 02:** Must not start until the production backend smoke cycle is explicitly completed and Phase 01 is closed.
+- **Production backend smoke:** Completed separately and passed on 2026-06-26.
+- **Phase 01 closure:** Completed separately in `01-CLOSURE.md`.
+- **Phase 02:** Next allowed manual cycle only; not started and still human-review gated.
 
 ---
 *Phase: 01-foundation-observability*

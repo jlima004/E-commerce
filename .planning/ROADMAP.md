@@ -13,7 +13,7 @@ This roadmap builds a headless Medusa v2 POD backend (Brazil/BRL) around a singl
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation & Observability** - Medusa v2 + Supabase/Redis + Admin subdomain + PM2/Nginx + Sentry, structured logs with redaction, health check
+- [x] **Phase 1: Foundation & Observability** - Medusa v2 + Supabase/Redis + Admin subdomain + PM2/Nginx + Sentry, structured logs with redaction, health check
 - [ ] **Phase 2: Catalog & Media** - BRL products/variants with mandatory Gelato metadata, Supabase Storage images, and a Gelato snapshot builder/contract for future Order creation (no Order LineItem persistence yet — verified in Phase 6)
 - [ ] **Phase 3: Cart & Checkout (pre-Order)** - Guest + authenticated cart and checkout data collection that creates no Order
 - [ ] **Phase 4: Stripe Payments & PaymentAttempt** - Card + async Pix via Payment Collection/Session, every try tracked in PaymentAttempt
@@ -84,12 +84,15 @@ Plans:
 
 - [x] 01-07-PLAN.md — Runbook PM2/Nginx, server/worker e Admin dedicado; current production checkpoint stabilized on Heroku/Supabase/Redis
 
+**Closure status (2026-06-26):** Phase 01 is complete. The VPS/PM2/Nginx route remains as a portable blueprint, but the validated operational checkpoint for this cycle is Heroku app `espacoliminar`, release `v27`, commit `d02fd70`, with `APP_VERSION=d02fd70`, `REDIS_CACHE_PROVIDER_DISABLED=true`, Heroku release phase for `db:migrate:safe`, and production smoke already passed. Phase 02 may begin only in a separate manual-review-gated cycle.
+
 ### Phase 2: Catalog & Media
 
 **Goal**: Operators can model BRL-priced products/variants that carry mandatory Gelato metadata, with product images in Supabase Storage, exposed as a stable API contract — plus a Gelato snapshot builder/helper/contract ready for future Order creation. Actual `LineItem.metadata.gelato_snapshot` persistence is NOT in scope here because Order creation does not yet exist (it arrives in Phase 6).
 **Mode:** mvp
 **Depends on**: Phase 1
 **Requirements**: CAT-01, CAT-02, CAT-03, CAT-04, MEDIA-01
+**Manual gate:** This phase is the next permitted cycle after Phase 01 closure, but it is not started and must not auto-advance.
 **Scope note**: Phase 2 delivers only: (a) required Gelato metadata definition; (b) validation of sellable variants with mandatory `gelato_*` metadata; (c) Supabase Storage image references; (d) a stable catalog API contract; (e) a snapshot builder/helper/contract for future Order creation; (f) unit tests for the snapshot builder (if applicable). It does NOT require actual Order LineItem persistence — real persistence of `LineItem.metadata.gelato_snapshot` is verified in Phase 6.
 **Success Criteria** (what must be TRUE):
 
@@ -256,8 +259,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Observability | 7/7 | Pending production smoke | - |
-| 2. Catalog & Media | 0/TBD | Not started | - |
+| 1. Foundation & Observability | 7/7 | Complete | 2026-06-26 |
+| 2. Catalog & Media | 0/TBD | Next manual cycle (not started) | - |
 | 3. Cart & Checkout (pre-Order) | 0/TBD | Not started | - |
 | 4. Stripe Payments & PaymentAttempt | 0/TBD | Not started | - |
 | 5. Stripe Webhook Ingestion & Idempotency | 0/TBD | Not started | - |
