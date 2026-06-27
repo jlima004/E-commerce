@@ -286,6 +286,11 @@ export default defineMiddlewares({
     },
     {
       method: ["POST"],
+      matcher: "/store/customers/me/cart/attach",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
+      method: ["POST"],
       matcher: "/admin/products/:id/variants/:variant_id",
       middlewares: [sellableGateVariantUpdateMiddleware],
     },
