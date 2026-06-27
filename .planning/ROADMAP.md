@@ -127,6 +127,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 2
 **Requirements**: CART-01, CART-02, CART-03, CART-04
+**Manual gate:** Phase 03 is planned only. Execution is blocked until human review approves the five plan slices and the validation strategy.
 **Success Criteria** (what must be TRUE):
 
   1. A guest can create and manage a cart without an account.
@@ -134,7 +135,24 @@ Plans:
   3. Checkout collects and validates customer email and a shipping address suitable for Gelato/Correios.
   4. Completing checkout creates no Order — the cart stays in pre-Order state (verified: no Order row exists after checkout submission).
 
-**Plans**: TBD
+**Plans**: 5/5 planned, 0/5 executed — awaiting manual review
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md - Contrato de cart ativo guest/customer sem pagamento
+- [ ] 03-02-PLAN.md - Attach seguro do guest cart da sessao atual no login
+- [ ] 03-03-PLAN.md - Email e shipping address Brasil/Gelato com `federal_tax_id`
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-04-PLAN.md - `checkout_data_complete` derivado/calculado, sem status persistido
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 03-05-PLAN.md - Provas negativas pre-Order e contrato HTTP final
+
+**Cross-cutting constraints:** `federal_tax_id` must use the lowest-exposure existing cart/address storage path available and must be omitted or masked in public responses/logs/Sentry; old carts may be marked not-active only with existing core fields/metadata unless a manual migration gate is approved; guest cart attach must prove the cart belongs to the current session and cannot trust body-only `cart_id`; `checkout_data_complete` is derived only and never persisted as `ready_for_payment`; no Order, PaymentAttempt, PaymentSession, webhook, Stripe/Pix, Gelato, migration, deploy, install, or secrets/config-var change is part of Phase 03 planning or execution.
 
 ### Phase 4: Stripe Payments & PaymentAttempt
 
