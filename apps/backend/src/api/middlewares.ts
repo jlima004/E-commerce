@@ -3,6 +3,7 @@ import {
   defineMiddlewares,
   errorHandler,
   formatException,
+  authenticate,
   type MedusaNextFunction,
   type MedusaRequest,
   type MedusaResponse,
@@ -272,6 +273,15 @@ export default defineMiddlewares({
       middlewares: [
         storeCatalogQueryConfigMiddleware,
         storeCatalogResponseMiddleware,
+      ],
+    },
+    {
+      method: ["GET", "POST"],
+      matcher: "/store/carts/active",
+      middlewares: [
+        authenticate("customer", ["session", "bearer"], {
+          allowUnauthenticated: true,
+        }),
       ],
     },
     {
