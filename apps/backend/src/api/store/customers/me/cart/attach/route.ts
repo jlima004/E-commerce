@@ -12,9 +12,10 @@ import {
 import {
   assertNoPaymentOrOrderFields,
   markCartSupersededInput,
-  type CheckoutCartLike,
 } from "../../../../../../modules/checkout/active-cart"
 import { buildAttachGuestCartDecision } from "../../../../../../modules/checkout/attach-guest-cart"
+import { storeCartPreOrderFields } from "../../../../carts/query-config"
+import type { StoreCartPreOrderRecord } from "../../../../carts/serializers"
 
 type SessionCapableRequest = MedusaRequest & {
   auth_context?: {
@@ -31,73 +32,9 @@ type SessionCapableRequest = MedusaRequest & {
   }
 }
 
-type StoreCartRecord = CheckoutCartLike & {
-  created_at?: string
-  updated_at?: string
-  region_id?: string | null
-  locale?: string | null
-  customer?: {
-    id?: string
-    email?: string
-  } | null
-  items?: Array<{
-    id?: string
-    quantity?: number | null
-    title?: string | null
-    product_title?: string | null
-    variant_id?: string | null
-    variant_title?: string | null
-    unit_price?: number | null
-  }>
-  shipping_address?: {
-    first_name?: string | null
-    last_name?: string | null
-    company?: string | null
-    address_1?: string | null
-    address_2?: string | null
-    city?: string | null
-    postal_code?: string | null
-    country_code?: string | null
-    province?: string | null
-    phone?: string | null
-  } | null
-}
+type StoreCartRecord = StoreCartPreOrderRecord
 
-type CustomerRecord = {
-  id: string
-  email?: string | null
-}
-
-const ACTIVE_CART_QUERY_FIELDS = [
-  "id",
-  "email",
-  "currency_code",
-  "locale",
-  "region_id",
-  "created_at",
-  "updated_at",
-  "completed_at",
-  "metadata",
-  "customer.id",
-  "customer.email",
-  "items.id",
-  "items.quantity",
-  "items.title",
-  "items.product_title",
-  "items.variant_id",
-  "items.variant_title",
-  "items.unit_price",
-  "shipping_address.first_name",
-  "shipping_address.last_name",
-  "shipping_address.company",
-  "shipping_address.address_1",
-  "shipping_address.address_2",
-  "shipping_address.city",
-  "shipping_address.postal_code",
-  "shipping_address.country_code",
-  "shipping_address.province",
-  "shipping_address.phone",
-] as const
+const ACTIVE_CART_QUERY_FIELDS = storeCartPreOrderFields
 
 function asNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
@@ -117,48 +54,9 @@ function sortByUpdatedAtDesc(a: StoreCartRecord, b: StoreCartRecord): number {
   return new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime()
 }
 
-function serializeCart(cart: StoreCartRecord | null) {
-  if (!cart) {
-    return null
-  }
-
-  return {
-    id: cart.id,
-    email: cart.email ?? null,
-    currency_code: cart.currency_code ?? null,
-    locale: cart.locale ?? null,
-    region_id: cart.region_id ?? null,
-    created_at: cart.created_at ?? null,
-    updated_at: cart.updated_at ?? null,
-    customer: cart.customer
-      ? {
-          id: cart.customer.id ?? null,
-          email: cart.customer.email ?? null,
-        }
-      : null,
-    items: (cart.items ?? []).map((item) => ({
-      id: item.id ?? null,
-      quantity: item.quantity ?? 0,
-      title: item.title ?? item.product_title ?? null,
-      variant_id: item.variant_id ?? null,
-      variant_title: item.variant_title ?? null,
-      unit_price: item.unit_price ?? null,
-    })),
-    shipping_address: cart.shipping_address
-      ? {
-          first_name: cart.shipping_address.first_name ?? null,
-          last_name: cart.shipping_address.last_name ?? null,
-          company: cart.shipping_address.company ?? null,
-          address_1: cart.shipping_address.address_1 ?? null,
-          address_2: cart.shipping_address.address_2 ?? null,
-          city: cart.shipping_address.city ?? null,
-          postal_code: cart.shipping_address.postal_code ?? null,
-          country_code: cart.shipping_address.country_code ?? null,
-          province: cart.shipping_address.province ?? null,
-          phone: cart.shipping_address.phone ?? null,
-        }
-      : null,
-  }
+type CustomerRecord = {
+  id: string
+  email?: string | null
 }
 
 async function listCustomerCarts(
@@ -309,7 +207,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     res.status(200).json({
       outcome: attachDecision.action,
       reason: attachDecision.reason,
-      cart: serializeCart(customerCart),
+      cart: customerCart,
     })
     return
   }
@@ -353,6 +251,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   res.status(200).json({
     outcome: "attached_guest_cart",
-    cart: serializeCart(attachedCart),
+    cart: attachedCart,
   })
 }

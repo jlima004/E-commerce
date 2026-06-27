@@ -395,21 +395,89 @@ export function validateBrazilShippingAddress(input: BrazilShippingAddressInput)
   }
 }
 
-export function calculateCheckoutDataComplete(input: {
+import { isSellableVariant } from "../../workflows/catalog/validate-sellable-variant"
+import type { CatalogVariantInput } from "../catalog/types"
+
+export type CheckoutLineItemSnapshot = {
+  id?: string
+  quantity?: number | null
+  variant_id?: string | null
+  variant?: CatalogVariantInput | null
+}
+
+export type CheckoutDataIncompleteReason =
+  | "NO_LINE_ITEMS"
+  | "INVALID_LINE_ITEM_QUANTITY"
+  | "VARIANT_NOT_SELLABLE"
+  | "INVALID_CURRENCY"
+  | "INVALID_REGION"
+  | "EMAIL_INVALID"
+  | "SHIPPING_ADDRESS_MISSING"
+  | "SHIPPING_ADDRESS_INVALID"
+
+export type CheckoutDataCompleteInput = {
   actorType: "guest" | "customer"
   guestEmail?: string | null
   customerEmail?: string | null
   shippingAddress?: BrazilShippingAddressInput | null
-  hasShippableItems: boolean
+  lineItems?: CheckoutLineItemSnapshot[] | null
   currencyCode?: string | null
-}): boolean {
-  if (!input.hasShippableItems) {
+  regionCountryCode?: string | null
+}
+
+export type CheckoutDataCompleteResult = {
+  checkout_data_complete: boolean
+  incomplete_reasons: CheckoutDataIncompleteReason[]
+}
+
+function isPositiveQuantity(quantity: number | null | undefined): quantity is number {
+  return typeof quantity === "number" && Number.isFinite(quantity) && quantity > 0
+}
+
+function validateLineItems(
+  lineItems: CheckoutLineItemSnapshot[] | null | undefined,
+  reasons: CheckoutDataIncompleteReason[]
+): boolean {
+  const items = lineItems ?? []
+
+  if (items.length === 0) {
+    reasons.push("NO_LINE_ITEMS")
     return false
   }
 
-  if ((input.currencyCode ?? "").toLowerCase() !== "brl") {
-    return false
+  let allValid = true
+
+  for (const item of items) {
+    if (!isPositiveQuantity(item.quantity)) {
+      reasons.push("INVALID_LINE_ITEM_QUANTITY")
+      allValid = false
+      continue
+    }
+
+    if (item.variant && !isSellableVariant(item.variant)) {
+      reasons.push("VARIANT_NOT_SELLABLE")
+      allValid = false
+    }
   }
+
+  return allValid
+}
+
+export function calculateCheckoutDataComplete(
+  input: CheckoutDataCompleteInput
+): CheckoutDataCompleteResult {
+  const incompleteReasons: CheckoutDataIncompleteReason[] = []
+
+  if ((input.currencyCode ?? "").toLowerCase() !== "brl") {
+    incompleteReasons.push("INVALID_CURRENCY")
+  }
+
+  const regionCountry = (input.regionCountryCode ?? "br").toLowerCase()
+  if (regionCountry !== "br") {
+    incompleteReasons.push("INVALID_REGION")
+  }
+
+  validateLineItems(input.lineItems, incompleteReasons)
 
   const email = normalizeCheckoutEmail({
     actorType: input.actorType,
@@ -418,12 +486,17 @@ export function calculateCheckoutDataComplete(input: {
   })
 
   if (!email.isValid) {
-    return false
+    incompleteReasons.push("EMAIL_INVALID")
   }
 
   if (!input.shippingAddress) {
-    return false
+    incompleteReasons.push("SHIPPING_ADDRESS_MISSING")
+  } else if (!validateBrazilShippingAddress(input.shippingAddress).ok) {
+    incompleteReasons.push("SHIPPING_ADDRESS_INVALID")
   }
 
-  return validateBrazilShippingAddress(input.shippingAddress).ok
+  return {
+    checkout_data_complete: incompleteReasons.length === 0,
+    incomplete_reasons: incompleteReasons,
+  }
 }

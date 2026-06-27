@@ -23,6 +23,12 @@ import {
 import {
   storeCatalogResponseMiddleware,
 } from "./store/products/serializers"
+import {
+  storeCartPreOrderQueryConfigMiddleware,
+} from "./store/carts/query-config"
+import {
+  storeCartPreOrderResponseMiddleware,
+} from "./store/carts/serializers"
 import { env } from "../config/env"
 import {
   childLogger,
@@ -282,12 +288,18 @@ export default defineMiddlewares({
         authenticate("customer", ["session", "bearer"], {
           allowUnauthenticated: true,
         }),
+        storeCartPreOrderQueryConfigMiddleware,
+        storeCartPreOrderResponseMiddleware,
       ],
     },
     {
       method: ["POST"],
       matcher: "/store/customers/me/cart/attach",
-      middlewares: [authenticate("customer", ["session", "bearer"])],
+      middlewares: [
+        authenticate("customer", ["session", "bearer"]),
+        storeCartPreOrderQueryConfigMiddleware,
+        storeCartPreOrderResponseMiddleware,
+      ],
     },
     {
       method: ["POST"],

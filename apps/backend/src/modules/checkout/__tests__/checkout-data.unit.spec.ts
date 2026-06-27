@@ -6,7 +6,41 @@ import {
   normalizeCheckoutEmail,
   normalizeFederalTaxId,
   validateBrazilShippingAddress,
+  type CheckoutDataIncompleteReason,
 } from "../checkout-data"
+import type { CatalogVariantInput } from "../../catalog/types"
+
+const COMPLETE_GELATO_METADATA = {
+  gelato_product_uid: "prod_gelato_abc123",
+  gelato_template_id: "template_fixed_001",
+  gelato_variant_options: {
+    size: "M",
+    color: "black",
+  },
+  template_mode: "fixed",
+} as const
+
+function sellableVariant(
+  overrides: Partial<CatalogVariantInput> = {}
+): CatalogVariantInput {
+  return {
+    id: "variant_01",
+    sku: "TSH-M-BLK",
+    metadata: { ...COMPLETE_GELATO_METADATA },
+    prices: [{ currency_code: "brl", amount: 9900 }],
+    ...overrides,
+  }
+}
+
+function expectIncomplete(
+  result: ReturnType<typeof calculateCheckoutDataComplete>,
+  reasons: CheckoutDataIncompleteReason[]
+) {
+  expect(result.checkout_data_complete).toBe(false)
+  expect(result.incomplete_reasons).toEqual(
+    expect.arrayContaining(reasons)
+  )
+}
 
 describe("normalizeCheckoutEmail", () => {
   it("usa customer.email como fonte de verdade quando autenticado", () => {
@@ -183,7 +217,7 @@ describe("maskFederalTaxId", () => {
   })
 })
 
-describe("calculateCheckoutDataComplete", () => {
+describe("checkout_data_complete / calculateCheckoutDataComplete", () => {
   const validAddress = {
     full_name: "Maria Silva",
     address_1: "Rua A, 100",
@@ -194,49 +228,188 @@ describe("calculateCheckoutDataComplete", () => {
     federal_tax_id: "529.982.247-25",
   }
 
-  it("retorna true apenas quando cart preenche email+endereco+itens+BRL", () => {
-    expect(
-      calculateCheckoutDataComplete({
-        actorType: "guest",
-        guestEmail: "guest@exemplo.com",
-        shippingAddress: validAddress,
-        hasShippableItems: true,
-        currencyCode: "brl",
-      })
-    ).toBe(true)
+  const validLineItem = {
+    id: "item_01",
+    quantity: 1,
+    variant_id: "variant_01",
+    variant: sellableVariant(),
+  }
+
+  const completeInput = {
+    actorType: "guest" as const,
+    guestEmail: "guest@exemplo.com",
+    shippingAddress: validAddress,
+    lineItems: [validLineItem],
+    currencyCode: "brl",
+    regionCountryCode: "br",
+  }
+
+  it("retorna true apenas quando cart preenche itens+email+endereco+BRL", () => {
+    expect(calculateCheckoutDataComplete(completeInput)).toEqual({
+      checkout_data_complete: true,
+      incomplete_reasons: [],
+    })
   })
 
   it("retorna false quando email invalido, sem impedir uso basico do cart", () => {
-    expect(
+    expectIncomplete(
       calculateCheckoutDataComplete({
-        actorType: "guest",
+        ...completeInput,
         guestEmail: "email-invalido",
-        shippingAddress: validAddress,
-        hasShippableItems: true,
-        currencyCode: "brl",
-      })
-    ).toBe(false)
+      }),
+      ["EMAIL_INVALID"]
+    )
   })
 
-  it("retorna false quando qualquer requisito estrutural faltar", () => {
-    expect(
+  it("retorna false quando email ausente", () => {
+    expectIncomplete(
       calculateCheckoutDataComplete({
-        actorType: "customer",
-        customerEmail: "cliente@exemplo.com",
-        shippingAddress: validAddress,
-        hasShippableItems: false,
-        currencyCode: "brl",
-      })
-    ).toBe(false)
+        ...completeInput,
+        guestEmail: null,
+      }),
+      ["EMAIL_INVALID"]
+    )
+  })
 
+  it("retorna false sem line items", () => {
+    expectIncomplete(
+      calculateCheckoutDataComplete({
+        ...completeInput,
+        lineItems: [],
+      }),
+      ["NO_LINE_ITEMS"]
+    )
+  })
+
+  it("retorna false com quantidade zero ou negativa", () => {
+    expectIncomplete(
+      calculateCheckoutDataComplete({
+        ...completeInput,
+        lineItems: [{ ...validLineItem, quantity: 0 }],
+      }),
+      ["INVALID_LINE_ITEM_QUANTITY"]
+    )
+
+    expectIncomplete(
+      calculateCheckoutDataComplete({
+        ...completeInput,
+        lineItems: [{ ...validLineItem, quantity: -1 }],
+      }),
+      ["INVALID_LINE_ITEM_QUANTITY"]
+    )
+  })
+
+  it("retorna false quando variante nao e vendavel/publicavel", () => {
+    expectIncomplete(
+      calculateCheckoutDataComplete({
+        ...completeInput,
+        lineItems: [
+          {
+            ...validLineItem,
+            variant: sellableVariant({ metadata: {} }),
+          },
+        ],
+      }),
+      ["VARIANT_NOT_SELLABLE"]
+    )
+  })
+
+  it("retorna false quando endereco invalido ou pais diferente de BR", () => {
+    expectIncomplete(
+      calculateCheckoutDataComplete({
+        ...completeInput,
+        shippingAddress: {
+          ...validAddress,
+          country_code: "US",
+        },
+      }),
+      ["SHIPPING_ADDRESS_INVALID"]
+    )
+
+    expectIncomplete(
+      calculateCheckoutDataComplete({
+        ...completeInput,
+        shippingAddress: {
+          ...validAddress,
+          federal_tax_id: "111.111.111-11",
+        },
+      }),
+      ["SHIPPING_ADDRESS_INVALID"]
+    )
+  })
+
+  it("retorna false quando moeda ou regiao estiverem fora de Brasil/BRL", () => {
+    expectIncomplete(
+      calculateCheckoutDataComplete({
+        ...completeInput,
+        currencyCode: "usd",
+      }),
+      ["INVALID_CURRENCY"]
+    )
+
+    expectIncomplete(
+      calculateCheckoutDataComplete({
+        ...completeInput,
+        regionCountryCode: "us",
+      }),
+      ["INVALID_REGION"]
+    )
+  })
+
+  it("recalcula completude derivada apos mutacao de item, email ou endereco", () => {
+    const base = calculateCheckoutDataComplete(completeInput)
+    expect(base.checkout_data_complete).toBe(true)
+
+    const afterEmailChange = calculateCheckoutDataComplete({
+      ...completeInput,
+      guestEmail: "outro@exemplo.com",
+    })
+    expect(afterEmailChange.checkout_data_complete).toBe(true)
+
+    const afterItemRemoval = calculateCheckoutDataComplete({
+      ...completeInput,
+      lineItems: [],
+    })
+    expect(afterItemRemoval.checkout_data_complete).toBe(false)
+
+    const afterAddressChange = calculateCheckoutDataComplete({
+      ...completeInput,
+      shippingAddress: {
+        ...validAddress,
+        city: "",
+      },
+    })
+    expect(afterAddressChange.checkout_data_complete).toBe(false)
+  })
+
+  it("nao exporta nome proibido de prontidao da Phase 04 como campo ou simbolo publico", () => {
+    const forbiddenReadinessField = ["ready", "for", "payment"].join("_")
+    const moduleExports = require("../checkout-data") as Record<string, unknown>
+    expect(Object.keys(moduleExports)).not.toContain(forbiddenReadinessField)
+    expect(moduleExports).not.toHaveProperty(forbiddenReadinessField)
+  })
+
+  it("usa customer.email quando autenticado", () => {
     expect(
       calculateCheckoutDataComplete({
+        ...completeInput,
         actorType: "customer",
         customerEmail: "cliente@exemplo.com",
-        shippingAddress: validAddress,
-        hasShippableItems: true,
-        currencyCode: "usd",
+        guestEmail: "guest@exemplo.com",
       })
-    ).toBe(false)
+    ).toEqual({
+      checkout_data_complete: true,
+      incomplete_reasons: [],
+    })
+  })
+
+  it("retorna false quando shipping address ausente", () => {
+    expectIncomplete(
+      calculateCheckoutDataComplete({
+        ...completeInput,
+        shippingAddress: null,
+      }),
+      ["SHIPPING_ADDRESS_MISSING"]
+    )
   })
 })
