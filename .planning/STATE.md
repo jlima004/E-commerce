@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 03
 current_phase_name: cart-checkout
-status: phase-02-closed-awaiting-manual-phase-03-start
-stopped_at: Phase 03 context gathered
-last_updated: "2026-06-27T16:18:53.434Z"
+status: phase-03-research-complete-awaiting-plan-approval
+stopped_at: Phase 03 research gathered; awaiting manual approval to plan with skip-research
+last_updated: "2026-06-27T23:59:00.000Z"
 last_activity: 2026-06-27
-last_activity_desc: Phase 02 closure recorded after validation/UAT/requirements reconciliation
+last_activity_desc: Phase 03 research completed and reviewed at manual gate
 progress:
   total_phases: 12
   completed_phases: 2
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 03 — cart-checkout (next permitted cycle, not started yet; Phase 02 closed)
+**Current focus:** Phase 03 — cart-checkout (planning in progress; research complete; execution not started)
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 02 is closed. The next permitted step is only a separate human-reviewed planning/execution cycle for Phase 03.
+**Current gate:** Phase 03 research is complete and reviewed. The next permitted step is `$gsd-plan-phase 3 --skip-research` after manual approval. No PLAN, execution, migrations, deploy, or config/secrets changes until then.
 
 **Branch policy:**
 
@@ -51,10 +51,10 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 03 (cart-checkout) — not started; next permitted cycle after Phase 02 closure
-Plan: Phase 02 closed with 5/5 plans complete (02-01, 02-02, 02-03, 02-04, 02-05); Phase 01 closed (7/7)
-Status: Phase 02 is closed; Phase 03 remains blocked behind manual review until a new cycle explicitly starts
-Last activity: 2026-06-27 - Phase 02 closure recorded after validation/UAT/requirements reconciliation
+Phase: 03 (cart-checkout) — planning in progress; research complete; execution not started
+Plan: Phase 02 closed with 5/5 plans complete (02-01, 02-02, 02-03, 02-04, 02-05); Phase 01 closed (7/7); Phase 03 has no plans yet
+Status: Phase 03 research gathered and reviewed at manual gate; awaiting approval to plan with `--skip-research`
+Last activity: 2026-06-27 - Phase 03 research completed and reviewed at manual gate
 
 Progress: [██--------] 17%
 
@@ -109,6 +109,7 @@ Recent decisions affecting current work:
 - [Plan 02-04]: The standard Medusa Store API now exposes only the stable shopper-facing catalog surface, with BRL pricing, public media URLs, and no public `gelato_*` fields; non-sellable variants stay hidden from the public contract.
 - [Plan 02-05]: `buildGelatoSnapshot` closed as a pure typed immutable contract, reusing the same sellable validation source as 02-01/02-02; CAT-04 is complete for Phase 02 via builder + contract + unit tests, while actual `LineItem.metadata.gelato_snapshot` persistence remains deferred to Phase 6 consumption.
 - [Phase 02 closure]: `02-CLOSURE.md` records the accepted scope as CAT-01, CAT-02, CAT-03, CAT-04, and MEDIA-01 complete for the phase, with no additional runtime verification performed during the closure cycle itself.
+- [Phase 03 research]: Research for cart-checkout pre-order completed and reviewed at manual gate; planning may proceed with `--skip-research` after explicit approval. No PLAN or execution started.
 
 ### Pending Todos
 
@@ -135,9 +136,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-27T16:18:53.380Z
-Stopped at: Phase 03 context gathered
-Resume file: .planning/phases/03-cart-checkout-pre-order/03-CONTEXT.md
+Last session: 2026-06-27T23:59:00.000Z
+Stopped at: Phase 03 research gathered; awaiting manual approval to plan with skip-research
+Resume file: .planning/phases/03-cart-checkout-pre-order/03-RESEARCH.md
+Next permitted step: `$gsd-plan-phase 3 --skip-research`
 
 ## Quick Tasks Completed
 
