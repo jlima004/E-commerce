@@ -16,6 +16,12 @@ import {
   sellableGateVariantCreateMiddleware,
   sellableGateVariantUpdateMiddleware,
 } from "./admin/products/sellable-gate-middleware"
+import {
+  storeCatalogQueryConfigMiddleware,
+} from "./store/products/query-config"
+import {
+  storeCatalogResponseMiddleware,
+} from "./store/products/serializers"
 import { env } from "../config/env"
 import {
   childLogger,
@@ -251,6 +257,22 @@ export default defineMiddlewares({
     {
       matcher: /.*/,
       middlewares: [correlationAndAccessLogMiddleware],
+    },
+    {
+      method: ["GET"],
+      matcher: "/store/products",
+      middlewares: [
+        storeCatalogQueryConfigMiddleware,
+        storeCatalogResponseMiddleware,
+      ],
+    },
+    {
+      method: ["GET"],
+      matcher: "/store/products/:id",
+      middlewares: [
+        storeCatalogQueryConfigMiddleware,
+        storeCatalogResponseMiddleware,
+      ],
     },
     {
       method: ["POST"],

@@ -21,7 +21,7 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 - [ ] **CAT-01**: Operator can create products with variants priced in BRL
 - [ ] **CAT-02**: Each variant carries mandatory Gelato metadata (e.g. product UID / print area), and variants missing required `gelato_*` metadata are flagged/rejected (INV — fulfillability)
-- [ ] **CAT-03**: API exposes catalog (products, variants, BRL prices) as a stable contract for the future storefront
+- [x] **CAT-03**: API exposes catalog (products, variants, BRL prices) as a stable contract for the future storefront
 - [x] **CAT-04**: Order line items store an immutable Gelato snapshot taken at order time, so later catalog edits do not corrupt in-flight orders. Phase 2 closes the pure builder/contract/unit-test surface; Phase 6 will consume this contract when Order/LineItem persistence exists.
 
 ### Media
@@ -144,7 +144,7 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | SETUP-05 | Phase 1 | Pending |
 | CAT-01 | Phase 2 | Pending |
 | CAT-02 | Phase 2 | Pending |
-| CAT-03 | Phase 2 | Pending |
+| CAT-03 | Phase 2 | Complete (02-04 public Store API contract) |
 | CAT-04 | Phase 2 | Complete (02-05 builder/contract; consumed by Phase 6 persistence) |
 | MEDIA-01 | Phase 2 | Complete (02-03) |
 | CART-01 | Phase 3 | Pending |
@@ -190,4 +190,4 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 
 ---
 *Requirements defined: 2026-06-22*
-*Last updated: 2026-06-27 after 02-05 documentary closeout*
+*Last updated: 2026-06-27 after 02-04 and 02-05 documentary closeout*

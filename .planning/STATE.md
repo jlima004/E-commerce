@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02
 current_phase_name: catalog-media
-status: phase-02-plan-05-closed
-stopped_at: 02-05 closed with manual review summary; CAT-04 contract complete; 02-04 remains manual-review gated (no auto-start)
-last_updated: "2026-06-27T15:10:00.000Z"
+status: phase-02-plans-executed-awaiting-final-gate
+stopped_at: 02-04 and 02-05 closed documentally; CAT-03/CAT-04 complete; final Phase 02 gate pending
+last_updated: "2026-06-27T14:58:24Z"
 last_activity: 2026-06-27
-last_activity_desc: Closed 02-05 documentation after snapshot builder/helper/contract approval; 02-04 remains unstarted
+last_activity_desc: Registered 02-04 and 02-05 documentary closeout; all 5 Phase 02 plans executed, final phase gate still pending
 progress:
   total_phases: 12
   completed_phases: 1
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 12
   percent: 8
 ---
 
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 02 — catalog-media (02-05 closed; CAT-04 complete for this phase; 02-04 remains the only unstarted plan under manual gate)
+**Current focus:** Phase 02 — catalog-media (all 5 plans executed; `CAT-03`, `CAT-04` and `MEDIA-01` documented complete; final phase gate still pending)
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** 02-05 closed. Do not auto-start 02-04. Next execution requires explicit manual approval for 02-04 (Store API).
+**Current gate:** All five Phase 02 plans are documented complete. Do not close Phase 02 yet. The next permitted step is only the final human gate/closeout for the phase.
 
 **Branch policy:**
 
@@ -51,10 +51,10 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 02 (catalog-media) — 02-05 closed; 02-04 still pending manual start
-Plan: 5 plans defined; 4 complete (02-01, 02-02, 02-03, 02-05); 02-04 unstarted; Phase 01 closed (7/7)
-Status: Supabase Storage/media and Gelato snapshot builder/contract slices are closed; public Store API contract remains pending in 02-04
-Last activity: 2026-06-27 - 02-05/CAT-04 closed documentally after approved summary
+Phase: 02 (catalog-media) — all 5 plans executed; final phase gate pending
+Plan: 5 plans defined; 5 complete (02-01, 02-02, 02-03, 02-04, 02-05); Phase 01 closed (7/7)
+Status: Phase 02 plan slices are fully documented complete; phase closeout intentionally pending the final gate
+Last activity: 2026-06-27 - 02-04/CAT-03 and 02-05/CAT-04 registered as closed documentally after approved summaries
 
 Progress: [█---------] 8%
 
@@ -62,7 +62,7 @@ Progress: [█---------] 8%
 
 **Velocity:**
 
-- Total plans completed: 9
+- Total plans completed: 12
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -71,7 +71,7 @@ Progress: [█---------] 8%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01. Foundation & Observability | 7 | Complete | — |
-| 02. Catalog & Media | 4 executed / 5 planned | In Progress | — |
+| 02. Catalog & Media | 5 executed / 5 planned | Awaiting final gate | — |
 
 **Recent Trend:**
 
@@ -93,7 +93,7 @@ Recent decisions affecting current work:
 - [Governance]: For implementation, PRD Backend v1.1 + DB_MODEL v1.21 override older SRS wording that suggests Order/awaiting_payment before confirmed payment. Pre-payment state lives in Cart, PaymentCollection, PaymentSession, and PaymentAttempt. Order exists only after canonical Stripe webhook payment confirmation. (Also recorded in PROJECT.md Key Decisions for planning-agent visibility.)
 - [Governance]: Phase 2 (Catalog & Media) delivers only the Gelato snapshot builder/helper/contract + unit tests; actual `LineItem.metadata.gelato_snapshot` persistence is verified in Phase 6 where Order creation exists.
 - [Phase 02 planning]: Phase 02 was decomposed into 5 plans across 3 waves: central Gelato metadata contract, sellable/publish gate, Supabase Storage provider wiring, public Store API contract, and pure Gelato snapshot builder with future Phase 6 contract.
-- [Phase 02 planning]: The phase remains planning-only at this checkpoint. No application code, migrations, deploys, or runtime changes were started; manual review is required before executing any 02-0x plan.
+- [Phase 02 execution]: All five planned slices now have approved SUMMARY artifacts. This documentary closeout updates STATE/ROADMAP/REQUIREMENTS only; final Phase 02 gate and closure remain intentionally pending.
 - [Plan 01-03]: Locking module uses `REDIS_URL` via `@medusajs/medusa/locking-redis`; no fifth Redis contract in Phase 01.
 - [Plan 01-04]: Logging uses allowlist-first sanitization with exact-pinned `pino@10.3.1` and dev-only `pino-pretty@13.1.3`; audit findings remain documented and non-blocking because fixes require broad dependency changes outside Plan 01-04.
 - [Plan 01-05]: Sentry uses exact-pinned `@sentry/node@10.59.0`, `sendDefaultPii=false`, allowlist scrubbing hooks, and a single Medusa-delegating error capture path keyed by sanitized grouping metadata.
@@ -106,6 +106,7 @@ Recent decisions affecting current work:
 - [Production smoke]: Smoke test on Heroku app `espacoliminar` passed on 2026-06-26. Current release is `v27`, `APP_VERSION=d02fd70`, `REDIS_CACHE_PROVIDER_DISABLED=true`, `web.1` and `worker.1` are up, `/health/live` and `/health/ready` return 200, readiness reports Postgres `up` and Redis `up`, web/worker logs show no Redis/TLS loop patterns, and public read-only routes returned no 5xx.
 - [Phase 01 closure]: Closure completed on 2026-06-26. The original VPS/PM2/Nginx route remains as a portable blueprint, while the validated operational checkpoint for this cycle is Heroku app `espacoliminar` with Supabase Postgres via pooler, Heroku Redis with TLS, Heroku release phase for `db:migrate:safe`, and Phase 02 left unstarted behind a human review gate.
 - [Plan 02-03]: `@medusajs/file-s3@2.16.0` wired via `@medusajs/medusa/file` + `@medusajs/medusa/file-s3` with `forcePathStyle: true`; production env fail-fast for six S3 vars; manual Admin upload smoke confirmed public Supabase URL and product media association — MEDIA-01 closed.
+- [Plan 02-04]: The standard Medusa Store API now exposes only the stable shopper-facing catalog surface, with BRL pricing, public media URLs, and no public `gelato_*` fields; non-sellable variants stay hidden from the public contract.
 - [Plan 02-05]: `buildGelatoSnapshot` closed as a pure typed immutable contract, reusing the same sellable validation source as 02-01/02-02; CAT-04 is complete for Phase 02 via builder + contract + unit tests, while actual `LineItem.metadata.gelato_snapshot` persistence remains deferred to Phase 6 consumption.
 
 ### Pending Todos
@@ -134,7 +135,7 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-27T15:10:00.000Z
-Stopped at: 02-05/CAT-04 closed documentally; 02-04 still awaiting manual gate
+Stopped at: All 5 Phase 02 plans documented complete; final phase gate not yet run
 Resume file: None
 
 ## Quick Tasks Completed

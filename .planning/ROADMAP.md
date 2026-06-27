@@ -92,7 +92,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 1
 **Requirements**: CAT-01, CAT-02, CAT-03, CAT-04, MEDIA-01
-**Manual gate:** This phase is the next permitted cycle after Phase 01 closure, but it is not started and must not auto-advance.
+**Manual gate:** All five execution plans are now documented complete, but the phase itself remains manual-review gated and must not auto-close until the final phase gate runs.
 **Scope note**: Phase 2 delivers only: (a) required Gelato metadata definition; (b) validation of sellable variants with mandatory `gelato_*` metadata; (c) Supabase Storage image references; (d) a stable catalog API contract; (e) a snapshot builder/helper/contract for future Order creation; (f) unit tests for the snapshot builder (if applicable). It does NOT require actual Order LineItem persistence — real persistence of `LineItem.metadata.gelato_snapshot` is verified in Phase 6.
 **Success Criteria** (what must be TRUE):
 
@@ -102,7 +102,7 @@ Plans:
   4. The Store catalog API returns products, variants, and BRL prices in a stable shape suitable for the future storefront.
   5. A Gelato snapshot builder/helper exists that produces an immutable snapshot from validated `ProductVariant` metadata, with a documented contract for Phase 6 Order creation to consume; unit tests cover the builder where applicable. (No Order LineItem persistence is required or verified in this phase.)
 
-**Plans**: 4/5 plans executed
+**Plans**: 5/5 plans executed
 
 Plans:
 **Wave 1**
@@ -116,10 +116,10 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-04-PLAN.md - Contrato publico estavel da Store API para catalogo e midia
+- [x] 02-04-PLAN.md - Contrato publico estavel da Store API para catalogo e midia
 - [x] 02-05-PLAN.md - Snapshot builder/helper puro e contrato consumivel pela Phase 6
 
-**Execution status (2026-06-27):** `02-01`, `02-02`, `02-03` e `02-05` estao fechados. `02-05` concluiu o builder/helper/contrato de snapshot Gelato e fechou `CAT-04` para o escopo da Phase 02, sem persistencia em `Order`/`LineItem`; esse consumo real continua reservado para a Phase 6. `02-04` permanece nao iniciado e manual-review gated.
+**Execution status (2026-06-27):** `02-01`, `02-02`, `02-03`, `02-04` e `02-05` estao fechados documentalmente. `02-04` concluiu o contrato publico estavel da Store API e fechou `CAT-03` para a fase; `02-05` concluiu o builder/helper/contrato de snapshot Gelato e fechou `CAT-04` para o escopo da Phase 02, sem persistencia em `Order`/`LineItem`; esse consumo real continua reservado para a Phase 6. A **Phase 02 nao esta fechada**: o proximo passo permitido e apenas o gate final humano da fase.
 
 ### Phase 3: Cart & Checkout (pre-Order)
 
