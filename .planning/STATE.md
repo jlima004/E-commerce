@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 03
-current_phase_name: cart-checkout-pre-order
-status: phase-03-planned-awaiting-manual-review
-stopped_at: Phase 03 planning complete; awaiting manual review before execution
-last_updated: "2026-06-27T23:59:00.000Z"
+current_phase: 04
+current_phase_name: stripe-payments-payment-attempt
+status: phase-03-closed-awaiting-phase-04-planning
+stopped_at: Phase 03 closed; Phase 04 planning only — not started
+last_updated: "2026-06-27T22:00:00.000Z"
 last_activity: 2026-06-27
-last_activity_desc: Phase 03 planned into five manual-review-gated slices with validation
+last_activity_desc: Phase 03 closed documentally after UAT/validation; CART-01..CART-04 complete
 progress:
   total_phases: 12
-  completed_phases: 2
-  total_plans: 17
-  completed_plans: 12
-  percent: 17
+  completed_phases: 3
+  total_plans: 22
+  completed_plans: 17
+  percent: 25
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 03 — cart-checkout-pre-order (planning complete; execution not started)
+**Current focus:** Phase 04 — Stripe Payments & PaymentAttempt (planning only; not started)
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 03 planning is complete and verified. The next permitted step is human review of `03-VALIDATION.md` and `03-01-PLAN.md` through `03-05-PLAN.md`. Execution remains blocked until explicit approval. No implementation, migrations, deploy, install, Order, PaymentAttempt, PaymentSession, webhook, Stripe/Pix, Gelato, or config/secrets changes have started.
+**Current gate:** Phase 03 is closed (`03-CLOSURE.md`). CART-01..CART-04 are complete. The next permitted step is human review of this closure, then Phase 04 **planning only** via `/gsd-plan-phase 4`. Phase 04 execution, migrations, deploy, install, and secrets/config changes remain blocked.
 
 **Branch policy:**
 
@@ -51,18 +51,18 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 03 (cart-checkout-pre-order) — planned; execution not started
-Plan: Phase 02 closed with 5/5 plans complete (02-01, 02-02, 02-03, 02-04, 02-05); Phase 01 closed (7/7); Phase 03 has 5/5 plans written and 0/5 executed
-Status: Phase 03 planned and verified at manual gate; awaiting human review before any execution
-Last activity: 2026-06-27 - Phase 03 planned into five manual-review-gated slices with validation
+Phase: 04 (stripe-payments-payment-attempt) — planning only; not started
+Plan: Phase 03 closed with 5/5 plans complete (03-01..03-05); Phases 01 (7/7) and 02 (5/5) also closed
+Status: Phase 03 complete; awaiting human review before Phase 04 planning begins
+Last activity: 2026-06-27 - Phase 03 documentary closure after automated UAT/validation
 
-Progress: [██--------] 17%
+Progress: [███-------] 25%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 12
+- Total plans completed: 17
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -72,7 +72,8 @@ Progress: [██--------] 17%
 |-------|-------|-------|----------|
 | 01. Foundation & Observability | 7 | Complete | — |
 | 02. Catalog & Media | 5 executed / 5 planned | Complete | — |
-| 03. Cart & Checkout (pre-Order) | 0 executed / 5 planned | Awaiting manual review | — |
+| 03. Cart & Checkout (pre-Order) | 5 executed / 5 planned | Complete | — |
+| 04. Stripe Payments & PaymentAttempt | 0 planned / 0 executed | Not started | — |
 
 **Recent Trend:**
 
@@ -113,6 +114,8 @@ Recent decisions affecting current work:
 - [Phase 03 research]: Research for cart-checkout pre-order completed and reviewed at manual gate; planning proceeded with `--skip-research` after explicit approval. No execution started.
 - [Phase 03 planning]: Phase 03 was decomposed into 5 manual-review-gated plans across 3 waves: active cart contract, secure guest-cart attach, Brasil/Gelato checkout data with `federal_tax_id`, derived `checkout_data_complete`, and final pre-Order negative proofs. `03-VALIDATION.md` defines Jest/build verification and required negative checks.
 - [Phase 03 planning]: Plan checker passed with no blockers or warnings. CART-01, CART-02, CART-03, CART-04 and decisions D-01..D-33 are covered; execution remains blocked behind human review.
+- [Phase 03 execution]: Plans 03-01..03-05 implemented and verified — 64 tests green (40 unit + 24 integration HTTP), negative grep clean, build green with `ADMIN_DISABLED=true`.
+- [Phase 03 closure]: `03-CLOSURE.md` records CART-01..CART-04 complete; `checkout_data_complete` derived only; `federal_tax_id` in shipping metadata with public mask; guest attach session-backed; no Order/PaymentAttempt/PaymentSession/webhook/Stripe/Pix/Gelato; Phase 04 not started.
 
 ### Pending Todos
 
@@ -139,10 +142,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-27T23:59:00.000Z
-Stopped at: Phase 03 planning complete; awaiting manual review before execution
-Resume file: .planning/phases/03-cart-checkout-pre-order/03-01-PLAN.md
-Next permitted step: human review of `.planning/phases/03-cart-checkout-pre-order/03-VALIDATION.md` and `03-01-PLAN.md` through `03-05-PLAN.md`; only after approval, `$gsd-execute-phase 3`
+Last session: 2026-06-27T22:00:00.000Z
+Stopped at: Phase 03 closed; Phase 04 planning only — not started
+Resume file: `.planning/phases/03-cart-checkout-pre-order/03-CLOSURE.md`
+Next permitted step: human review of `03-CLOSURE.md`; then `/gsd-plan-phase 4` (planning only — execution blocked)
 
 ## Quick Tasks Completed
 
@@ -154,4 +157,5 @@ Next permitted step: human review of `.planning/phases/03-cart-checkout-pre-orde
 | 2026-06-26 | phase-01-closure | Closed Phase 01 with sanitized evidence, preserved the release-dyno Redis migration debt as deferred investigation, and left Phase 02 available only as the next manual-review-gated cycle. |
 | 2026-06-26 | phase-02-planning | Planned only the Catalog & Media phase from the approved 02-CONTEXT.md, producing 5 execution plans plus validation strategy, while keeping execution blocked behind manual review. |
 | 2026-06-27 | phase-02-closure | Closed Phase 02 documentally after reconciling validation, UAT, requirements, and the accepted plan summaries; Phase 03 remains not started. |
-| 2026-06-27 | phase-03-planning | Planned only Cart & Checkout (pre-Order) from approved context/research, producing 5 execution plans plus validation strategy, while keeping execution blocked behind manual review. |
+| 2026-06-27 | phase-03-verification | Automated UAT/validation for Phase 03 — 64 tests green, negative grep clean, build passing; manual closeout gate recorded in `03-UAT.md`. |
+| 2026-06-27 | phase-03-closure | Closed Phase 03 documentally; CART-01..CART-04 complete; Phase 04 planning only as next permitted step. |

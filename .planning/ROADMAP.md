@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Observability** - Medusa v2 + Supabase/Redis + Admin subdomain + PM2/Nginx + Sentry, structured logs with redaction, health check
 - [x] **Phase 2: Catalog & Media** - BRL products/variants with mandatory Gelato metadata, Supabase Storage images, and a Gelato snapshot builder/contract for future Order creation (no Order LineItem persistence yet — verified in Phase 6)
-- [ ] **Phase 3: Cart & Checkout (pre-Order)** - Guest + authenticated cart and checkout data collection that creates no Order
+- [x] **Phase 3: Cart & Checkout (pre-Order)** - Guest + authenticated cart and checkout data collection that creates no Order
 - [ ] **Phase 4: Stripe Payments & PaymentAttempt** - Card + async Pix via Payment Collection/Session, every try tracked in PaymentAttempt
 - [ ] **Phase 5: Stripe Webhook Ingestion & Idempotency** - Raw-body signature-verified `/hooks/stripe` + WebhookEventLog DB-level dedup
 - [ ] **Phase 6: Idempotent Webhook-Driven Order Creation** - Order created only by the canonical webhook, idempotent on payment_intent_id, decoupled state
@@ -127,7 +127,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 2
 **Requirements**: CART-01, CART-02, CART-03, CART-04
-**Manual gate:** Phase 03 is planned only. Execution is blocked until human review approves the five plan slices and the validation strategy.
+**Manual gate:** Phase 03 is complete (closed 2026-06-27). Phase 04 planning may begin only after human review of `03-CLOSURE.md`.
 **Success Criteria** (what must be TRUE):
 
   1. A guest can create and manage a cart without an account.
@@ -135,22 +135,24 @@ Plans:
   3. Checkout collects and validates customer email and a shipping address suitable for Gelato/Correios.
   4. Completing checkout creates no Order — the cart stays in pre-Order state (verified: no Order row exists after checkout submission).
 
-**Plans**: 5/5 planned, 0/5 executed — awaiting manual review
+**Plans**: 5/5 executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md - Contrato de cart ativo guest/customer sem pagamento
-- [ ] 03-02-PLAN.md - Attach seguro do guest cart da sessao atual no login
-- [ ] 03-03-PLAN.md - Email e shipping address Brasil/Gelato com `federal_tax_id`
+- [x] 03-01-PLAN.md - Contrato de cart ativo guest/customer sem pagamento
+- [x] 03-02-PLAN.md - Attach seguro do guest cart da sessao atual no login
+- [x] 03-03-PLAN.md - Email e shipping address Brasil/Gelato com `federal_tax_id`
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-04-PLAN.md - `checkout_data_complete` derivado/calculado, sem status persistido
+- [x] 03-04-PLAN.md - `checkout_data_complete` derivado/calculado, sem status persistido
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 03-05-PLAN.md - Provas negativas pre-Order e contrato HTTP final
+- [x] 03-05-PLAN.md - Provas negativas pre-Order e contrato HTTP final
+
+**Closure status (2026-06-27):** Phase 03 is complete. `03-01` through `03-05` were executed and verified (64 tests green: 40 unit + 24 integration HTTP; negative grep clean; build green with `ADMIN_DISABLED=true`). `CART-01`, `CART-02`, `CART-03`, and `CART-04` are complete. `checkout_data_complete` remains derived only; `federal_tax_id` lives in `shipping_address.metadata` with public `masked_federal_tax_id`; guest attach uses `req.session.active_cart_id`. No Order, PaymentAttempt, PaymentSession, webhook, Stripe/Pix, Gelato, migration, deploy, install, or secrets/config change was introduced. Phase 04 may begin **planning only** in a separate manual-review-gated cycle — execution not started.
 
 **Cross-cutting constraints:** `federal_tax_id` must use the lowest-exposure existing cart/address storage path available and must be omitted or masked in public responses/logs/Sentry; old carts may be marked not-active only with existing core fields/metadata unless a manual migration gate is approved; guest cart attach must prove the cart belongs to the current session and cannot trust body-only `cart_id`; `checkout_data_complete` is derived only and never persisted as `ready_for_payment`; no Order, PaymentAttempt, PaymentSession, webhook, Stripe/Pix, Gelato, migration, deploy, install, or secrets/config-var change is part of Phase 03 planning or execution.
 
@@ -296,7 +298,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundation & Observability | 7/7 | Complete | 2026-06-26 |
 | 2. Catalog & Media | 5/5 | Complete | 2026-06-27 |
-| 3. Cart & Checkout (pre-Order) | 0/TBD | Not started | - |
+| 3. Cart & Checkout (pre-Order) | 5/5 | Complete | 2026-06-27 |
 | 4. Stripe Payments & PaymentAttempt | 0/TBD | Not started | - |
 | 5. Stripe Webhook Ingestion & Idempotency | 0/TBD | Not started | - |
 | 6. Idempotent Webhook-Driven Order Creation | 0/TBD | Not started | - |

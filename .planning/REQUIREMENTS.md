@@ -30,10 +30,10 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Cart & Checkout
 
-- [ ] **CART-01**: A guest can create and manage a cart without an account
-- [ ] **CART-02**: An authenticated customer can create and manage a cart associated with their account
-- [ ] **CART-03**: Checkout collects and validates customer email and shipping address (suitable for Gelato/Correios)
-- [ ] **CART-04**: Checkout creates no Order — cart remains pre-Order state until payment is confirmed
+- [x] **CART-01**: A guest can create and manage a cart without an account. Complete via Phase 3 plans 03-01/03-05: `/store/carts/active`, session-backed `req.session.active_cart_id`, 64 automated tests green.
+- [x] **CART-02**: An authenticated customer can create and manage a cart associated with their account. Complete via Phase 3 plans 03-01/03-02/03-05: authenticated active cart + secure guest attach on login with server-side session proof.
+- [x] **CART-03**: Checkout collects and validates customer email and shipping address (suitable for Gelato/Correios). Complete via Phase 3 plans 03-03/03-04/03-05: Brasil address validation, `federal_tax_id` in `shipping_address.metadata`, public `masked_federal_tax_id`.
+- [x] **CART-04**: Checkout creates no Order — cart remains pre-Order state until payment is confirmed. Complete via Phase 3 plans 03-01..03-05: negative grep clean, no Order/PaymentAttempt/PaymentSession/webhook/Stripe/Pix/Gelato in checkout scope.
 
 ### Payments
 
@@ -147,10 +147,10 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | CAT-03 | Phase 2 | Complete (02-04 public Store API contract) |
 | CAT-04 | Phase 2 | Complete (02-05 builder/contract; consumed by Phase 6 persistence) |
 | MEDIA-01 | Phase 2 | Complete (02-03) |
-| CART-01 | Phase 3 | Pending |
-| CART-02 | Phase 3 | Pending |
-| CART-03 | Phase 3 | Pending |
-| CART-04 | Phase 3 | Pending |
+| CART-01 | Phase 3 | Complete (03-01/03-05 guest active cart + session) |
+| CART-02 | Phase 3 | Complete (03-01/03-02/03-05 auth cart + secure attach) |
+| CART-03 | Phase 3 | Complete (03-03/03-04/03-05 email + BR address + masked federal_tax_id) |
+| CART-04 | Phase 3 | Complete (03-01..03-05 pre-Order boundary + negative proofs) |
 | PAY-01 | Phase 4 | Pending |
 | PAY-02 | Phase 4 | Pending |
 | PAY-03 | Phase 4 | Pending |
@@ -190,4 +190,4 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 
 ---
 *Requirements defined: 2026-06-22*
-*Last updated: 2026-06-27 after Phase 02 documentary reconciliation for CAT-01/CAT-02*
+*Last updated: 2026-06-27 after Phase 03 closure for CART-01..CART-04*
