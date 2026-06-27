@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02
 current_phase_name: catalog-media
-status: phase-02-plan-03-closed
-stopped_at: 02-03 closed with manual smoke; MEDIA-01 complete; next plan requires manual-review gate (no auto 02-04)
-last_updated: "2026-06-26T21:30:00.000Z"
-last_activity: 2026-06-26
-last_activity_desc: Closed 02-03 and MEDIA-01 after manual Admin upload smoke (public Supabase URL confirmed)
+status: phase-02-plan-05-closed
+stopped_at: 02-05 closed with manual review summary; CAT-04 contract complete; 02-04 remains manual-review gated (no auto-start)
+last_updated: "2026-06-27T15:10:00.000Z"
+last_activity: 2026-06-27
+last_activity_desc: Closed 02-05 documentation after snapshot builder/helper/contract approval; 02-04 remains unstarted
 progress:
   total_phases: 12
   completed_phases: 1
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 8
 ---
 
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 02 — catalog-media (02-03 closed; MEDIA-01 complete; 02-04/02-05 await manual gate)
+**Current focus:** Phase 02 — catalog-media (02-05 closed; CAT-04 complete for this phase; 02-04 remains the only unstarted plan under manual gate)
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** 02-03 closed. Do not auto-start 02-04. Next execution requires explicit manual approval for 02-04 (Store API) or 02-05 (Gelato snapshot builder).
+**Current gate:** 02-05 closed. Do not auto-start 02-04. Next execution requires explicit manual approval for 02-04 (Store API).
 
 **Branch policy:**
 
@@ -51,10 +51,10 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 02 (catalog-media) — 02-03 closed; MEDIA-01 complete
-Plan: 5 plans defined; 3 complete (02-01, 02-02, 02-03); 02-04 and 02-05 unstarted; Phase 01 closed (7/7)
-Status: Supabase Storage provider live locally; public URL catalog media verified via Admin smoke
-Last activity: 2026-06-26 - 02-03/MEDIA-01 closed after manual upload smoke
+Phase: 02 (catalog-media) — 02-05 closed; 02-04 still pending manual start
+Plan: 5 plans defined; 4 complete (02-01, 02-02, 02-03, 02-05); 02-04 unstarted; Phase 01 closed (7/7)
+Status: Supabase Storage/media and Gelato snapshot builder/contract slices are closed; public Store API contract remains pending in 02-04
+Last activity: 2026-06-27 - 02-05/CAT-04 closed documentally after approved summary
 
 Progress: [█---------] 8%
 
@@ -71,7 +71,7 @@ Progress: [█---------] 8%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01. Foundation & Observability | 7 | Complete | — |
-| 02. Catalog & Media | 3 executed / 5 planned | In Progress | — |
+| 02. Catalog & Media | 4 executed / 5 planned | In Progress | — |
 
 **Recent Trend:**
 
@@ -106,6 +106,7 @@ Recent decisions affecting current work:
 - [Production smoke]: Smoke test on Heroku app `espacoliminar` passed on 2026-06-26. Current release is `v27`, `APP_VERSION=d02fd70`, `REDIS_CACHE_PROVIDER_DISABLED=true`, `web.1` and `worker.1` are up, `/health/live` and `/health/ready` return 200, readiness reports Postgres `up` and Redis `up`, web/worker logs show no Redis/TLS loop patterns, and public read-only routes returned no 5xx.
 - [Phase 01 closure]: Closure completed on 2026-06-26. The original VPS/PM2/Nginx route remains as a portable blueprint, while the validated operational checkpoint for this cycle is Heroku app `espacoliminar` with Supabase Postgres via pooler, Heroku Redis with TLS, Heroku release phase for `db:migrate:safe`, and Phase 02 left unstarted behind a human review gate.
 - [Plan 02-03]: `@medusajs/file-s3@2.16.0` wired via `@medusajs/medusa/file` + `@medusajs/medusa/file-s3` with `forcePathStyle: true`; production env fail-fast for six S3 vars; manual Admin upload smoke confirmed public Supabase URL and product media association — MEDIA-01 closed.
+- [Plan 02-05]: `buildGelatoSnapshot` closed as a pure typed immutable contract, reusing the same sellable validation source as 02-01/02-02; CAT-04 is complete for Phase 02 via builder + contract + unit tests, while actual `LineItem.metadata.gelato_snapshot` persistence remains deferred to Phase 6 consumption.
 
 ### Pending Todos
 
@@ -132,8 +133,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T21:30:00.000Z
-Stopped at: 02-03/MEDIA-01 closed; awaiting manual gate for next Phase 02 plan
+Last session: 2026-06-27T15:10:00.000Z
+Stopped at: 02-05/CAT-04 closed documentally; 02-04 still awaiting manual gate
 Resume file: None
 
 ## Quick Tasks Completed

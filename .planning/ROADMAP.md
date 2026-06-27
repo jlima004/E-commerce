@@ -102,7 +102,7 @@ Plans:
   4. The Store catalog API returns products, variants, and BRL prices in a stable shape suitable for the future storefront.
   5. A Gelato snapshot builder/helper exists that produces an immutable snapshot from validated `ProductVariant` metadata, with a documented contract for Phase 6 Order creation to consume; unit tests cover the builder where applicable. (No Order LineItem persistence is required or verified in this phase.)
 
-**Plans**: 2/5 plans executed
+**Plans**: 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -117,9 +117,9 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [ ] 02-04-PLAN.md - Contrato publico estavel da Store API para catalogo e midia
-- [ ] 02-05-PLAN.md - Snapshot builder/helper puro e contrato consumivel pela Phase 6
+- [x] 02-05-PLAN.md - Snapshot builder/helper puro e contrato consumivel pela Phase 6
 
-**Planning status (2026-06-26):** A Phase 02 foi planejada usando o `02-CONTEXT.md` aprovado. Nenhuma implementacao, migration, deploy ou execucao da fase foi iniciada; o proximo passo permanece manual-review gated.
+**Execution status (2026-06-27):** `02-01`, `02-02`, `02-03` e `02-05` estao fechados. `02-05` concluiu o builder/helper/contrato de snapshot Gelato e fechou `CAT-04` para o escopo da Phase 02, sem persistencia em `Order`/`LineItem`; esse consumo real continua reservado para a Phase 6. `02-04` permanece nao iniciado e manual-review gated.
 
 ### Phase 3: Cart & Checkout (pre-Order)
 
