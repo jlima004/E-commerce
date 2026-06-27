@@ -19,8 +19,8 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Catalog
 
-- [ ] **CAT-01**: Operator can create products with variants priced in BRL
-- [ ] **CAT-02**: Each variant carries mandatory Gelato metadata (e.g. product UID / print area), and variants missing required `gelato_*` metadata are flagged/rejected (INV — fulfillability)
+- [x] **CAT-01**: Operator can create products with variants priced in BRL. Complete via Phase 2 plan 02-01, where the central variant contract validates integer BRL cents as part of the sellable metadata gate.
+- [x] **CAT-02**: Each variant carries mandatory Gelato metadata (e.g. product UID / print area), and variants missing required `gelato_*` metadata are flagged/rejected (INV — fulfillability). Complete via plans 02-01/02-02 with the central helper, sellable/publish rejection path, and automated tests.
 - [x] **CAT-03**: API exposes catalog (products, variants, BRL prices) as a stable contract for the future storefront
 - [x] **CAT-04**: Order line items store an immutable Gelato snapshot taken at order time, so later catalog edits do not corrupt in-flight orders. Phase 2 closes the pure builder/contract/unit-test surface; Phase 6 will consume this contract when Order/LineItem persistence exists.
 
@@ -142,8 +142,8 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | SETUP-03 | Phase 1 | Pending |
 | SETUP-04 | Phase 1 | Pending |
 | SETUP-05 | Phase 1 | Pending |
-| CAT-01 | Phase 2 | Pending |
-| CAT-02 | Phase 2 | Pending |
+| CAT-01 | Phase 2 | Complete (02-01 central contract covers BRL integer-cent pricing) |
+| CAT-02 | Phase 2 | Complete (02-01/02-02 mandatory Gelato metadata + sellable/publish gate + tests) |
 | CAT-03 | Phase 2 | Complete (02-04 public Store API contract) |
 | CAT-04 | Phase 2 | Complete (02-05 builder/contract; consumed by Phase 6 persistence) |
 | MEDIA-01 | Phase 2 | Complete (02-03) |
@@ -190,4 +190,4 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 
 ---
 *Requirements defined: 2026-06-22*
-*Last updated: 2026-06-27 after 02-04 and 02-05 documentary closeout*
+*Last updated: 2026-06-27 after Phase 02 documentary reconciliation for CAT-01/CAT-02*
