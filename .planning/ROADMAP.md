@@ -14,7 +14,7 @@ This roadmap builds a headless Medusa v2 POD backend (Brazil/BRL) around a singl
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Observability** - Medusa v2 + Supabase/Redis + Admin subdomain + PM2/Nginx + Sentry, structured logs with redaction, health check
-- [ ] **Phase 2: Catalog & Media** - BRL products/variants with mandatory Gelato metadata, Supabase Storage images, and a Gelato snapshot builder/contract for future Order creation (no Order LineItem persistence yet — verified in Phase 6)
+- [x] **Phase 2: Catalog & Media** - BRL products/variants with mandatory Gelato metadata, Supabase Storage images, and a Gelato snapshot builder/contract for future Order creation (no Order LineItem persistence yet — verified in Phase 6)
 - [ ] **Phase 3: Cart & Checkout (pre-Order)** - Guest + authenticated cart and checkout data collection that creates no Order
 - [ ] **Phase 4: Stripe Payments & PaymentAttempt** - Card + async Pix via Payment Collection/Session, every try tracked in PaymentAttempt
 - [ ] **Phase 5: Stripe Webhook Ingestion & Idempotency** - Raw-body signature-verified `/hooks/stripe` + WebhookEventLog DB-level dedup
@@ -92,7 +92,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 1
 **Requirements**: CAT-01, CAT-02, CAT-03, CAT-04, MEDIA-01
-**Manual gate:** All five execution plans are now documented complete, but the phase itself remains manual-review gated and must not auto-close until the final phase gate runs.
+**Manual gate:** Phase 02 is now closed, and Phase 03 may begin only in a separate manual-review-gated cycle.
 **Scope note**: Phase 2 delivers only: (a) required Gelato metadata definition; (b) validation of sellable variants with mandatory `gelato_*` metadata; (c) Supabase Storage image references; (d) a stable catalog API contract; (e) a snapshot builder/helper/contract for future Order creation; (f) unit tests for the snapshot builder (if applicable). It does NOT require actual Order LineItem persistence — real persistence of `LineItem.metadata.gelato_snapshot` is verified in Phase 6.
 **Success Criteria** (what must be TRUE):
 
@@ -119,7 +119,7 @@ Plans:
 - [x] 02-04-PLAN.md - Contrato publico estavel da Store API para catalogo e midia
 - [x] 02-05-PLAN.md - Snapshot builder/helper puro e contrato consumivel pela Phase 6
 
-**Execution status (2026-06-27):** `02-01`, `02-02`, `02-03`, `02-04` e `02-05` estao fechados documentalmente. `02-04` concluiu o contrato publico estavel da Store API e fechou `CAT-03` para a fase; `02-05` concluiu o builder/helper/contrato de snapshot Gelato e fechou `CAT-04` para o escopo da Phase 02, sem persistencia em `Order`/`LineItem`; esse consumo real continua reservado para a Phase 6. A **Phase 02 nao esta fechada**: o proximo passo permitido e apenas o gate final humano da fase.
+**Closure status (2026-06-27):** Phase 02 is complete. `02-01`, `02-02`, `02-03`, `02-04` e `02-05` foram aceitos como executados; `CAT-01`, `CAT-02`, `CAT-03`, `CAT-04` e `MEDIA-01` ficaram coerentes com os summaries, com `02-VALIDATION.md`, `02-UAT.md` e `REQUIREMENTS.md`. O builder/helper/contrato de snapshot Gelato fecha apenas o escopo desta fase; a persistencia real em `Order`/`LineItem` continua reservada para a Phase 6. Phase 03 may begin only in a separate manual-review-gated cycle.
 
 ### Phase 3: Cart & Checkout (pre-Order)
 
@@ -277,7 +277,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Observability | 7/7 | Complete | 2026-06-26 |
-| 2. Catalog & Media | 2/5 | In Progress|  |
+| 2. Catalog & Media | 5/5 | Complete | 2026-06-27 |
 | 3. Cart & Checkout (pre-Order) | 0/TBD | Not started | - |
 | 4. Stripe Payments & PaymentAttempt | 0/TBD | Not started | - |
 | 5. Stripe Webhook Ingestion & Idempotency | 0/TBD | Not started | - |
