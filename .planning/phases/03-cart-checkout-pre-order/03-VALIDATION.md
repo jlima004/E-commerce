@@ -1,9 +1,9 @@
 ---
 phase: 03
 slug: cart-checkout-pre-order
-status: draft
+status: complete
 nyquist_compliant: true
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-06-27
 ---
 
@@ -38,30 +38,30 @@ created: 2026-06-27
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 03-01-01 | 01 | 1 | CART-01, CART-02 | T-03-01 | Cart ativo por ator não confia em `customer_id` vindo do body e não cria Order/PaymentSession. | source + unit | `rg -n "completeCartWorkflow|ready_for_payment|PaymentAttempt|PaymentSession|stripe|pix|gelato|/hooks" apps/backend/src apps/backend/integration-tests/http` must show no Phase 03 activation path except explicit negative-test strings | W0 | pending |
-| 03-02-01 | 02 | 1 | CART-01, CART-02 | T-03-02 | Attach usa somente o guest cart da sessão atual; guest cart vazio não sobrescreve cart útil do customer. | integration:http | `cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath integration-tests/http/cart-checkout-store.spec.ts -t "guest cart|authenticated|transfer"` | W0 | pending |
-| 03-03-01 | 03 | 1 | CART-03 | T-03-03 | Email, CEP, CPF/CNPJ, UF e `country_code=BR` são normalizados/validados sem expor PII completa em erro/log. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/checkout/__tests__/checkout-data.unit.spec.ts -t "email|address|federal_tax_id|postal_code|province"` | W0 | pending |
-| 03-04-01 | 04 | 2 | CART-03, CART-04 | T-03-04 | `checkout_data_complete` é derivado em resposta, recalculado a cada mutação e nunca persistido como status nominal. | unit + integration:http | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/checkout/__tests__/checkout-data.unit.spec.ts -t "checkout_data_complete"` | W0 | pending |
-| 03-05-01 | 05 | 2 | CART-04 | T-03-05 | Nenhum Order, PaymentAttempt, PaymentSession, webhook, Stripe/Pix ou Gelato é criado/disparado. | integration:http + source | `cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath integration-tests/http/cart-checkout-store.spec.ts -t "pre-Order"` plus static grep negatives | W0 | pending |
+| 03-01-01 | 01 | 1 | CART-01, CART-02 | T-03-01 | Cart ativo por ator não confia em `customer_id` vindo do body e não cria Order/PaymentSession. | source + unit | `rg -n "completeCartWorkflow|ready_for_payment|PaymentAttempt|PaymentSession|stripe|pix|gelato|/hooks" apps/backend/src apps/backend/integration-tests/http` must show no Phase 03 activation path except explicit negative-test strings | W0 | ✅ green |
+| 03-02-01 | 02 | 1 | CART-01, CART-02 | T-03-02 | Attach usa somente o guest cart da sessão atual; guest cart vazio não sobrescreve cart útil do customer. | integration:http | `cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath integration-tests/http/cart-checkout-store.spec.ts -t "guest cart|authenticated|transfer"` | W0 | ✅ green |
+| 03-03-01 | 03 | 1 | CART-03 | T-03-03 | Email, CEP, CPF/CNPJ, UF e `country_code=BR` são normalizados/validados sem expor PII completa em erro/log. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/checkout/__tests__/checkout-data.unit.spec.ts -t "email|address|federal_tax_id|postal_code|province"` | W0 | ✅ green |
+| 03-04-01 | 04 | 2 | CART-03, CART-04 | T-03-04 | `checkout_data_complete` é derivado em resposta, recalculado a cada mutação e nunca persistido como status nominal. | unit + integration:http | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/checkout/__tests__/checkout-data.unit.spec.ts -t "checkout_data_complete"` | W0 | ✅ green |
+| 03-05-01 | 05 | 2 | CART-04 | T-03-05 | Nenhum Order, PaymentAttempt, PaymentSession, webhook, Stripe/Pix ou Gelato é criado/disparado. | integration:http + source | `cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath integration-tests/http/cart-checkout-store.spec.ts -t "pre-Order"` plus static grep negatives | W0 | ✅ green |
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `apps/backend/src/modules/checkout/checkout-data.ts` — helper puro para email, address Brasil/Gelato, `federal_tax_id` e cálculo derivado.
-- [ ] `apps/backend/src/modules/checkout/__tests__/checkout-data.unit.spec.ts` — matriz de normalização, validação estrutural e PII-safe errors.
-- [ ] `apps/backend/integration-tests/http/cart-checkout-store.spec.ts` — contratos HTTP para guest, customer autenticado, attach e prova pré-Order.
-- [ ] `apps/backend/src/api/store/carts/serializers.ts` ou equivalente local — shaping de resposta com `checkout_data_complete` calculado.
+- [x] `apps/backend/src/modules/checkout/checkout-data.ts` — helper puro para email, address Brasil/Gelato, `federal_tax_id` e cálculo derivado.
+- [x] `apps/backend/src/modules/checkout/__tests__/checkout-data.unit.spec.ts` — matriz de normalização, validação estrutural e PII-safe errors.
+- [x] `apps/backend/integration-tests/http/cart-checkout-store.spec.ts` — contratos HTTP para guest, customer autenticado, attach e prova pré-Order.
+- [x] `apps/backend/src/api/store/carts/serializers.ts` ou equivalente local — shaping de resposta com `checkout_data_complete` calculado.
 
 ---
 
 ## Negative Proofs Required
 
-- [ ] Nenhum código de Phase 03 chama ou importa `completeCartWorkflow`, `sdk.store.cart.complete` ou `/store/carts/:id/complete`.
-- [ ] Nenhum código de Phase 03 cria `Order`, `PaymentAttempt`, `PaymentSession`, webhook Stripe/Gelato, chamada Stripe/Pix ou chamada Gelato.
-- [ ] A resposta de checkout completo pode conter `checkout_data_complete: true`, mas não contém `order`, `order_id`, `payment_session_id`, `payment_intent_id`, `payment_attempt_id` ou `gelato_order_id`.
-- [ ] Nenhuma migration foi rodada; se a solução de cart "não ativo" exigir migration ou schema novo, execução deve parar para gate manual antes de qualquer implementação.
-- [ ] Nenhum secret/config var/deploy foi alterado.
+- [x] Nenhum código de Phase 03 chama ou importa `completeCartWorkflow`, `sdk.store.cart.complete` ou `/store/carts/:id/complete`.
+- [x] Nenhum código de Phase 03 cria `Order`, `PaymentAttempt`, `PaymentSession`, webhook Stripe/Gelato, chamada Stripe/Pix ou chamada Gelato.
+- [x] A resposta de checkout completo pode conter `checkout_data_complete: true`, mas não contém `order`, `order_id`, `payment_session_id`, `payment_intent_id`, `payment_attempt_id` ou `gelato_order_id`.
+- [x] Nenhuma migration foi rodada; se a solução de cart "não ativo" exigir migration ou schema novo, execução deve parar para gate manual antes de qualquer implementação.
+- [x] Nenhum secret/config var/deploy foi alterado.
 
 ---
 
@@ -96,4 +96,4 @@ created: 2026-06-27
 - [x] Feedback latency < 180s.
 - [x] `nyquist_compliant: true` set in frontmatter.
 
-**Approval:** pending manual review.
+**Approval:** verified 2026-06-27 via automated `/gsd-verify-work 3`; human phase closeout gate pending.
