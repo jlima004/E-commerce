@@ -42,12 +42,15 @@ key-decisions:
   - "order_id permanece sempre null nesta fase — enforced em helpers e testes"
   - "Migration TBD-payment-attempt.ts e draft humano — nenhum db:migrate executado"
   - "Uma tentativa ativa por cart via helper + partial unique index planejado na migration"
+  - "currency_code persistido em minúsculas (brl); migration usa check (currency_code = 'brl') alinhado ao service"
+  - "payment_session_id nullable na migration — status created pode existir antes da sessão provider; preenchido na transição para provider_session_created"
 
 patterns-established:
   - "assertNoSensitivePaymentAttemptMetadata bloqueia client_secret, QR/copia-e-cola integral, CPF/CNPJ e endereco em metadata"
   - "createPaymentAttemptReplacingActive supersede tentativa ativa sem reutilizar registro antigo"
 
-requirements-completed: [PAY-04]
+requirements_addressed: [PAY-04]
+requirements-completed: []
 
 duration: 45min
 completed: 2026-06-29
@@ -89,6 +92,12 @@ REQUIRES_HUMAN_APPROVAL_BEFORE_db:migrate=true
 A migration inclui:
 - Unique parcial em `provider_payment_intent_id` quando não nulo
 - Unique parcial em `cart_id` para status ativos (uma tentativa ativa por cart)
+- `amount bigint not null check (amount > 0)` — menor unidade monetária (centavos BRL)
+- `check (currency_code = 'brl')` — MVP single-currency; alinhado ao `toLowerCase()` do service
+- `check (status in (...))` — 13 status canônicos da Phase 04
+- `payment_session_id` nullable — tentativa em `created` pode preceder sessão provider; rotas 04-03+ devem preencher antes de `provider_session_created`
+
+**PAY-04:** endereçado por esta plan (base do módulo), mas não concluído — rotas card/Pix e provas finais da Phase 04 ainda pendentes.
 
 **Não executar** `medusa db:migrate` ou `medusa db:generate` em produção até revisão explícita.
 

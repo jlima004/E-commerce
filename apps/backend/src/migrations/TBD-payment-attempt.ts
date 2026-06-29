@@ -7,8 +7,32 @@
  * Constraints:
  * - Partial unique index on provider_payment_intent_id when not null
  * - Partial unique index enforcing at most one active attempt per cart
+ * - amount bigint > 0 (minor monetary unit, centavos BRL)
+ * - currency_code = 'brl' (MVP single-currency; matches service toLowerCase())
+ * - status IN (13 canonical Phase 04 statuses)
+ * - payment_session_id nullable (created may precede provider session)
  */
 import { Migration } from "@medusajs/framework/mikro-orm/migrations"
+
+const CANONICAL_STATUSES = [
+  "created",
+  "provider_session_created",
+  "client_action_required",
+  "card_client_secret_created",
+  "payment_client_confirmed",
+  "payment_instructions_displayed",
+  "awaiting_pix_payment",
+  "awaiting_webhook_confirmation",
+  "pix_expired",
+  "payment_failed",
+  "payment_canceled",
+  "superseded",
+  "invalidated_by_cart_change",
+] as const
+
+const CANONICAL_STATUSES_SQL = CANONICAL_STATUSES.map(
+  (status) => `'${status}'`
+).join(", ")
 
 const ACTIVE_STATUSES_SQL = [
   "created",
@@ -30,14 +54,14 @@ export class TbdPaymentAttempt20260629000000 extends Migration {
         "id" text not null,
         "cart_id" text not null,
         "payment_collection_id" text not null,
-        "payment_session_id" text not null,
+        "payment_session_id" text null,
         "provider" text not null,
         "provider_payment_intent_id" text null,
         "provider_payment_session_id" text null,
         "payment_method_type" text check ("payment_method_type" in ('card', 'pix')) not null,
-        "status" text not null default 'created',
-        "amount" numeric not null,
-        "currency_code" text not null,
+        "status" text not null default 'created' check ("status" in (${CANONICAL_STATUSES_SQL})),
+        "amount" bigint not null check ("amount" > 0),
+        "currency_code" text not null check ("currency_code" = 'brl'),
         "expires_at" timestamptz null,
         "order_id" text null,
         "metadata" jsonb null,
