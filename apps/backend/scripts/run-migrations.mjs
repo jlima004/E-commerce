@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process"
+import { loadEnv } from "@medusajs/framework/utils"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
+loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
 const backendRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
