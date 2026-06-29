@@ -6,6 +6,11 @@ import {
   type PaymentStartCartSnapshot,
 } from "./eligibility"
 import {
+  reconcileStalePaymentAttemptsForCartFingerprint,
+  withPaymentAttemptCartFingerprintMetadata,
+} from "./cart-invalidation"
+import { resolvePaymentAttemptCartFingerprintFromStoreCart } from "../../api/store/carts/serializers"
+import {
   assertOrderIdMustStayNull,
   assertPaymentAttemptTransition,
 } from "./state-machine"
@@ -59,6 +64,7 @@ export type StartPixPaymentAttemptInput = {
 }
 
 export type StartPixPaymentAttemptResult = {
+  invalidatedAttempts: PaymentAttemptRecord[]
   supersededAttempts: PaymentAttemptRecord[]
   attempt: PaymentAttemptRecord
   response: PixPaymentAttemptResponse
@@ -152,6 +158,16 @@ export async function startPixPaymentAttempt(
 
   const at = input.at ?? new Date()
   const idempotencyKey = `${input.cart.id}:pix:${at.getTime()}`
+  const cartFingerprint = resolvePaymentAttemptCartFingerprintFromStoreCart(
+    input.cart
+  )
+  const { attempts: attemptsAfterInvalidation, invalidated } =
+    reconcileStalePaymentAttemptsForCartFingerprint(
+      input.existingAttempts,
+      input.cart.id,
+      cartFingerprint,
+      at
+    )
 
   let rawIntent: StripePaymentIntentLike
 
@@ -182,7 +198,7 @@ export async function startPixPaymentAttempt(
   const newAttemptId = input.generateId()
 
   const { supersededAttempts, newAttempt } = createPaymentAttemptReplacingActive(
-    input.existingAttempts,
+    attemptsAfterInvalidation,
     {
       cart_id: input.cart.id,
       payment_collection_id: paymentCollectionId,
@@ -194,7 +210,10 @@ export async function startPixPaymentAttempt(
       amount: persistable.amount,
       currency_code: persistable.currency_code,
       expires_at: persistable.expires_at,
-      metadata: persistable.metadata,
+      metadata: withPaymentAttemptCartFingerprintMetadata(
+        persistable.metadata,
+        cartFingerprint
+      ),
     },
     newAttemptId,
     at
@@ -213,6 +232,7 @@ export async function startPixPaymentAttempt(
   assertOrderIdMustStayNull(attempt)
 
   return {
+    invalidatedAttempts: invalidated,
     supersededAttempts,
     attempt,
     response: toPixPaymentAttemptResponse(

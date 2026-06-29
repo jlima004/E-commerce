@@ -1,9 +1,9 @@
 import { MedusaService } from "@medusajs/framework/utils"
 import PaymentAttempt from "./models/payment-attempt"
+import { invalidateActivePaymentAttemptForCartChange } from "./cart-invalidation"
 import {
   assertNoSensitivePaymentAttemptMetadata,
   isPaymentAttemptActive,
-  markPaymentAttemptInvalidatedByCartChange,
   markPaymentAttemptSuperseded,
 } from "./state-machine"
 import type {
@@ -143,13 +143,13 @@ export function invalidateActiveAttemptsForCartChange<
 >(attempts: T[], cartId: string, at: Date = new Date()): T[] {
   assertAtMostOneActiveAttemptPerCart(attempts, cartId)
 
-  return attempts.map((attempt) => {
-    if (attempt.cart_id !== cartId || !isPaymentAttemptActive(attempt.status)) {
-      return attempt
-    }
+  const { attempts: updated } = invalidateActivePaymentAttemptForCartChange(
+    attempts,
+    cartId,
+    at
+  )
 
-    return markPaymentAttemptInvalidatedByCartChange(attempt, at)
-  })
+  return updated
 }
 
 export function assertAttemptEligibleForFutureOrder(

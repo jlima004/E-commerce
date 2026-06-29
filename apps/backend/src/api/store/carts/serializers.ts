@@ -10,6 +10,10 @@ import {
   type BrazilShippingAddressInput,
   type CheckoutLineItemSnapshot,
 } from "../../../modules/checkout/checkout-data"
+import {
+  resolvePaymentAttemptCartFingerprint,
+  type PaymentAttemptCartFingerprintSource,
+} from "../../../modules/payment-attempt/cart-invalidation"
 import type { CheckoutCartLike } from "../../../modules/checkout/active-cart"
 
 type StoreCartShippingAddress = {
@@ -274,3 +278,17 @@ export function createStoreCartPreOrderResponseMiddleware() {
 
 export const storeCartPreOrderResponseMiddleware =
   createStoreCartPreOrderResponseMiddleware()
+
+export function resolvePaymentAttemptCartFingerprintFromStoreCart(
+  cart: StoreCartPreOrderRecord
+): string {
+  const source: PaymentAttemptCartFingerprintSource = {
+    actorType: cart.customer?.id ? "customer" : "guest",
+    email: cart.email,
+    customerEmail: cart.customer?.email,
+    items: cart.items,
+    shippingAddress: mapCartShippingAddressToBrazilInput(cart.shipping_address),
+  }
+
+  return resolvePaymentAttemptCartFingerprint(source)
+}

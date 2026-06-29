@@ -6,6 +6,11 @@ import {
   type PaymentStartCartSnapshot,
 } from "./eligibility"
 import {
+  reconcileStalePaymentAttemptsForCartFingerprint,
+  withPaymentAttemptCartFingerprintMetadata,
+} from "./cart-invalidation"
+import { resolvePaymentAttemptCartFingerprintFromStoreCart } from "../../api/store/carts/serializers"
+import {
   assertPaymentAttemptTransition,
   paymentClientConfirmedIsNonFinancial,
 } from "./state-machine"
@@ -54,6 +59,7 @@ export type StartCardPaymentAttemptInput = {
 }
 
 export type StartCardPaymentAttemptResult = {
+  invalidatedAttempts: PaymentAttemptRecord[]
   supersededAttempts: PaymentAttemptRecord[]
   attempt: PaymentAttemptRecord
   response: CardPaymentAttemptResponse
@@ -132,6 +138,16 @@ export async function startCardPaymentAttempt(
 
   const at = input.at ?? new Date()
   const idempotencyKey = `${input.cart.id}:${at.getTime()}`
+  const cartFingerprint = resolvePaymentAttemptCartFingerprintFromStoreCart(
+    input.cart
+  )
+  const { attempts: attemptsAfterInvalidation, invalidated } =
+    reconcileStalePaymentAttemptsForCartFingerprint(
+      input.existingAttempts,
+      input.cart.id,
+      cartFingerprint,
+      at
+    )
 
   let rawIntent: StripePaymentIntentLike
 
@@ -155,7 +171,7 @@ export async function startCardPaymentAttempt(
   const newAttemptId = input.generateId()
 
   const { supersededAttempts, newAttempt } = createPaymentAttemptReplacingActive(
-    input.existingAttempts,
+    attemptsAfterInvalidation,
     {
       cart_id: input.cart.id,
       payment_collection_id: paymentCollectionId,
@@ -167,7 +183,10 @@ export async function startCardPaymentAttempt(
       amount: persistable.amount,
       currency_code: persistable.currency_code,
       expires_at: persistable.expires_at,
-      metadata: persistable.metadata,
+      metadata: withPaymentAttemptCartFingerprintMetadata(
+        persistable.metadata,
+        cartFingerprint
+      ),
     },
     newAttemptId,
     at
@@ -182,6 +201,7 @@ export async function startCardPaymentAttempt(
   )
 
   return {
+    invalidatedAttempts: invalidated,
     supersededAttempts,
     attempt,
     response: toCardPaymentAttemptResponse(attempt, immediate.client_secret),

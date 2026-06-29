@@ -165,7 +165,8 @@ async function persistPixPaymentAttemptResult(
   }
 
   if (
-    result.supersededAttempts.length > 0 &&
+    (result.supersededAttempts.length > 0 ||
+      result.invalidatedAttempts.length > 0) &&
     typeof service.updatePaymentAttempts !== "function"
   ) {
     throw new MedusaError(
@@ -182,6 +183,10 @@ async function persistPixPaymentAttemptResult(
   }
 
   try {
+    for (const invalidated of result.invalidatedAttempts) {
+      await service.updatePaymentAttempts?.(invalidated)
+    }
+
     for (const superseded of result.supersededAttempts) {
       await service.updatePaymentAttempts?.(superseded)
     }
