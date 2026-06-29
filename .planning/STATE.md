@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 04
 current_phase_name: stripe-payments-payment-attempt
-status: phase-04-in-progress
-stopped_at: Plan 04-03 complete; migration draft + provider gate awaiting human review before 04-04/04-05
-last_updated: "2026-06-29T18:10:00.000Z"
+status: phase-04-replanned-awaiting-review
+stopped_at: Plans 04-04/04-05 replanned for safe Stripe boundary; execution still blocked for human review
+last_updated: "2026-06-29T18:36:00.000Z"
 last_activity: 2026-06-29
-last_activity_desc: Plan 04-03 payment-start eligibility complete; helpers + validators tested; 04-04/04-05 still blocked
+last_activity_desc: Plans 04-04/04-05 replanned after 04-01 blocked native-first pure; no runtime execution performed
 progress:
   total_phases: 12
   completed_phases: 3
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Plan 04-02 migration draft (`TBD-payment-attempt.ts`) requires human review before any `db:migrate`. Plans 04-04/04-05 remain blocked per 04-01 gate flags until provider strategy is replanned. Plan 04-03 complete — stop for manual review before 04-04.
+**Current gate:** Plans 04-04/04-05 were replanned to require a safe Stripe boundary (`custom_provider`, `stripe_layer`, or `filtering_wrapper`) before any card/Pix runtime execution. Plan 04-02 migration draft (`TBD-payment-attempt.ts`) remains blocked before any `db:migrate`; the `payment_session_id` nullable model vs migration blocker remains open until explicit decision. Plan 04-03 is complete and is the shared eligibility gate for card/Pix.
 
 **Branch policy:**
 
@@ -53,8 +53,8 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 Phase: 04 (stripe-payments-payment-attempt) — in progress
 Plan: 3/6 Phase 04 plans executed (04-01, 04-02, 04-03)
-Status: In progress; migration draft + provider gate pending human approval
-Last activity: 2026-06-29 - Plan 04-03 payment-start eligibility complete
+Status: Replanned; manual review required before executing 04-04/04-05
+Last activity: 2026-06-29 - Plans 04-04/04-05 replanned for safe Stripe boundary; no runtime execution
 
 Progress: [███-------] 30%
 
@@ -117,6 +117,7 @@ Recent decisions affecting current work:
 - [Phase 03 execution]: Plans 03-01..03-05 implemented and verified — 64 tests green (40 unit + 24 integration HTTP), negative grep clean, build green with `ADMIN_DISABLED=true`.
 - [Phase 03 closure]: `03-CLOSURE.md` records CART-01..CART-04 complete; `checkout_data_complete` derived only; `federal_tax_id` in shipping metadata with public mask; guest attach session-backed; no Order/PaymentAttempt/PaymentSession/webhook/Stripe/Pix/Gelato; Phase 04 not started.
 - [Phase 04 execution]: Plans 04-01 (Stripe provider gate), 04-02 (PaymentAttempt module), and 04-03 (payment-start eligibility) complete on branch `gsd/phase-04-stripe-payments-payment-attempt`. Migration draft not applied; 04-04/04-05 blocked per gate flags.
+- [Phase 04 replan]: Plans 04-04 and 04-05 revised after 04-01 proved native-first pure unsafe. Future card/Pix execution must first prove a safe Stripe boundary via custom provider, own Stripe layer, or filtering wrapper; `PaymentSession.data` may be used only if allowlist-only. `client_secret`, QR/copia-e-cola, `next_action` and raw Stripe payloads are response-only when needed and never persisted.
 
 ### Pending Todos
 
@@ -143,10 +144,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-29T18:10:00.000Z
-Stopped at: Plan 04-03 complete; manual review gate before 04-04/04-05
-Resume file: `.planning/phases/04-stripe-payments-payment-attempt/04-04-PLAN.md` (blocked)
-Next permitted step: human review of 04-03-SUMMARY.md, migration draft, and provider gate flags from 04-01
+Last session: 2026-06-29T18:36:00.000Z
+Stopped at: 04-04/04-05 replanned; manual review gate before any card/Pix runtime execution
+Resume file: `.planning/phases/04-stripe-payments-payment-attempt/04-04-PLAN.md` (replanned, blocked pending review)
+Next permitted step: human review of revised 04-04/04-05 plans, `04-VALIDATION.md`, the 04-02 migration draft, and the open `payment_session_id` nullable blocker
 
 ## Quick Tasks Completed
 
