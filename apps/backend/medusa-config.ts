@@ -31,5 +31,11 @@ module.exports = defineConfig({
       cookieSecret: env.COOKIE_SECRET,
     },
   },
-  modules: [...buildRedisModules(env), ...buildStorageModule(env)],
+  modules: [
+    ...buildRedisModules(env),
+    ...buildStorageModule(env),
+    {
+      resolve: "./src/modules/payment-attempt",
+    },
+  ],
 })
