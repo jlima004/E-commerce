@@ -6,9 +6,9 @@ current_phase: 04
 current_phase_name: stripe-payments-payment-attempt
 status: phase-04-replanned-awaiting-review
 stopped_at: Plans 04-04/04-05 replanned for safe Stripe boundary; execution still blocked for human review
-last_updated: "2026-06-29T18:36:00.000Z"
+last_updated: "2026-06-29T19:00:00.000Z"
 last_activity: 2026-06-29
-last_activity_desc: Plans 04-04/04-05 replanned after 04-01 blocked native-first pure; no runtime execution performed
+last_activity_desc: payment_session_id nullable blocker resolved by aligning PaymentAttempt model/types/helpers with migration draft; no runtime execution performed
 progress:
   total_phases: 12
   completed_phases: 3
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Plans 04-04/04-05 were replanned to require a safe Stripe boundary (`custom_provider`, `stripe_layer`, or `filtering_wrapper`) before any card/Pix runtime execution. Plan 04-02 migration draft (`TBD-payment-attempt.ts`) remains blocked before any `db:migrate`; the `payment_session_id` nullable model vs migration blocker remains open until explicit decision. Plan 04-03 is complete and is the shared eligibility gate for card/Pix.
+**Current gate:** Plans 04-04/04-05 were replanned to require a safe Stripe boundary (`custom_provider`, `stripe_layer`, or `filtering_wrapper`) before any card/Pix runtime execution. Plan 04-02 migration draft (`TBD-payment-attempt.ts`) remains blocked before any `db:migrate`; the `payment_session_id` nullable model vs migration blocker is resolved by `PAYMENT_SESSION_ID_NULLABLE_DECISION=model_and_migration_nullable`. Plan 04-03 is complete and is the shared eligibility gate for card/Pix.
 
 **Branch policy:**
 
@@ -118,6 +118,7 @@ Recent decisions affecting current work:
 - [Phase 03 closure]: `03-CLOSURE.md` records CART-01..CART-04 complete; `checkout_data_complete` derived only; `federal_tax_id` in shipping metadata with public mask; guest attach session-backed; no Order/PaymentAttempt/PaymentSession/webhook/Stripe/Pix/Gelato; Phase 04 not started.
 - [Phase 04 execution]: Plans 04-01 (Stripe provider gate), 04-02 (PaymentAttempt module), and 04-03 (payment-start eligibility) complete on branch `gsd/phase-04-stripe-payments-payment-attempt`. Migration draft not applied; 04-04/04-05 blocked per gate flags.
 - [Phase 04 replan]: Plans 04-04 and 04-05 revised after 04-01 proved native-first pure unsafe. Future card/Pix execution must first prove a safe Stripe boundary via custom provider, own Stripe layer, or filtering wrapper; `PaymentSession.data` may be used only if allowlist-only. `client_secret`, QR/copia-e-cola, `next_action` and raw Stripe payloads are response-only when needed and never persisted.
+- [Phase 04 pre-execution alignment]: `PAYMENT_SESSION_ID_NULLABLE_DECISION=model_and_migration_nullable`; `PaymentAttempt.payment_session_id` is nullable/opcional in model, types, and helpers to allow local `created` attempts before provider session association. Migration draft remains not applied; no 04-04/04-05 runtime execution performed.
 
 ### Pending Todos
 
@@ -144,10 +145,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-29T18:36:00.000Z
-Stopped at: 04-04/04-05 replanned; manual review gate before any card/Pix runtime execution
+Last session: 2026-06-29T19:00:00.000Z
+Stopped at: 04-04/04-05 replanned; `payment_session_id` nullable blocker resolved; manual review gate before any card/Pix runtime execution
 Resume file: `.planning/phases/04-stripe-payments-payment-attempt/04-04-PLAN.md` (replanned, blocked pending review)
-Next permitted step: human review of revised 04-04/04-05 plans, `04-VALIDATION.md`, the 04-02 migration draft, and the open `payment_session_id` nullable blocker
+Next permitted step: human review of revised 04-04/04-05 plans, `04-VALIDATION.md`, and the 04-02 migration draft
 
 ## Quick Tasks Completed
 
