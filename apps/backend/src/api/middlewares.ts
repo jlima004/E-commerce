@@ -303,6 +303,16 @@ export default defineMiddlewares({
     },
     {
       method: ["POST"],
+      matcher: "/store/carts/:id/payment-attempts/card",
+      middlewares: [
+        authenticate("customer", ["session", "bearer"], {
+          allowUnauthenticated: true,
+        }),
+        storeCartPreOrderQueryConfigMiddleware,
+      ],
+    },
+    {
+      method: ["POST"],
       matcher: "/admin/products/:id/variants/:variant_id",
       middlewares: [sellableGateVariantUpdateMiddleware],
     },
