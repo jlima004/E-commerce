@@ -8,12 +8,17 @@ import {
   applyStoreCartPreOrderQueryConfig,
 } from "../../src/api/store/carts/query-config"
 import { POST as startCardPaymentAttemptRoute } from "../../src/api/store/carts/[id]/payment-attempts/card/route"
+import { POST as startPixPaymentAttemptRoute } from "../../src/api/store/carts/[id]/payment-attempts/pix/route"
 import { getPaymentStartRejectedBodyMessage } from "../../src/api/store/carts/payment-attempts/validators"
 import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
 import {
   STRIPE_CARD_INITIATION_LAYER,
   type StripeCardInitiationLayer,
 } from "../../src/modules/payment-attempt/card"
+import {
+  STRIPE_PIX_INITIATION_LAYER,
+  type StripePixInitiationLayer,
+} from "../../src/modules/payment-attempt/pix"
 import type { StoreCartPreOrderRecord } from "../../src/api/store/carts/serializers"
 import type { PaymentAttemptRecord } from "../../src/modules/payment-attempt/types"
 
@@ -231,6 +236,35 @@ function createStripeCardInitiationLayerMock(
   }
 }
 
+function createStripePixInitiationLayerMock(
+  overrides: Record<string, unknown> = {}
+): StripePixInitiationLayer {
+  return {
+    createPixPaymentIntent: jest.fn(async (request) => ({
+      id: "pi_http_pix_mock",
+      object: "payment_intent",
+      status: "requires_action",
+      amount: request.amount,
+      currency: request.currency_code,
+      client_secret: "pi_http_pix_mock_secret_test",
+      metadata: {
+        cart_id: request.cart_id,
+        session_id: "payses_http_pix_mock",
+      },
+      next_action: {
+        type: "pix_display_qr_code",
+        pix_display_qr_code: {
+          expires_at: 1782863999,
+          data: "00020126580014BR.GOV.BCB.PIX0136http_pix_copy_paste_test",
+          hosted_instructions_url: "https://payments.stripe.com/pix/http_mock",
+          image_url_png: "https://payments.stripe.com/pix/http_mock.png",
+        },
+      },
+      ...overrides,
+    })),
+  }
+}
+
 function wireScope(
   req: SessionCapableRequest,
   options: {
@@ -238,6 +272,7 @@ function wireScope(
     paymentAttemptModule?: unknown
     paymentAttemptModuleResolveError?: Error
     stripeCardInitiationLayer?: StripeCardInitiationLayer | null
+    stripePixInitiationLayer?: StripePixInitiationLayer | null
   } = {}
 ) {
   const remoteQuery = options.remoteQuery ?? createRemoteQueryResolver({})
@@ -247,6 +282,10 @@ function wireScope(
     options.stripeCardInitiationLayer === undefined
       ? createStripeCardInitiationLayerMock()
       : options.stripeCardInitiationLayer
+  const stripePixInitiationLayer =
+    options.stripePixInitiationLayer === undefined
+      ? createStripePixInitiationLayerMock()
+      : options.stripePixInitiationLayer
 
   req.scope.resolve = jest.fn((key: string) => {
     if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
@@ -263,6 +302,10 @@ function wireScope(
 
     if (key === STRIPE_CARD_INITIATION_LAYER) {
       return stripeCardInitiationLayer
+    }
+
+    if (key === STRIPE_PIX_INITIATION_LAYER) {
+      return stripePixInitiationLayer
     }
 
     return undefined
@@ -309,6 +352,57 @@ async function invokeCardPaymentRoute(req: SessionCapableRequest) {
   const res = createResponse()
   applyStoreCartPreOrderQueryConfig(req as never)
   await startCardPaymentAttemptRoute(req, res)
+  return res
+}
+
+function assertPixPaymentResponseBody(body: unknown) {
+  const serialized = JSON.stringify(body).toLowerCase()
+
+  for (const forbidden of FORBIDDEN_RESPONSE_SUBSTRINGS) {
+    expect(serialized).not.toContain(forbidden.toLowerCase())
+  }
+
+  expect(body).toEqual(
+    expect.objectContaining({
+      payment_attempt: expect.objectContaining({
+        payment_method_type: "pix",
+        copy_paste: expect.stringContaining("00020126"),
+        qr_code: expect.any(String),
+        expires_at: expect.any(String),
+      }),
+    })
+  )
+
+  const paymentAttempt = (body as { payment_attempt?: Record<string, unknown> })
+    .payment_attempt
+
+  expect(paymentAttempt).not.toHaveProperty("payment_session")
+  expect(paymentAttempt).not.toHaveProperty("data")
+  expect(paymentAttempt).not.toHaveProperty("next_action")
+
+  const allowedKeys = [
+    "amount",
+    "copy_paste",
+    "currency_code",
+    "expires_at",
+    "hosted_instructions_url",
+    "payment_attempt_id",
+    "payment_method_type",
+    "provider_payment_intent_id",
+    "qr_code",
+    "status",
+    "client_secret",
+  ]
+
+  for (const key of Object.keys(paymentAttempt ?? {})) {
+    expect(allowedKeys).toContain(key)
+  }
+}
+
+async function invokePixPaymentRoute(req: SessionCapableRequest) {
+  const res = createResponse()
+  applyStoreCartPreOrderQueryConfig(req as never)
+  await startPixPaymentAttemptRoute(req, res)
   return res
 }
 
@@ -566,6 +660,184 @@ describe("payment attempt store card contract", () => {
 
       expect(cardRoute).toBeDefined()
       expect(cardRoute?.methods ?? cardRoute?.method).toEqual(
+        expect.arrayContaining(["POST"])
+      )
+    })
+  })
+
+  describe("pix", () => {
+    it("POST /store/carts/:id/payment-attempts/pix inicia Pix em cart completo", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_01",
+          active_cart_id: cart.id,
+        },
+      })
+      wireScope(req, { remoteQuery })
+
+      const res = await invokePixPaymentRoute(req)
+
+      expect(res.statusCode).toBe(201)
+      assertPixPaymentResponseBody(res.jsonSpy.mock.calls[0][0])
+      const body = res.jsonSpy.mock.calls[0][0]
+      expect(body.payment_attempt.amount).toBe(9900)
+      expect(body.payment_attempt.currency_code).toBe("BRL")
+      expect(body.payment_attempt.status).toBe("awaiting_pix_payment")
+      expect(body.payment_attempt.expires_at).toBe(
+        new Date(1782863999 * 1000).toISOString()
+      )
+    })
+
+    it("falha fechada quando camada Stripe Pix nao esta configurada", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_01",
+          active_cart_id: cart.id,
+        },
+      })
+      const res = createResponse()
+      wireScope(req, {
+        remoteQuery,
+        stripePixInitiationLayer: null,
+      })
+      applyStoreCartPreOrderQueryConfig(req as never)
+
+      await expect(startPixPaymentAttemptRoute(req, res)).rejects.toThrow(
+        "Camada Stripe para Pix nao configurada."
+      )
+      expect(res.status).not.toHaveBeenCalledWith(201)
+      expect(res.json).not.toHaveBeenCalled()
+    })
+
+    it("falha fechada quando PaymentAttempt nao esta disponivel antes de chamar Stripe Pix", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const stripePixInitiationLayer = createStripePixInitiationLayerMock()
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_01",
+          active_cart_id: cart.id,
+        },
+      })
+      const res = createResponse()
+      wireScope(req, {
+        remoteQuery,
+        stripePixInitiationLayer,
+        paymentAttemptModuleResolveError: new Error(
+          "payment attempt missing pi_http_pix_mock_secret_test"
+        ),
+      })
+      applyStoreCartPreOrderQueryConfig(req as never)
+
+      await expect(startPixPaymentAttemptRoute(req, res)).rejects.toThrow(
+        "Falha ao consultar tentativas de pagamento."
+      )
+      expect(
+        stripePixInitiationLayer.createPixPaymentIntent
+      ).not.toHaveBeenCalled()
+      expect(res.status).not.toHaveBeenCalledWith(201)
+      expect(res.json).not.toHaveBeenCalled()
+    })
+
+    it("falha fechada quando PaymentAttempt nao pode ser persistido", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const paymentAttemptModule = createPaymentAttemptModuleMock()
+      paymentAttemptModule.createPaymentAttempts.mockRejectedValueOnce(
+        new Error("db failed pi_http_pix_mock_secret_test")
+      )
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_01",
+          active_cart_id: cart.id,
+        },
+      })
+      const res = createResponse()
+      wireScope(req, { remoteQuery, paymentAttemptModule })
+      applyStoreCartPreOrderQueryConfig(req as never)
+
+      await expect(startPixPaymentAttemptRoute(req, res)).rejects.toThrow(
+        "Falha ao registrar tentativa de pagamento."
+      )
+      expect(res.status).not.toHaveBeenCalledWith(201)
+      expect(res.json).not.toHaveBeenCalled()
+    })
+
+    it("rejeita cart incompleto", async () => {
+      const cart = buildCompleteGuestCart({
+        id: "cart_guest_01",
+        email: null,
+        total: 9900,
+      })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_01",
+          active_cart_id: cart.id,
+        },
+      })
+      wireScope(req, { remoteQuery })
+
+      await expect(invokePixPaymentRoute(req)).rejects.toThrow(MedusaError)
+    })
+
+    it("rejeita body com campos monetarios", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const req = createRequest({
+        params: { id: cart.id },
+        body: { currency_code: "USD" },
+        session: {
+          id: "sess_guest_01",
+          active_cart_id: cart.id,
+        },
+      })
+      wireScope(req, { remoteQuery })
+
+      await expect(invokePixPaymentRoute(req)).rejects.toThrow(
+        getPaymentStartRejectedBodyMessage()
+      )
+    })
+
+    it("nao retorna Order nem PaymentSession.data bruto", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_01",
+          active_cart_id: cart.id,
+        },
+      })
+      wireScope(req, { remoteQuery })
+
+      const res = await invokePixPaymentRoute(req)
+      const serialized = JSON.stringify(res.jsonSpy.mock.calls[0][0])
+
+      expect(serialized).not.toMatch(/completeCartWorkflow/)
+      expect(serialized).not.toContain("WebhookEventLog")
+      expect(serialized).not.toContain("CheckoutCompletionLog")
+      expect(serialized).not.toContain("purchase_completed")
+      expect(serialized).not.toContain("gelato")
+      expect(serialized).not.toContain("next_action")
+    })
+
+    it("registra middleware Store API para rota pix", () => {
+      const pixRoute = defaultMiddlewares.routes.find(
+        (route) => route.matcher === "/store/carts/:id/payment-attempts/pix"
+      )
+
+      expect(pixRoute).toBeDefined()
+      expect(pixRoute?.methods ?? pixRoute?.method).toEqual(
         expect.arrayContaining(["POST"])
       )
     })

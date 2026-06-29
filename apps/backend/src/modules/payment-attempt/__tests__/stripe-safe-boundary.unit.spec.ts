@@ -1,7 +1,9 @@
 import {
   assertPaymentSessionDataIsAllowlisted,
   assertPersistableHasNoSecrets,
+  extractImmediatePixInstructions,
   splitStripeCardPaymentIntent,
+  splitStripePixPaymentIntent,
   toSafeStripePaymentSessionData,
   type SafeStripePaymentData,
 } from "../stripe-safe"
@@ -46,6 +48,40 @@ function mockRawStripeCardPaymentIntent(
     last_payment_error: {
       message: "Your card was declined.",
       payment_method: { id: "pm_declined" },
+    },
+    ...overrides,
+  }
+}
+
+/** Mock Stripe PaymentIntent Pix — valores sintéticos, nunca payload Pix real de produção. */
+function mockRawStripePixPaymentIntent(
+  overrides: Record<string, unknown> = {}
+) {
+  return {
+    id: "pi_pix_boundary_mock",
+    object: "payment_intent",
+    status: "requires_action",
+    amount: 9900,
+    currency: "brl",
+    client_secret: "pi_pix_boundary_mock_secret_synthetic",
+    metadata: {
+      cart_id: "cart_mock_01",
+      session_id: "payses_pix_mock_01",
+      note: "safe metadata value",
+    },
+    next_action: {
+      type: "pix_display_qr_code",
+      pix_display_qr_code: {
+        expires_at: 1782863999,
+        data: "00020126580014BR.GOV.BCB.PIX0136mock_pix_copy_paste_synthetic",
+        hosted_instructions_url: "https://payments.stripe.com/pix/mock",
+        image_url_png: "https://payments.stripe.com/pix/mock.png",
+        image_url_svg: "https://payments.stripe.com/pix/mock.svg",
+      },
+    },
+    payment_method: {
+      id: "pm_pix_mock",
+      type: "pix",
     },
     ...overrides,
   }
@@ -242,6 +278,122 @@ describe("04-04 stripe safe boundary", () => {
           "status",
         ].sort()
       )
+    })
+  })
+})
+
+describe("04-05 stripe safe boundary pix", () => {
+  describe("splitStripePixPaymentIntent", () => {
+    it("separa persistivel allowlist-only de DTO imediato com instrucoes Pix", () => {
+      const raw = mockRawStripePixPaymentIntent()
+      const result = splitStripePixPaymentIntent(raw)
+
+      expect(result.immediate.copy_paste).toBe(
+        "00020126580014BR.GOV.BCB.PIX0136mock_pix_copy_paste_synthetic"
+      )
+      expect(result.immediate.qr_code).toBe(
+        "https://payments.stripe.com/pix/mock.png"
+      )
+      expect(result.immediate.hosted_instructions_url).toBe(
+        "https://payments.stripe.com/pix/mock"
+      )
+      expect(result.persistable.provider_payment_intent_id).toBe(
+        "pi_pix_boundary_mock"
+      )
+      expect(result.persistable.amount).toBe(9900)
+      expect(result.persistable.currency_code).toBe("brl")
+      expect(result.persistable.status).toBe("requires_action")
+      expect(result.persistable.expires_at).toBe(
+        new Date(1782863999 * 1000).toISOString()
+      )
+    })
+
+    it("persistivel nao contem next_action, copy_paste, pix_display_qr_code ou client_secret", () => {
+      const raw = mockRawStripePixPaymentIntent()
+      const { persistable } = splitStripePixPaymentIntent(raw)
+      const keys = collectAllKeys(persistable)
+
+      for (const forbidden of FORBIDDEN_PERSISTABLE_KEYS) {
+        expect(keys.has(forbidden)).toBe(false)
+      }
+
+      expect(JSON.stringify(persistable)).not.toMatch(/_secret_/)
+      expect(JSON.stringify(persistable)).not.toContain("00020126")
+      expect(JSON.stringify(persistable)).not.toContain("pix_display_qr_code")
+      expect(JSON.stringify(persistable)).not.toContain("hosted_instructions_url")
+    })
+
+    it("immediate pode conter client_secret mas persistivel nunca", () => {
+      const raw = mockRawStripePixPaymentIntent()
+      const { immediate, persistable } = splitStripePixPaymentIntent(raw)
+
+      expect(immediate.client_secret).toBe(
+        "pi_pix_boundary_mock_secret_synthetic"
+      )
+      expect(JSON.stringify(persistable)).not.toContain("client_secret")
+    })
+
+    it("PaymentSession.data derivado e allowlist-only para Pix", () => {
+      const raw = mockRawStripePixPaymentIntent()
+      const { persistable, paymentSessionData } = splitStripePixPaymentIntent(raw)
+
+      expect(paymentSessionData).toEqual(toSafeStripePaymentSessionData(persistable))
+      expect(paymentSessionData).toHaveProperty("expires_at")
+
+      const keys = collectAllKeys(paymentSessionData)
+      for (const forbidden of FORBIDDEN_PERSISTABLE_KEYS) {
+        expect(keys.has(forbidden)).toBe(false)
+      }
+    })
+
+    it("falha se expires_at ausente no payload Pix", () => {
+      const raw = mockRawStripePixPaymentIntent({
+        next_action: {
+          type: "pix_display_qr_code",
+          pix_display_qr_code: {
+            data: "00020126580014BR.GOV.BCB.PIX0136mock",
+          },
+        },
+      })
+
+      expect(() => splitStripePixPaymentIntent(raw)).toThrow(
+        "STRIPE_SAFE_RAW_PIX_EXPIRES_AT_MISSING"
+      )
+    })
+  })
+
+  describe("extractImmediatePixInstructions", () => {
+    it("extrai qr_code, copy_paste e hosted_instructions_url response-only", () => {
+      const raw = mockRawStripePixPaymentIntent()
+      const immediate = extractImmediatePixInstructions(raw)
+
+      expect(immediate.copy_paste).toContain("00020126")
+      expect(immediate.qr_code).toBe("https://payments.stripe.com/pix/mock.png")
+      expect(immediate.hosted_instructions_url).toBe(
+        "https://payments.stripe.com/pix/mock"
+      )
+    })
+  })
+
+  describe("assertPersistableHasNoSecrets pix", () => {
+    it("rejeita copy_paste no shape persistivel", () => {
+      expect(() =>
+        assertPersistableHasNoSecrets({
+          provider_payment_intent_id: "pi_x",
+          copy_paste: "00020126580014BR.GOV.BCB.PIX",
+        })
+      ).toThrow("STRIPE_SAFE_PERSISTABLE_FORBIDDEN_KEY")
+    })
+
+    it("rejeita pix_display_qr_code.data no shape persistivel", () => {
+      expect(() =>
+        assertPersistableHasNoSecrets({
+          provider_payment_intent_id: "pi_x",
+          pix_display_qr_code: {
+            data: "00020126580014BR.GOV.BCB.PIX",
+          },
+        })
+      ).toThrow("STRIPE_SAFE_PERSISTABLE_FORBIDDEN_KEY")
     })
   })
 })

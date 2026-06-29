@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 04
 current_phase_name: stripe-payments-payment-attempt
-status: phase-04-replanned-awaiting-review
-stopped_at: Plans 04-04/04-05 replanned for safe Stripe boundary; execution still blocked for human review
-last_updated: "2026-06-29T19:00:00.000Z"
+status: phase-04-awaiting-04-06-review
+stopped_at: Plan 04-05 complete; manual review gate before 04-06
+last_updated: "2026-06-29T20:30:00.000Z"
 last_activity: 2026-06-29
-last_activity_desc: payment_session_id nullable blocker resolved by aligning PaymentAttempt model/types/helpers with migration draft; no runtime execution performed
+last_activity_desc: Plan 04-05 Pix initiation via safe Stripe boundary complete; 5/6 Phase 04 plans executed; migration and Stripe real config still blocked
 progress:
   total_phases: 12
   completed_phases: 3
   total_plans: 28
-  completed_plans: 20
-  percent: 30
+  completed_plans: 22
+  percent: 32
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 04 — Stripe Payments & PaymentAttempt (in progress; 04-01, 04-02, 04-03 complete)
+**Current focus:** Phase 04 — Stripe Payments & PaymentAttempt (pre-Order; in progress; 04-01..04-05 complete)
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Plans 04-04/04-05 were replanned to require a safe Stripe boundary (`custom_provider`, `stripe_layer`, or `filtering_wrapper`) before any card/Pix runtime execution. Plan 04-02 migration draft (`TBD-payment-attempt.ts`) remains blocked before any `db:migrate`; the `payment_session_id` nullable model vs migration blocker is resolved by `PAYMENT_SESSION_ID_NULLABLE_DECISION=model_and_migration_nullable`. Plan 04-03 is complete and is the shared eligibility gate for card/Pix.
+**Current gate:** Plans 04-04 (card) and 04-05 (Pix) executed via safe Stripe boundary (`filtering_wrapper` + `stripe_safe_layer`); no native-first Medusa Stripe. Plan 04-02 migration draft (`TBD-payment-attempt.ts`) remains blocked before any `db:migrate`. Stripe real API key, provider registration, and webhook config remain pending human setup. Next permitted execution slice: **04-06** (after manual review). Phase 04 scope remains pre-Order — no Order, webhook, `purchase_completed`, or Gelato.
 
 **Branch policy:**
 
@@ -51,18 +51,18 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 04 (stripe-payments-payment-attempt) — in progress
-Plan: 3/6 Phase 04 plans executed (04-01, 04-02, 04-03)
-Status: Replanned; manual review required before executing 04-04/04-05
-Last activity: 2026-06-29 - Plans 04-04/04-05 replanned for safe Stripe boundary; no runtime execution
+Phase: 04 (stripe-payments-payment-attempt) — in progress (pre-Order)
+Plan: 5/6 Phase 04 plans executed (04-01, 04-02, 04-03, 04-04, 04-05)
+Status: 04-05 complete; manual review required before 04-06
+Last activity: 2026-06-29 - Pix initiation via safe Stripe boundary; migration and Stripe real config still blocked
 
-Progress: [███-------] 30%
+Progress: [███-------] 32%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 17
+- Total plans completed: 22
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -73,7 +73,7 @@ Progress: [███-------] 30%
 | 01. Foundation & Observability | 7 | Complete | — |
 | 02. Catalog & Media | 5 executed / 5 planned | Complete | — |
 | 03. Cart & Checkout (pre-Order) | 5 executed / 5 planned | Complete | — |
-| 04. Stripe Payments & PaymentAttempt | 3 executed / 6 planned | In progress | — |
+| 04. Stripe Payments & PaymentAttempt | 5 executed / 6 planned | In progress (pre-Order) | — |
 
 **Recent Trend:**
 
@@ -116,9 +116,11 @@ Recent decisions affecting current work:
 - [Phase 03 planning]: Plan checker passed with no blockers or warnings. CART-01, CART-02, CART-03, CART-04 and decisions D-01..D-33 are covered; execution remains blocked behind human review.
 - [Phase 03 execution]: Plans 03-01..03-05 implemented and verified — 64 tests green (40 unit + 24 integration HTTP), negative grep clean, build green with `ADMIN_DISABLED=true`.
 - [Phase 03 closure]: `03-CLOSURE.md` records CART-01..CART-04 complete; `checkout_data_complete` derived only; `federal_tax_id` in shipping metadata with public mask; guest attach session-backed; no Order/PaymentAttempt/PaymentSession/webhook/Stripe/Pix/Gelato; Phase 04 not started.
-- [Phase 04 execution]: Plans 04-01 (Stripe provider gate), 04-02 (PaymentAttempt module), and 04-03 (payment-start eligibility) complete on branch `gsd/phase-04-stripe-payments-payment-attempt`. Migration draft not applied; 04-04/04-05 blocked per gate flags.
-- [Phase 04 replan]: Plans 04-04 and 04-05 revised after 04-01 proved native-first pure unsafe. Future card/Pix execution must first prove a safe Stripe boundary via custom provider, own Stripe layer, or filtering wrapper; `PaymentSession.data` may be used only if allowlist-only. `client_secret`, QR/copia-e-cola, `next_action` and raw Stripe payloads are response-only when needed and never persisted.
-- [Phase 04 pre-execution alignment]: `PAYMENT_SESSION_ID_NULLABLE_DECISION=model_and_migration_nullable`; `PaymentAttempt.payment_session_id` is nullable/opcional in model, types, and helpers to allow local `created` attempts before provider session association. Migration draft remains not applied; no 04-04/04-05 runtime execution performed.
+- [Phase 04 execution]: Plans 04-01..04-05 complete on branch `gsd/phase-04-stripe-payments-payment-attempt`. Card (04-04) and Pix (04-05) use `filtering_wrapper` + injectable Stripe layers; no native-first Medusa Stripe. Migration draft not applied; Stripe real/config still pending.
+- [Phase 04 replan]: Plans 04-04 and 04-05 revised after 04-01 proved native-first pure unsafe. Card/Pix execution proved safe boundary via custom layer + allowlist-only persistence; `PaymentSession.data` allowlist-only when used. `client_secret`, QR/copia-e-cola, `next_action` and raw Stripe payloads are response-only and never persisted.
+- [Phase 04 pre-execution alignment]: `PAYMENT_SESSION_ID_NULLABLE_DECISION=model_and_migration_nullable`; `PaymentAttempt.payment_session_id` is nullable/opcional in model, types, and helpers to allow local `created` attempts before provider session association. Migration draft remains not applied.
+- [Plan 04-04]: Card initiation pre-Order via `STRIPE_CARD_INITIATION_LAYER`; `client_secret` response-only; fail-closed without audit trail.
+- [Plan 04-05]: Pix initiation pre-Order via `STRIPE_PIX_INITIATION_LAYER`; QR/copia-e-cola/`expires_at` response-only for instructions, `expires_at` persisted; local states `awaiting_pix_payment`, `pix_expired`, `payment_failed`, `payment_canceled` never create Order.
 
 ### Pending Todos
 
@@ -131,7 +133,7 @@ None yet.
 [Issues that affect future work]
 
 - [Roadmap]: REQUIREMENTS.md summary previously stated "44 total"; the v1 list actually contains 45 distinct REQ-IDs. Count corrected to 45 during roadmap creation.
-- [Phase 4/5]: MEDIUM confidence on whether Medusa's bundled Stripe provider fully supports Pix's async lifecycle vs needing a custom provider — flag for planning spike.
+- [Phase 4/5]: MEDIUM confidence on whether Medusa's bundled Stripe provider fully supports Pix's async lifecycle vs needing a custom provider — **resolved for Phase 04 execution**: native-first blocked (04-01); Pix uses safe layer (04-05). Stripe real API key, Dashboard Pix enablement, and provider registration remain pending human setup.
 - [Phase 9]: Gelato has no official Medusa provider/SDK; draft→confirm pattern and webhook signature scheme need API-level verification during planning.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
@@ -145,10 +147,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-29T19:00:00.000Z
-Stopped at: 04-04/04-05 replanned; `payment_session_id` nullable blocker resolved; manual review gate before any card/Pix runtime execution
-Resume file: `.planning/phases/04-stripe-payments-payment-attempt/04-04-PLAN.md` (replanned, blocked pending review)
-Next permitted step: human review of revised 04-04/04-05 plans, `04-VALIDATION.md`, and the 04-02 migration draft
+Last session: 2026-06-29T20:30:00.000Z
+Stopped at: Plan 04-05 complete; manual review gate before 04-06
+Resume file: `.planning/phases/04-stripe-payments-payment-attempt/04-06-PLAN.md` (not started; blocked pending review)
+Next permitted step: human review of `04-05-SUMMARY.md`, migration draft 04-02, and Stripe real/config setup decision; then 04-06 execution
 
 ## Quick Tasks Completed
 

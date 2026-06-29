@@ -14,11 +14,24 @@ export type SafeStripeImmediateCardAction = {
   client_secret: string
 }
 
+export type SafeStripeImmediatePixAction = {
+  qr_code: string
+  copy_paste: string
+  hosted_instructions_url: string | null
+  client_secret?: string
+}
+
 export type StripePaymentIntentLike = Record<string, unknown>
 
 export type SplitStripeCardPaymentIntentResult = {
   persistable: SafeStripePaymentData
   immediate: SafeStripeImmediateCardAction
+  paymentSessionData: Record<string, unknown>
+}
+
+export type SplitStripePixPaymentIntentResult = {
+  persistable: SafeStripePaymentData
+  immediate: SafeStripeImmediatePixAction
   paymentSessionData: Record<string, unknown>
 }
 
@@ -32,6 +45,7 @@ const FORBIDDEN_PERSISTABLE_KEYS = new Set([
   "payment_method_options",
   "automatic_payment_methods",
   "pix_display_qr_code",
+  "copy_paste",
   "hosted_instructions_url",
   "image_url_png",
   "image_url_svg",
@@ -258,6 +272,139 @@ export function splitStripeCardPaymentIntent(
     client_secret: clientSecret,
   }
 
+  const paymentSessionData = toSafeStripePaymentSessionData(persistable)
+
+  return {
+    persistable,
+    immediate,
+    paymentSessionData,
+  }
+}
+
+function parseExpiresAt(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    const millis = value > 1_000_000_000_000 ? value : value * 1000
+    return new Date(millis).toISOString()
+  }
+
+  const isoCandidate = asNonEmptyString(value)
+
+  if (isoCandidate) {
+    const parsed = new Date(isoCandidate)
+
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString()
+    }
+  }
+
+  return null
+}
+
+function extractPixDisplayQrCode(
+  raw: StripePaymentIntentLike
+): Record<string, unknown> | null {
+  const nextAction = raw.next_action
+
+  if (!nextAction || typeof nextAction !== "object" || Array.isArray(nextAction)) {
+    return null
+  }
+
+  const pixDisplay = (nextAction as Record<string, unknown>).pix_display_qr_code
+
+  if (!pixDisplay || typeof pixDisplay !== "object" || Array.isArray(pixDisplay)) {
+    return null
+  }
+
+  return pixDisplay as Record<string, unknown>
+}
+
+export function extractImmediatePixInstructions(
+  raw: StripePaymentIntentLike
+): SafeStripeImmediatePixAction {
+  const pixDisplay = extractPixDisplayQrCode(raw)
+  const copyPaste =
+    asNonEmptyString(pixDisplay?.data) ??
+    asNonEmptyString(raw.copy_paste) ??
+    asNonEmptyString((raw.pix_display_qr_code as Record<string, unknown> | undefined)?.data)
+
+  if (!copyPaste) {
+    throw new Error("STRIPE_SAFE_RAW_PIX_COPY_PASTE_MISSING")
+  }
+
+  const hostedInstructionsUrl =
+    asNonEmptyString(pixDisplay?.hosted_instructions_url) ??
+    asNonEmptyString(
+      (raw.pix_display_qr_code as Record<string, unknown> | undefined)
+        ?.hosted_instructions_url
+    )
+
+  const imageUrlPng = asNonEmptyString(pixDisplay?.image_url_png)
+  const imageUrlSvg = asNonEmptyString(pixDisplay?.image_url_svg)
+  const qrCode = imageUrlPng ?? imageUrlSvg ?? copyPaste
+
+  const immediate: SafeStripeImmediatePixAction = {
+    qr_code: qrCode,
+    copy_paste: copyPaste,
+    hosted_instructions_url: hostedInstructionsUrl,
+  }
+
+  const clientSecret = asNonEmptyString(raw.client_secret)
+
+  if (clientSecret) {
+    immediate.client_secret = clientSecret
+  }
+
+  return immediate
+}
+
+export function splitStripePixPaymentIntent(
+  raw: StripePaymentIntentLike
+): SplitStripePixPaymentIntentResult {
+  const providerPaymentIntentId = asNonEmptyString(raw.id)
+  const amount = asPositiveInteger(raw.amount)
+  const currency = asNonEmptyString(raw.currency)?.toLowerCase()
+  const status = asNonEmptyString(raw.status)
+
+  if (!providerPaymentIntentId || amount === null || !currency || !status) {
+    throw new Error("STRIPE_SAFE_RAW_PAYMENT_INTENT_INVALID")
+  }
+
+  const pixDisplay = extractPixDisplayQrCode(raw)
+  const expiresAt =
+    parseExpiresAt(pixDisplay?.expires_at) ??
+    parseExpiresAt(
+      (raw.pix_display_qr_code as Record<string, unknown> | undefined)?.expires_at
+    ) ??
+    parseExpiresAt(raw.expires_at)
+
+  if (!expiresAt) {
+    throw new Error("STRIPE_SAFE_RAW_PIX_EXPIRES_AT_MISSING")
+  }
+
+  const metadata = sanitizeStripeMetadata(raw.metadata)
+
+  if (metadata) {
+    assertNoSensitivePaymentAttemptMetadata(metadata)
+  }
+
+  const providerPaymentSessionId =
+    asNonEmptyString(
+      (raw.metadata as Record<string, unknown> | undefined)?.session_id
+    ) ?? null
+
+  const persistable: SafeStripePaymentData = {
+    provider_payment_intent_id: providerPaymentIntentId,
+    provider_payment_session_id: providerPaymentSessionId,
+    amount,
+    currency_code: currency,
+    status,
+    expires_at: expiresAt,
+    metadata,
+  }
+
+  assertPersistableHasNoSecrets(persistable)
+
+  const immediate = extractImmediatePixInstructions(raw)
   const paymentSessionData = toSafeStripePaymentSessionData(persistable)
 
   return {
