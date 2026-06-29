@@ -170,16 +170,16 @@ Plans:
   3. Every payment try (card or Pix, including retries) is recorded as an auditable PaymentAttempt per cart.
   4. A pending, expired, cancelled, or failed Pix results in no Order and marks the PaymentAttempt accordingly.
 
-**Plans**: 6/6 planned; 0/6 executed
+**Plans**: 2/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md - Spike/gate de provider Stripe Medusa, `PaymentSession.data`, Pix e `client_secret`
+- [x] 04-01-PLAN.md - Spike/gate de provider Stripe Medusa, `PaymentSession.data`, Pix e `client_secret`
 
 **Wave 2** *(blocked on Wave 1 manual gate)*
 
-- [ ] 04-02-PLAN.md - Modelo/contrato de `PaymentAttempt`, schema/migration planejada e uma tentativa ativa por cart
+- [x] 04-02-PLAN.md - Modelo/contrato de `PaymentAttempt`, schema/migration planejada e uma tentativa ativa por cart
 - [ ] 04-03-PLAN.md - Eligibility para iniciar pagamento com amount/currency derivados server-side
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -324,7 +324,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Foundation & Observability | 7/7 | Complete | 2026-06-26 |
 | 2. Catalog & Media | 5/5 | Complete | 2026-06-27 |
 | 3. Cart & Checkout (pre-Order) | 5/5 | Complete | 2026-06-27 |
-| 4. Stripe Payments & PaymentAttempt | 0/6 planned | Planned; execution blocked | - |
+| 4. Stripe Payments & PaymentAttempt | 2/6 | In Progress|  |
 | 5. Stripe Webhook Ingestion & Idempotency | 0/TBD | Not started | - |
 | 6. Idempotent Webhook-Driven Order Creation | 0/TBD | Not started | - |
 | 7. Analytics Outbox (purchase_completed) | 0/TBD | Not started | - |
