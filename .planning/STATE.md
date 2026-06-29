@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: stripe-payments-payment-attempt
 status: phase-04-in-progress
-stopped_at: Plan 04-02 complete; migration draft awaiting human review before db:migrate
-last_updated: "2026-06-29T17:50:00.000Z"
+stopped_at: Plan 04-03 complete; migration draft + provider gate awaiting human review before 04-04/04-05
+last_updated: "2026-06-29T18:10:00.000Z"
 last_activity: 2026-06-29
-last_activity_desc: Plans 04-01 and 04-02 executed; PaymentAttempt module delivered; migration not applied
+last_activity_desc: Plan 04-03 payment-start eligibility complete; helpers + validators tested; 04-04/04-05 still blocked
 progress:
   total_phases: 12
   completed_phases: 3
   total_plans: 28
-  completed_plans: 19
-  percent: 29
+  completed_plans: 20
+  percent: 30
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 04 — Stripe Payments & PaymentAttempt (in progress; 04-01 and 04-02 complete)
+**Current focus:** Phase 04 — Stripe Payments & PaymentAttempt (in progress; 04-01, 04-02, 04-03 complete)
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Plan 04-02 migration draft (`TBD-payment-attempt.ts`) requires human review before any `db:migrate`. Plans 04-04/04-05 remain blocked per 04-01 gate flags until provider strategy is replanned. Next permitted execution: 04-03 after review.
+**Current gate:** Plan 04-02 migration draft (`TBD-payment-attempt.ts`) requires human review before any `db:migrate`. Plans 04-04/04-05 remain blocked per 04-01 gate flags until provider strategy is replanned. Plan 04-03 complete — stop for manual review before 04-04.
 
 **Branch policy:**
 
@@ -52,11 +52,11 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 ## Current Position
 
 Phase: 04 (stripe-payments-payment-attempt) — in progress
-Plan: 2/6 Phase 04 plans executed (04-01, 04-02)
-Status: In progress; migration draft pending human approval
-Last activity: 2026-06-29 - Plan 04-02 PaymentAttempt module + state machine complete
+Plan: 3/6 Phase 04 plans executed (04-01, 04-02, 04-03)
+Status: In progress; migration draft + provider gate pending human approval
+Last activity: 2026-06-29 - Plan 04-03 payment-start eligibility complete
 
-Progress: [███-------] 29%
+Progress: [███-------] 30%
 
 ## Performance Metrics
 
@@ -73,7 +73,7 @@ Progress: [███-------] 29%
 | 01. Foundation & Observability | 7 | Complete | — |
 | 02. Catalog & Media | 5 executed / 5 planned | Complete | — |
 | 03. Cart & Checkout (pre-Order) | 5 executed / 5 planned | Complete | — |
-| 04. Stripe Payments & PaymentAttempt | 2 executed / 6 planned | In progress | — |
+| 04. Stripe Payments & PaymentAttempt | 3 executed / 6 planned | In progress | — |
 
 **Recent Trend:**
 
@@ -116,7 +116,7 @@ Recent decisions affecting current work:
 - [Phase 03 planning]: Plan checker passed with no blockers or warnings. CART-01, CART-02, CART-03, CART-04 and decisions D-01..D-33 are covered; execution remains blocked behind human review.
 - [Phase 03 execution]: Plans 03-01..03-05 implemented and verified — 64 tests green (40 unit + 24 integration HTTP), negative grep clean, build green with `ADMIN_DISABLED=true`.
 - [Phase 03 closure]: `03-CLOSURE.md` records CART-01..CART-04 complete; `checkout_data_complete` derived only; `federal_tax_id` in shipping metadata with public mask; guest attach session-backed; no Order/PaymentAttempt/PaymentSession/webhook/Stripe/Pix/Gelato; Phase 04 not started.
-- [Phase 04 execution]: Plans 04-01 (Stripe provider gate) and 04-02 (PaymentAttempt module) complete on branch `gsd/phase-04-stripe-payments-payment-attempt`. Migration draft not applied; 04-04/04-05 blocked per gate flags.
+- [Phase 04 execution]: Plans 04-01 (Stripe provider gate), 04-02 (PaymentAttempt module), and 04-03 (payment-start eligibility) complete on branch `gsd/phase-04-stripe-payments-payment-attempt`. Migration draft not applied; 04-04/04-05 blocked per gate flags.
 
 ### Pending Todos
 
@@ -143,10 +143,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-29T17:50:00.000Z
-Stopped at: Plan 04-02 complete; migration draft awaiting human review
-Resume file: `.planning/phases/04-stripe-payments-payment-attempt/04-03-PLAN.md`
-Next permitted step: human review of migration draft; then 04-03 payment-start eligibility
+Last session: 2026-06-29T18:10:00.000Z
+Stopped at: Plan 04-03 complete; manual review gate before 04-04/04-05
+Resume file: `.planning/phases/04-stripe-payments-payment-attempt/04-04-PLAN.md` (blocked)
+Next permitted step: human review of 04-03-SUMMARY.md, migration draft, and provider gate flags from 04-01
 
 ## Quick Tasks Completed
 
