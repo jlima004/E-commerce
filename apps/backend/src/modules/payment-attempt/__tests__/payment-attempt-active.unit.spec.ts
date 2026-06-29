@@ -146,6 +146,16 @@ describe("buildNewPaymentAttemptRecord", () => {
     const attempt = buildNewPaymentAttemptRecord(BASE_INPUT, "payatt_new")
     expect(attempt.order_id).toBeNull()
   })
+
+  it("permite tentativa created antes de associar payment_session_id", () => {
+    const input = { ...BASE_INPUT }
+    delete input.payment_session_id
+
+    const attempt = buildNewPaymentAttemptRecord(input, "payatt_new")
+
+    expect(attempt.status).toBe("created")
+    expect(attempt.payment_session_id).toBeNull()
+  })
 })
 
 describe("invalidateActiveAttemptsForCartChange", () => {

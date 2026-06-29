@@ -6,7 +6,7 @@ const PaymentAttempt = model
     id: model.id({ prefix: "payatt" }).primaryKey(),
     cart_id: model.text(),
     payment_collection_id: model.text(),
-    payment_session_id: model.text(),
+    payment_session_id: model.text().nullable(),
     provider: model.text(),
     provider_payment_intent_id: model.text().nullable(),
     provider_payment_session_id: model.text().nullable(),

@@ -44,6 +44,7 @@ key-decisions:
   - "Uma tentativa ativa por cart via helper + partial unique index planejado na migration"
   - "currency_code persistido em minúsculas (brl); migration usa check (currency_code = 'brl') alinhado ao service"
   - "payment_session_id nullable na migration — status created pode existir antes da sessão provider; preenchido na transição para provider_session_created"
+  - "PAYMENT_SESSION_ID_NULLABLE_DECISION=model_and_migration_nullable — model/types/helpers alinhados à migration nullable"
 
 patterns-established:
   - "assertNoSensitivePaymentAttemptMetadata bloqueia client_secret, QR/copia-e-cola integral, CPF/CNPJ e endereco em metadata"
@@ -100,6 +101,14 @@ A migration inclui:
 **PAY-04:** endereçado por esta plan (base do módulo), mas não concluído — rotas card/Pix e provas finais da Phase 04 ainda pendentes.
 
 **Não executar** `medusa db:migrate` ou `medusa db:generate` em produção até revisão explícita.
+
+## Post-Review Decision
+
+```
+PAYMENT_SESSION_ID_NULLABLE_DECISION=model_and_migration_nullable
+```
+
+Decisão humana aplicada antes de 04-04: `payment_session_id` é nullable/opcional no model, types e helpers para permitir uma tentativa local auditável em status `created` antes da criação ou associação da sessão provider.
 
 ## Verificações
 

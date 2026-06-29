@@ -73,7 +73,7 @@ export function buildNewPaymentAttemptRecord(
     id,
     cart_id: input.cart_id,
     payment_collection_id: input.payment_collection_id,
-    payment_session_id: input.payment_session_id,
+    payment_session_id: input.payment_session_id ?? null,
     provider: input.provider,
     provider_payment_intent_id: input.provider_payment_intent_id ?? null,
     provider_payment_session_id: input.provider_payment_session_id ?? null,

@@ -52,7 +52,7 @@ export type PaymentAttemptRecord = {
   id: string
   cart_id: string
   payment_collection_id: string
-  payment_session_id: string
+  payment_session_id: string | null
   provider: string
   provider_payment_intent_id: string | null
   provider_payment_session_id: string | null
@@ -78,7 +78,7 @@ export type PaymentAttemptRecord = {
 export type CreatePaymentAttemptInput = {
   cart_id: string
   payment_collection_id: string
-  payment_session_id: string
+  payment_session_id?: string | null
   provider: string
   provider_payment_intent_id?: string | null
   provider_payment_session_id?: string | null
