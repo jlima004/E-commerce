@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 04
 current_phase_name: stripe-payments-payment-attempt
-status: phase-04-awaiting-04-06-review
-stopped_at: Plan 04-05 complete; manual review gate before 04-06
-last_updated: "2026-06-29T20:30:00.000Z"
+status: phase-04-closed-manual-gate-before-phase-05
+stopped_at: Phase 04 closure complete; human review required before Phase 05
+last_updated: "2026-06-29T20:47:00.000Z"
 last_activity: 2026-06-29
-last_activity_desc: Plan 04-05 Pix initiation via safe Stripe boundary complete; 5/6 Phase 04 plans executed; migration and Stripe real config still blocked
+last_activity_desc: Phase 04 documentary closure complete; pre-Order card/Pix PaymentAttempt scope validated; migration and Stripe real config still blocked
 progress:
   total_phases: 12
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 28
-  completed_plans: 22
-  percent: 32
+  completed_plans: 23
+  percent: 33
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 04 — Stripe Payments & PaymentAttempt (pre-Order; in progress; 04-01..04-05 complete)
+**Current focus:** Phase 04 — Stripe Payments & PaymentAttempt is closed at the manual gate; Phase 05 is not started.
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Plans 04-04 (card) and 04-05 (Pix) executed via safe Stripe boundary (`filtering_wrapper` + `stripe_safe_layer`); no native-first Medusa Stripe. Plan 04-02 migration draft (`TBD-payment-attempt.ts`) remains blocked before any `db:migrate`. Stripe real API key, provider registration, and webhook config remain pending human setup. Next permitted execution slice: **04-06** (after manual review). Phase 04 scope remains pre-Order — no Order, webhook, `purchase_completed`, or Gelato.
+**Current gate:** Phase 04 is documentally closed. Card and Pix were implemented through a safe Stripe boundary (`filtering_wrapper` + `stripe_safe_layer`), not native-first Medusa Stripe. Plan 04-02 migration draft (`TBD-payment-attempt.ts`) remains blocked before any `db:migrate`. Stripe real card/Pix, provider/layer registration, API keys, Dashboard Pix enablement, webhook secrets, and deployment config remain pending human setup. Phase 05 may begin only after human approval. Phase 04 scope remains pre-Order — no Order, webhook, `purchase_completed`, or Gelato.
 
 **Branch policy:**
 
@@ -51,18 +51,18 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 04 (stripe-payments-payment-attempt) — in progress (pre-Order)
-Plan: 5/6 Phase 04 plans executed (04-01, 04-02, 04-03, 04-04, 04-05)
-Status: 04-05 complete; manual review required before 04-06
-Last activity: 2026-06-29 - Pix initiation via safe Stripe boundary; migration and Stripe real config still blocked
+Phase: 04 (stripe-payments-payment-attempt) — complete (pre-Order)
+Plan: 6/6 Phase 04 plans executed and closed (04-01..04-06)
+Status: Phase 04 closure complete; manual review required before Phase 05
+Last activity: 2026-06-29 - Phase 04 closure documented; migration and Stripe real config still blocked
 
-Progress: [███-------] 32%
+Progress: [███-------] 33%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 22
+- Total plans completed: 23
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -73,7 +73,7 @@ Progress: [███-------] 32%
 | 01. Foundation & Observability | 7 | Complete | — |
 | 02. Catalog & Media | 5 executed / 5 planned | Complete | — |
 | 03. Cart & Checkout (pre-Order) | 5 executed / 5 planned | Complete | — |
-| 04. Stripe Payments & PaymentAttempt | 5 executed / 6 planned | In progress (pre-Order) | — |
+| 04. Stripe Payments & PaymentAttempt | 6 executed / 6 planned | Complete (pre-Order; production activation blocked) | — |
 
 **Recent Trend:**
 
@@ -121,6 +121,8 @@ Recent decisions affecting current work:
 - [Phase 04 pre-execution alignment]: `PAYMENT_SESSION_ID_NULLABLE_DECISION=model_and_migration_nullable`; `PaymentAttempt.payment_session_id` is nullable/opcional in model, types, and helpers to allow local `created` attempts before provider session association. Migration draft remains not applied.
 - [Plan 04-04]: Card initiation pre-Order via `STRIPE_CARD_INITIATION_LAYER`; `client_secret` response-only; fail-closed without audit trail.
 - [Plan 04-05]: Pix initiation pre-Order via `STRIPE_PIX_INITIATION_LAYER`; QR/copia-e-cola/`expires_at` response-only for instructions, `expires_at` persisted; local states `awaiting_pix_payment`, `pix_expired`, `payment_failed`, `payment_canceled` never create Order.
+- [Plan 04-06]: Cart mutation invalidates active PaymentAttempt via safe fingerprint; retry/supersede leaves one active attempt; final negative proofs confirm no Order, webhook, completion, `purchase_completed`, Gelato, or persisted Stripe secrets/QR/`next_action`.
+- [Phase 04 closure]: Phase 04 is complete as money-path pre-Order implementation/test scope. PAY-01..PAY-04 are recorded as implementation complete with production activation blocked until `TBD-payment-attempt.ts` is approved/applied and real Stripe card/Pix layers/config are provided. Phase 05 remains not started behind human approval.
 
 ### Pending Todos
 
@@ -133,7 +135,7 @@ None yet.
 [Issues that affect future work]
 
 - [Roadmap]: REQUIREMENTS.md summary previously stated "44 total"; the v1 list actually contains 45 distinct REQ-IDs. Count corrected to 45 during roadmap creation.
-- [Phase 4/5]: MEDIUM confidence on whether Medusa's bundled Stripe provider fully supports Pix's async lifecycle vs needing a custom provider — **resolved for Phase 04 execution**: native-first blocked (04-01); Pix uses safe layer (04-05). Stripe real API key, Dashboard Pix enablement, and provider registration remain pending human setup.
+- [Phase 4/5]: Medusa bundled Stripe native-first is **not** accepted for Phase 04 card/Pix because unsafe provider payloads can persist through `PaymentSession.data`. Phase 04 uses safe layers; production activation still needs migration approval plus real Stripe card/Pix setup before Phase 05/production use.
 - [Phase 9]: Gelato has no official Medusa provider/SDK; draft→confirm pattern and webhook signature scheme need API-level verification during planning.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
@@ -147,10 +149,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-29T20:30:00.000Z
-Stopped at: Plan 04-05 complete; manual review gate before 04-06
-Resume file: `.planning/phases/04-stripe-payments-payment-attempt/04-06-PLAN.md` (not started; blocked pending review)
-Next permitted step: human review of `04-05-SUMMARY.md`, migration draft 04-02, and Stripe real/config setup decision; then 04-06 execution
+Last session: 2026-06-29T20:47:00.000Z
+Stopped at: Phase 04 closure complete; manual review gate before Phase 05
+Resume file: `.planning/phases/04-stripe-payments-payment-attempt/04-CLOSURE.md`
+Next permitted step: human review of `04-CLOSURE.md`, `04-VALIDATION.md`, migration draft 04-02, and Stripe real/config setup decision; Phase 05 remains blocked until explicit approval
 
 ## Quick Tasks Completed
 
@@ -165,3 +167,4 @@ Next permitted step: human review of `04-05-SUMMARY.md`, migration draft 04-02, 
 | 2026-06-27 | phase-03-verification | Automated UAT/validation for Phase 03 — 64 tests green, negative grep clean, build passing; manual closeout gate recorded in `03-UAT.md`. |
 | 2026-06-27 | phase-03-closure | Closed Phase 03 documentally; CART-01..CART-04 complete; Phase 04 planning only as next permitted step. |
 | 2026-06-29 | phase-04-planning | Planned Phase 04 into 6 manual-review-gated slices plus `04-VALIDATION.md`; no code, migrations, Stripe config, webhook, Order, purchase event, deploy, secrets/config, or Gelato work started. |
+| 2026-06-29 | phase-04-closure | Closed Phase 04 documentally as pre-Order card/Pix PaymentAttempt implementation/test scope; production activation remains blocked by migration and real Stripe layer/config gates; Phase 05 not started. |

@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation & Observability** - Medusa v2 + Supabase/Redis + Admin subdomain + PM2/Nginx + Sentry, structured logs with redaction, health check
 - [x] **Phase 2: Catalog & Media** - BRL products/variants with mandatory Gelato metadata, Supabase Storage images, and a Gelato snapshot builder/contract for future Order creation (no Order LineItem persistence yet — verified in Phase 6)
 - [x] **Phase 3: Cart & Checkout (pre-Order)** - Guest + authenticated cart and checkout data collection that creates no Order
-- [ ] **Phase 4: Stripe Payments & PaymentAttempt** - Card + async Pix via Payment Collection/Session, every try tracked in PaymentAttempt
+- [x] **Phase 4: Stripe Payments & PaymentAttempt** - Card + async Pix via safe Stripe boundary, every try tracked in PaymentAttempt; implementation/test complete, production activation blocked pending migration and real Stripe layers/config
 - [ ] **Phase 5: Stripe Webhook Ingestion & Idempotency** - Raw-body signature-verified `/hooks/stripe` + WebhookEventLog DB-level dedup
 - [ ] **Phase 6: Idempotent Webhook-Driven Order Creation** - Order created only by the canonical webhook, idempotent on payment_intent_id, decoupled state
 - [ ] **Phase 7: Analytics Outbox (purchase_completed)** - Durable local outbox written with the Order + async PostHog relay
@@ -162,7 +162,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 3
 **Requirements**: PAY-01, PAY-02, PAY-03, PAY-04
-**Manual gate:** Phase 04 is planned only. Execution, migrations, Stripe setup, secrets/config changes, deploy, webhook, Order creation, `purchase_completed`, and Gelato remain blocked until human review approves a specific plan/slice.
+**Manual gate:** Phase 04 is complete and closed at the manual gate. Production activation remains blocked: `TBD-payment-attempt.ts` is not applied, `medusa db:migrate` is blocked, Stripe card/Pix real is not configured, and `STRIPE_CARD_INITIATION_LAYER` / `STRIPE_PIX_INITIATION_LAYER` still need real safe layers or custom providers. Phase 05 may begin only after human approval.
 **Success Criteria** (what must be TRUE):
 
   1. Customer can initiate a credit-card payment via a Stripe Payment Session in BRL.
@@ -170,7 +170,7 @@ Plans:
   3. Every payment try (card or Pix, including retries) is recorded as an auditable PaymentAttempt per cart.
   4. A pending, expired, cancelled, or failed Pix results in no Order and marks the PaymentAttempt accordingly.
 
-**Plans**: 2/6 plans executed
+**Plans**: 6/6 plans executed
 
 Plans:
 **Wave 1**
@@ -180,21 +180,21 @@ Plans:
 **Wave 2** *(blocked on Wave 1 manual gate)*
 
 - [x] 04-02-PLAN.md - Modelo/contrato de `PaymentAttempt`, schema/migration planejada e uma tentativa ativa por cart
-- [ ] 04-03-PLAN.md - Eligibility para iniciar pagamento com amount/currency derivados server-side
+- [x] 04-03-PLAN.md - Eligibility para iniciar pagamento com amount/currency derivados server-side
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 04-04-PLAN.md - Iniciacao de pagamento por cartao em BRL sem dados brutos de cartao e sem persistir `client_secret`
+- [x] 04-04-PLAN.md - Iniciacao de pagamento por cartao em BRL sem dados brutos de cartao e sem persistir `client_secret`
 
 **Wave 4** *(blocked on Wave 1 Pix gate and Wave 2 completion)*
 
-- [ ] 04-05-PLAN.md - Iniciacao de Pix em BRL com QR/instrucoes imediatas, `expires_at` e estados assincros locais
+- [x] 04-05-PLAN.md - Iniciacao de Pix em BRL com QR/instrucoes imediatas, `expires_at` e estados assincros locais
 
 **Wave 5** *(blocked on Waves 3 and 4 completion)*
 
-- [ ] 04-06-PLAN.md - Invalidation/supersede por mudanca de cart e provas negativas finais da Phase 04
+- [x] 04-06-PLAN.md - Invalidation/supersede por mudanca de cart e provas negativas finais da Phase 04
 
-**Planning status (2026-06-29):** Phase 04 planning created six manual-review-gated plan slices and `04-VALIDATION.md`. The first slice is a mandatory technical spike/gate for `PaymentSession.data`, `client_secret`, Pix QR/`expires_at`, and native-first viability. Later Pix work cannot assume native-first pure until that gate passes. `PaymentAttempt` requires planned schema/migration review before any future execution applies database changes. No code, migration, Stripe config, secret/config var, deploy, webhook, Order, `WebhookEventLog`, `CheckoutCompletionLog`, `purchase_completed`, or Gelato work was started by planning.
+**Closure status (2026-06-29):** Phase 04 is complete for the pre-Order money-path implementation/test scope. Native-first pure Medusa Stripe was rejected after the `04-01` gate; card and Pix were implemented through `filtering_wrapper` + injectable Stripe safe layers. `PaymentAttempt` is auditable with one active attempt per cart, `checkout_data_complete` and server-side amount/currency are payment-start gates, Pix async local states persist `expires_at` without persisting QR/`next_action`, and cart mutation invalidates stale attempts through a safe fingerprint. Final evidence: 89 unit tests, 29 HTTP integration tests, build green, and negative grep clean for Order, webhook, completion, `purchase_completed`, Gelato, and persisted sensitive Stripe payloads. Production activation remains blocked because `TBD-payment-attempt.ts` is still a draft, `medusa db:migrate` has not run, Stripe real card/Pix is not configured, and `STRIPE_CARD_INITIATION_LAYER` / `STRIPE_PIX_INITIATION_LAYER` still need real layers/custom providers. Phase 05 is not started and may begin only after human approval.
 
 ### Phase 5: Stripe Webhook Ingestion & Idempotency
 
@@ -324,7 +324,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Foundation & Observability | 7/7 | Complete | 2026-06-26 |
 | 2. Catalog & Media | 5/5 | Complete | 2026-06-27 |
 | 3. Cart & Checkout (pre-Order) | 5/5 | Complete | 2026-06-27 |
-| 4. Stripe Payments & PaymentAttempt | 2/6 | In Progress|  |
+| 4. Stripe Payments & PaymentAttempt | 6/6 | Complete (activation blocked) | 2026-06-29 |
 | 5. Stripe Webhook Ingestion & Idempotency | 0/TBD | Not started | - |
 | 6. Idempotent Webhook-Driven Order Creation | 0/TBD | Not started | - |
 | 7. Analytics Outbox (purchase_completed) | 0/TBD | Not started | - |

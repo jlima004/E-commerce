@@ -1,16 +1,33 @@
 ---
 phase: 04
 slug: stripe-payments-payment-attempt
-status: planned
+status: complete
 nyquist_compliant: true
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-06-29
+closed_at: 2026-06-29
 manual_review_gate: true
 ---
 
 # Phase 04 — Validation Strategy
 
 > Contrato de validacao para Stripe Payments & PaymentAttempt. Esta estrategia prova iniciacao segura de cartao/Pix somente por boundary Stripe allowlist-only e prova negativamente que a Phase 04 permanece pre-Order, sem webhook, sem Order e sem Gelato.
+
+---
+
+## Final Validation Result
+
+Phase 04 is **validated complete** for the pre-Order money-path scope, based on the executed summaries `04-01` through `04-06`.
+
+Final evidence recorded in `04-06-SUMMARY.md`:
+
+- Unit suite: **89/89 passed**.
+- HTTP integration suite: **29/29 passed**.
+- Build: **Backend build completed successfully** with `ADMIN_DISABLED=true`.
+- Production negative grep: clean for Order, webhook, completion, `purchase_completed`, and Gelato paths outside tests.
+- Closure verification is documentary-only; no tests, migrations, Stripe config, webhooks, Orders, `purchase_completed`, or Gelato work were run during closure.
+
+Production activation remains blocked by the manual gates documented below: `TBD-payment-attempt.ts` not applied, `medusa db:migrate` blocked, Stripe real card/Pix not configured, and `STRIPE_CARD_INITIATION_LAYER` / `STRIPE_PIX_INITIATION_LAYER` still requiring real safe layers or custom providers.
 
 ---
 
@@ -48,18 +65,18 @@ manual_review_gate: true
 | 04-02-03 | 02 | 2 | PAY-04 | T-04-02-T | One active attempt per cart; `superseded` preserves history. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/payment-attempt-active.unit.spec.ts` | complete | complete |
 | 04-03-01 | 03 | 2 | PAY-01, PAY-02 | T-04-03-E | Payment start requires derived `checkout_data_complete=true`, BR/BRL, valid items/email/shipping. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/payment-eligibility.unit.spec.ts` | complete | complete |
 | 04-03-02 | 03 | 2 | PAY-01, PAY-02 | T-04-03-T | `amount`/`currency` from body are rejected or ignored and never source of truth. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/payment-eligibility.unit.spec.ts -t "amount|currency|money"` | complete | complete |
-| 04-04-01 | 04 | 3 | PAY-01, PAY-04 | T-04-04-I | Safe Stripe boundary separates immediate secrets from allowlist-only persisted data. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/stripe-safe-boundary.unit.spec.ts` | planned | pending |
-| 04-04-02 | 04 | 3 | PAY-01, PAY-04 | T-04-04-I | Card initiation uses only custom provider/layer/wrapper and never persists `client_secret` or PaymentIntent raw. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/card-initiation.unit.spec.ts` | planned | pending |
-| 04-04-03 | 04 | 3 | PAY-01 | T-04-04-T | HTTP card initiation in BRL returns no Order and no raw `PaymentSession.data`. | integration:http | `cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath integration-tests/http/payment-attempt-store.spec.ts -t "card"` | planned | pending |
-| 04-04-04 | 04 | 3 | PAY-01, PAY-04 | T-04-04-R | Client-side confirmation is local UX state only and awaits webhook. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/card-initiation.unit.spec.ts -t "payment_client_confirmed"` | planned | pending |
-| 04-05-01 | 05 | 4 | PAY-02 | T-04-05-I | Pix implementation is blocked unless 04-04 proves a safe strategy. | manual + source | `rg -n "custom_provider|stripe_layer|filtering_wrapper|allowlist-only" .planning/phases/04-stripe-payments-payment-attempt/04-04-SUMMARY.md` | planned | pending |
-| 04-05-02 | 05 | 4 | PAY-02, PAY-03 | T-04-05-I | Pix QR/copy/`next_action` are response-only and not persistible. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/stripe-safe-boundary.unit.spec.ts -t "pix|next_action|copy_paste|client_secret"` | planned | pending |
-| 04-05-03 | 05 | 4 | PAY-02, PAY-03 | T-04-05-E | Pix returns instructions + `expires_at`, persists partial safe state, and creates no Order. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/pix-initiation.unit.spec.ts` | planned | pending |
-| 04-05-04 | 05 | 4 | PAY-02, PAY-03 | T-04-05-T | HTTP Pix initiation in BRL returns no Order and does not accept amount/currency body values. | integration:http | `cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath integration-tests/http/payment-attempt-store.spec.ts -t "pix"` | planned | pending |
-| 04-05-05 | 05 | 4 | PAY-03, PAY-04 | T-04-05-E | Local Pix expired/failed/canceled states never create Order. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/pix-initiation.unit.spec.ts -t "expired|failed|canceled|Order"` | planned | pending |
-| 04-06-01 | 06 | 5 | PAY-03, PAY-04 | T-04-06-T | Cart mutation marks active attempt as `invalidated_by_cart_change`. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/payment-attempt-invalidation.unit.spec.ts` | planned | pending |
-| 04-06-02 | 06 | 5 | PAY-04 | T-04-06-E | Retry/supersede creates one active attempt and historical attempts remain auditably inactive. | integration:http | `cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath integration-tests/http/payment-attempt-store.spec.ts -t "supersede|invalidated_by_cart_change|retry"` | planned | pending |
-| 04-06-03 | 06 | 5 | PAY-01, PAY-02, PAY-03, PAY-04 | T-04-06-I | Final negative proofs: no Order/webhook/completion/purchase/Gelato and no sensitive leakage. | unit + integration:http + source | Full suite command plus negative grep below | planned | pending |
+| 04-04-01 | 04 | 3 | PAY-01, PAY-04 | T-04-04-I | Safe Stripe boundary separates immediate secrets from allowlist-only persisted data. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/stripe-safe-boundary.unit.spec.ts` | complete | complete |
+| 04-04-02 | 04 | 3 | PAY-01, PAY-04 | T-04-04-I | Card initiation uses only custom provider/layer/wrapper and never persists `client_secret` or PaymentIntent raw. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/card-initiation.unit.spec.ts` | complete | complete |
+| 04-04-03 | 04 | 3 | PAY-01 | T-04-04-T | HTTP card initiation in BRL returns no Order and no raw `PaymentSession.data`. | integration:http | `cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath integration-tests/http/payment-attempt-store.spec.ts -t "card"` | complete | complete |
+| 04-04-04 | 04 | 3 | PAY-01, PAY-04 | T-04-04-R | Client-side confirmation is local UX state only and awaits webhook. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/card-initiation.unit.spec.ts -t "payment_client_confirmed"` | complete | complete |
+| 04-05-01 | 05 | 4 | PAY-02 | T-04-05-I | Pix implementation is blocked unless 04-04 proves a safe strategy. | manual + source | `rg -n "custom_provider|stripe_layer|filtering_wrapper|allowlist-only" .planning/phases/04-stripe-payments-payment-attempt/04-04-SUMMARY.md` | complete | complete |
+| 04-05-02 | 05 | 4 | PAY-02, PAY-03 | T-04-05-I | Pix QR/copy/`next_action` are response-only and not persistible. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/stripe-safe-boundary.unit.spec.ts -t "pix|next_action|copy_paste|client_secret"` | complete | complete |
+| 04-05-03 | 05 | 4 | PAY-02, PAY-03 | T-04-05-E | Pix returns instructions + `expires_at`, persists partial safe state, and creates no Order. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/pix-initiation.unit.spec.ts` | complete | complete |
+| 04-05-04 | 05 | 4 | PAY-02, PAY-03 | T-04-05-T | HTTP Pix initiation in BRL returns no Order and does not accept amount/currency body values. | integration:http | `cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath integration-tests/http/payment-attempt-store.spec.ts -t "pix"` | complete | complete |
+| 04-05-05 | 05 | 4 | PAY-03, PAY-04 | T-04-05-E | Local Pix expired/failed/canceled states never create Order. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/pix-initiation.unit.spec.ts -t "expired|failed|canceled|Order"` | complete | complete |
+| 04-06-01 | 06 | 5 | PAY-03, PAY-04 | T-04-06-T | Cart mutation marks active attempt as `invalidated_by_cart_change`. | unit | `cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath src/modules/payment-attempt/__tests__/payment-attempt-invalidation.unit.spec.ts` | complete | complete |
+| 04-06-02 | 06 | 5 | PAY-04 | T-04-06-E | Retry/supersede creates one active attempt and historical attempts remain auditably inactive. | integration:http | `cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath integration-tests/http/payment-attempt-store.spec.ts -t "supersede|invalidated_by_cart_change|retry"` | complete | complete |
+| 04-06-03 | 06 | 5 | PAY-01, PAY-02, PAY-03, PAY-04 | T-04-06-I | Final negative proofs: no Order/webhook/completion/purchase/Gelato and no sensitive leakage. | unit + integration:http + source | Full suite command plus negative grep below | complete | complete |
 
 ---
 
@@ -69,9 +86,9 @@ manual_review_gate: true
 - [x] `04-01-SUMMARY.md` answers that `client_secret` can leak through `PaymentSession.data`.
 - [x] `04-01-SUMMARY.md` answers that Medusa Stripe v2.16.0 does not expose Pix QR/instructions/`expires_at` safely through native-first pure.
 - [x] `04-01-SUMMARY.md` states native-first pure is blocked and custom provider/layer/wrapper is required.
-- [ ] `04-04-SUMMARY.md` must record the chosen safe strategy and prove allowlist-only before `04-05` runtime.
-- [ ] If `PaymentAttempt` migration is generated, execution remains blocked until human review before any `db:migrate`.
-- [ ] If any Stripe secret/config is required, it is recorded as future setup only; no secrets/config vars are created in Phase 04 planning.
+- [x] `04-04-SUMMARY.md` records the chosen safe strategy and proves allowlist-only before `04-05` runtime.
+- [x] `PaymentAttempt` migration remains a draft and execution remains blocked until human review before any `db:migrate`.
+- [x] Stripe secrets/config are recorded as future setup only; no secrets/config vars were created in Phase 04.
 
 ---
 
@@ -99,19 +116,19 @@ manual_review_gate: true
 
 ## Negative Proofs Required
 
-- [ ] No Phase 04 code calls or imports `completeCartWorkflow`.
-- [ ] No Phase 04 code calls `/store/carts/:id/complete` or `sdk.store.cart.complete`.
-- [ ] No Phase 04 code creates or returns `Order`.
-- [ ] No Phase 04 code implements Stripe webhook runtime.
-- [ ] No Phase 04 code creates `WebhookEventLog`.
-- [ ] No Phase 04 code creates `CheckoutCompletionLog`.
-- [ ] No Phase 04 code emits `purchase_completed`.
-- [ ] No Phase 04 code calls Gelato or references `order.gelatoapis.com`.
-- [ ] `PaymentAttempt.order_id` remains `null` in Phase 04 paths.
-- [ ] `PaymentSession.data`, if used, is allowlist-only and never contains raw PaymentIntent, `client_secret`, QR/copia-e-cola or `next_action` integral.
-- [ ] `client_secret` appears only in tests proving immediate response behavior and never in persisted metadata/log/Sentry/error paths.
-- [ ] QR/copia-e-cola/`next_action` full payload is not persisted.
-- [ ] `amount` and `currency` never come from the client body.
+- [x] No Phase 04 code calls or imports `completeCartWorkflow`.
+- [x] No Phase 04 code calls `/store/carts/:id/complete` or `sdk.store.cart.complete`.
+- [x] No Phase 04 code creates or returns `Order`.
+- [x] No Phase 04 code implements Stripe webhook runtime.
+- [x] No Phase 04 code creates `WebhookEventLog`.
+- [x] No Phase 04 code creates `CheckoutCompletionLog`.
+- [x] No Phase 04 code emits `purchase_completed`.
+- [x] No Phase 04 code calls Gelato or references `order.gelatoapis.com`.
+- [x] `PaymentAttempt.order_id` remains `null` in Phase 04 paths.
+- [x] `PaymentSession.data`, if used, is allowlist-only and never contains raw PaymentIntent, `client_secret`, QR/copia-e-cola or `next_action` integral.
+- [x] `client_secret` appears only in tests proving immediate response behavior and immediate DTO behavior, and never in persisted metadata/log/Sentry/error paths.
+- [x] QR/copia-e-cola/`next_action` full payload is not persisted.
+- [x] `amount` and `currency` never come from the client body.
 
 Suggested final grep:
 
@@ -132,10 +149,10 @@ cd apps/backend && rg -n "client_secret|pi_.*_secret|next_action|pix_display_qr_
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
 | `PaymentSession.data` persistence | PAY-01, PAY-02 | Native-first leaks `client_secret`/Pix payload indirectly if PaymentIntent is persisted wholesale. | Review `04-01-SUMMARY.md`; native-first remains blocked. |
-| Safe strategy selection | PAY-01, PAY-02, PAY-04 | Custom provider/layer/wrapper choice affects future config, provider registration and maintenance. | Review `04-04-SUMMARY.md` before executing Pix and before any Stripe config work. |
+| Safe strategy selection | PAY-01, PAY-02, PAY-04 | Custom provider/layer/wrapper choice affects future config, provider registration and maintenance. | `04-04-SUMMARY.md` and `04-05-SUMMARY.md` record `filtering_wrapper` + injectable Stripe layers; real provider/config remains future setup. |
 | Pix native safe surface | PAY-02, PAY-03 | Medusa provider local has no explicit Pix service; QR/`expires_at` safety must be proven through the chosen safe boundary. | Review gate flags `PIX_NATIVE_SAFE=false`, `CUSTOM_PROVIDER_OR_LAYER_REQUIRED=true`, `STOP_BEFORE_04_05` behavior. |
-| PaymentAttempt migration | PAY-04 | New custom entity changes schema; execution requires human approval before applying migrations. | Review generated migration/indexes; do not run `medusa db:migrate` until approved. |
-| `payment_session_id` nullable blocker | PAY-04 | 04-02 left model vs migration nullability open by design. | Do not resolve implicitly in 04-04/04-05; require explicit decision. |
+| PaymentAttempt migration | PAY-04 | New custom entity changes schema; execution requires human approval before applying migrations. | `TBD-payment-attempt.ts` remains draft; do not run `medusa db:migrate` until approved. |
+| `payment_session_id` nullable decision | PAY-04 | The model/types/helpers and migration draft need the same nullable contract. | Decision recorded as `PAYMENT_SESSION_ID_NULLABLE_DECISION=model_and_migration_nullable`; migration still not applied. |
 | Stripe setup/config | PAY-01, PAY-02 | Phase 04 planning cannot create secrets/config vars. | Record required env/setup in summary only; do not edit secrets or deployment config. |
 
 ---
@@ -155,14 +172,14 @@ cd apps/backend && rg -n "client_secret|pi_.*_secret|next_action|pix_display_qr_
 
 ## Validation Sign-Off
 
-- [ ] All tasks have automated verify or explicit manual gate.
-- [ ] Sampling continuity: no 3 consecutive implementation tasks without automated verify.
+- [x] All tasks have automated verify or explicit manual gate.
+- [x] Sampling continuity: no 3 consecutive implementation tasks without automated verify.
 - [x] 04-01 gate blocks unsafe native-first assumptions before 04-04/04-05.
-- [ ] 04-04 boundary proves safe strategy before card route/helper and before 04-05.
-- [ ] PaymentAttempt migration is explicitly manual-review gated.
-- [ ] `payment_session_id` nullable model vs migration blocker remains open until explicit decision.
-- [ ] No watch-mode flags.
-- [ ] Feedback latency target < 240s.
+- [x] 04-04 boundary proves safe strategy before card route/helper and before 04-05.
+- [x] PaymentAttempt migration is explicitly manual-review gated.
+- [x] `payment_session_id` nullable decision is recorded as `model_and_migration_nullable`; migration application remains blocked.
+- [x] No watch-mode flags.
+- [x] Feedback latency target < 240s.
 - [x] `nyquist_compliant: true` set in frontmatter.
 
-**Approval:** pending manual review after revised 04-04/04-05 planning. Execution remains blocked.
+**Approval:** Phase 04 validation complete. Phase 05 remains blocked pending human approval after closure review; do not create Stripe webhook, Order, `purchase_completed`, or Gelato work from this phase.

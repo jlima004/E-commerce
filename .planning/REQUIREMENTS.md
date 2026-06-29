@@ -37,10 +37,10 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Payments
 
-- [ ] **PAY-01**: Customer can pay by credit card via Stripe using Payment Collection / Payment Session
-- [ ] **PAY-02**: Customer can pay by Pix via Stripe (BRL), with async confirmation handled correctly
-- [ ] **PAY-03**: Pending, expired, cancelled, or failed Pix never results in an Order (INV-2)
-- [ ] **PAY-04**: Every payment try is recorded as a custom PaymentAttempt, auditable per cart (multiple card/Pix retries)
+- [x] **PAY-01**: Customer can pay by credit card via Stripe using Payment Collection / Payment Session. Implementation complete; production activation blocked. Phase 04 implements the pre-Order card initiation contract through a safe Stripe boundary (`filtering_wrapper` + `STRIPE_CARD_INITIATION_LAYER`), with `client_secret` response-only, server-side amount/currency gates, one auditable `PaymentAttempt`, and no native-first pure Medusa Stripe persistence. Real Stripe card setup/layer remains outside Phase 04.
+- [x] **PAY-02**: Customer can pay by Pix via Stripe (BRL), with async confirmation handled correctly. Implementation complete; production activation blocked. Phase 04 implements Pix initiation through the safe Stripe boundary (`STRIPE_PIX_INITIATION_LAYER`), persists safe `expires_at` and local async states, keeps QR/copia-e-cola/`next_action` response-only, and does not treat Pix pending state as financial truth. Real Stripe Pix setup/layer remains outside Phase 04.
+- [x] **PAY-03**: Pending, expired, cancelled, or failed Pix never results in an Order (INV-2). Implementation complete; production activation blocked. Phase 04 verifies `awaiting_pix_payment`, `pix_expired`, `payment_failed`, `payment_canceled`, invalidated, and superseded paths stay pre-Order; final negative proofs show no Order/webhook/completion/purchase/Gelato path.
+- [x] **PAY-04**: Every payment try is recorded as a custom PaymentAttempt, auditable per cart (multiple card/Pix retries). Implementation complete; production activation blocked. Phase 04 implements the `PaymentAttempt` module/state machine, one active attempt per cart, retry/supersede history, and cart-mutation invalidation by safe fingerprint; `TBD-payment-attempt.ts` remains a draft and `medusa db:migrate` is still blocked pending human approval.
 
 ### Webhooks & Idempotency
 
@@ -151,10 +151,10 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | CART-02 | Phase 3 | Complete (03-01/03-02/03-05 auth cart + secure attach) |
 | CART-03 | Phase 3 | Complete (03-03/03-04/03-05 email + BR address + masked federal_tax_id) |
 | CART-04 | Phase 3 | Complete (03-01..03-05 pre-Order boundary + negative proofs) |
-| PAY-01 | Phase 4 | Pending |
-| PAY-02 | Phase 4 | Pending |
-| PAY-03 | Phase 4 | Pending |
-| PAY-04 | Phase 4 | Pending |
+| PAY-01 | Phase 4 | Complete for implementation/test scope; production activation blocked (safe card boundary complete, real Stripe card layer/config pending) |
+| PAY-02 | Phase 4 | Complete for implementation/test scope; production activation blocked (safe Pix boundary complete, real Stripe Pix layer/config pending) |
+| PAY-03 | Phase 4 | Complete for implementation/test scope; production activation blocked (local Pix negative Order proofs complete, webhook truth deferred to Phase 5/6) |
+| PAY-04 | Phase 4 | Complete for implementation/test scope; production activation blocked (`PaymentAttempt` implementation complete, migration draft not applied) |
 | WHK-01 | Phase 5 | Pending |
 | WHK-02 | Phase 5 | Pending |
 | WHK-03 | Phase 9 | Pending |
@@ -190,4 +190,4 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 
 ---
 *Requirements defined: 2026-06-22*
-*Last updated: 2026-06-27 after Phase 03 closure for CART-01..CART-04*
+*Last updated: 2026-06-29 after Phase 04 closure for PAY-01..PAY-04 implementation/test scope; production activation blocked*
