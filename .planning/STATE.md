@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 04
-current_phase_name: stripe-payments-payment-attempt
-status: phase-04-closed-manual-gate-before-phase-05
-stopped_at: Phase 04 closure complete; human review required before Phase 05
-last_updated: "2026-06-29T20:47:00.000Z"
+current_phase_name: stripe-real-layer-activation
+status: gate-04a-complete-manual-gate-before-phase-05
+stopped_at: Gate 04A complete; human review required before migration execution or Phase 05
+last_updated: "2026-06-29T22:05:00.000Z"
 last_activity: 2026-06-29
-last_activity_desc: Phase 04 documentary closure complete; pre-Order card/Pix PaymentAttempt scope validated; migration and Stripe real config still blocked
+last_activity_desc: Gate 04A completed real Stripe test-mode initiation layers; PaymentAttempt migration prepared but not applied; Phase 05 still blocked
 progress:
   total_phases: 12
   completed_phases: 4
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 04 — Stripe Payments & PaymentAttempt is closed at the manual gate; Phase 05 is not started.
+**Current focus:** Gate 04A — Stripe real test-mode initiation layers are complete at manual gate; Phase 05 is not started.
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 04 is documentally closed. Card and Pix were implemented through a safe Stripe boundary (`filtering_wrapper` + `stripe_safe_layer`), not native-first Medusa Stripe. Plan 04-02 migration draft (`TBD-payment-attempt.ts`) remains blocked before any `db:migrate`. Stripe real card/Pix, provider/layer registration, API keys, Dashboard Pix enablement, webhook secrets, and deployment config remain pending human setup. Phase 05 may begin only after human approval. Phase 04 scope remains pre-Order — no Order, webhook, `purchase_completed`, or Gelato.
+**Current gate:** Gate 04A is complete. Card and Pix now have real Stripe test-mode initiation layers registered by internal safe config, still through the Phase 04 safe boundary (`filtering_wrapper` + `stripe_safe_layer`) and not native-first Medusa Stripe. `PaymentAttempt` migration is prepared but not applied; any real `db:migrate` still requires human approval and a direct/session migration URL. Dashboard Pix enablement, webhook secrets, and deployment config remain pending human setup. Phase 05 may begin only after human approval. Scope remains pre-Order — no Order, webhook, `purchase_completed`, or Gelato.
 
 **Branch policy:**
 
@@ -51,10 +51,10 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 04 (stripe-payments-payment-attempt) — complete (pre-Order)
-Plan: 6/6 Phase 04 plans executed and closed (04-01..04-06)
-Status: Phase 04 closure complete; manual review required before Phase 05
-Last activity: 2026-06-29 - Phase 04 closure documented; migration and Stripe real config still blocked
+Phase: 04A (stripe-real-layer-activation) — complete at manual gate (pre-Order)
+Plan: Gate 04A executed after Phase 04 closure
+Status: Real Stripe test-mode layers complete; migration execution and Phase 05 require human approval
+Last activity: 2026-06-29 - 04A summary documented; PaymentAttempt migration prepared but not applied
 
 Progress: [███-------] 33%
 
@@ -123,6 +123,7 @@ Recent decisions affecting current work:
 - [Plan 04-05]: Pix initiation pre-Order via `STRIPE_PIX_INITIATION_LAYER`; QR/copia-e-cola/`expires_at` response-only for instructions, `expires_at` persisted; local states `awaiting_pix_payment`, `pix_expired`, `payment_failed`, `payment_canceled` never create Order.
 - [Plan 04-06]: Cart mutation invalidates active PaymentAttempt via safe fingerprint; retry/supersede leaves one active attempt; final negative proofs confirm no Order, webhook, completion, `purchase_completed`, Gelato, or persisted Stripe secrets/QR/`next_action`.
 - [Phase 04 closure]: Phase 04 is complete as money-path pre-Order implementation/test scope. PAY-01..PAY-04 are recorded as implementation complete with production activation blocked until `TBD-payment-attempt.ts` is approved/applied and real Stripe card/Pix layers/config are provided. Phase 05 remains not started behind human approval.
+- [Gate 04A]: Real Stripe card/Pix initiation layers are implemented and registered behind `STRIPE_REAL_INITIATION_ENABLED=true` with `sk_test_...` only. The layers call Stripe directly, not native-first Medusa Stripe, and hand raw PaymentIntent data immediately to the existing safe boundary. `client_secret`, Pix QR/copia-e-cola, hosted instructions, and integral `next_action` remain response-only; `PaymentAttempt` migration is prepared but not applied; no webhook, Order, `purchase_completed`, or Gelato work was introduced.
 
 ### Pending Todos
 
@@ -149,10 +150,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-29T20:47:00.000Z
-Stopped at: Phase 04 closure complete; manual review gate before Phase 05
-Resume file: `.planning/phases/04-stripe-payments-payment-attempt/04-CLOSURE.md`
-Next permitted step: human review of `04-CLOSURE.md`, `04-VALIDATION.md`, migration draft 04-02, and Stripe real/config setup decision; Phase 05 remains blocked until explicit approval
+Last session: 2026-06-29T22:05:00.000Z
+Stopped at: Gate 04A complete; manual review gate before migration execution or Phase 05
+Resume file: `.planning/phases/04A-stripe-real-layer-activation/04A-SUMMARY.md`
+Next permitted step: human review of `04A-SUMMARY.md`, migration execution decision, and real Stripe test-mode operational setup; Phase 05 remains blocked until explicit approval
 
 ## Quick Tasks Completed
 

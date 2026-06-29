@@ -1,8 +1,9 @@
 /**
- * DRAFT — PaymentAttempt module migration.
+ * PREPARED — PaymentAttempt module migration.
  *
- * HUMAN REVIEW REQUIRED before running `medusa db:migrate`.
- * Generated/planned for Phase 04 Plan 02; not applied to any database.
+ * Reviewed in gate 04A for safe application through `npm run db:migrate:safe`.
+ * This gate does not apply the migration; a direct/session
+ * DATABASE_MIGRATION_URL is still required before running it.
  *
  * Constraints:
  * - Partial unique index on provider_payment_intent_id when not null

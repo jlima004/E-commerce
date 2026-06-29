@@ -43,6 +43,9 @@ export type AppEnv = {
   S3_ACCESS_KEY_ID: string | undefined
   S3_SECRET_ACCESS_KEY: string | undefined
   S3_FILE_URL: string | undefined
+  STRIPE_REAL_INITIATION_ENABLED: boolean
+  STRIPE_SECRET_KEY: string | undefined
+  STRIPE_PIX_EXPIRES_AFTER_SECONDS: number
 }
 
 function isProduction(input: Record<string, string | undefined>): boolean {
@@ -81,6 +84,50 @@ function parseWorkerMode(value: string | undefined, fieldName: string): WorkerMo
   throw new Error(
     `Invalid ${fieldName}: must be one of ${WORKER_MODES.join(", ")}`
   )
+}
+
+function parseBoundedInteger(
+  value: string | undefined,
+  fieldName: string,
+  defaultValue: number,
+  min: number,
+  max: number
+): number {
+  if (value === undefined) {
+    return defaultValue
+  }
+
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`Invalid ${fieldName}: must be an integer`)
+  }
+
+  const parsed = Number.parseInt(value, 10)
+  if (parsed < min || parsed > max) {
+    throw new Error(`Invalid ${fieldName}: must be between ${min} and ${max}`)
+  }
+
+  return parsed
+}
+
+function assertStripeTestSecret(
+  value: string | undefined,
+  fieldName: string,
+  enabled: boolean
+): string | undefined {
+  if (!value || value.trim().length === 0) {
+    if (enabled) {
+      throw new Error(`Missing required variable: ${fieldName}`)
+    }
+
+    return undefined
+  }
+
+  const secret = value.trim()
+  if (!secret.startsWith("sk_test_")) {
+    throw new Error(`Invalid ${fieldName}: must be a Stripe test-mode secret key`)
+  }
+
+  return secret
 }
 
 function assertNonEmpty(value: string | undefined, fieldName: string): string {
@@ -215,6 +262,8 @@ export function parseEnv(
     S3_ACCESS_KEY_ID: z.string().optional(),
     S3_SECRET_ACCESS_KEY: z.string().optional(),
     S3_FILE_URL: z.string().optional(),
+    STRIPE_SECRET_KEY: z.string().optional(),
+    STRIPE_PIX_EXPIRES_AFTER_SECONDS: z.string().optional(),
   })
 
   const parsed = baseSchema.safeParse(normalized)
@@ -224,6 +273,10 @@ export function parseEnv(
   }
 
   const data = parsed.data
+  const stripeRealInitiationEnabled = parseBoolean(
+    normalized.STRIPE_REAL_INITIATION_ENABLED,
+    "STRIPE_REAL_INITIATION_ENABLED"
+  )
 
   return {
     NODE_ENV: data.NODE_ENV,
@@ -249,6 +302,19 @@ export function parseEnv(
     S3_ACCESS_KEY_ID: data.S3_ACCESS_KEY_ID,
     S3_SECRET_ACCESS_KEY: data.S3_SECRET_ACCESS_KEY,
     S3_FILE_URL: data.S3_FILE_URL,
+    STRIPE_REAL_INITIATION_ENABLED: stripeRealInitiationEnabled,
+    STRIPE_SECRET_KEY: assertStripeTestSecret(
+      data.STRIPE_SECRET_KEY,
+      "STRIPE_SECRET_KEY",
+      stripeRealInitiationEnabled
+    ),
+    STRIPE_PIX_EXPIRES_AFTER_SECONDS: parseBoundedInteger(
+      data.STRIPE_PIX_EXPIRES_AFTER_SECONDS,
+      "STRIPE_PIX_EXPIRES_AFTER_SECONDS",
+      86_400,
+      10,
+      1_209_600
+    ),
   }
 }
 

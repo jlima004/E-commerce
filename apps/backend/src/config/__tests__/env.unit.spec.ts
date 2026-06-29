@@ -275,6 +275,69 @@ describe("environment configuration", () => {
     })
   })
 
+  describe("Stripe real initiation config", () => {
+    it("keeps real initiation disabled by default", () => {
+      const env = parseEnv(localFixture())
+
+      expect(env.STRIPE_REAL_INITIATION_ENABLED).toBe(false)
+      expect(env.STRIPE_SECRET_KEY).toBeUndefined()
+      expect(env.STRIPE_PIX_EXPIRES_AFTER_SECONDS).toBe(86_400)
+    })
+
+    it("requires test-mode key when real initiation is enabled", () => {
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            localFixture({
+              STRIPE_REAL_INITIATION_ENABLED: "true",
+              STRIPE_SECRET_KEY: undefined,
+            })
+          ),
+        "STRIPE_SECRET_KEY"
+      )
+    })
+
+    it("rejects live Stripe key without leaking the value", () => {
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            localFixture({
+              STRIPE_REAL_INITIATION_ENABLED: "true",
+              STRIPE_SECRET_KEY: "sk_live_forbidden_secret",
+            })
+          ),
+        "STRIPE_SECRET_KEY",
+        ["sk_live_forbidden_secret"]
+      )
+    })
+
+    it("accepts explicit test-mode activation and Pix TTL bounds", () => {
+      const env = parseEnv(
+        localFixture({
+          STRIPE_REAL_INITIATION_ENABLED: "true",
+          STRIPE_SECRET_KEY: "sk_test_safe_placeholder",
+          STRIPE_PIX_EXPIRES_AFTER_SECONDS: "3600",
+        })
+      )
+
+      expect(env.STRIPE_REAL_INITIATION_ENABLED).toBe(true)
+      expect(env.STRIPE_SECRET_KEY).toBe("sk_test_safe_placeholder")
+      expect(env.STRIPE_PIX_EXPIRES_AFTER_SECONDS).toBe(3600)
+    })
+
+    it("rejects invalid Pix TTL", () => {
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            localFixture({
+              STRIPE_PIX_EXPIRES_AFTER_SECONDS: "1",
+            })
+          ),
+        "STRIPE_PIX_EXPIRES_AFTER_SECONDS"
+      )
+    })
+  })
+
   describe("WORKER_MODE and ADMIN_DISABLED contracts", () => {
     it("accepts shared, server, and worker modes", () => {
       for (const mode of ["shared", "server", "worker"] as const) {
@@ -401,6 +464,15 @@ describe(".env.template contract", () => {
     expect(template).toMatch(/APP_VERSION=/)
     expect(template).not.toMatch(/sk_live_/)
     expect(template).not.toMatch(/whsec_/)
+  })
+
+  it("documents Stripe real initiation test-mode-only env keys", () => {
+    const template = fs.readFileSync(templatePath, "utf8")
+
+    expect(template).toMatch(/STRIPE_REAL_INITIATION_ENABLED=/)
+    expect(template).toMatch(/STRIPE_SECRET_KEY=<sk_test_\.\.\.>/)
+    expect(template).toMatch(/STRIPE_PIX_EXPIRES_AFTER_SECONDS=/)
+    expect(template).not.toMatch(/sk_live_/)
   })
 
   it("documents Supabase storage env keys without real credentials", () => {
