@@ -11,11 +11,11 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Foundation
 
-- [ ] **SETUP-01**: Medusa v2 backend runs locally and in production with PostgreSQL/Supabase as the database
-- [ ] **SETUP-02**: Redis is wired for the event bus, cache, and workflow engine (no in-memory defaults in production)
-- [ ] **SETUP-03**: Medusa Admin is served on a dedicated subdomain
-- [ ] **SETUP-04**: A separate worker process runs subscribers/scheduled jobs in the production runtime. Current checkpoint uses Heroku web/worker dynos; the original PM2/Nginx route remains a portable blueprint.
-- [ ] **SETUP-05**: Central log redaction guarantees secrets, full card data, and plaintext tokens never appear in logs (INV-12)
+- [x] **SETUP-01**: Medusa v2 backend runs locally and in production with PostgreSQL/Supabase as the database. Complete via Phase 01 closure: Heroku app `espacoliminar`, release `v27`, commit `d02fd70`, with Supabase Postgres via pooler and production smoke accepted.
+- [x] **SETUP-02**: Redis is wired for the event bus, cache, and workflow engine (no in-memory defaults in production). Complete via Phase 01 closure for the accepted runtime; Heroku Redis with TLS is validated for health and Redis-backed modules, with `REDIS_CACHE_PROVIDER_DISABLED=true` carried as a temporary operational workaround.
+- [x] **SETUP-03**: Medusa Admin is served on a dedicated subdomain. Complete via Phase 01 plan/closure evidence; the VPS/PM2/Nginx dedicated-Admin route remains a portable blueprint while the current validated production target is Heroku.
+- [x] **SETUP-04**: A separate worker process runs subscribers/scheduled jobs in the production runtime. Complete via Phase 01 closure: current checkpoint uses Heroku `web.1` and `worker.1` dynos; the original PM2/Nginx route remains a portable blueprint.
+- [x] **SETUP-05**: Central log redaction guarantees secrets, full card data, and plaintext tokens never appear in logs (INV-12). Complete via Phase 01 structured logging/redaction and production smoke evidence.
 
 ### Catalog
 
@@ -91,9 +91,9 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Observability
 
-- [ ] **OBS-01**: Backend errors are reported to Sentry
-- [ ] **OBS-02**: The backend emits structured logs (redacted per SETUP-05)
-- [ ] **OBS-03**: A health-check endpoint reports service/dependency health for the active production runtime. Current checkpoint validates Heroku/Supabase/Redis; the VPS/PM2/Nginx stack remains documented as a portable blueprint.
+- [x] **OBS-01**: Backend errors are reported to Sentry. Complete via Phase 01 Sentry backend integration and closure evidence.
+- [x] **OBS-02**: The backend emits structured logs (redacted per SETUP-05). Complete via Phase 01 structured logger/redaction work and closure evidence.
+- [x] **OBS-03**: A health-check endpoint reports service/dependency health for the active production runtime. Complete via Phase 01 closure: `/health/live` and `/health/ready` returned HTTP 200, with Postgres `up` and Redis `up`; the VPS/PM2/Nginx stack remains documented as a portable blueprint.
 
 ### Critical Tests
 
@@ -137,11 +137,11 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SETUP-01 | Phase 1 | Pending |
-| SETUP-02 | Phase 1 | Pending |
-| SETUP-03 | Phase 1 | Pending |
-| SETUP-04 | Phase 1 | Pending |
-| SETUP-05 | Phase 1 | Pending |
+| SETUP-01 | Phase 1 | Complete (Phase 01 closure: Medusa backend validated on Heroku with Supabase Postgres) |
+| SETUP-02 | Phase 1 | Complete (Phase 01 closure: Heroku Redis validated; cache-disable flag carried as temporary ops workaround) |
+| SETUP-03 | Phase 1 | Complete (Phase 01 closure; dedicated Admin route/runbook retained, Heroku is current validated target) |
+| SETUP-04 | Phase 1 | Complete (Phase 01 closure: Heroku web/worker dynos validated) |
+| SETUP-05 | Phase 1 | Complete (Phase 01 structured logger/redaction evidence) |
 | CAT-01 | Phase 2 | Complete (02-01 central contract covers BRL integer-cent pricing) |
 | CAT-02 | Phase 2 | Complete (02-01/02-02 mandatory Gelato metadata + sellable/publish gate + tests) |
 | CAT-03 | Phase 2 | Complete (02-04 public Store API contract) |
@@ -178,9 +178,9 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | EXC-02 | Phase 11 | Pending |
 | OPS-01 | Phase 12 | Pending |
 | OPS-02 | Phase 12 | Pending |
-| OBS-01 | Phase 1 | Pending |
-| OBS-02 | Phase 1 | Pending |
-| OBS-03 | Phase 1 | Pending |
+| OBS-01 | Phase 1 | Complete (Phase 01 Sentry backend integration) |
+| OBS-02 | Phase 1 | Complete (Phase 01 structured redacted logs) |
+| OBS-03 | Phase 1 | Complete (Phase 01 health endpoints validated: live/ready 200, Postgres/Redis up) |
 | TEST-01 | Phase 12 | Pending |
 
 **Coverage:**
@@ -190,4 +190,4 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 
 ---
 *Requirements defined: 2026-06-22*
-*Last updated: 2026-06-29 after Phase 04 closure for PAY-01..PAY-04 implementation/test scope; production activation blocked*
+*Last updated: 2026-06-29 after reconciling Phase 01 SETUP/OBS completion and Phase 04 PAY-01..PAY-04 implementation/test scope; production activation blocked*
