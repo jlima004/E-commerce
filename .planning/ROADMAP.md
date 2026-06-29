@@ -162,14 +162,39 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 3
 **Requirements**: PAY-01, PAY-02, PAY-03, PAY-04
+**Manual gate:** Phase 04 is planned only. Execution, migrations, Stripe setup, secrets/config changes, deploy, webhook, Order creation, `purchase_completed`, and Gelato remain blocked until human review approves a specific plan/slice.
 **Success Criteria** (what must be TRUE):
 
   1. Customer can initiate a credit-card payment via a Stripe Payment Session in BRL.
-  2. Customer can initiate a Pix payment that surfaces a QR with `expires_at`, with UX states (`pix_qr_displayed`, `awaiting_pix_payment`, `pix_expired`) recorded in PaymentAttempt — never treated as financial truth.
+  2. Customer can initiate a Pix payment that surfaces a QR with `expires_at`, with UX states (`payment_instructions_displayed`, `awaiting_pix_payment`, `pix_expired`) recorded in PaymentAttempt — never treated as financial truth.
   3. Every payment try (card or Pix, including retries) is recorded as an auditable PaymentAttempt per cart.
   4. A pending, expired, cancelled, or failed Pix results in no Order and marks the PaymentAttempt accordingly.
 
-**Plans**: TBD
+**Plans**: 6/6 planned; 0/6 executed
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md - Spike/gate de provider Stripe Medusa, `PaymentSession.data`, Pix e `client_secret`
+
+**Wave 2** *(blocked on Wave 1 manual gate)*
+
+- [ ] 04-02-PLAN.md - Modelo/contrato de `PaymentAttempt`, schema/migration planejada e uma tentativa ativa por cart
+- [ ] 04-03-PLAN.md - Eligibility para iniciar pagamento com amount/currency derivados server-side
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 04-04-PLAN.md - Iniciacao de pagamento por cartao em BRL sem dados brutos de cartao e sem persistir `client_secret`
+
+**Wave 4** *(blocked on Wave 1 Pix gate and Wave 2 completion)*
+
+- [ ] 04-05-PLAN.md - Iniciacao de Pix em BRL com QR/instrucoes imediatas, `expires_at` e estados assincros locais
+
+**Wave 5** *(blocked on Waves 3 and 4 completion)*
+
+- [ ] 04-06-PLAN.md - Invalidation/supersede por mudanca de cart e provas negativas finais da Phase 04
+
+**Planning status (2026-06-29):** Phase 04 planning created six manual-review-gated plan slices and `04-VALIDATION.md`. The first slice is a mandatory technical spike/gate for `PaymentSession.data`, `client_secret`, Pix QR/`expires_at`, and native-first viability. Later Pix work cannot assume native-first pure until that gate passes. `PaymentAttempt` requires planned schema/migration review before any future execution applies database changes. No code, migration, Stripe config, secret/config var, deploy, webhook, Order, `WebhookEventLog`, `CheckoutCompletionLog`, `purchase_completed`, or Gelato work was started by planning.
 
 ### Phase 5: Stripe Webhook Ingestion & Idempotency
 
@@ -299,7 +324,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Foundation & Observability | 7/7 | Complete | 2026-06-26 |
 | 2. Catalog & Media | 5/5 | Complete | 2026-06-27 |
 | 3. Cart & Checkout (pre-Order) | 5/5 | Complete | 2026-06-27 |
-| 4. Stripe Payments & PaymentAttempt | 0/TBD | Not started | - |
+| 4. Stripe Payments & PaymentAttempt | 0/6 planned | Planned; execution blocked | - |
 | 5. Stripe Webhook Ingestion & Idempotency | 0/TBD | Not started | - |
 | 6. Idempotent Webhook-Driven Order Creation | 0/TBD | Not started | - |
 | 7. Analytics Outbox (purchase_completed) | 0/TBD | Not started | - |
