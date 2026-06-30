@@ -101,8 +101,62 @@ function toLineItemSnapshots(
   }))
 }
 
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0
+function resolveIntegerCents(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) ? value : null
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (!/^-?\d+$/.test(trimmed)) {
+      return null
+    }
+
+    const parsed = Number(trimmed)
+    return Number.isSafeInteger(parsed) ? parsed : null
+  }
+
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const rawAmount = (value as { rawAmount?: unknown }).rawAmount
+  if (rawAmount !== undefined) {
+    return resolveIntegerCents(rawAmount)
+  }
+
+  const numeric = (value as { numeric?: unknown }).numeric
+  if (numeric !== undefined) {
+    return resolveIntegerCents(numeric)
+  }
+
+  const valueOf = (value as { valueOf?: () => unknown }).valueOf
+  if (typeof valueOf === "function") {
+    const resolved = valueOf.call(value)
+    if (resolved !== value) {
+      return resolveIntegerCents(resolved)
+    }
+  }
+
+  const toString = (value as { toString?: () => string }).toString
+  if (typeof toString === "function") {
+    const resolved = toString.call(value)
+    if (resolved && resolved !== "[object Object]") {
+      return resolveIntegerCents(resolved)
+    }
+  }
+
+  return null
+}
+
+function resolvePositiveIntegerCents(value: unknown): number | null {
+  const cents = resolveIntegerCents(value)
+  return cents !== null && cents > 0 ? cents : null
+}
+
+function resolveNonNegativeIntegerCents(value: unknown): number | null {
+  const cents = resolveIntegerCents(value)
+  return cents !== null && cents >= 0 ? cents : null
 }
 
 function sumLineItemsTotalCents(
@@ -122,15 +176,17 @@ function sumLineItemsTotalCents(
     if (
       typeof quantity !== "number" ||
       !Number.isFinite(quantity) ||
-      quantity <= 0 ||
-      typeof unitPrice !== "number" ||
-      !Number.isFinite(unitPrice) ||
-      unitPrice < 0
+      quantity <= 0
     ) {
       return null
     }
 
-    const lineTotal = Math.round(unitPrice * quantity)
+    const normalizedUnitPrice = resolveNonNegativeIntegerCents(unitPrice)
+    if (normalizedUnitPrice === null) {
+      return null
+    }
+
+    const lineTotal = normalizedUnitPrice * quantity
     if (!Number.isInteger(lineTotal) || lineTotal <= 0) {
       return null
     }
@@ -141,31 +197,45 @@ function sumLineItemsTotalCents(
   return total > 0 ? total : null
 }
 
-function resolveCartTotalCents(cart: PaymentStartCartSnapshot): number | null {
-  if (cart.total !== undefined && cart.total !== null) {
-    return isPositiveInteger(cart.total) ? cart.total : null
+function resolveCalculatedItemsTotalCents(
+  cart: PaymentStartCartSnapshot
+): number | null {
+  for (const value of [cart.item_total, cart.subtotal]) {
+    if (value === undefined || value === null) {
+      continue
+    }
+
+    return resolvePositiveIntegerCents(value)
   }
 
-  const lineItemsTotal = sumLineItemsTotalCents(cart.items)
+  return sumLineItemsTotalCents(cart.items)
+}
+
+function resolveCartTotalCents(cart: PaymentStartCartSnapshot): number | null {
+  if (cart.total !== undefined && cart.total !== null) {
+    return resolvePositiveIntegerCents(cart.total)
+  }
+
+  const lineItemsTotal = resolveCalculatedItemsTotalCents(cart)
   if (lineItemsTotal === null) {
     return null
   }
 
   let total = lineItemsTotal
 
-  if (typeof cart.shipping_total === "number" && Number.isFinite(cart.shipping_total)) {
-    total += Math.round(cart.shipping_total)
+  const shippingTotal = resolveNonNegativeIntegerCents(cart.shipping_total)
+  if (shippingTotal !== null) {
+    total += shippingTotal
   }
 
-  if (typeof cart.tax_total === "number" && Number.isFinite(cart.tax_total)) {
-    total += Math.round(cart.tax_total)
+  const taxTotal = resolveNonNegativeIntegerCents(cart.tax_total)
+  if (taxTotal !== null) {
+    total += taxTotal
   }
 
-  if (
-    typeof cart.discount_total === "number" &&
-    Number.isFinite(cart.discount_total)
-  ) {
-    total -= Math.round(cart.discount_total)
+  const discountTotal = resolveNonNegativeIntegerCents(cart.discount_total)
+  if (discountTotal !== null) {
+    total -= discountTotal
   }
 
   return total > 0 && Number.isInteger(total) ? total : null

@@ -82,6 +82,14 @@ function buildCompleteCart(
   }
 }
 
+function bigNumberLike(value: number): number {
+  return {
+    valueOf: () => value,
+    toString: () => String(value),
+    toJSON: () => value,
+  } as unknown as number
+}
+
 function buildEligibleInput(
   overrides: Partial<PaymentStartEligibilityInput> = {}
 ): PaymentStartEligibilityInput {
@@ -106,6 +114,19 @@ describe("derivePaymentAmountFromCart", () => {
     })
   })
 
+  it("deriva amount a partir de valores monetarios BigNumber-like do Medusa", () => {
+    expect(
+      derivePaymentAmountFromCart(
+        buildCompleteCart({
+          total: bigNumberLike(9900),
+        })
+      )
+    ).toEqual({
+      amount: 9900,
+      currency_code: "BRL",
+    })
+  })
+
   it("deriva amount somando line items quando cart.total ausente", () => {
     expect(
       derivePaymentAmountFromCart(
@@ -124,6 +145,29 @@ describe("derivePaymentAmountFromCart", () => {
       )
     ).toEqual({
       amount: 10000,
+      currency_code: "BRL",
+    })
+  })
+
+  it("deriva amount de item_total calculado quando cart.total esta nulo", () => {
+    expect(
+      derivePaymentAmountFromCart(
+        buildCompleteCart({
+          total: null,
+          item_total: 9900,
+          items: [
+            {
+              id: "item_01",
+              quantity: 1,
+              unit_price: null,
+              variant_id: "variant_01",
+              variant: sellableVariant(),
+            },
+          ],
+        })
+      )
+    ).toEqual({
+      amount: 9900,
       currency_code: "BRL",
     })
   })

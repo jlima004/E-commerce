@@ -6,9 +6,9 @@ current_phase: 04
 current_phase_name: stripe-real-layer-activation
 status: gate-04a-complete-manual-gate-before-phase-05
 stopped_at: Gate 04A complete; human review required before migration execution or Phase 05
-last_updated: "2026-06-29T22:05:00.000Z"
-last_activity: 2026-06-29
-last_activity_desc: Gate 04A completed real Stripe test-mode initiation layers; PaymentAttempt migration prepared but not applied; Phase 05 still blocked
+last_updated: "2026-06-30T12:34:00.000-03:00"
+last_activity: 2026-06-30
+last_activity_desc: Gate 04A validated real Stripe card initiation smoke in test mode; Pix real smoke deferred by Stripe account eligibility; Phase 05 still not started
 progress:
   total_phases: 12
   completed_phases: 4
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Gate 04A is complete. Card and Pix now have real Stripe test-mode initiation layers registered by internal safe config, still through the Phase 04 safe boundary (`filtering_wrapper` + `stripe_safe_layer`) and not native-first Medusa Stripe. `PaymentAttempt` migration is prepared but not applied; any real `db:migrate` still requires human approval and a direct/session migration URL. Dashboard Pix enablement, webhook secrets, and deployment config remain pending human setup. Phase 05 may begin only after human approval. Scope remains pre-Order — no Order, webhook, `purchase_completed`, or Gelato.
+**Current gate:** Gate 04A is complete. Card and Pix now have real Stripe test-mode initiation layers registered by internal safe config, still through the Phase 04 safe boundary (`filtering_wrapper` + `stripe_safe_layer`) and not native-first Medusa Stripe. Gate 04A was validated locally: real Stripe card initiation smoke passed in test mode and persisted a safe `PaymentAttempt` without creating Order/webhook/completion/Gelato side effects. Pix real smoke remains deferred due to Stripe account eligibility. Phase 05 remains not started and may begin only after explicit human approval.
 
 **Branch policy:**
 
@@ -53,8 +53,8 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 Phase: 04A (stripe-real-layer-activation) — complete at manual gate (pre-Order)
 Plan: Gate 04A executed after Phase 04 closure
-Status: Real Stripe test-mode layers complete; migration execution and Phase 05 require human approval
-Last activity: 2026-06-29 - 04A summary documented; PaymentAttempt migration prepared but not applied
+Status: Real Stripe card initiation smoke validated in test mode; Pix real smoke deferred by Stripe account eligibility; Phase 05 requires human approval
+Last activity: 2026-06-30 - Gate 04A validated end-to-end locally; Phase 05 remains not started
 
 Progress: [███-------] 33%
 
@@ -124,6 +124,7 @@ Recent decisions affecting current work:
 - [Plan 04-06]: Cart mutation invalidates active PaymentAttempt via safe fingerprint; retry/supersede leaves one active attempt; final negative proofs confirm no Order, webhook, completion, `purchase_completed`, Gelato, or persisted Stripe secrets/QR/`next_action`.
 - [Phase 04 closure]: Phase 04 is complete as money-path pre-Order implementation/test scope. PAY-01..PAY-04 are recorded as implementation complete with production activation blocked until `TBD-payment-attempt.ts` is approved/applied and real Stripe card/Pix layers/config are provided. Phase 05 remains not started behind human approval.
 - [Gate 04A]: Real Stripe card/Pix initiation layers are implemented and registered behind `STRIPE_REAL_INITIATION_ENABLED=true` with `sk_test_...` only. The layers call Stripe directly, not native-first Medusa Stripe, and hand raw PaymentIntent data immediately to the existing safe boundary. `client_secret`, Pix QR/copia-e-cola, hosted instructions, and integral `next_action` remain response-only; `PaymentAttempt` migration is prepared but not applied; no webhook, Order, `purchase_completed`, or Gelato work was introduced.
+- [Gate 04A validation]: Real Stripe card initiation smoke passed in test mode on local port 9001. The card route returned `201 Created`, created a Stripe test-mode PaymentIntent through the real safe layer, and persisted `PaymentAttempt` with `payment_method_type=card`, `status=card_client_secret_created`, `amount=9900`, `currency_code=brl`, and `order_id=null`. No Order, webhook, `CheckoutCompletionLog`, `WebhookEventLog`, `purchase_completed`, or Gelato fulfillment was created. Pix real smoke remains deferred due to Stripe account eligibility. Phase 05 remains not started.
 
 ### Pending Todos
 
@@ -150,10 +151,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-29T22:05:00.000Z
-Stopped at: Gate 04A complete; manual review gate before migration execution or Phase 05
+Last session: 2026-06-30T12:34:00.000-03:00
+Stopped at: Gate 04A validated; manual review gate before Phase 05
 Resume file: `.planning/phases/04A-stripe-real-layer-activation/04A-SUMMARY.md`
-Next permitted step: human review of `04A-SUMMARY.md`, migration execution decision, and real Stripe test-mode operational setup; Phase 05 remains blocked until explicit approval
+Next permitted step: human review of `04A-SUMMARY.md`; Phase 05 remains blocked until explicit approval
 
 ## Quick Tasks Completed
 

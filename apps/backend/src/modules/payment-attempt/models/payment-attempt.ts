@@ -14,7 +14,7 @@ const PaymentAttempt = model
     status: model
       .enum(PAYMENT_ATTEMPT_STATUS)
       .default(PAYMENT_ATTEMPT_STATUS.CREATED),
-    amount: model.bigNumber(),
+    amount: model.number(),
     currency_code: model.text(),
     expires_at: model.dateTime().nullable(),
     order_id: model.text().nullable(),

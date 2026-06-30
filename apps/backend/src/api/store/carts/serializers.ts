@@ -42,6 +42,12 @@ type StoreCartItem = {
 }
 
 export type StoreCartPreOrderRecord = CheckoutCartLike & {
+  total?: number | null
+  subtotal?: number | null
+  item_total?: number | null
+  shipping_total?: number | null
+  tax_total?: number | null
+  discount_total?: number | null
   created_at?: string
   updated_at?: string
   region_id?: string | null
@@ -76,6 +82,12 @@ export type PublicStoreCartPreOrder = {
   email: string | null
   currency_code: string | null
   locale: string | null
+  total: number | null
+  subtotal: number | null
+  item_total: number | null
+  shipping_total: number | null
+  tax_total: number | null
+  discount_total: number | null
   region_id: string | null
   created_at: string | null
   updated_at: string | null
@@ -218,6 +230,12 @@ export function serializeStoreCartPreOrder(
     email: cart.email ?? null,
     currency_code: cart.currency_code ?? null,
     locale: cart.locale ?? null,
+    total: cart.total ?? null,
+    subtotal: cart.subtotal ?? null,
+    item_total: cart.item_total ?? null,
+    shipping_total: cart.shipping_total ?? null,
+    tax_total: cart.tax_total ?? null,
+    discount_total: cart.discount_total ?? null,
     region_id: cart.region_id ?? null,
     created_at: cart.created_at ?? null,
     updated_at: cart.updated_at ?? null,

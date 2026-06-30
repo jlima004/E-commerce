@@ -79,6 +79,33 @@ Negative grep proof:
 # PASS
 ```
 
+## Final validation
+
+Gate 04A was validated end-to-end on local port 9001.
+
+Evidence:
+
+- Module loader executed on boot and registered card/pix real initiation layers.
+- Card smoke returned `201 Created`.
+- Stripe test-mode PaymentIntent was created through the real safe layer.
+- `PaymentAttempt` was persisted with:
+  - `payment_method_type = card`
+  - `status = card_client_secret_created`
+  - `amount = 9900`
+  - `currency_code = brl`
+  - `order_id = null`
+- No Order was created.
+- No webhook, `CheckoutCompletionLog`, `WebhookEventLog`, `purchase_completed`, or Gelato fulfillment was created.
+- No `client_secret`, `pi_*_secret`, `next_action`, Pix QR, Pix copy-paste, or hosted instructions URL was persisted.
+
+Validation:
+
+- `npm run test:unit -- payment-attempt`: 9 suites, 129 tests passed.
+- `ADMIN_DISABLED=true npm run build` passed.
+- `/health/ready` returned `postgres=up` and `redis=up`.
+
+Pix real smoke remains externally blocked by Stripe account eligibility.
+
 ## Explicit Non-Scope Proof
 
 - No Stripe webhook route was created.

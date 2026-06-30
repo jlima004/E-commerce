@@ -40,6 +40,7 @@ type PaymentAttemptModuleLike = {
   updatePaymentAttempts?: (
     data: PaymentAttemptRecord | PaymentAttemptRecord[]
   ) => Promise<PaymentAttemptRecord[]>
+  resolveStripeCardInitiationLayer?: () => StripeCardInitiationLayer | null
 }
 
 const PAYMENT_ATTEMPT_LIST_ERROR_MESSAGE =
@@ -63,10 +64,14 @@ function resolveStripeCardInitiationLayer(
   try {
     layer = req.scope.resolve(STRIPE_CARD_INITIATION_LAYER)
   } catch {
-    throw new MedusaError(
-      MedusaError.Types.INVALID_DATA,
-      "Camada Stripe para cartao nao configurada."
-    )
+    try {
+      const service = req.scope.resolve(
+        PAYMENT_ATTEMPT_MODULE
+      ) as PaymentAttemptModuleLike
+      layer = service.resolveStripeCardInitiationLayer?.()
+    } catch {
+      layer = null
+    }
   }
 
   if (!isStripeCardInitiationLayer(layer)) {

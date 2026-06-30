@@ -1,6 +1,8 @@
 import { MedusaService } from "@medusajs/framework/utils"
 import PaymentAttempt from "./models/payment-attempt"
 import { invalidateActivePaymentAttemptForCartChange } from "./cart-invalidation"
+import type { StripeCardInitiationLayer } from "./card"
+import type { StripePixInitiationLayer } from "./pix"
 import {
   assertNoSensitivePaymentAttemptMetadata,
   isPaymentAttemptActive,
@@ -12,9 +14,68 @@ import type {
   PaymentAttemptStatus,
 } from "./types"
 
+const STRIPE_CARD_INITIATION_LAYER_TOKEN = "stripeCardInitiationLayer"
+const STRIPE_PIX_INITIATION_LAYER_TOKEN = "stripePixInitiationLayer"
+
+function isStripeCardInitiationLayer(
+  value: unknown
+): value is StripeCardInitiationLayer {
+  return (
+    Boolean(value) &&
+    typeof (value as StripeCardInitiationLayer).createCardPaymentIntent ===
+      "function"
+  )
+}
+
+function isStripePixInitiationLayer(
+  value: unknown
+): value is StripePixInitiationLayer {
+  return (
+    Boolean(value) &&
+    typeof (value as StripePixInitiationLayer).createPixPaymentIntent ===
+      "function"
+  )
+}
+
+function resolveInjectedLayer<T>(
+  dependencies: Record<string, unknown>,
+  token: string,
+  isExpectedLayer: (value: unknown) => value is T
+): T | null {
+  try {
+    const layer = dependencies[token]
+    return isExpectedLayer(layer) ? layer : null
+  } catch {
+    return null
+  }
+}
+
 class PaymentAttemptModuleService extends MedusaService({
   PaymentAttempt,
-}) {}
+}) {
+  protected readonly dependencies_: Record<string, unknown>
+
+  constructor(dependencies: Record<string, unknown> = {}) {
+    super(...arguments)
+    this.dependencies_ = dependencies
+  }
+
+  resolveStripeCardInitiationLayer(): StripeCardInitiationLayer | null {
+    return resolveInjectedLayer(
+      this.dependencies_,
+      STRIPE_CARD_INITIATION_LAYER_TOKEN,
+      isStripeCardInitiationLayer
+    )
+  }
+
+  resolveStripePixInitiationLayer(): StripePixInitiationLayer | null {
+    return resolveInjectedLayer(
+      this.dependencies_,
+      STRIPE_PIX_INITIATION_LAYER_TOKEN,
+      isStripePixInitiationLayer
+    )
+  }
+}
 
 export default PaymentAttemptModuleService
 
