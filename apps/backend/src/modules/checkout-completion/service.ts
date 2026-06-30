@@ -246,3 +246,151 @@ export function buildCheckoutCompletionLogRecord(
     deleted_at: null,
   }
 }
+
+export type CheckoutCompletionLogRecord = ReturnType<
+  typeof buildCheckoutCompletionLogRecord
+>
+
+export type CheckoutCompletionClaimDecision =
+  | {
+      type: "create"
+      record: Omit<CheckoutCompletionLogRecord, "id">
+    }
+  | {
+      type: "reuse_completed"
+      log: CheckoutCompletionLogRecord
+      order_id: string
+    }
+  | {
+      type: "already_processing"
+      log: CheckoutCompletionLogRecord
+    }
+  | {
+      type: "recover_created_order"
+      log: CheckoutCompletionLogRecord
+      order_id: string
+    }
+  | {
+      type: "retry_failed"
+      log: CheckoutCompletionLogRecord
+      update: Partial<CheckoutCompletionLogRecord>
+    }
+
+export function resolveCheckoutCompletionClaimDecision(input: {
+  existing: CheckoutCompletionLogRecord | null
+  next: CreateCheckoutCompletionLogInput
+  at?: Date
+}): CheckoutCompletionClaimDecision {
+  const at = input.at ?? new Date()
+
+  if (!input.existing) {
+    const created = buildCheckoutCompletionLogRecord(
+      {
+        ...input.next,
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: at.toISOString(),
+        completed_at: null,
+        failed_at: null,
+        error_code: null,
+        error_message: null,
+      },
+      "claim-pending",
+      at
+    )
+
+    const { id: _ignoredId, ...record } = created
+
+    return {
+      type: "create",
+      record,
+    }
+  }
+
+  if (
+    input.existing.status === CHECKOUT_COMPLETION_STATUS.COMPLETED &&
+    input.existing.order_id
+  ) {
+    return {
+      type: "reuse_completed",
+      log: input.existing,
+      order_id: input.existing.order_id,
+    }
+  }
+
+  if (
+    input.existing.order_id &&
+    (input.existing.status === CHECKOUT_COMPLETION_STATUS.PROCESSING ||
+      input.existing.status === CHECKOUT_COMPLETION_STATUS.FAILED)
+  ) {
+    return {
+      type: "recover_created_order",
+      log: input.existing,
+      order_id: input.existing.order_id,
+    }
+  }
+
+  if (input.existing.status === CHECKOUT_COMPLETION_STATUS.PROCESSING) {
+    return {
+      type: "already_processing",
+      log: input.existing,
+    }
+  }
+
+  if (
+    input.existing.status === CHECKOUT_COMPLETION_STATUS.FAILED &&
+    !input.existing.order_id
+  ) {
+    return {
+      type: "retry_failed",
+      log: input.existing,
+      update: {
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: at.toISOString(),
+        completed_at: null,
+        failed_at: null,
+        error_code: null,
+        error_message: null,
+        updated_at: at.toISOString(),
+      },
+    }
+  }
+
+  throw new Error("CHECKOUT_COMPLETION_LOG_STATE_INVALID")
+}
+
+export function buildCheckoutCompletionCompletedUpdate(input: {
+  id: string
+  order_id: string
+  at?: Date
+}): Partial<CheckoutCompletionLogRecord> {
+  const at = input.at ?? new Date()
+
+  return {
+    id: input.id,
+    order_id: input.order_id,
+    status: CHECKOUT_COMPLETION_STATUS.COMPLETED,
+    completed_at: at.toISOString(),
+    failed_at: null,
+    error_code: null,
+    error_message: null,
+    updated_at: at.toISOString(),
+  }
+}
+
+export function buildCheckoutCompletionFailedUpdate(input: {
+  id: string
+  error_code: string
+  error_message: string
+  at?: Date
+}): Partial<CheckoutCompletionLogRecord> {
+  const at = input.at ?? new Date()
+
+  return {
+    id: input.id,
+    status: CHECKOUT_COMPLETION_STATUS.FAILED,
+    failed_at: at.toISOString(),
+    error_code: sanitizeString(input.error_code).slice(0, 120),
+    error_message: sanitizeString(input.error_message).slice(0, 500),
+    updated_at: at.toISOString(),
+  }
+}

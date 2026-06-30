@@ -407,6 +407,32 @@ export function applyStripePaymentIntentWebhookToAttempt<
   }
 }
 
+export function linkPaymentAttemptToOrder<T extends PaymentAttemptRecord>(
+  attempt: T,
+  orderId: string,
+  at: Date = new Date()
+): T {
+  const normalizedOrderId = orderId.trim()
+
+  if (!normalizedOrderId) {
+    throw new Error("PAYMENT_ATTEMPT_ORDER_ID_REQUIRED")
+  }
+
+  if (attempt.status !== "payment_confirmed_by_webhook") {
+    throw new Error("PAYMENT_ATTEMPT_ORDER_LINK_STATUS_INVALID")
+  }
+
+  if (attempt.order_id && attempt.order_id !== normalizedOrderId) {
+    throw new Error("PAYMENT_ATTEMPT_ORDER_LINK_CONFLICT")
+  }
+
+  return {
+    ...attempt,
+    order_id: normalizedOrderId,
+    updated_at: at.toISOString(),
+  }
+}
+
 export function invalidateActiveAttemptsForCartChange<
   T extends PaymentAttemptRecord,
 >(attempts: T[], cartId: string, at: Date = new Date()): T[] {

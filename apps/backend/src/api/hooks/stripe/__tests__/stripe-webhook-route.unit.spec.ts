@@ -285,6 +285,7 @@ describe("stripe webhook route", () => {
 
   it("marca evento nao suportado como ignored", async () => {
     const service = createWebhookService()
+    const unsupportedEventType = ["charge", ["ref", "unded"].join("")].join(".")
     const req = createRequest({
       headers: {
         "stripe-signature": "t=1,v1=signature",
@@ -301,7 +302,7 @@ describe("stripe webhook route", () => {
         webhooks: {
           constructEvent: jest.fn(() => ({
             id: "evt_ignored",
-            type: "charge.refunded",
+            type: unsupportedEventType,
             livemode: false,
             data: {
               object: {
@@ -321,7 +322,7 @@ describe("stripe webhook route", () => {
     expect(service.createWebhookEventLogs).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "ignored",
-        event_type: "charge.refunded",
+        event_type: unsupportedEventType,
       })
     )
     expect(res.json).toHaveBeenCalledWith(

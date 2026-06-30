@@ -1,9 +1,10 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
+import { Modules } from "@medusajs/framework/utils"
+import { CHECKOUT_COMPLETION_MODULE } from "../../../modules/checkout-completion"
 import { PAYMENT_ATTEMPT_MODULE } from "../../../modules/payment-attempt"
 import type { PaymentAttemptRecord } from "../../../modules/payment-attempt/types"
 import {
   OrderCreationEntrypointError,
-  processCreateOrderFromConfirmedPaymentAttemptStub,
   runCreateOrderFromConfirmedPaymentAttemptEntrypoint,
   validateCreateOrderFromConfirmedPaymentAttemptInput,
 } from "../webhook-order-entrypoint"
@@ -34,6 +35,8 @@ function buildEligibleAttempt(
     canceled_at: null,
     failed_at: null,
     expired_at: null,
+    created_at: "2026-06-30T09:00:00.000Z",
+    updated_at: "2026-06-30T09:00:00.000Z",
     ...overrides,
   }
 }
@@ -55,6 +58,108 @@ function buildInput(
   }
 }
 
+function createPaymentAttemptModule(attempt: PaymentAttemptRecord) {
+  const store = [attempt]
+
+  return {
+    listPaymentAttempts: jest.fn(async (filters?: Record<string, unknown>) => {
+      return store.filter((record) => !filters?.id || record.id === filters.id)
+    }),
+    updatePaymentAttempts: jest.fn(async (input: PaymentAttemptRecord | PaymentAttemptRecord[]) => {
+      const rows = Array.isArray(input) ? input : [input]
+
+      for (const row of rows) {
+        const index = store.findIndex((record) => record.id === row.id)
+        if (index >= 0) {
+          store[index] = row
+        }
+      }
+
+      return rows
+    }),
+    store,
+  }
+}
+
+function createCheckoutCompletionModule() {
+  const store: Array<Record<string, unknown>> = [
+    {
+      id: "chkcpl_entry_01",
+      idempotency_key: "pi_entry_123",
+      cart_id: "cart_01",
+      payment_intent_id: "pi_entry_123",
+      payment_attempt_id: "payatt_entry_01",
+      order_id: "order_entry_existing",
+      status: "completed",
+      metadata: null,
+    },
+  ]
+
+  return {
+    listCheckoutCompletionLogs: jest.fn(async () => store),
+    createCheckoutCompletionLogs: jest.fn(),
+    updateCheckoutCompletionLogs: jest.fn(async (input: Record<string, unknown> | Array<Record<string, unknown>>) => {
+      const row = Array.isArray(input) ? input[0] : input
+      store[0] = {
+        ...store[0],
+        ...row,
+      }
+      return [store[0]]
+    }),
+    store,
+  }
+}
+
+function createOrderModule() {
+  const store: Array<Record<string, unknown>> = [
+    {
+      id: "order_entry_existing",
+      metadata: null,
+    },
+  ]
+
+  return {
+    listOrders: jest.fn(async (selector?: Record<string, unknown>) => {
+      return store.filter((record) => !selector?.id || record.id === selector.id)
+    }),
+    updateOrders: jest.fn(async (selector: Record<string, unknown>, update: Record<string, unknown>) => {
+      const index = store.findIndex((record) => record.id === selector.id)
+      if (index >= 0) {
+        store[index] = {
+          ...store[index],
+          ...update,
+        }
+      }
+      return index >= 0 ? [store[index]] : []
+    }),
+    store,
+  }
+}
+
+function createContainer(input: {
+  paymentAttemptModule?: ReturnType<typeof createPaymentAttemptModule>
+  checkoutCompletionModule?: ReturnType<typeof createCheckoutCompletionModule>
+  orderModule?: ReturnType<typeof createOrderModule>
+}) {
+  return {
+    resolve: jest.fn((key: string) => {
+      if (key === PAYMENT_ATTEMPT_MODULE) {
+        return input.paymentAttemptModule
+      }
+
+      if (key === CHECKOUT_COMPLETION_MODULE) {
+        return input.checkoutCompletionModule
+      }
+
+      if (key === Modules.ORDER) {
+        return input.orderModule
+      }
+
+      return undefined
+    }),
+  } as unknown as MedusaContainer
+}
+
 describe("validateCreateOrderFromConfirmedPaymentAttemptInput", () => {
   it("exige payment_attempt_id e payment_intent_id", () => {
     expect(() =>
@@ -69,116 +174,80 @@ describe("validateCreateOrderFromConfirmedPaymentAttemptInput", () => {
       )
     ).toThrow(OrderCreationEntrypointError)
   })
-
-  it("nao expoe idempotency_key no contrato de input", () => {
-    const source = require("fs").readFileSync(
-      require("path").join(__dirname, "../webhook-order-entrypoint.ts"),
-      "utf8"
-    )
-
-    expect(source).not.toMatch(/idempotency_key/)
-    expect(() =>
-      validateCreateOrderFromConfirmedPaymentAttemptInput(buildInput())
-    ).not.toThrow()
-  })
-})
-
-describe("processCreateOrderFromConfirmedPaymentAttemptStub", () => {
-  it("retorna stub/no-op para tentativa elegivel sem chamar Order creation", () => {
-    const result = processCreateOrderFromConfirmedPaymentAttemptStub(
-      buildEligibleAttempt(),
-      buildInput()
-    )
-
-    expect(result).toEqual({
-      status: "stub_no_op",
-      payment_attempt_id: "payatt_entry_01",
-      payment_intent_id: "pi_entry_123",
-      order_id: null,
-      stripe_event_id: "evt_entry_01",
-      correlation_id: "corr_entry_01",
-    })
-  })
-
-  it("falha antes de qualquer dependencia de Order para status invalido", () => {
-    expect(() =>
-      processCreateOrderFromConfirmedPaymentAttemptStub(
-        buildEligibleAttempt({ status: "awaiting_pix_payment" }),
-        buildInput()
-      )
-    ).toThrow("PAYMENT_ATTEMPT_NOT_ELIGIBLE_FOR_ORDER_STATUS")
-  })
-
-  it("falha quando payment_attempt_id nao corresponde", () => {
-    expect(() =>
-      processCreateOrderFromConfirmedPaymentAttemptStub(
-        buildEligibleAttempt(),
-        buildInput({ payment_attempt_id: "payatt_outro" })
-      )
-    ).toThrow(OrderCreationEntrypointError)
-  })
-
-  it("falha quando payment_intent_id nao corresponde", () => {
-    expect(() =>
-      processCreateOrderFromConfirmedPaymentAttemptStub(
-        buildEligibleAttempt(),
-        buildInput({ payment_intent_id: "pi_outro" })
-      )
-    ).toThrow(OrderCreationEntrypointError)
-  })
 })
 
 describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
-  it("carrega PaymentAttempt e aplica guard antes do stub", async () => {
-    const attempt = buildEligibleAttempt()
-    const container = {
-      resolve: jest.fn((key: string) => {
-        if (key === PAYMENT_ATTEMPT_MODULE) {
-          return {
-            listPaymentAttempts: jest.fn(async () => [attempt]),
-          }
-        }
-        return undefined
-      }),
-    } as unknown as MedusaContainer
+  it("reusa CheckoutCompletionLog completo e cura PaymentAttempt.order_id", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const orderModule = createOrderModule()
 
     const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
-      container,
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        orderModule,
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-06-30T16:00:00.000Z"),
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "reused_existing_order",
+        order_id: "order_entry_existing",
+        checkout_completion_status: "completed",
+        order_status: "confirmed",
+        payment_status: "captured",
+      })
+    )
+    expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
+    expect(orderModule.store[0]?.metadata).toEqual({
+      order_status: "confirmed",
+      payment_status: "captured",
+    })
+  })
+
+  it("propaga inelegibilidade antes de tocar em CheckoutCompletionLog", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(
+      buildEligibleAttempt({ status: "payment_failed" })
+    )
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+
+    await expect(
+      runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+        createContainer({
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          orderModule: createOrderModule(),
+        }),
+        buildInput()
+      )
+    ).rejects.toThrow("PAYMENT_ATTEMPT_NOT_ELIGIBLE_FOR_ORDER_STATUS")
+
+    expect(checkoutCompletionModule.listCheckoutCompletionLogs).not.toHaveBeenCalled()
+  })
+
+  it("preserva contrato Phase 05 quando modulo de conclusao nao esta configurado", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        orderModule: createOrderModule(),
+      }),
       buildInput()
     )
 
-    expect(result.status).toBe("stub_no_op")
-    expect(result.order_id).toBeNull()
-  })
-
-  it("propaga inelegibilidade sem criar Order", async () => {
-    const attempt = buildEligibleAttempt({ status: "payment_failed" })
-    const container = {
-      resolve: jest.fn((key: string) => {
-        if (key === PAYMENT_ATTEMPT_MODULE) {
-          return {
-            listPaymentAttempts: jest.fn(async () => [attempt]),
-          }
-        }
-        return undefined
-      }),
-    } as unknown as MedusaContainer
-
-    await expect(
-      runCreateOrderFromConfirmedPaymentAttemptEntrypoint(container, buildInput())
-    ).rejects.toThrow("PAYMENT_ATTEMPT_NOT_ELIGIBLE_FOR_ORDER_STATUS")
-  })
-})
-
-describe("webhook-order-entrypoint — provas negativas de escopo 06-02", () => {
-  it("nao referencia completeCartWorkflow, createOrderWorkflow ou CheckoutCompletionLog", () => {
-    const source = require("fs").readFileSync(
-      require("path").join(__dirname, "../webhook-order-entrypoint.ts"),
-      "utf8"
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "order_creation_unavailable",
+        order_id: null,
+        checkout_completion_status: "processing",
+      })
     )
-
-    expect(source).not.toMatch(
-      /completeCartWorkflow|createOrderWorkflow|CheckoutCompletionLog|purchase_completed|gelato|AnalyticsEventLog|EmailDeliveryLog|refund/i
-    )
+    expect(paymentAttemptModule.store[0]?.order_id).toBeNull()
   })
 })

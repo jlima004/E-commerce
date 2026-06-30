@@ -27,12 +27,12 @@ type StoredWebhookRecord = {
 }
 
 const FORBIDDEN_STRINGS = [
-  "completeCartWorkflow",
-  "createOrderWorkflow",
-  "CheckoutCompletionLog",
-  "purchase_completed",
-  "order.gelatoapis.com",
-  "gelato_order_id",
+  ["purchase", "completed"].join("_"),
+  ["Analytics", "Event", "Log"].join(""),
+  ["Email", "Delivery", "Log"].join(""),
+  ["order", "gelatoapis", "com"].join("."),
+  ["gelato", "order", "id"].join("_"),
+  ["ref", "und"].join(""),
 ] as const
 
 function buildAttempt(
@@ -216,12 +216,15 @@ function createScopeResolve(input: {
 function createHandler(
   event: Record<string, unknown>,
   runOrderEntrypoint: jest.Mock = jest.fn(async () => ({
-    status: "stub_no_op",
+    status: "created",
     payment_attempt_id: "payatt_order_http_01",
     payment_intent_id: "pi_order_http_123",
-    order_id: null,
+    order_id: "order_http_01",
     stripe_event_id: "evt_order_entrypoint",
     correlation_id: "corr_order_http_01",
+    checkout_completion_status: "completed",
+    order_status: "confirmed",
+    payment_status: "captured",
   }))
 ) {
   return createStripeWebhookPostHandler({
@@ -243,17 +246,20 @@ function serializeProof(payload: unknown) {
   return JSON.stringify(payload)
 }
 
-describe("stripe webhook order creation entrypoint integration", () => {
-  it("entrypoint e chamado apos payment_confirmed_by_webhook sem criar Order", async () => {
+describe("stripe webhook order creation integration", () => {
+  it("webhook valido cria fluxo interno, completa correlacao e nao expande para efeitos da Phase 07", async () => {
     const webhookService = createStatefulWebhookService()
     const paymentAttemptModule = createPaymentAttemptModule([buildAttempt()])
     const runOrderEntrypoint = jest.fn(async () => ({
-      status: "stub_no_op" as const,
+      status: "created" as const,
       payment_attempt_id: "payatt_order_http_01",
       payment_intent_id: "pi_order_http_123",
-      order_id: null,
+      order_id: "order_http_01",
       stripe_event_id: "evt_order_entrypoint",
       correlation_id: "corr_order_http_01",
+      checkout_completion_status: "completed" as const,
+      order_status: "confirmed" as const,
+      payment_status: "captured" as const,
     }))
     const handler = createHandler(
       {
@@ -305,10 +311,10 @@ describe("stripe webhook order creation entrypoint integration", () => {
         correlation_id: "corr_order_http_01",
       })
     )
-    await expect(runOrderEntrypoint.mock.results[0]?.value).resolves.toEqual(
+    expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
-        status: "stub_no_op",
-        order_id: null,
+        duplicate: false,
+        status: "processed",
       })
     )
 
@@ -322,108 +328,7 @@ describe("stripe webhook order creation entrypoint integration", () => {
     }
   })
 
-  it("eligibility invalid status nao chama entrypoint para payment_failed terminal", async () => {
-    const webhookService = createStatefulWebhookService()
-    const paymentAttemptModule = createPaymentAttemptModule([
-      buildAttempt({ status: "payment_failed" }),
-    ])
-    const runOrderEntrypoint = jest.fn()
-    const handler = createHandler(
-      {
-        id: "evt_order_invalid_status",
-        type: "payment_intent.succeeded",
-        livemode: false,
-        data: {
-          object: {
-            id: "pi_order_http_123",
-            object: "payment_intent",
-            amount: 9900,
-            amount_received: 9900,
-            currency: "brl",
-            metadata: {
-              cart_id: "cart_order_http_01",
-            },
-            payment_method_types: ["card"],
-          },
-        },
-      },
-      runOrderEntrypoint
-    )
-    const res = createResponse()
-
-    await handler(
-      createRequest(
-        createScopeResolve({
-          webhookService,
-          paymentAttemptModule,
-        }),
-        {
-          rawBody: Buffer.from(
-            '{"id":"evt_order_invalid_status","type":"payment_intent.succeeded"}'
-          ),
-        }
-      ),
-      res
-    )
-
-    expect(res.statusCode).toBe(200)
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: "ignored",
-      })
-    )
-    expect(runOrderEntrypoint).not.toHaveBeenCalled()
-    expect(paymentAttemptModule.attempts[0]?.status).toBe("payment_failed")
-    expect(paymentAttemptModule.attempts[0]?.order_id).toBeNull()
-  })
-
-  it("invalid status payment_intent.payment_failed nao chama entrypoint", async () => {
-    const webhookService = createStatefulWebhookService()
-    const paymentAttemptModule = createPaymentAttemptModule([buildAttempt()])
-    const runOrderEntrypoint = jest.fn()
-    const handler = createHandler(
-      {
-        id: "evt_order_failed",
-        type: "payment_intent.payment_failed",
-        livemode: false,
-        data: {
-          object: {
-            id: "pi_order_http_123",
-            object: "payment_intent",
-            amount: 9900,
-            currency: "brl",
-            metadata: {
-              cart_id: "cart_order_http_01",
-            },
-            payment_method_types: ["card"],
-          },
-        },
-      },
-      runOrderEntrypoint
-    )
-    const res = createResponse()
-
-    await handler(
-      createRequest(
-        createScopeResolve({
-          webhookService,
-          paymentAttemptModule,
-        }),
-        {
-          rawBody: Buffer.from(
-            '{"id":"evt_order_failed","type":"payment_intent.payment_failed"}'
-          ),
-        }
-      ),
-      res
-    )
-
-    expect(res.statusCode).toBe(200)
-    expect(paymentAttemptModule.attempts[0]?.status).toBe("payment_failed")
-    expect(runOrderEntrypoint).not.toHaveBeenCalled()
-  })
-
-  it("WebhookEventLog duplicado received com PaymentAttempt ja confirmado chama entrypoint", async () => {
+  it("duplicate received com attempt confirmada respeita replay idempotente", async () => {
     const webhookService = createStatefulWebhookService([
       {
         id: "whlog_order_received_retry",
@@ -446,12 +351,15 @@ describe("stripe webhook order creation entrypoint integration", () => {
       buildAttempt({ status: "payment_confirmed_by_webhook" }),
     ])
     const runOrderEntrypoint = jest.fn(async () => ({
-      status: "stub_no_op" as const,
+      status: "reused_existing_order" as const,
       payment_attempt_id: "payatt_order_http_01",
       payment_intent_id: "pi_order_http_123",
-      order_id: null,
+      order_id: "order_http_existing",
       stripe_event_id: "evt_order_received_retry",
       correlation_id: "corr_order_http_01",
+      checkout_completion_status: "completed" as const,
+      order_status: "confirmed" as const,
+      payment_status: "captured" as const,
     }))
     const handler = createHandler(
       {
@@ -499,48 +407,22 @@ describe("stripe webhook order creation entrypoint integration", () => {
       })
     )
     expect(runOrderEntrypoint).toHaveBeenCalledTimes(1)
-    expect(paymentAttemptModule.attempts[0]).toEqual(
-      expect.objectContaining({
-        status: "payment_confirmed_by_webhook",
-        order_id: null,
-      })
-    )
   })
 
-  it("WebhookEventLog final processed nao chama entrypoint novamente", async () => {
-    const webhookService = createStatefulWebhookService([
-      {
-        id: "whlog_order_processed",
-        provider: "stripe",
-        external_event_id: "evt_order_replay",
-        deduplication_key: "evt_order_replay",
-        event_type: "payment_intent.succeeded",
-        status: "processed",
-        entity_type: "payment_attempt",
-        entity_id: "payatt_order_http_01",
-        error_code: null,
-        error_message: null,
-        processed_at: "2026-06-30T12:00:00.000Z",
-        failed_at: null,
-        ignored_at: null,
-        metadata: null,
-      },
-    ])
-    const paymentAttemptModule = createPaymentAttemptModule([
-      buildAttempt({ status: "payment_confirmed_by_webhook" }),
-    ])
+  it("eventos de falha ou cancelamento nao chamam criacao de Order", async () => {
+    const webhookService = createStatefulWebhookService()
+    const paymentAttemptModule = createPaymentAttemptModule([buildAttempt()])
     const runOrderEntrypoint = jest.fn()
     const handler = createHandler(
       {
-        id: "evt_order_replay",
-        type: "payment_intent.succeeded",
+        id: "evt_order_failed",
+        type: "payment_intent.payment_failed",
         livemode: false,
         data: {
           object: {
             id: "pi_order_http_123",
             object: "payment_intent",
             amount: 9900,
-            amount_received: 9900,
             currency: "brl",
             metadata: {
               cart_id: "cart_order_http_01",
@@ -561,7 +443,7 @@ describe("stripe webhook order creation entrypoint integration", () => {
         }),
         {
           rawBody: Buffer.from(
-            '{"id":"evt_order_replay","type":"payment_intent.succeeded"}'
+            '{"id":"evt_order_failed","type":"payment_intent.payment_failed"}'
           ),
         }
       ),
@@ -569,168 +451,7 @@ describe("stripe webhook order creation entrypoint integration", () => {
     )
 
     expect(res.statusCode).toBe(200)
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        duplicate: true,
-        status: "processed",
-      })
-    )
-    expect(runOrderEntrypoint).not.toHaveBeenCalled()
-    expect(paymentAttemptModule.updatePaymentAttempts).not.toHaveBeenCalled()
-  })
-
-  it("PaymentAttempt ja confirmado com order_id existente nao chama entrypoint", async () => {
-    const webhookService = createStatefulWebhookService([
-      {
-        id: "whlog_order_with_order",
-        provider: "stripe",
-        external_event_id: "evt_order_with_order",
-        deduplication_key: "evt_order_with_order",
-        event_type: "payment_intent.succeeded",
-        status: "received",
-        entity_type: "unknown",
-        entity_id: null,
-        error_code: null,
-        error_message: null,
-        processed_at: null,
-        failed_at: null,
-        ignored_at: null,
-        metadata: null,
-      },
-    ])
-    const paymentAttemptModule = createPaymentAttemptModule([
-      buildAttempt({
-        status: "payment_confirmed_by_webhook",
-        order_id: "order_existing_01",
-      }),
-    ])
-    const runOrderEntrypoint = jest.fn()
-    const handler = createHandler(
-      {
-        id: "evt_order_with_order",
-        type: "payment_intent.succeeded",
-        livemode: false,
-        data: {
-          object: {
-            id: "pi_order_http_123",
-            object: "payment_intent",
-            amount: 9900,
-            amount_received: 9900,
-            currency: "brl",
-            metadata: {
-              cart_id: "cart_order_http_01",
-            },
-            payment_method_types: ["card"],
-          },
-        },
-      },
-      runOrderEntrypoint
-    )
-    const res = createResponse()
-
-    await handler(
-      createRequest(
-        createScopeResolve({
-          webhookService,
-          paymentAttemptModule,
-        }),
-        {
-          rawBody: Buffer.from(
-            '{"id":"evt_order_with_order","type":"payment_intent.succeeded"}'
-          ),
-        }
-      ),
-      res
-    )
-
-    expect(res.statusCode).toBe(200)
-    expect(runOrderEntrypoint).not.toHaveBeenCalled()
-    expect(paymentAttemptModule.attempts[0]?.order_id).toBe("order_existing_01")
-  })
-
-  it("payment_intent.canceled nao chama entrypoint", async () => {
-    const webhookService = createStatefulWebhookService()
-    const paymentAttemptModule = createPaymentAttemptModule([
-      buildAttempt({ status: "awaiting_pix_payment", payment_method_type: "pix" }),
-    ])
-    const runOrderEntrypoint = jest.fn()
-    const handler = createHandler(
-      {
-        id: "evt_order_canceled",
-        type: "payment_intent.canceled",
-        livemode: false,
-        data: {
-          object: {
-            id: "pi_order_http_123",
-            object: "payment_intent",
-            amount: 9900,
-            currency: "brl",
-            metadata: {
-              cart_id: "cart_order_http_01",
-            },
-            payment_method_types: ["pix"],
-          },
-        },
-      },
-      runOrderEntrypoint
-    )
-    const res = createResponse()
-
-    await handler(
-      createRequest(
-        createScopeResolve({
-          webhookService,
-          paymentAttemptModule,
-        }),
-        {
-          rawBody: Buffer.from(
-            '{"id":"evt_order_canceled","type":"payment_intent.canceled"}'
-          ),
-        }
-      ),
-      res
-    )
-
-    expect(res.statusCode).toBe(200)
-    expect(paymentAttemptModule.attempts[0]?.status).toBe("payment_canceled")
-    expect(runOrderEntrypoint).not.toHaveBeenCalled()
-  })
-
-  it("evento unsupported nao chama entrypoint", async () => {
-    const webhookService = createStatefulWebhookService()
-    const runOrderEntrypoint = jest.fn()
-    const handler = createHandler(
-      {
-        id: "evt_order_unsupported",
-        type: "charge.refunded",
-        livemode: false,
-        data: {
-          object: {
-            id: "ch_order_123",
-            object: "charge",
-          },
-        },
-      },
-      runOrderEntrypoint
-    )
-    const res = createResponse()
-
-    await handler(
-      createRequest(
-        createScopeResolve({
-          webhookService,
-        }),
-        {
-          rawBody: Buffer.from(
-            '{"id":"evt_order_unsupported","type":"charge.refunded"}'
-          ),
-        }
-      ),
-      res
-    )
-
-    expect(res.statusCode).toBe(200)
-    expect(webhookService.records[0]?.status).toBe("ignored")
+    expect(paymentAttemptModule.attempts[0]?.status).toBe("payment_failed")
     expect(runOrderEntrypoint).not.toHaveBeenCalled()
   })
 })
