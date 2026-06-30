@@ -60,6 +60,19 @@ function createWebhookService(records: WebhookRecord[] = []) {
       records.push(record)
       return [record]
     }),
+    updateWebhookEventLogs: jest.fn(async (input) => {
+      const row = Array.isArray(input) ? input[0] : input
+      const index = records.findIndex((record) => record.id === row.id)
+
+      if (index >= 0) {
+        records[index] = {
+          ...records[index],
+          ...row,
+        }
+      }
+
+      return index >= 0 ? [records[index]] : []
+    }),
   }
 }
 

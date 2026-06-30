@@ -1,25 +1,30 @@
-export const WEBHOOK_PROVIDERS = ["stripe", "gelato"] as const
+export const WEBHOOK_PROVIDER = {
+  STRIPE: "stripe",
+  GELATO: "gelato",
+} as const
 
-export const WEBHOOK_ENTITY_TYPES = [
-  "payment_attempt",
-  "order",
-  "refund",
-  "fulfillment",
-  "unknown",
-] as const
+export const WEBHOOK_ENTITY_TYPE = {
+  PAYMENT_ATTEMPT: "payment_attempt",
+  ORDER: "order",
+  REFUND: "refund",
+  FULFILLMENT: "fulfillment",
+  UNKNOWN: "unknown",
+} as const
 
-export const WEBHOOK_EVENT_LOG_STATUSES = [
-  "received",
-  "processing",
-  "processed",
-  "ignored",
-  "failed",
-] as const
+export const WEBHOOK_EVENT_LOG_STATUS = {
+  RECEIVED: "received",
+  PROCESSING: "processing",
+  PROCESSED: "processed",
+  IGNORED: "ignored",
+  FAILED: "failed",
+} as const
 
-export type WebhookProvider = (typeof WEBHOOK_PROVIDERS)[number]
-export type WebhookEntityType = (typeof WEBHOOK_ENTITY_TYPES)[number]
+export type WebhookProvider =
+  (typeof WEBHOOK_PROVIDER)[keyof typeof WEBHOOK_PROVIDER]
+export type WebhookEntityType =
+  (typeof WEBHOOK_ENTITY_TYPE)[keyof typeof WEBHOOK_ENTITY_TYPE]
 export type WebhookEventLogStatus =
-  (typeof WEBHOOK_EVENT_LOG_STATUSES)[number]
+  (typeof WEBHOOK_EVENT_LOG_STATUS)[keyof typeof WEBHOOK_EVENT_LOG_STATUS]
 
 export type WebhookMetadataValue =
   | string

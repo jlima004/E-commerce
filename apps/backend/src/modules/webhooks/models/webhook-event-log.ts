@@ -1,23 +1,25 @@
 import { model } from "@medusajs/framework/utils"
 import {
-  WEBHOOK_ENTITY_TYPES,
-  WEBHOOK_EVENT_LOG_STATUSES,
-  WEBHOOK_PROVIDERS,
+  WEBHOOK_ENTITY_TYPE,
+  WEBHOOK_EVENT_LOG_STATUS,
+  WEBHOOK_PROVIDER,
 } from "../types"
 
 const WebhookEventLog = model
   .define("webhook_event_log", {
     id: model.id({ prefix: "whlog" }).primaryKey(),
-    provider: model.enum(WEBHOOK_PROVIDERS),
+    provider: model.enum(WEBHOOK_PROVIDER),
     external_event_id: model.text().nullable(),
     event_type: model.text(),
-    entity_type: model.enum(WEBHOOK_ENTITY_TYPES).default("unknown"),
+    entity_type: model
+      .enum(WEBHOOK_ENTITY_TYPE)
+      .default(WEBHOOK_ENTITY_TYPE.UNKNOWN),
     entity_id: model.text().nullable(),
     payload_hash: model.text(),
     deduplication_key: model.text(),
     status: model
-      .enum(WEBHOOK_EVENT_LOG_STATUSES)
-      .default("received"),
+      .enum(WEBHOOK_EVENT_LOG_STATUS)
+      .default(WEBHOOK_EVENT_LOG_STATUS.RECEIVED),
     processing_attempts: model.number().default(0),
     error_code: model.text().nullable(),
     error_message: model.text().nullable(),

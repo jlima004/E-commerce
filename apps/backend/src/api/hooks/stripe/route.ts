@@ -44,7 +44,7 @@ type RequestWithRawBody = MedusaRequest & {
 
 type StripeWebhookEvent = Pick<Stripe.Event, "id" | "type" | "account" | "livemode"> & {
   data?: {
-    object?: StripePaymentIntentWebhookObject
+    object?: unknown
   }
 }
 
@@ -54,7 +54,7 @@ type StripeLike = {
       payload: Buffer | string,
       header: string,
       secret: string
-    ) => StripeWebhookEvent
+    ) => unknown
   }
 }
 
@@ -103,7 +103,7 @@ type RouteDeps = {
 }
 
 const stripeClient = new Stripe("webhook_verifier_placeholder", {
-  apiVersion: "2025-05-28.basil",
+  apiVersion: "2025-09-30.clover",
 })
 
 function readHeader(value: unknown): string | null {
@@ -136,13 +136,16 @@ function resolveRawBody(req: RequestWithRawBody): Buffer | string | null {
   return null
 }
 
-function isPaymentIntentObject(
-  value: StripeWebhookEvent["data"] extends { object?: infer T } ? T : never
-): value is StripePaymentIntentWebhookObject & {
+function isPaymentIntentObject(value: unknown): value is StripePaymentIntentWebhookObject & {
   id: string
   object: "payment_intent"
 } {
-  return Boolean(value) && value?.object === "payment_intent" && typeof value.id === "string"
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    (value as { object?: unknown }).object === "payment_intent" &&
+    typeof (value as { id?: unknown }).id === "string"
+  )
 }
 
 function buildWebhookMetadata(input: {
@@ -492,7 +495,7 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
         rawBody,
         signature,
         routeEnv.STRIPE_WEBHOOK_SECRET
-      )
+      ) as StripeWebhookEvent
     } catch {
       return respond(res, 400, {
         ok: false,

@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 05
 current_phase_name: Stripe Webhook Ingestion & Idempotency
-status: phase-05-planning-manual-gate
-stopped_at: Phase 05 CONTEXT/RESEARCH/PLAN/VALIDATION drafted; execution requires human review
-last_updated: "2026-06-30T12:59:50.000-03:00"
+status: phase-05-complete-manual-gate
+stopped_at: Phase 05 complete at manual gate after 05-04 validation summary
+last_updated: "2026-06-30T15:12:45-03:00"
 last_activity: 2026-06-30
-last_activity_desc: Phase 05 planning artifacts drafted for Stripe webhook ingestion and idempotency; no runtime implementation, migrations, endpoint execution, Order, CheckoutCompletionLog, purchase_completed or Gelato work started
+last_activity_desc: Phase 05 execution and validation completed through 05-04 with green unit/integration/build and negative proofs; PaymentAttempt webhook states stop at payment_confirmed_by_webhook with order_id null, and no Order, CheckoutCompletionLog, purchase_completed, Gelato, e-mail, analytics, refund or Stripe CLI real smoke was started
 progress:
   total_phases: 12
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 28
-  completed_plans: 23
-  percent: 33
+  completed_plans: 27
+  percent: 42
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 05 — Stripe webhook ingestion and idempotency is planned at manual gate; execution is not started.
+**Current focus:** Phase 05 — Stripe webhook ingestion and idempotency is complete at the manual gate; Phase 06 remains blocked pending human review of `05-04-SUMMARY.md`.
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 05 planning is drafted and stopped at manual gate. Gate 04A remains the last executed runtime work: real Stripe card initiation smoke passed in test mode and persisted a safe `PaymentAttempt` without creating Order/webhook/completion/Gelato side effects. Phase 05 execution requires explicit human approval and must not create Order, `CheckoutCompletionLog`, `purchase_completed`, Gelato, e-mail, analytics or refund flow.
+**Current gate:** Phase 05 execution is complete and stopped at the manual gate. The accepted terminal local state is `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; no `Order`, `CheckoutCompletionLog`, `purchase_completed`, Gelato, e-mail, analytics or refund flow was introduced. Phase 06 remains blocked pending human review of `05-04-SUMMARY.md`.
 
 **Branch policy:**
 
@@ -51,18 +51,18 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 05 (Stripe Webhook Ingestion & Idempotency) — planning manual gate
-Plan: 05-CONTEXT/05-RESEARCH/05-01..05-04-PLAN/05-VALIDATION drafted
-Status: Planning complete for review; runtime execution not started
-Last activity: 2026-06-30 - Phase 05 planning drafted; execution remains blocked behind human approval
+Phase: 05 (Stripe Webhook Ingestion & Idempotency) — complete manual gate
+Plan: 05-CONTEXT/05-RESEARCH/05-01..05-04 executed; 05-VALIDATION satisfied
+Status: Execution and validation complete; waiting for human review before Phase 06
+Last activity: 2026-06-30 - Phase 05 closed at `05-04-SUMMARY.md`; Phase 06 not started
 
-Progress: [███-------] 33%
+Progress: [████------] 42%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 23
+- Total plans completed: 27
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -74,6 +74,7 @@ Progress: [███-------] 33%
 | 02. Catalog & Media | 5 executed / 5 planned | Complete | — |
 | 03. Cart & Checkout (pre-Order) | 5 executed / 5 planned | Complete | — |
 | 04. Stripe Payments & PaymentAttempt | 6 executed / 6 planned | Complete (pre-Order; production activation blocked) | — |
+| 05. Stripe Webhook Ingestion & Idempotency | 4 executed / 4 planned | Complete (manual gate before Phase 06) | — |
 
 **Recent Trend:**
 
@@ -126,6 +127,7 @@ Recent decisions affecting current work:
 - [Gate 04A]: Real Stripe card/Pix initiation layers are implemented and registered behind `STRIPE_REAL_INITIATION_ENABLED=true` with `sk_test_...` only. The layers call Stripe directly, not native-first Medusa Stripe, and hand raw PaymentIntent data immediately to the existing safe boundary. `client_secret`, Pix QR/copia-e-cola, hosted instructions, and integral `next_action` remain response-only; `PaymentAttempt` migration is prepared but not applied; no webhook, Order, `purchase_completed`, or Gelato work was introduced.
 - [Gate 04A validation]: Real Stripe card initiation smoke passed in test mode on local port 9001. The card route returned `201 Created`, created a Stripe test-mode PaymentIntent through the real safe layer, and persisted `PaymentAttempt` with `payment_method_type=card`, `status=card_client_secret_created`, `amount=9900`, `currency_code=brl`, and `order_id=null`. No Order, webhook, `CheckoutCompletionLog`, `WebhookEventLog`, `purchase_completed`, or Gelato fulfillment was created. Pix real smoke remains deferred due to Stripe account eligibility. Phase 05 remains not started.
 - [Phase 05 planning]: Phase 05 was drafted as planning-only into four manual slices: WebhookEventLog schema/config, raw-body `/hooks/stripe` signature route, PaymentIntent-to-PaymentAttempt processing, and final validation/negative proofs. Planned success state is `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 06 remains responsible for `Order` creation via `CheckoutCompletionLog`. No runtime code, endpoint, migration execution, Order, `purchase_completed`, Gelato, e-mail, analytics or refund flow was implemented during planning.
+- [Phase 05 execution]: Plans `05-01`..`05-04` completed under manual gating. Final validation closed with 29 targeted unit tests, 10 HTTP integration tests, green build, focused runtime greps green, and broad grep false positives limited to tests/canaries or Stripe initiation code outside webhook runtime. `PaymentAttempt` webhook handling now stops at `payment_confirmed_by_webhook` with `order_id = null`; no Order, `CheckoutCompletionLog`, `purchase_completed`, Gelato, e-mail, analytics, refund or Stripe CLI real smoke was introduced.
 
 ### Pending Todos
 
@@ -152,10 +154,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-30T12:59:50.000-03:00
-Stopped at: Phase 05 planning manual gate
-Resume file: `.planning/phases/05-stripe-webhook-ingestion-idempotency/05-VALIDATION.md`
-Next permitted step: human review of Phase 05 planning artifacts; execute `05-01` only after explicit approval
+Last session: 2026-06-30T15:12:45-03:00
+Stopped at: Phase 05 complete manual gate
+Resume file: `.planning/phases/05-stripe-webhook-ingestion-idempotency/05-04-SUMMARY.md`
+Next permitted step: human review of `05-04-SUMMARY.md`; Phase 06 may be planned/executed only after explicit approval
 
 ## Quick Tasks Completed
 
@@ -171,3 +173,4 @@ Next permitted step: human review of Phase 05 planning artifacts; execute `05-01
 | 2026-06-27 | phase-03-closure | Closed Phase 03 documentally; CART-01..CART-04 complete; Phase 04 planning only as next permitted step. |
 | 2026-06-29 | phase-04-planning | Planned Phase 04 into 6 manual-review-gated slices plus `04-VALIDATION.md`; no code, migrations, Stripe config, webhook, Order, purchase event, deploy, secrets/config, or Gelato work started. |
 | 2026-06-29 | phase-04-closure | Closed Phase 04 documentally as pre-Order card/Pix PaymentAttempt implementation/test scope; production activation remains blocked by migration and real Stripe layer/config gates; Phase 05 not started. |
+| 2026-06-30 | phase-05-validation-closeout | Closed Phase 05 at `05-04-SUMMARY.md` with green unit/integration/build, negative runtime proofs, documented future Stripe CLI smoke, and explicit manual gate before Phase 06. |
