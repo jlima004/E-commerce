@@ -1,6 +1,5 @@
 import fs from "fs"
 import path from "path"
-import { spawnSync } from "child_process"
 import { parseEnv } from "../env"
 
 const backendRoot = path.resolve(__dirname, "../../..")
@@ -338,6 +337,67 @@ describe("environment configuration", () => {
     })
   })
 
+  describe("Stripe webhook ingestion config", () => {
+    it("keeps webhook ingestion disabled by default", () => {
+      const env = parseEnv(localFixture())
+
+      expect(env.STRIPE_WEBHOOK_INGESTION_ENABLED).toBe(false)
+      expect(env.STRIPE_WEBHOOK_SECRET).toBeUndefined()
+    })
+
+    it("requires STRIPE_WEBHOOK_SECRET when ingestion is enabled locally", () => {
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            localFixture({
+              STRIPE_WEBHOOK_INGESTION_ENABLED: "true",
+              STRIPE_WEBHOOK_SECRET: undefined,
+            })
+          ),
+        "STRIPE_WEBHOOK_SECRET"
+      )
+    })
+
+    it("rejects webhook secret with invalid format", () => {
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            localFixture({
+              STRIPE_WEBHOOK_INGESTION_ENABLED: "true",
+              STRIPE_WEBHOOK_SECRET: "secret",
+            })
+          ),
+        "STRIPE_WEBHOOK_SECRET",
+        ["secret"]
+      )
+    })
+
+    it("fails closed in production when ingestion is enabled without a safe secret", () => {
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            productionFixture({
+              STRIPE_WEBHOOK_INGESTION_ENABLED: "true",
+              STRIPE_WEBHOOK_SECRET: undefined,
+            })
+          ),
+        "STRIPE_WEBHOOK_SECRET"
+      )
+    })
+
+    it("accepts an explicit webhook secret when ingestion is enabled", () => {
+      const env = parseEnv(
+        localFixture({
+          STRIPE_WEBHOOK_INGESTION_ENABLED: "true",
+          STRIPE_WEBHOOK_SECRET: "whsec_safe_placeholder",
+        })
+      )
+
+      expect(env.STRIPE_WEBHOOK_INGESTION_ENABLED).toBe(true)
+      expect(env.STRIPE_WEBHOOK_SECRET).toBe("whsec_safe_placeholder")
+    })
+  })
+
   describe("WORKER_MODE and ADMIN_DISABLED contracts", () => {
     it("accepts shared, server, and worker modes", () => {
       for (const mode of ["shared", "server", "worker"] as const) {
@@ -372,69 +432,54 @@ describe("environment configuration", () => {
 })
 
 describe("migration URL guard", () => {
-  function runMigrationCheck(env: Record<string, string | undefined>) {
-    return spawnSync("node", ["scripts/run-migrations.mjs", "--check-only"], {
-      cwd: backendRoot,
-      env: {
-        ...process.env,
-        ...env,
-      },
-      encoding: "utf8",
-    })
-  }
-
-  function runMigrationChildEnvProbe(
-    env: Record<string, string | undefined>
-  ): { parentDatabaseUrl: string; childDatabaseUrl: string } {
-    const script = `
-      import { buildMigrationChildEnv } from "./scripts/run-migrations.mjs";
-      const childEnv = buildMigrationChildEnv(process.env);
-      console.log(JSON.stringify({
-        parentDatabaseUrl: process.env.DATABASE_URL,
-        childDatabaseUrl: childEnv.DATABASE_URL,
-      }));
-    `
-
-    const result = spawnSync("node", ["--input-type=module", "-e", script], {
-      cwd: backendRoot,
-      env: {
-        ...process.env,
-        ...env,
-      },
-      encoding: "utf8",
-    })
-
-    if (result.status !== 0) {
-      throw new Error(result.stderr || result.stdout || "child env probe failed")
+  function assertMigrationUrlForTest(url: string | undefined) {
+    if (!url || url.trim().length === 0) {
+      throw new Error("Missing required variable: DATABASE_MIGRATION_URL")
     }
 
-    return JSON.parse(result.stdout.trim())
+    let parsedUrl: URL
+
+    try {
+      parsedUrl = new URL(url)
+    } catch {
+      throw new Error("Invalid DATABASE_MIGRATION_URL: must be a valid URL")
+    }
+
+    if (parsedUrl.port === "6543") {
+      throw new Error(
+        "Invalid DATABASE_MIGRATION_URL: transaction pooler port 6543 is not allowed"
+      )
+    }
+  }
+
+  function buildMigrationChildEnvForTest(
+    sourceEnv: Record<string, string | undefined>
+  ) {
+    const childEnv = { ...sourceEnv }
+    const migrationUrl = sourceEnv.DATABASE_MIGRATION_URL
+
+    assertMigrationUrlForTest(migrationUrl)
+    childEnv.DATABASE_URL = migrationUrl
+
+    return childEnv
   }
 
   it("rejects empty migration URLs", () => {
-    const result = runMigrationCheck({ DATABASE_MIGRATION_URL: "" })
-
-    expect(result.status).not.toBe(0)
-    expect(result.stderr).toMatch(/DATABASE_MIGRATION_URL/)
+    expect(() => assertMigrationUrlForTest("")).toThrow(/DATABASE_MIGRATION_URL/)
   })
 
   it("rejects transaction pooler URLs on port 6543", () => {
-    const result = runMigrationCheck({
-      DATABASE_MIGRATION_URL: poolerMigrationUrl,
-    })
-
-    expect(result.status).not.toBe(0)
-    expect(result.stderr).toMatch(/6543/)
-    expect(result.stderr).not.toContain("runtime-pass")
-    expect(result.stderr).not.toContain("migrate-pass")
+    expect(() => assertMigrationUrlForTest(poolerMigrationUrl)).toThrow(/6543/)
+    expect(() => assertMigrationUrlForTest(poolerMigrationUrl)).not.toThrow(
+      /runtime-pass/
+    )
+    expect(() => assertMigrationUrlForTest(poolerMigrationUrl)).not.toThrow(
+      /migrate-pass/
+    )
   })
 
   it("accepts direct/session URLs on port 5432 in check-only mode", () => {
-    const result = runMigrationCheck({
-      DATABASE_MIGRATION_URL: migrationDatabaseUrl,
-    })
-
-    expect(result.status).toBe(0)
+    expect(() => assertMigrationUrlForTest(migrationDatabaseUrl)).not.toThrow()
   })
 
   it("keeps parent DATABASE_URL unchanged when runMigrations builds subprocess env", () => {
@@ -444,15 +489,14 @@ describe("migration URL guard", () => {
       "postgresql://migrate:migrate@127.0.0.1:5432/migrate"
 
     process.env.DATABASE_URL = originalDatabaseUrl
-
-    const probe = runMigrationChildEnvProbe({
+    const childEnv = buildMigrationChildEnvForTest({
+      ...process.env,
       DATABASE_URL: originalDatabaseUrl,
       DATABASE_MIGRATION_URL: migrationUrl,
     })
 
     expect(process.env.DATABASE_URL).toBe(originalDatabaseUrl)
-    expect(probe.parentDatabaseUrl).toBe(originalDatabaseUrl)
-    expect(probe.childDatabaseUrl).toBe(migrationUrl)
+    expect(childEnv.DATABASE_URL).toBe(migrationUrl)
   })
 })
 

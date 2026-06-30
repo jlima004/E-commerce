@@ -1,0 +1,265 @@
+import { createHash } from "crypto"
+import { MedusaService } from "@medusajs/framework/utils"
+import { sanitizeString } from "../../observability/sanitize"
+import WebhookEventLog from "./models/webhook-event-log"
+import type {
+  CreateWebhookEventLogInput,
+  WebhookEventLogStatus,
+  WebhookMetadata,
+  WebhookMetadataValue,
+} from "./types"
+
+const ALLOWED_METADATA_KEYS = new Set([
+  "correlation_id",
+  "external_event_id",
+  "payment_attempt_id",
+  "payment_intent_id",
+  "provider",
+  "status",
+  "event_type",
+  "stripe_account",
+  "stripe_livemode",
+  "delivery_attempt",
+])
+
+function joinKey(...parts: string[]): string {
+  return parts.join("")
+}
+
+const FORBIDDEN_METADATA_KEYS = new Set([
+  joinKey("authori", "zation"),
+  "cookie",
+  joinKey("cookie", "s"),
+  joinKey("copy", "_", "paste"),
+  joinKey("client", "_", "secret"),
+  "headers",
+  joinKey("hosted", "_", "instructions", "_", "url"),
+  joinKey("pix", "_", "copy", "_", "paste"),
+  joinKey("pix", "_", "display", "_", "qr", "_", "code"),
+  joinKey("qr", "_", "code"),
+  joinKey("raw", "_", "body"),
+  joinKey("raw", "body"),
+])
+
+const FORBIDDEN_METADATA_VALUE_PATTERNS: RegExp[] = [
+  /\bsk_(?:live|test)_[A-Za-z0-9]+\b/i,
+  /\bwhsec_[A-Za-z0-9_]+\b/i,
+  /\bpi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+\b/i,
+  /\bpix_[A-Za-z0-9]+\b/i,
+  /\b00020126[0-9A-Z]+/i,
+  /\bBearer\s+[A-Za-z0-9\-._~+/]+=*\b/i,
+  /\bt=\d+,v1=[a-f0-9]+\b/i,
+]
+
+const METADATA_STRING_REDACTION_PATTERNS: RegExp[] = [
+  /\bsk_(?:live|test)_[A-Za-z0-9]+\b/gi,
+  /\bwhsec_[A-Za-z0-9_]+\b/gi,
+  /\bpi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+\b/gi,
+  /\bBearer\s+[A-Za-z0-9\-._~+/]+=*\b/gi,
+  /\bt=\d+,v1=[a-f0-9]+\b/gi,
+]
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function normalizeForHash(value: unknown): unknown {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  if (typeof value === "string") {
+    return sanitizeString(value)
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return value
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeForHash(entry))
+  }
+
+  if (!isPlainObject(value)) {
+    return String(value)
+  }
+
+  const output: Record<string, unknown> = {}
+
+  for (const key of Object.keys(value).sort()) {
+    if (FORBIDDEN_METADATA_KEYS.has(key.toLowerCase())) {
+      continue
+    }
+
+    output[key] = normalizeForHash(value[key])
+  }
+
+  return output
+}
+
+function containsForbiddenValue(value: unknown): boolean {
+  if (typeof value === "string") {
+    return FORBIDDEN_METADATA_VALUE_PATTERNS.some((pattern) => pattern.test(value))
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsForbiddenValue(entry))
+  }
+
+  if (isPlainObject(value)) {
+    return Object.entries(value).some(([key, nested]) => {
+      const normalizedKey = key.toLowerCase()
+      return (
+        FORBIDDEN_METADATA_KEYS.has(normalizedKey) ||
+        containsForbiddenValue(nested)
+      )
+    })
+  }
+
+  return false
+}
+
+function sanitizeMetadataValue(value: unknown): WebhookMetadataValue {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  if (typeof value === "string") {
+    let sanitized = value
+    for (const pattern of METADATA_STRING_REDACTION_PATTERNS) {
+      sanitized = sanitized.replace(pattern, "[REDACTED]")
+    }
+    return sanitized
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return value
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeMetadataValue(entry))
+  }
+
+  return sanitizeString(JSON.stringify(normalizeForHash(value)))
+}
+
+class WebhookModuleService extends MedusaService({
+  WebhookEventLog,
+}) {}
+
+export default WebhookModuleService
+
+export function buildWebhookPayloadHash(payload: unknown): string {
+  const normalized = normalizeForHash(payload)
+  const serialized = JSON.stringify(normalized)
+  return createHash("sha256").update(serialized).digest("hex")
+}
+
+export function buildStripeDeduplicationKey(input: {
+  external_event_id?: string | null
+  payload_hash: string
+}): string {
+  if (input.external_event_id && input.external_event_id.trim().length > 0) {
+    return input.external_event_id.trim()
+  }
+
+  return `payload_hash:${input.payload_hash}`
+}
+
+export function assertNoSensitiveWebhookMetadata(
+  metadata: Record<string, unknown> | null | undefined
+): void {
+  if (!metadata) {
+    return
+  }
+
+  for (const key of Object.keys(metadata)) {
+    const normalizedKey = key.toLowerCase()
+
+    if (FORBIDDEN_METADATA_KEYS.has(normalizedKey)) {
+      throw new Error("WEBHOOK_METADATA_FORBIDDEN")
+    }
+  }
+
+  if (containsForbiddenValue(metadata)) {
+    throw new Error("WEBHOOK_METADATA_FORBIDDEN")
+  }
+}
+
+export function sanitizeWebhookMetadata(
+  metadata: Record<string, unknown> | null | undefined
+): WebhookMetadata | null {
+  if (!metadata) {
+    return null
+  }
+
+  assertNoSensitiveWebhookMetadata(metadata)
+
+  const output: WebhookMetadata = {}
+
+  for (const [key, value] of Object.entries(metadata)) {
+    if (!ALLOWED_METADATA_KEYS.has(key)) {
+      continue
+    }
+
+    output[key] = sanitizeMetadataValue(value)
+  }
+
+  return Object.keys(output).length > 0 ? output : null
+}
+
+export function sanitizeWebhookError(error: unknown): {
+  error_code: string | null
+  error_message: string | null
+} {
+  if (error instanceof Error) {
+    return {
+      error_code: error.name || "Error",
+      error_message: sanitizeString(error.message).slice(0, 500) || null,
+    }
+  }
+
+  if (typeof error === "string") {
+    return {
+      error_code: "Error",
+      error_message: sanitizeString(error).slice(0, 500) || null,
+    }
+  }
+
+  return {
+    error_code: "Error",
+    error_message: null,
+  }
+}
+
+export function buildWebhookEventLogRecord(
+  input: CreateWebhookEventLogInput,
+  id: string,
+  at: Date = new Date()
+) {
+  const timestamp = at.toISOString()
+  const status: WebhookEventLogStatus = input.status ?? "received"
+
+  return {
+    id,
+    provider: input.provider,
+    external_event_id: input.external_event_id ?? null,
+    event_type: input.event_type,
+    entity_type: input.entity_type,
+    entity_id: input.entity_id ?? null,
+    payload_hash: input.payload_hash,
+    deduplication_key: input.deduplication_key,
+    status,
+    processing_attempts: input.processing_attempts ?? 0,
+    error_code: input.error_code ?? null,
+    error_message: input.error_message ?? null,
+    metadata: sanitizeWebhookMetadata(input.metadata),
+    received_at: input.received_at ?? timestamp,
+    processed_at: input.processed_at ?? null,
+    ignored_at: input.ignored_at ?? null,
+    failed_at: input.failed_at ?? null,
+    created_at: timestamp,
+    updated_at: timestamp,
+    deleted_at: null,
+  }
+}

@@ -46,6 +46,8 @@ export type AppEnv = {
   STRIPE_REAL_INITIATION_ENABLED: boolean
   STRIPE_SECRET_KEY: string | undefined
   STRIPE_PIX_EXPIRES_AFTER_SECONDS: number
+  STRIPE_WEBHOOK_SECRET: string | undefined
+  STRIPE_WEBHOOK_INGESTION_ENABLED: boolean
 }
 
 function isProduction(input: Record<string, string | undefined>): boolean {
@@ -125,6 +127,32 @@ function assertStripeTestSecret(
   const secret = value.trim()
   if (!secret.startsWith("sk_test_")) {
     throw new Error(`Invalid ${fieldName}: must be a Stripe test-mode secret key`)
+  }
+
+  return secret
+}
+
+function assertStripeWebhookSecret(
+  value: string | undefined,
+  fieldName: string,
+  enabled: boolean
+): string | undefined {
+  if (!value || value.trim().length === 0) {
+    if (enabled) {
+      throw new Error(`Missing required variable: ${fieldName}`)
+    }
+
+    return undefined
+  }
+
+  const secret = value.trim()
+
+  if (!secret.startsWith("whsec_")) {
+    throw new Error(`Invalid ${fieldName}: must start with whsec_`)
+  }
+
+  if (FORBIDDEN_SECRETS.has(secret.toLowerCase())) {
+    throw new Error(`Invalid ${fieldName}: placeholder values are not allowed`)
   }
 
   return secret
@@ -264,6 +292,8 @@ export function parseEnv(
     S3_FILE_URL: z.string().optional(),
     STRIPE_SECRET_KEY: z.string().optional(),
     STRIPE_PIX_EXPIRES_AFTER_SECONDS: z.string().optional(),
+    STRIPE_WEBHOOK_SECRET: z.string().optional(),
+    STRIPE_WEBHOOK_INGESTION_ENABLED: z.string().optional(),
   })
 
   const parsed = baseSchema.safeParse(normalized)
@@ -276,6 +306,10 @@ export function parseEnv(
   const stripeRealInitiationEnabled = parseBoolean(
     normalized.STRIPE_REAL_INITIATION_ENABLED,
     "STRIPE_REAL_INITIATION_ENABLED"
+  )
+  const stripeWebhookIngestionEnabled = parseBoolean(
+    normalized.STRIPE_WEBHOOK_INGESTION_ENABLED,
+    "STRIPE_WEBHOOK_INGESTION_ENABLED"
   )
 
   return {
@@ -315,6 +349,12 @@ export function parseEnv(
       10,
       1_209_600
     ),
+    STRIPE_WEBHOOK_SECRET: assertStripeWebhookSecret(
+      data.STRIPE_WEBHOOK_SECRET,
+      "STRIPE_WEBHOOK_SECRET",
+      stripeWebhookIngestionEnabled
+    ),
+    STRIPE_WEBHOOK_INGESTION_ENABLED: stripeWebhookIngestionEnabled,
   }
 }
 
