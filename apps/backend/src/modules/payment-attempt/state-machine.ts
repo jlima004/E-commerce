@@ -52,6 +52,7 @@ const ALLOWED_TRANSITIONS: Record<
     "payment_client_confirmed",
     "client_action_required",
     "awaiting_webhook_confirmation",
+    "payment_confirmed_by_webhook",
     "payment_failed",
     "payment_canceled",
     "superseded",
@@ -59,6 +60,7 @@ const ALLOWED_TRANSITIONS: Record<
   ],
   payment_client_confirmed: [
     "awaiting_webhook_confirmation",
+    "payment_confirmed_by_webhook",
     "payment_failed",
     "payment_canceled",
     "superseded",
@@ -74,6 +76,7 @@ const ALLOWED_TRANSITIONS: Record<
   ],
   awaiting_pix_payment: [
     "awaiting_webhook_confirmation",
+    "payment_confirmed_by_webhook",
     "pix_expired",
     "payment_failed",
     "payment_canceled",
@@ -81,12 +84,14 @@ const ALLOWED_TRANSITIONS: Record<
     "invalidated_by_cart_change",
   ],
   awaiting_webhook_confirmation: [
+    "payment_confirmed_by_webhook",
     "payment_failed",
     "payment_canceled",
     "pix_expired",
     "superseded",
     "invalidated_by_cart_change",
   ],
+  payment_confirmed_by_webhook: ["superseded", "invalidated_by_cart_change"],
   pix_expired: [],
   payment_failed: [],
   payment_canceled: [],
@@ -163,6 +168,7 @@ export function assertOrderIdMustStayNull(
   }
 
   const statusesThatMustNeverHaveOrder = [
+    "payment_confirmed_by_webhook",
     "awaiting_pix_payment",
     "pix_expired",
     "payment_failed",
@@ -206,6 +212,49 @@ export function markPaymentAttemptInvalidatedByCartChange<
     ...attempt,
     status: "invalidated_by_cart_change",
     invalidated_at: at.toISOString(),
+    order_id: null,
+  }
+}
+
+export function markPaymentAttemptConfirmedByWebhook<
+  T extends PaymentAttemptRecord,
+>(attempt: T): T {
+  assertPaymentAttemptTransition(
+    attempt.status,
+    "payment_confirmed_by_webhook"
+  )
+
+  return {
+    ...attempt,
+    status: "payment_confirmed_by_webhook",
+    order_id: null,
+  }
+}
+
+export function markPaymentAttemptFailed<T extends PaymentAttemptRecord>(
+  attempt: T,
+  at: Date = new Date()
+): T {
+  assertPaymentAttemptTransition(attempt.status, "payment_failed")
+
+  return {
+    ...attempt,
+    status: "payment_failed",
+    failed_at: at.toISOString(),
+    order_id: null,
+  }
+}
+
+export function markPaymentAttemptCanceled<T extends PaymentAttemptRecord>(
+  attempt: T,
+  at: Date = new Date()
+): T {
+  assertPaymentAttemptTransition(attempt.status, "payment_canceled")
+
+  return {
+    ...attempt,
+    status: "payment_canceled",
+    canceled_at: at.toISOString(),
     order_id: null,
   }
 }

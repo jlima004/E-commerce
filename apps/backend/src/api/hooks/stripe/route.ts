@@ -2,11 +2,21 @@ import Stripe from "stripe"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError } from "@medusajs/framework/utils"
 import { env, type AppEnv } from "../../../config/env"
+import { PAYMENT_ATTEMPT_MODULE } from "../../../modules/payment-attempt"
 import { WEBHOOKS_MODULE } from "../../../modules/webhooks"
 import {
+  sanitizeWebhookError,
   buildStripeDeduplicationKey,
   buildWebhookPayloadHash,
 } from "../../../modules/webhooks/service"
+import {
+  PaymentAttemptWebhookError,
+  applyStripePaymentIntentWebhookToAttempt,
+  findPaymentAttemptForWebhook,
+  type StripePaymentIntentWebhookObject,
+  type SupportedStripePaymentIntentEventType,
+} from "../../../modules/payment-attempt/service"
+import type { PaymentAttemptRecord } from "../../../modules/payment-attempt/types"
 import type {
   CreateWebhookEventLogInput,
   WebhookEntityType,
@@ -21,6 +31,11 @@ const SUPPORTED_EVENT_TYPES = new Set([
   "payment_intent.payment_failed",
   "payment_intent.canceled",
 ])
+const FINAL_WEBHOOK_STATUSES = new Set<WebhookEventLogStatus>([
+  "processed",
+  "ignored",
+  "failed",
+])
 
 type RequestWithRawBody = MedusaRequest & {
   rawBody?: Buffer | string
@@ -29,10 +44,7 @@ type RequestWithRawBody = MedusaRequest & {
 
 type StripeWebhookEvent = Pick<Stripe.Event, "id" | "type" | "account" | "livemode"> & {
   data?: {
-    object?: {
-      id?: string
-      object?: string
-    }
+    object?: StripePaymentIntentWebhookObject
   }
 }
 
@@ -53,6 +65,14 @@ type WebhookEventLogRecord = {
   status: string
   event_type: string
   external_event_id?: string | null
+  entity_type?: string
+  entity_id?: string | null
+  error_code?: string | null
+  error_message?: string | null
+  processed_at?: string | null
+  failed_at?: string | null
+  ignored_at?: string | null
+  metadata?: WebhookMetadata | null
 }
 
 type WebhooksModuleLike = {
@@ -62,6 +82,18 @@ type WebhooksModuleLike = {
   createWebhookEventLogs?: (
     data: CreateWebhookEventLogInput | CreateWebhookEventLogInput[]
   ) => Promise<WebhookEventLogRecord[] | WebhookEventLogRecord>
+  updateWebhookEventLogs?: (
+    data: Record<string, unknown> | Array<Record<string, unknown>>
+  ) => Promise<WebhookEventLogRecord[] | WebhookEventLogRecord>
+}
+
+type PaymentAttemptModuleLike = {
+  listPaymentAttempts?: (
+    filters?: Record<string, unknown>
+  ) => Promise<PaymentAttemptRecord[]>
+  updatePaymentAttempts?: (
+    data: PaymentAttemptRecord | PaymentAttemptRecord[]
+  ) => Promise<PaymentAttemptRecord[]>
 }
 
 type RouteDeps = {
@@ -106,7 +138,10 @@ function resolveRawBody(req: RequestWithRawBody): Buffer | string | null {
 
 function isPaymentIntentObject(
   value: StripeWebhookEvent["data"] extends { object?: infer T } ? T : never
-): value is { id: string; object: "payment_intent" } {
+): value is StripePaymentIntentWebhookObject & {
+  id: string
+  object: "payment_intent"
+} {
   return Boolean(value) && value?.object === "payment_intent" && typeof value.id === "string"
 }
 
@@ -193,6 +228,25 @@ function resolveWebhooksModule(req: RequestWithRawBody): WebhooksModuleLike {
   return service
 }
 
+function resolvePaymentAttemptModule(
+  req: RequestWithRawBody
+): PaymentAttemptModuleLike {
+  const service = req.scope.resolve(PAYMENT_ATTEMPT_MODULE) as PaymentAttemptModuleLike
+
+  if (
+    !service ||
+    typeof service.listPaymentAttempts !== "function" ||
+    typeof service.updatePaymentAttempts !== "function"
+  ) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_MODULE_UNAVAILABLE",
+      "Modulo de tentativa de pagamento nao configurado."
+    )
+  }
+
+  return service
+}
+
 function normalizeCreatedRecord(
   created: WebhookEventLogRecord[] | WebhookEventLogRecord
 ): WebhookEventLogRecord | null {
@@ -206,6 +260,36 @@ function normalizeCreatedRecord(
 function isDuplicateConflict(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return /duplicate|unique|conflict/i.test(message)
+}
+
+function buildProcessedMetadata(input: {
+  record: WebhookEventLogRecord
+  paymentIntentId: string
+  paymentAttemptId: string
+}): WebhookMetadata {
+  return {
+    ...(input.record.metadata ?? {}),
+    payment_intent_id: input.paymentIntentId,
+    payment_attempt_id: input.paymentAttemptId,
+    status: "processed",
+  }
+}
+
+function buildErroredMetadata(input: {
+  record: WebhookEventLogRecord
+  paymentIntentId: string | null
+  status: "failed" | "ignored"
+}): WebhookMetadata {
+  const metadata: WebhookMetadata = {
+    ...(input.record.metadata ?? {}),
+    status: input.status,
+  }
+
+  if (input.paymentIntentId) {
+    metadata.payment_intent_id = input.paymentIntentId
+  }
+
+  return metadata
 }
 
 async function recordWebhookEvent(
@@ -255,6 +339,103 @@ async function recordWebhookEvent(
       duplicate: true,
     }
   }
+}
+
+async function updateWebhookRecord(
+  service: WebhooksModuleLike,
+  input: Record<string, unknown>
+): Promise<void> {
+  if (typeof service.updateWebhookEventLogs !== "function") {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Modulo de webhooks sem suporte para atualizacao."
+    )
+  }
+
+  await service.updateWebhookEventLogs(input)
+}
+
+function isFinalWebhookStatus(status: string): status is WebhookEventLogStatus {
+  return FINAL_WEBHOOK_STATUSES.has(status as WebhookEventLogStatus)
+}
+
+async function markWebhookRecordIgnored(input: {
+  service: WebhooksModuleLike
+  record: WebhookEventLogRecord
+  paymentIntentId: string | null
+  now: Date
+}): Promise<WebhookEventLogStatus> {
+  if (input.record.status === "ignored") {
+    return "ignored"
+  }
+
+  await updateWebhookRecord(input.service, {
+    id: input.record.id,
+    status: "ignored",
+    entity_type: input.paymentIntentId ? "payment_attempt" : "unknown",
+    entity_id: null,
+    processed_at: null,
+    failed_at: null,
+    ignored_at: input.now.toISOString(),
+    error_code: null,
+    error_message: null,
+    metadata: buildErroredMetadata({
+      record: input.record,
+      paymentIntentId: input.paymentIntentId,
+      status: "ignored",
+    }),
+  })
+
+  return "ignored"
+}
+
+async function processStripePaymentIntentEvent(input: {
+  req: RequestWithRawBody
+  event: StripeWebhookEvent
+  record: WebhookEventLogRecord
+  webhooksModule: WebhooksModuleLike
+  now: Date
+}): Promise<WebhookEventLogStatus> {
+  if (!isPaymentIntentObject(input.event.data?.object)) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_INTENT_OBJECT_INVALID",
+      "Evento sem PaymentIntent valido."
+    )
+  }
+
+  const paymentIntent = input.event.data.object
+  const paymentAttemptModule = resolvePaymentAttemptModule(input.req)
+  const attempts =
+    (await paymentAttemptModule.listPaymentAttempts?.({
+      provider_payment_intent_id: paymentIntent.id,
+    })) ?? []
+  const attempt = findPaymentAttemptForWebhook(attempts, paymentIntent.id)
+  const updatedAttempt = applyStripePaymentIntentWebhookToAttempt(
+    attempt,
+    paymentIntent,
+    input.event.type as SupportedStripePaymentIntentEventType,
+    input.now
+  )
+
+  await paymentAttemptModule.updatePaymentAttempts?.(updatedAttempt)
+  await updateWebhookRecord(input.webhooksModule, {
+    id: input.record.id,
+    status: "processed",
+    entity_type: "payment_attempt",
+    entity_id: updatedAttempt.id,
+    error_code: null,
+    error_message: null,
+    processed_at: input.now.toISOString(),
+    failed_at: null,
+    ignored_at: null,
+    metadata: buildProcessedMetadata({
+      record: input.record,
+      paymentIntentId: paymentIntent.id,
+      paymentAttemptId: updatedAttempt.id,
+    }),
+  })
+
+  return "processed"
 }
 
 function respond(
@@ -327,12 +508,82 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
     const service = resolveWebhooksModule(request)
     const { record, duplicate } = await recordWebhookEvent(service, input)
 
+    const paymentIntentId = isPaymentIntentObject(event.data?.object)
+      ? event.data.object.id
+      : null
+
+    if (duplicate && isFinalWebhookStatus(record.status)) {
+      return respond(res, 200, {
+        ok: true,
+        duplicate: true,
+        event_id: record.external_event_id ?? input.external_event_id ?? null,
+        event_type: record.event_type,
+        status: record.status,
+      })
+    }
+
+    if (!SUPPORTED_EVENT_TYPES.has(event.type)) {
+      const ignoredStatus = duplicate
+        ? await markWebhookRecordIgnored({
+            service,
+            record,
+            paymentIntentId,
+            now: now(),
+          })
+        : record.status
+
+      return respond(res, 200, {
+        ok: true,
+        duplicate,
+        event_id: record.external_event_id ?? input.external_event_id ?? null,
+        event_type: record.event_type,
+        status: ignoredStatus,
+      })
+    }
+
+    let finalStatus: WebhookEventLogStatus = "received"
+
+    try {
+      finalStatus = await processStripePaymentIntentEvent({
+        req: request,
+        event,
+        record,
+        webhooksModule: service,
+        now: now(),
+      })
+    } catch (error) {
+      const disposition =
+        error instanceof PaymentAttemptWebhookError
+          ? error.webhookDisposition
+          : "failed"
+      const sanitized = sanitizeWebhookError(error)
+
+      await updateWebhookRecord(service, {
+        id: record.id,
+        status: disposition,
+        entity_type: paymentIntentId ? "payment_attempt" : "unknown",
+        entity_id: null,
+        processed_at: null,
+        failed_at: disposition === "failed" ? now().toISOString() : null,
+        ignored_at: disposition === "ignored" ? now().toISOString() : null,
+        error_code: sanitized.error_code,
+        error_message: sanitized.error_message,
+        metadata: buildErroredMetadata({
+          record,
+          paymentIntentId,
+          status: disposition,
+        }),
+      })
+
+      finalStatus = disposition
+    }
+
     return respond(res, 200, {
       ok: true,
       duplicate,
       event_id: record.external_event_id ?? input.external_event_id ?? null,
       event_type: record.event_type,
-      status: record.status,
+      status: finalStatus,
     })
   }
 }

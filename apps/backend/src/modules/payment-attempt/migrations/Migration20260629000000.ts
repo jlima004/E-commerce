@@ -10,7 +10,7 @@
  * - Partial unique index enforcing at most one active attempt per cart
  * - amount bigint > 0 (minor monetary unit, centavos BRL)
  * - currency_code = 'brl' (MVP single-currency; matches service toLowerCase())
- * - status IN (13 canonical Phase 04 statuses)
+ * - status IN (14 canonical Phase 05 statuses, including webhook confirmation)
  * - payment_session_id nullable (created may precede provider session)
  */
 import { Migration } from "@medusajs/framework/mikro-orm/migrations"
@@ -24,6 +24,7 @@ const CANONICAL_STATUSES = [
   "payment_instructions_displayed",
   "awaiting_pix_payment",
   "awaiting_webhook_confirmation",
+  "payment_confirmed_by_webhook",
   "pix_expired",
   "payment_failed",
   "payment_canceled",
@@ -44,6 +45,7 @@ const ACTIVE_STATUSES_SQL = [
   "payment_instructions_displayed",
   "awaiting_pix_payment",
   "awaiting_webhook_confirmation",
+  "payment_confirmed_by_webhook",
 ]
   .map((status) => `'${status}'`)
   .join(", ")
