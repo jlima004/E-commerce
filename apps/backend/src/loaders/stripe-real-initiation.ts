@@ -16,6 +16,11 @@ import {
 export default async function stripeRealInitiationLoader({
   container,
 }: LoaderOptions) {
+
+  console.log("[stripe-real-initiation] loader reached")
+  console.log("[stripe-real-initiation] enabled:", env.STRIPE_REAL_INITIATION_ENABLED)
+  console.log("[stripe-real-initiation] key prefix:", env.STRIPE_SECRET_KEY?.slice(0, 8))
+
   if (!env.STRIPE_REAL_INITIATION_ENABLED) {
     return
   }
@@ -26,22 +31,39 @@ export default async function stripeRealInitiationLoader({
 
   const paymentIntents = createStripePaymentIntentsClient(env.STRIPE_SECRET_KEY)
 
-  container.registerAdd(
-    STRIPE_CARD_INITIATION_LAYER,
-    asValue(
+  container.register({
+    [STRIPE_CARD_INITIATION_LAYER]: asValue(
       new RealStripeCardInitiationLayer({
         paymentIntents,
       })
-    )
-  )
-
-  container.registerAdd(
-    STRIPE_PIX_INITIATION_LAYER,
-    asValue(
+    ),
+    [STRIPE_PIX_INITIATION_LAYER]: asValue(
       new RealStripePixInitiationLayer({
         paymentIntents,
         pixExpiresAfterSeconds: env.STRIPE_PIX_EXPIRES_AFTER_SECONDS,
       })
-    )
-  )
+    ),
+  })
+
+  // container.registerAdd(
+  //   STRIPE_CARD_INITIATION_LAYER,
+  //   asValue(
+  //     new RealStripeCardInitiationLayer({
+  //       paymentIntents,
+  //     })
+  //   )
+  // )
+
+  // container.registerAdd(
+  //   STRIPE_PIX_INITIATION_LAYER,
+  //   asValue(
+  //     new RealStripePixInitiationLayer({
+  //       paymentIntents,
+  //       pixExpiresAfterSeconds: env.STRIPE_PIX_EXPIRES_AFTER_SECONDS,
+  //     })
+  //   )
+  // )
+
+  console.log("[stripe-real-initiation] registered card/pix layers")
+
 }

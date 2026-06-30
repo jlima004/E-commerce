@@ -48,7 +48,7 @@ const ACTIVE_STATUSES_SQL = [
   .map((status) => `'${status}'`)
   .join(", ")
 
-export class CreatePaymentAttempt20260629000000 extends Migration {
+export class Migration20260629000000 extends Migration {
   async up(): Promise<void> {
     this.addSql(`
       create table if not exists "payment_attempt" (
