@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 04
-current_phase_name: stripe-real-layer-activation
-status: gate-04a-complete-manual-gate-before-phase-05
-stopped_at: Gate 04A complete; human review required before migration execution or Phase 05
-last_updated: "2026-06-30T12:34:00.000-03:00"
+current_phase: 05
+current_phase_name: Stripe Webhook Ingestion & Idempotency
+status: phase-05-planning-manual-gate
+stopped_at: Phase 05 CONTEXT/RESEARCH/PLAN/VALIDATION drafted; execution requires human review
+last_updated: "2026-06-30T12:59:50.000-03:00"
 last_activity: 2026-06-30
-last_activity_desc: Gate 04A validated real Stripe card initiation smoke in test mode; Pix real smoke deferred by Stripe account eligibility; Phase 05 still not started
+last_activity_desc: Phase 05 planning artifacts drafted for Stripe webhook ingestion and idempotency; no runtime implementation, migrations, endpoint execution, Order, CheckoutCompletionLog, purchase_completed or Gelato work started
 progress:
   total_phases: 12
   completed_phases: 4
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Gate 04A — Stripe real test-mode initiation layers are complete at manual gate; Phase 05 is not started.
+**Current focus:** Phase 05 — Stripe webhook ingestion and idempotency is planned at manual gate; execution is not started.
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Gate 04A is complete. Card and Pix now have real Stripe test-mode initiation layers registered by internal safe config, still through the Phase 04 safe boundary (`filtering_wrapper` + `stripe_safe_layer`) and not native-first Medusa Stripe. Gate 04A was validated locally: real Stripe card initiation smoke passed in test mode and persisted a safe `PaymentAttempt` without creating Order/webhook/completion/Gelato side effects. Pix real smoke remains deferred due to Stripe account eligibility. Phase 05 remains not started and may begin only after explicit human approval.
+**Current gate:** Phase 05 planning is drafted and stopped at manual gate. Gate 04A remains the last executed runtime work: real Stripe card initiation smoke passed in test mode and persisted a safe `PaymentAttempt` without creating Order/webhook/completion/Gelato side effects. Phase 05 execution requires explicit human approval and must not create Order, `CheckoutCompletionLog`, `purchase_completed`, Gelato, e-mail, analytics or refund flow.
 
 **Branch policy:**
 
@@ -51,10 +51,10 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 04A (stripe-real-layer-activation) — complete at manual gate (pre-Order)
-Plan: Gate 04A executed after Phase 04 closure
-Status: Real Stripe card initiation smoke validated in test mode; Pix real smoke deferred by Stripe account eligibility; Phase 05 requires human approval
-Last activity: 2026-06-30 - Gate 04A validated end-to-end locally; Phase 05 remains not started
+Phase: 05 (Stripe Webhook Ingestion & Idempotency) — planning manual gate
+Plan: 05-CONTEXT/05-RESEARCH/05-01..05-04-PLAN/05-VALIDATION drafted
+Status: Planning complete for review; runtime execution not started
+Last activity: 2026-06-30 - Phase 05 planning drafted; execution remains blocked behind human approval
 
 Progress: [███-------] 33%
 
@@ -125,6 +125,7 @@ Recent decisions affecting current work:
 - [Phase 04 closure]: Phase 04 is complete as money-path pre-Order implementation/test scope. PAY-01..PAY-04 are recorded as implementation complete with production activation blocked until `TBD-payment-attempt.ts` is approved/applied and real Stripe card/Pix layers/config are provided. Phase 05 remains not started behind human approval.
 - [Gate 04A]: Real Stripe card/Pix initiation layers are implemented and registered behind `STRIPE_REAL_INITIATION_ENABLED=true` with `sk_test_...` only. The layers call Stripe directly, not native-first Medusa Stripe, and hand raw PaymentIntent data immediately to the existing safe boundary. `client_secret`, Pix QR/copia-e-cola, hosted instructions, and integral `next_action` remain response-only; `PaymentAttempt` migration is prepared but not applied; no webhook, Order, `purchase_completed`, or Gelato work was introduced.
 - [Gate 04A validation]: Real Stripe card initiation smoke passed in test mode on local port 9001. The card route returned `201 Created`, created a Stripe test-mode PaymentIntent through the real safe layer, and persisted `PaymentAttempt` with `payment_method_type=card`, `status=card_client_secret_created`, `amount=9900`, `currency_code=brl`, and `order_id=null`. No Order, webhook, `CheckoutCompletionLog`, `WebhookEventLog`, `purchase_completed`, or Gelato fulfillment was created. Pix real smoke remains deferred due to Stripe account eligibility. Phase 05 remains not started.
+- [Phase 05 planning]: Phase 05 was drafted as planning-only into four manual slices: WebhookEventLog schema/config, raw-body `/hooks/stripe` signature route, PaymentIntent-to-PaymentAttempt processing, and final validation/negative proofs. Planned success state is `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 06 remains responsible for `Order` creation via `CheckoutCompletionLog`. No runtime code, endpoint, migration execution, Order, `purchase_completed`, Gelato, e-mail, analytics or refund flow was implemented during planning.
 
 ### Pending Todos
 
@@ -151,10 +152,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-30T12:34:00.000-03:00
-Stopped at: Gate 04A validated; manual review gate before Phase 05
-Resume file: `.planning/phases/04A-stripe-real-layer-activation/04A-SUMMARY.md`
-Next permitted step: human review of `04A-SUMMARY.md`; Phase 05 remains blocked until explicit approval
+Last session: 2026-06-30T12:59:50.000-03:00
+Stopped at: Phase 05 planning manual gate
+Resume file: `.planning/phases/05-stripe-webhook-ingestion-idempotency/05-VALIDATION.md`
+Next permitted step: human review of Phase 05 planning artifacts; execute `05-01` only after explicit approval
 
 ## Quick Tasks Completed
 
