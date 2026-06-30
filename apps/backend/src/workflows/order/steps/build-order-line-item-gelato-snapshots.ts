@@ -18,6 +18,18 @@ type CartLineItemRecord = {
   variant?: CartVariantRecord | null
 }
 
+const GELATO_SNAPSHOT_KEYS = [
+  "gelato_product_uid",
+  "gelato_template_id",
+  "gelato_variant_options",
+  "template_mode",
+  "source_product_variant_id",
+  "source_product_variant_sku",
+  "captured_at",
+] as const
+
+const GELATO_VARIANT_OPTION_KEYS = ["size", "color"] as const
+
 export type BuildOrderLineItemGelatoSnapshotsInput = {
   items: CartLineItemRecord[]
   captured_at?: string
@@ -72,6 +84,35 @@ function sanitizeSnapshotError(error: unknown): OrderLineItemGelatoSnapshotError
   )
 }
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expectedKeys: readonly string[]
+): boolean {
+  const keys = Object.keys(value)
+
+  return (
+    keys.length === expectedKeys.length &&
+    expectedKeys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
+  )
+}
+
+function assertExactGelatoSnapshotV1Shape(snapshot: GelatoSnapshot): GelatoSnapshot {
+  if (
+    !hasExactKeys(snapshot as unknown as Record<string, unknown>, GELATO_SNAPSHOT_KEYS) ||
+    !hasExactKeys(
+      snapshot.gelato_variant_options as unknown as Record<string, unknown>,
+      GELATO_VARIANT_OPTION_KEYS
+    )
+  ) {
+    throw new OrderLineItemGelatoSnapshotError(
+      "ORDER_GELATO_SNAPSHOT_SHAPE_INVALID",
+      "Snapshot Gelato fora do contrato v1."
+    )
+  }
+
+  return snapshot
+}
+
 export function buildOrderLineItemGelatoSnapshots(
   input: BuildOrderLineItemGelatoSnapshotsInput
 ): OrderLineItemGelatoSnapshotPatch[] {
@@ -98,14 +139,15 @@ export function buildOrderLineItemGelatoSnapshots(
         },
         { capturedAt }
       )
+      const gelatoSnapshot = assertExactGelatoSnapshotV1Shape(snapshot)
 
       return {
         id: itemId,
         metadata: {
           ...(item.metadata ?? {}),
-          gelato_snapshot: snapshot,
+          gelato_snapshot: gelatoSnapshot,
         },
-        gelato_snapshot: snapshot,
+        gelato_snapshot: gelatoSnapshot,
       }
     } catch (error) {
       throw sanitizeSnapshotError(error)
