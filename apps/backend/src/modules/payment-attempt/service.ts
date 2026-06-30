@@ -394,10 +394,7 @@ export function applyStripePaymentIntentWebhookToAttempt<
   validatePaymentIntentForAttempt(attempt, paymentIntent, eventType)
 
   if (isTargetStatusAlreadyApplied(attempt, eventType)) {
-    return {
-      ...attempt,
-      order_id: null,
-    }
+    return attempt
   }
 
   switch (eventType) {
@@ -424,17 +421,7 @@ export function invalidateActiveAttemptsForCartChange<
   return updated
 }
 
-export function assertAttemptEligibleForFutureOrder(
-  attempt: PaymentAttemptRecord
-): void {
-  if (attempt.status === "invalidated_by_cart_change") {
-    throw new Error("PAYMENT_ATTEMPT_INVALIDATED_BY_CART_CHANGE")
-  }
-
-  if (attempt.status === "superseded") {
-    throw new Error("PAYMENT_ATTEMPT_SUPERSEDED")
-  }
-}
+export { assertPaymentAttemptEligibleForOrderCreation } from "./state-machine"
 
 export function withPaymentAttemptStatus<T extends PaymentAttemptRecord>(
   attempt: T,

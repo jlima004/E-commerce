@@ -23,6 +23,10 @@ import type {
   WebhookEventLogStatus,
   WebhookMetadata,
 } from "../../../modules/webhooks/types"
+import {
+  runCreateOrderFromConfirmedPaymentAttemptEntrypoint,
+  type CreateOrderFromConfirmedPaymentAttemptResult,
+} from "../../../workflows/order/webhook-order-entrypoint"
 
 const STRIPE_PROVIDER = "stripe"
 const STRIPE_SIGNATURE_HEADER = "stripe-signature"
@@ -100,6 +104,15 @@ type RouteDeps = {
   appEnv?: AppEnv
   now?: () => Date
   stripe?: StripeLike
+  runOrderEntrypoint?: (
+    scope: MedusaRequest["scope"],
+    input: {
+      payment_attempt_id: string
+      payment_intent_id: string
+      stripe_event_id?: string | null
+      correlation_id?: string | null
+    }
+  ) => Promise<CreateOrderFromConfirmedPaymentAttemptResult>
 }
 
 const stripeClient = new Stripe("webhook_verifier_placeholder", {
@@ -398,6 +411,7 @@ async function processStripePaymentIntentEvent(input: {
   record: WebhookEventLogRecord
   webhooksModule: WebhooksModuleLike
   now: Date
+  runOrderEntrypoint: RouteDeps["runOrderEntrypoint"]
 }): Promise<WebhookEventLogStatus> {
   if (!isPaymentIntentObject(input.event.data?.object)) {
     throw new PaymentAttemptWebhookError(
@@ -421,6 +435,21 @@ async function processStripePaymentIntentEvent(input: {
   )
 
   await paymentAttemptModule.updatePaymentAttempts?.(updatedAttempt)
+
+  const shouldInvokeOrderEntrypoint =
+    input.event.type === "payment_intent.succeeded" &&
+    updatedAttempt.status === "payment_confirmed_by_webhook" &&
+    updatedAttempt.order_id == null
+
+  if (shouldInvokeOrderEntrypoint && input.runOrderEntrypoint) {
+    await input.runOrderEntrypoint(input.req.scope, {
+      payment_attempt_id: updatedAttempt.id,
+      payment_intent_id: paymentIntent.id,
+      stripe_event_id: input.event.id,
+      correlation_id: input.req.correlationId,
+    })
+  }
+
   await updateWebhookRecord(input.webhooksModule, {
     id: input.record.id,
     status: "processed",
@@ -454,6 +483,8 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
   const routeEnv = deps.appEnv ?? env
   const now = deps.now ?? (() => new Date())
   const stripe = deps.stripe ?? stripeClient
+  const runOrderEntrypoint =
+    deps.runOrderEntrypoint ?? runCreateOrderFromConfirmedPaymentAttemptEntrypoint
 
   return async function POST(req: MedusaRequest, res: MedusaResponse) {
     const request = req as RequestWithRawBody
@@ -553,6 +584,7 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
         record,
         webhooksModule: service,
         now: now(),
+        runOrderEntrypoint,
       })
     } catch (error) {
       const disposition =

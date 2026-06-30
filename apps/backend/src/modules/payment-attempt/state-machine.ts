@@ -160,6 +160,44 @@ export function assertPaymentAttemptTransition(
   }
 }
 
+export function assertPaymentAttemptEligibleForOrderCreation(
+  attempt: Pick<
+    PaymentAttemptRecord,
+    | "status"
+    | "order_id"
+    | "provider"
+    | "provider_payment_intent_id"
+    | "amount"
+    | "currency_code"
+  >
+): void {
+  if (attempt.status !== "payment_confirmed_by_webhook") {
+    throw new Error("PAYMENT_ATTEMPT_NOT_ELIGIBLE_FOR_ORDER_STATUS")
+  }
+
+  if (attempt.order_id != null) {
+    throw new Error("PAYMENT_ATTEMPT_ORDER_ID_ALREADY_LINKED")
+  }
+
+  if (attempt.provider !== "stripe") {
+    throw new Error("PAYMENT_ATTEMPT_PROVIDER_NOT_ELIGIBLE")
+  }
+
+  const paymentIntentId = attempt.provider_payment_intent_id?.trim()
+  if (!paymentIntentId) {
+    throw new Error("PAYMENT_ATTEMPT_PAYMENT_INTENT_ID_REQUIRED")
+  }
+
+  if (!(attempt.amount > 0)) {
+    throw new Error("PAYMENT_ATTEMPT_AMOUNT_INVALID")
+  }
+
+  const currencyCode = attempt.currency_code?.trim().toLowerCase()
+  if (currencyCode !== "brl") {
+    throw new Error("PAYMENT_ATTEMPT_CURRENCY_NOT_ELIGIBLE")
+  }
+}
+
 export function assertOrderIdMustStayNull(
   attempt: Pick<PaymentAttemptRecord, "order_id" | "status">
 ): void {
