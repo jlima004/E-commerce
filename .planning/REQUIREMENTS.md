@@ -50,9 +50,9 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Order Creation & State
 
-- [ ] **ORD-01**: An Order is created only by the canonical, approved Stripe webhook — never by a checkout/storefront endpoint (INV-1)
-- [ ] **ORD-02**: Order creation is idempotent, keyed on `payment_intent_id` (or `cart_id + payment_intent_id`) via CheckoutCompletionLog, surviving webhook redelivery (INV-4)
-- [ ] **ORD-03**: Order maintains decoupled operational state (`order_status`) and financial state (`payment_status`), recomputed transactionally (INV-10)
+- [x] **ORD-01**: An Order is created only by the canonical, approved Stripe webhook — never by a checkout/storefront endpoint (INV-1). Complete via Phase 06 closure: internal post-webhook entrypoint only, strict `PaymentAttempt.status = payment_confirmed_by_webhook` + `order_id = null` eligibility, no Store completion route.
+- [x] **ORD-02**: Order creation is idempotent, keyed on `payment_intent_id` (or `cart_id + payment_intent_id`) via CheckoutCompletionLog, surviving webhook redelivery (INV-4). Complete via Phase 06 closure: `CheckoutCompletionLog` unique claim/reuse semantics prevent duplicate Order creation under replay/concurrency.
+- [x] **ORD-03**: Order maintains decoupled operational state (`order_status`) and financial state (`payment_status`), recomputed transactionally (INV-10). Complete via Phase 06 closure: accepted local state contract persists decoupled `order_status` / `payment_status` in `Order.metadata`.
 
 ### Analytics Outbox
 
@@ -158,9 +158,9 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | WHK-01 | Phase 5 | Complete (05-02/05-04 raw-body signature verification) |
 | WHK-02 | Phase 5 | Complete (05-01/05-02/05-03/05-04 WebhookEventLog dedup + PaymentAttempt webhook states) |
 | WHK-03 | Phase 9 | Pending |
-| ORD-01 | Phase 6 | Pending |
-| ORD-02 | Phase 6 | Pending |
-| ORD-03 | Phase 6 | Pending |
+| ORD-01 | Phase 6 | Complete (Phase 06 closure: canonical internal post-webhook Order creation only) |
+| ORD-02 | Phase 6 | Complete (Phase 06 closure: CheckoutCompletionLog idempotency under replay/concurrency) |
+| ORD-03 | Phase 6 | Complete (Phase 06 closure: decoupled `order_status` / `payment_status` in `Order.metadata`) |
 | ANL-01 | Phase 7 | Pending |
 | ANL-02 | Phase 7 | Pending |
 | ANL-03 | Phase 7 | Pending |
@@ -190,4 +190,4 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 
 ---
 *Requirements defined: 2026-06-22*
-*Last updated: 2026-06-29 after reconciling Phase 01 SETUP/OBS completion and Phase 04 PAY-01..PAY-04 implementation/test scope; production activation blocked*
+*Last updated: 2026-06-30 after closing Phase 06 documentally and marking ORD-01..ORD-03 complete; Phase 07 remains not started*

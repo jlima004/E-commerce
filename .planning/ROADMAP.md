@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Cart & Checkout (pre-Order)** - Guest + authenticated cart and checkout data collection that creates no Order
 - [x] **Phase 4: Stripe Payments & PaymentAttempt** - Card + async Pix via safe Stripe boundary, every try tracked in PaymentAttempt; implementation/test complete, production activation blocked pending migration and real Stripe layers/config
 - [x] **Phase 5: Stripe Webhook Ingestion & Idempotency** - Raw-body signature-verified `/hooks/stripe` + WebhookEventLog DB-level dedup
-- [ ] **Phase 6: Idempotent Webhook-Driven Order Creation** - Order created only from `payment_confirmed_by_webhook` PaymentAttempt with `order_id = null`, idempotent on payment_intent_id, decoupled state
+- [x] **Phase 6: Idempotent Webhook-Driven Order Creation** - Order created only from `payment_confirmed_by_webhook` PaymentAttempt with `order_id = null`, idempotent on payment_intent_id, decoupled state
 - [ ] **Phase 7: Analytics Outbox (purchase_completed)** - Durable local outbox written with the Order + async PostHog relay
 - [ ] **Phase 8: Transactional Email (Resend)** - Idempotent confirmation email after Order, before the Gelato attempt
 - [ ] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking
@@ -236,7 +236,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 5
 **Requirements**: ORD-01, ORD-02, ORD-03
-**Manual gate:** Phase 06 is **not started**. Planning is the next permitted step; execution requires explicit approval after planning. **Hard constraint:** Order creation must consume only `PaymentAttempt` rows where `status = payment_confirmed_by_webhook` and `order_id = null` — no checkout/storefront endpoint or other entry point may create an Order.
+**Manual gate:** Phase 06 is complete and accepted at the manual gate on 2026-06-30. Phase 07 may be planned next, but execution remains blocked until explicit human approval. **Hard constraint preserved:** Order creation consumes only `PaymentAttempt` rows where `status = payment_confirmed_by_webhook` and `order_id = null` — no checkout/storefront endpoint or other entry point may create an Order.
 **Success Criteria** (what must be TRUE):
 
   1. An Order is created only from `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null` — never by a checkout/storefront endpoint.
@@ -245,7 +245,30 @@ Plans:
   4. Order exposes decoupled `order_status` and `payment_status`, recomputed transactionally.
   5. Order creation captures immutable Gelato snapshot data into each Order LineItem from the validated ProductVariant metadata, and later catalog edits do not alter existing Order LineItems.
 
-**Plans**: TBD
+**Plans**: 5/5 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 06-01-PLAN.md - Schema/contract/helper de `CheckoutCompletionLog`
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 06-02-PLAN.md - Guard exato de `PaymentAttempt` e entrypoint interno pos-webhook
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 06-03-PLAN.md - Criacao transacional real de Order com snapshots obrigatorios e correlacao
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 06-04-PLAN.md - Hardening de snapshot Gelato, imutabilidade e falha/retry
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 06-05-PLAN.md - Validacao final, provas negativas e manual gate antes da Phase 07
+
+**Closure status (2026-06-30):** Phase 06 is complete. `06-01` through `06-05` were executed and verified (unit: 5 suites / 50 tests; HTTP integration: 2 suites / 15 tests; build PASS; Store completion grep PASS; Phase 07+ runtime-scope grep PASS; secret/payload grep PASS; docs real-secret grep PASS). `ORD-01`, `ORD-02`, and `ORD-03` are complete. The accepted outcome is: Order created only from the canonical internal post-webhook flow; `CheckoutCompletionLog` prevents duplicate Order creation under replay/concurrency; `order_status` and `payment_status` remain decoupled in `Order.metadata`; `PaymentAttempt.order_id` is correlated; and `LineItem.metadata.gelato_snapshot` is mandatory and immutable. Broad scan evidence remained informational only and preserved generic/pre-existing vocabulary outside the Phase 06 runtime surface. No Phase 07 implementation, `purchase_completed`, analytics, email, Gelato fulfillment, refund flow, Stripe CLI smoke, or real migration execution was introduced. Phase 07 is not started and remains blocked behind a separate manual gate.
 
 ### Phase 7: Analytics Outbox (purchase_completed)
 
@@ -346,7 +369,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Cart & Checkout (pre-Order) | 5/5 | Complete | 2026-06-27 |
 | 4. Stripe Payments & PaymentAttempt | 6/6 | Complete (activation blocked) | 2026-06-29 |
 | 5. Stripe Webhook Ingestion & Idempotency | 4/4 | Complete | 2026-06-30 |
-| 6. Idempotent Webhook-Driven Order Creation | 0/TBD | Planning ready (not started) | - |
+| 6. Idempotent Webhook-Driven Order Creation | 5/5 | Complete | 2026-06-30 |
 | 7. Analytics Outbox (purchase_completed) | 0/TBD | Not started | - |
 | 8. Transactional Email (Resend) | 0/TBD | Not started | - |
 | 9. Gelato Fulfillment & Webhook | 0/TBD | Not started | - |
