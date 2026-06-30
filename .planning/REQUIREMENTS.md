@@ -44,8 +44,8 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Webhooks & Idempotency
 
-- [ ] **WHK-01**: The Stripe webhook endpoint verifies the signature against the raw request body and rejects invalid events (INV-3)
-- [ ] **WHK-02**: Every received Stripe event is persisted to WebhookEventLog and deduplicated by event id (DB-level unique constraint), making processing idempotent (INV-3)
+- [x] **WHK-01**: The Stripe webhook endpoint verifies the signature against the raw request body and rejects invalid events (INV-3). Phase 05 complete: raw-body `/hooks/stripe`, signature verification, HTTP 400 on forged payloads.
+- [x] **WHK-02**: Every received Stripe event is persisted to WebhookEventLog and deduplicated by event id (DB-level unique constraint), making processing idempotent (INV-3). Phase 05 complete: DB-level dedup, replay/concurrent no-op, PaymentAttempt webhook states with `order_id = null`.
 - [ ] **WHK-03**: The Gelato webhook is ingested using the same validated, idempotent, persisted-event pattern
 
 ### Order Creation & State
@@ -155,8 +155,8 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | PAY-02 | Phase 4 | Complete for implementation/test scope; production activation blocked (safe Pix boundary complete, real Stripe Pix layer/config pending) |
 | PAY-03 | Phase 4 | Complete for implementation/test scope; production activation blocked (local Pix negative Order proofs complete, webhook truth deferred to Phase 5/6) |
 | PAY-04 | Phase 4 | Complete for implementation/test scope; production activation blocked (`PaymentAttempt` implementation complete, migration draft not applied) |
-| WHK-01 | Phase 5 | Pending |
-| WHK-02 | Phase 5 | Pending |
+| WHK-01 | Phase 5 | Complete (05-02/05-04 raw-body signature verification) |
+| WHK-02 | Phase 5 | Complete (05-01/05-02/05-03/05-04 WebhookEventLog dedup + PaymentAttempt webhook states) |
 | WHK-03 | Phase 9 | Pending |
 | ORD-01 | Phase 6 | Pending |
 | ORD-02 | Phase 6 | Pending |

@@ -1,10 +1,12 @@
 ---
 phase: 05
 slug: stripe-webhook-ingestion-idempotency
-status: planning_manual_gate
+status: complete
 nyquist_compliant: true
 created: 2026-06-30
+closed_at: 2026-06-30
 manual_review_gate: true
+human_review_accepted: true
 ---
 
 # Phase 05 — Validation Strategy

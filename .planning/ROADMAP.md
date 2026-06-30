@@ -17,8 +17,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Catalog & Media** - BRL products/variants with mandatory Gelato metadata, Supabase Storage images, and a Gelato snapshot builder/contract for future Order creation (no Order LineItem persistence yet — verified in Phase 6)
 - [x] **Phase 3: Cart & Checkout (pre-Order)** - Guest + authenticated cart and checkout data collection that creates no Order
 - [x] **Phase 4: Stripe Payments & PaymentAttempt** - Card + async Pix via safe Stripe boundary, every try tracked in PaymentAttempt; implementation/test complete, production activation blocked pending migration and real Stripe layers/config
-- [ ] **Phase 5: Stripe Webhook Ingestion & Idempotency** - Raw-body signature-verified `/hooks/stripe` + WebhookEventLog DB-level dedup
-- [ ] **Phase 6: Idempotent Webhook-Driven Order Creation** - Order created only by the canonical webhook, idempotent on payment_intent_id, decoupled state
+- [x] **Phase 5: Stripe Webhook Ingestion & Idempotency** - Raw-body signature-verified `/hooks/stripe` + WebhookEventLog DB-level dedup
+- [ ] **Phase 6: Idempotent Webhook-Driven Order Creation** - Order created only from `payment_confirmed_by_webhook` PaymentAttempt with `order_id = null`, idempotent on payment_intent_id, decoupled state
 - [ ] **Phase 7: Analytics Outbox (purchase_completed)** - Durable local outbox written with the Order + async PostHog relay
 - [ ] **Phase 8: Transactional Email (Resend)** - Idempotent confirmation email after Order, before the Gelato attempt
 - [ ] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking
@@ -209,18 +209,38 @@ Plans:
   3. Replaying the same event (twice and concurrently) is a no-op that returns 200 and yields exactly one log row.
   4. An event referencing not-yet-present state is recorded and safely deferred rather than crashing the handler.
 
-**Plans**: TBD
+**Plans**: 4/4 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 05-01-PLAN.md - Schema/config de `WebhookEventLog` e contrato de env
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 05-02-PLAN.md - Rota raw-body `/hooks/stripe`, verificacao de assinatura e dedup
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 05-03-PLAN.md - Processamento PaymentIntent-to-PaymentAttempt; estado terminal `payment_confirmed_by_webhook`
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 05-04-PLAN.md - Validacao final, provas negativas e manual gate antes da Phase 06
+
+**Closure status (2026-06-30):** Phase 05 is complete. `05-01` through `05-04` were executed and verified (29 unit tests, 10 HTTP integration tests, build green, focused runtime negative greps green). WHK-01 and WHK-02 are complete. The accepted terminal local state is `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`. No Order, `CheckoutCompletionLog`, `purchase_completed`, Gelato, email, analytics, or refund flow was introduced. Stripe CLI real smoke remains documented only. Human review accepted Phase 05 at the manual gate. Phase 06 may begin **planning only** in a separate manual-review-gated cycle — execution not started.
 
 ### Phase 6: Idempotent Webhook-Driven Order Creation
 
-**Goal**: An Order is born only from the canonical approved Stripe webhook, idempotently keyed on `payment_intent_id`, with decoupled operational and financial state.
+**Goal**: An Order is born only from a confirmed `PaymentAttempt` (`status = payment_confirmed_by_webhook`, `order_id = null`), idempotently keyed on `payment_intent_id`, with decoupled operational and financial state.
 **Mode:** mvp
 **Depends on**: Phase 5
 **Requirements**: ORD-01, ORD-02, ORD-03
+**Manual gate:** Phase 06 is **not started**. Planning is the next permitted step; execution requires explicit approval after planning. **Hard constraint:** Order creation must consume only `PaymentAttempt` rows where `status = payment_confirmed_by_webhook` and `order_id = null` — no checkout/storefront endpoint or other entry point may create an Order.
 **Success Criteria** (what must be TRUE):
 
-  1. An Order is created only by the canonical `payment_intent.succeeded` webhook path — never by a checkout/storefront endpoint.
-  2. Replaying or concurrently delivering the same `payment_intent.succeeded` yields exactly one Order (CheckoutCompletionLog unique on `idempotency_key`).
+  1. An Order is created only from `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null` — never by a checkout/storefront endpoint.
+  2. Replaying or concurrently delivering the same confirmation yields exactly one Order (CheckoutCompletionLog unique on `idempotency_key`).
   3. Order creation, CheckoutCompletionLog update, and PaymentAttempt.order_id correlation occur in one transaction.
   4. Order exposes decoupled `order_status` and `payment_status`, recomputed transactionally.
   5. Order creation captures immutable Gelato snapshot data into each Order LineItem from the validated ProductVariant metadata, and later catalog edits do not alter existing Order LineItems.
@@ -325,8 +345,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Catalog & Media | 5/5 | Complete | 2026-06-27 |
 | 3. Cart & Checkout (pre-Order) | 5/5 | Complete | 2026-06-27 |
 | 4. Stripe Payments & PaymentAttempt | 6/6 | Complete (activation blocked) | 2026-06-29 |
-| 5. Stripe Webhook Ingestion & Idempotency | 0/TBD | Not started | - |
-| 6. Idempotent Webhook-Driven Order Creation | 0/TBD | Not started | - |
+| 5. Stripe Webhook Ingestion & Idempotency | 4/4 | Complete | 2026-06-30 |
+| 6. Idempotent Webhook-Driven Order Creation | 0/TBD | Planning ready (not started) | - |
 | 7. Analytics Outbox (purchase_completed) | 0/TBD | Not started | - |
 | 8. Transactional Email (Resend) | 0/TBD | Not started | - |
 | 9. Gelato Fulfillment & Webhook | 0/TBD | Not started | - |
