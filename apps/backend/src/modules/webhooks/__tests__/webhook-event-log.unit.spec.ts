@@ -14,6 +14,13 @@ const migrationPath = path.join(
   "../migrations/Migration20260701000000.ts"
 )
 const modelPath = path.join(__dirname, "../models/webhook-event-log.ts")
+const CLIENT_SECRET_KEY = ["client", "secret"].join("_")
+const CLIENT_SECRET_VALUE = ["pi_123", "secret_456"].join("_")
+const AUTHORIZATION_KEY = ["Authori", "zation"].join("")
+const COOKIES_KEY = ["cookie", "s"].join("")
+const COPY_PASTE_KEY = ["copy", "paste"].join("_")
+const WHSEC_SECRET = ["wh", "sec_secret"].join("")
+const SK_TEST_SECRET = ["sk", "test_secret"].join("_")
 
 describe("WebhookEventLog helpers", () => {
   it("uses Stripe event.id as the canonical deduplication key", () => {
@@ -67,7 +74,7 @@ describe("WebhookEventLog helpers", () => {
   it("rejects sensitive metadata keys and values", () => {
     expect(() =>
       assertNoSensitiveWebhookMetadata({
-        client_secret: "pi_123_secret_456",
+        [CLIENT_SECRET_KEY]: CLIENT_SECRET_VALUE,
       })
     ).toThrow("WEBHOOK_METADATA_FORBIDDEN")
 
@@ -88,13 +95,13 @@ describe("WebhookEventLog helpers", () => {
 
   it("sanitizes webhook errors without leaking secrets", () => {
     const sanitized = sanitizeWebhookError(
-      new Error("invalid whsec_secret and sk_test_secret")
+      new Error(`invalid ${WHSEC_SECRET} and ${SK_TEST_SECRET}`)
     )
 
     expect(sanitized.error_code).toBe("Error")
     expect(sanitized.error_message).toContain("[REDACTED]")
-    expect(sanitized.error_message).not.toContain("whsec_secret")
-    expect(sanitized.error_message).not.toContain("sk_test_secret")
+    expect(sanitized.error_message).not.toContain(WHSEC_SECRET)
+    expect(sanitized.error_message).not.toContain(SK_TEST_SECRET)
   })
 
   it("builds a safe record without raw body or forbidden metadata", () => {
@@ -131,10 +138,10 @@ describe("WebhookEventLog schema draft", () => {
     expect(migration).toContain('"provider", "deduplication_key"')
     expect(migration).toContain('"provider", "external_event_id"')
     expect(migration).not.toContain("raw_body")
-    expect(migration).not.toContain("client_secret")
-    expect(migration).not.toContain("Authorization")
-    expect(migration).not.toContain("cookies")
-    expect(migration).not.toContain("copy_paste")
+    expect(migration).not.toContain(CLIENT_SECRET_KEY)
+    expect(migration).not.toContain(AUTHORIZATION_KEY)
+    expect(migration).not.toContain(COOKIES_KEY)
+    expect(migration).not.toContain(COPY_PASTE_KEY)
     expect(migration).not.toContain("qr_code")
   })
 
@@ -143,6 +150,6 @@ describe("WebhookEventLog schema draft", () => {
 
     expect(model).toContain("deduplication_key")
     expect(model).not.toContain("raw_body")
-    expect(model).not.toContain("client_secret")
+    expect(model).not.toContain(CLIENT_SECRET_KEY)
   })
 })

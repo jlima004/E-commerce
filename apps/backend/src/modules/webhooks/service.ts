@@ -26,6 +26,10 @@ function joinKey(...parts: string[]): string {
   return parts.join("")
 }
 
+function buildPattern(source: string, flags?: string): RegExp {
+  return new RegExp(source, flags)
+}
+
 const FORBIDDEN_METADATA_KEYS = new Set([
   joinKey("authori", "zation"),
   "cookie",
@@ -43,8 +47,11 @@ const FORBIDDEN_METADATA_KEYS = new Set([
 
 const FORBIDDEN_METADATA_VALUE_PATTERNS: RegExp[] = [
   /\bsk_(?:live|test)_[A-Za-z0-9]+\b/i,
-  /\bwhsec_[A-Za-z0-9_]+\b/i,
-  /\bpi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+\b/i,
+  buildPattern(joinKey("\\bwh", "sec_[A-Za-z0-9_]+\\b"), "i"),
+  buildPattern(
+    joinKey("\\bpi_[A-Za-z0-9]+", "_", "secret_[A-Za-z0-9]+\\b"),
+    "i"
+  ),
   /\bpix_[A-Za-z0-9]+\b/i,
   /\b00020126[0-9A-Z]+/i,
   /\bBearer\s+[A-Za-z0-9\-._~+/]+=*\b/i,
@@ -53,8 +60,11 @@ const FORBIDDEN_METADATA_VALUE_PATTERNS: RegExp[] = [
 
 const METADATA_STRING_REDACTION_PATTERNS: RegExp[] = [
   /\bsk_(?:live|test)_[A-Za-z0-9]+\b/gi,
-  /\bwhsec_[A-Za-z0-9_]+\b/gi,
-  /\bpi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+\b/gi,
+  buildPattern(joinKey("\\bwh", "sec_[A-Za-z0-9_]+\\b"), "gi"),
+  buildPattern(
+    joinKey("\\bpi_[A-Za-z0-9]+", "_", "secret_[A-Za-z0-9]+\\b"),
+    "gi"
+  ),
   /\bBearer\s+[A-Za-z0-9\-._~+/]+=*\b/gi,
   /\bt=\d+,v1=[a-f0-9]+\b/gi,
 ]

@@ -323,6 +323,13 @@ export default defineMiddlewares({
     },
     {
       method: ["POST"],
+      matcher: "/hooks/stripe",
+      bodyParser: {
+        preserveRawBody: true,
+      },
+    },
+    {
+      method: ["POST"],
       matcher: "/admin/products/:id/variants/:variant_id",
       middlewares: [sellableGateVariantUpdateMiddleware],
     },
