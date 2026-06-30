@@ -485,7 +485,7 @@ function createHandler(
   return createStripeWebhookPostHandler({
     appEnv: {
       STRIPE_WEBHOOK_INGESTION_ENABLED: true,
-      STRIPE_WEBHOOK_SECRET: "whsec_test_123",
+      STRIPE_WEBHOOK_SECRET: "test_webhook_secret_fixture",
     } as never,
     stripe: {
       webhooks: {

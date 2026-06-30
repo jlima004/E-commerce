@@ -176,6 +176,12 @@ function isUniqueConstraintError(error: unknown): boolean {
   )
 }
 
+function getErrorCode(error: Error): string | null {
+  const code = (error as { code?: unknown }).code
+
+  return typeof code === "string" ? code : null
+}
+
 function resolvePaymentAttemptModule(
   container: MedusaContainer
 ): PaymentAttemptModuleLike {
@@ -248,12 +254,12 @@ function resolveCartModule(container: MedusaContainer): CartModuleLike {
 }
 
 function resolveOrderModule(container: MedusaContainer): OrderModuleLike {
-  const module = container.resolve(Modules.ORDER) as OrderModuleLike
+  const resolved = container.resolve(Modules.ORDER) as unknown
 
   if (
-    !module ||
-    typeof module.listOrders !== "function" ||
-    typeof module.updateOrders !== "function"
+    !resolved ||
+    typeof (resolved as OrderModuleLike).listOrders !== "function" ||
+    typeof (resolved as OrderModuleLike).updateOrders !== "function"
   ) {
     throw new OrderCreationEntrypointError(
       "ORDER_ENTRYPOINT_ORDER_MODULE_UNAVAILABLE",
@@ -261,7 +267,7 @@ function resolveOrderModule(container: MedusaContainer): OrderModuleLike {
     )
   }
 
-  return module
+  return resolved as OrderModuleLike
 }
 
 export function validateCreateOrderFromConfirmedPaymentAttemptInput(
@@ -558,11 +564,9 @@ async function markCheckoutCompletionLogFailed(
   now: Date
 ): Promise<void> {
   const module = resolveCheckoutCompletionModule(container)
+  const errorCode = error instanceof Error ? getErrorCode(error) : null
   const sanitized = sanitizeOrderCreationFailure({
-    code:
-      error instanceof Error && typeof (error as { code?: unknown }).code === "string"
-        ? String((error as { code: string }).code)
-        : "ORDER_ENTRYPOINT_FAILED",
+    code: errorCode ?? "ORDER_ENTRYPOINT_FAILED",
     message: error instanceof Error ? error.message : "Falha ao criar order.",
   })
 

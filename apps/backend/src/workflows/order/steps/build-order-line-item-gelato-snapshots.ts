@@ -64,13 +64,26 @@ function assertLineItemId(value: string | null | undefined): string {
   return normalized
 }
 
+function getErrorCode(error: Error): string | null {
+  const code = (error as { code?: unknown }).code
+
+  return typeof code === "string" ? code : null
+}
+
 function sanitizeSnapshotError(error: unknown): OrderLineItemGelatoSnapshotError {
   if (error instanceof OrderLineItemGelatoSnapshotError) {
     return error
   }
 
-  if (error instanceof Error && typeof (error as { code?: unknown }).code === "string") {
-    const code = String((error as { code: string }).code)
+  if (error instanceof Error) {
+    const code = getErrorCode(error)
+
+    if (!code) {
+      return new OrderLineItemGelatoSnapshotError(
+        "ORDER_GELATO_SNAPSHOT_BUILD_FAILED",
+        "Nao foi possivel gerar o snapshot Gelato para o item do carrinho."
+      )
+    }
 
     return new OrderLineItemGelatoSnapshotError(
       `ORDER_${code}`,

@@ -61,7 +61,13 @@ bash -lc 'cd apps/backend && git grep -n -E "POST.*/store/carts/.*/complete|/sto
 No downstream Phase 07+ effects in Phase 06 runtime scope:
 
 ```bash
-bash -lc 'cd apps/backend && git grep -n -E "purchase_completed|AnalyticsEventLog|posthog|EmailDeliveryLog|resend|order\\.gelatoapis\\.com|gelato_order_id|create.*Fulfillment|refund|Refund" -- src/api/hooks src/modules src/workflows integration-tests/http/stripe-webhook-order-creation.spec.ts; status=$?; test $status -eq 1'
+bash -lc 'cd apps/backend && git grep -n -E "purchase_completed|AnalyticsEventLog|posthog|EmailDeliveryLog|resend|order\\.gelatoapis\\.com|gelato_order_id|create.*Fulfillment|refund|Refund" -- src/workflows/order src/modules/checkout-completion src/api/hooks/stripe/route.ts integration-tests/http/stripe-webhook-order-creation.spec.ts; status=$?; test $status -eq 1'
+```
+
+Broad downstream scan for informational review only. If this finds pre-existing generic webhook or older test vocabulary outside Phase 06 runtime scope, document the matches instead of deleting canonical types solely to satisfy the broad grep:
+
+```bash
+bash -lc 'cd apps/backend && git grep -n -E "purchase_completed|AnalyticsEventLog|posthog|EmailDeliveryLog|resend|order\\.gelatoapis\\.com|gelato_order_id|create.*Fulfillment|refund|Refund" -- src/api/hooks src/modules src/workflows integration-tests/http/stripe-webhook-order-creation.spec.ts || true'
 ```
 
 No Stripe CLI smoke or prohibited payload persistence in Phase 06 runtime/tests (vocabulary grep — excludes `.planning` so docs may describe prohibitions without false positives):
