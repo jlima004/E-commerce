@@ -89,4 +89,4 @@ O smoke real deve ser adaptado para um `PaymentIntent` que corresponda a um `Pay
 
 ## Sign-Off State
 
-Esta estratégia foi executada e encerrada pela Phase 05. A revisão humana foi aceita em 2026-06-30. A Phase 05 está completa no manual gate, e a Phase 06 está liberada.
+Esta estratégia foi executada e encerrada pela Phase 05. A revisão humana foi aceita em 2026-06-30. A Phase 05 está completa no manual gate, e a Phase 06 está liberada apenas para planejamento. A execução da Phase 06 permanece bloqueada até aprovação explícita após planejamento.
