@@ -19,9 +19,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Stripe Payments & PaymentAttempt** - Card + async Pix via safe Stripe boundary, every try tracked in PaymentAttempt; implementation/test complete, production activation blocked pending migration and real Stripe layers/config
 - [x] **Phase 5: Stripe Webhook Ingestion & Idempotency** - Raw-body signature-verified `/hooks/stripe` + WebhookEventLog DB-level dedup
 - [x] **Phase 6: Idempotent Webhook-Driven Order Creation** - Order created only from `payment_confirmed_by_webhook` PaymentAttempt with `order_id = null`, idempotent on payment_intent_id, decoupled state
-- [ ] **Phase 7: Analytics Outbox (purchase_completed)** - Durable local outbox written with the Order + async PostHog relay
-- [ ] **Phase 8: Transactional Email (Resend)** - Idempotent confirmation email after Order, before the Gelato attempt
-- [ ] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking
+- [x] **Phase 7: Analytics Outbox (purchase_completed)** - Durable local outbox written with the Order + async PostHog relay
+- [ ] **Phase 8: Transactional Email (Resend)** - Idempotent confirmation email after Order, before the Gelato attempt *(next planned; not started)*
+- [ ] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(blocked: depends on Phase 7 + Phase 8; not started)*
 - [ ] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route
 - [ ] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow
 - [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests
@@ -283,22 +283,22 @@ Plans:
   3. Killing PostHog connectivity does not block Order creation or downstream gating (verified by test).
   4. Downstream effects depend only on the durable `recorded` record existing, never on `status = sent` or PostHog reachability.
 
-**Plans**: 3 planned / 0 executed
+**Plans**: 3/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 07-01-PLAN.md - Contrato, modelo e idempotencia de `AnalyticsEventLog`
+- [x] 07-01-PLAN.md - Contrato, modelo e idempotencia de `AnalyticsEventLog`
 
 **Wave 2** *(blocked on Wave 1 manual gate)*
 
-- [ ] 07-02-PLAN.md - Gravacao transacional de `purchase_completed` e gate local downstream
+- [x] 07-02-PLAN.md - Gravacao transacional de `purchase_completed` e gate local downstream
 
 **Wave 3** *(blocked on Wave 2 manual gate)*
 
-- [ ] 07-03-PLAN.md - Relay assincrono PostHog, retry e validacao final da Phase 07
+- [x] 07-03-PLAN.md - Relay assincrono PostHog, retry e validacao final da Phase 07
 
-**Planning status (2026-07-01):** Phase 07 planning is complete and manual-review gated. Artifacts created: `07-CONTEXT.md`, `07-RESEARCH.md`, `07-VALIDATION.md`, and plans `07-01` through `07-03`. The validation plan separates the blocking analytics-payload grep from a broad informational scan so legitimate Phase 06 `gelato_snapshot` usage in Order workflows does not fail the Phase 07 payload proof; `07-03` also records that any future PostHog SDK install must keep an existing lockfile consistent without calling PostHog real. No runtime code, tests, migration, Stripe CLI smoke, PostHog call, Email, Gelato, fulfillment, refund or tracking work was executed. Phase 07 execution remains blocked until explicit human approval.
+**Closure status (2026-07-01):** Phase 07 is complete. `07-01` through `07-03` were executed and verified (unit: 35/35; HTTP filtered: 3/3; build PASS; negative greps PASS; `git diff --check` PASS). `ANL-01`, `ANL-02`, and `ANL-03` are complete. The accepted outcome is: durable local `purchase_completed` written on accepted Order success; downstream local gating depends on outbox existence, never on PostHog or `status = sent`; async PostHog relay with retry/backoff/dead-letter; local gate accepts `recorded | queued | sending | sent | failed | dead_letter`; `LineItem.metadata.gelato_snapshot` remains mandatory on Order but prohibited in analytics payload; Order birth rule unchanged (canonical internal post-webhook only). `posthog-node@^5.38.2` added (resolved `5.39.2`); root `package-lock.json` updated by workspace npm. No PostHog real call, Email, Gelato, fulfillment, refund, tracking, Stripe CLI smoke, or real migration execution. Human review accepted Phase 07 at the manual gate (`07-03-SUMMARY.md`). Phase 08 may be planned next, but execution remains blocked until explicit human approval. Phase 09 remains blocked by Phase 7 + Phase 8 dependencies.
 
 ### Phase 8: Transactional Email (Resend)
 
@@ -306,6 +306,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 6
 **Requirements**: EMAIL-01, EMAIL-02
+**Manual gate:** Phase 08 is not started. Phase 07 is complete (closed 2026-07-01). Phase 08 may be planned next in a separate manual-review-gated cycle — execution blocked until explicit human approval.
 **Success Criteria** (what must be TRUE):
 
   1. An `order.created` subscriber sends a confirmation email via Resend after Order confirmation and before any Gelato fulfillment attempt.
@@ -320,6 +321,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 7, Phase 8
 **Requirements**: FUL-01, FUL-02, FUL-03, FUL-04, WHK-03
+**Manual gate:** Phase 09 is not started and remains blocked until Phase 7 + Phase 8 are complete and explicit human approval is given for Phase 09 execution.
 **Success Criteria** (what must be TRUE):
 
   1. Gelato fulfillment is triggered only when a confirmed Order and a durable local `purchase_completed` record both exist.
@@ -385,9 +387,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Stripe Payments & PaymentAttempt | 6/6 | Complete (activation blocked) | 2026-06-29 |
 | 5. Stripe Webhook Ingestion & Idempotency | 4/4 | Complete | 2026-06-30 |
 | 6. Idempotent Webhook-Driven Order Creation | 5/5 | Complete | 2026-06-30 |
-| 7. Analytics Outbox (purchase_completed) | 0/3 planned | Planned (manual gate; execution blocked) | - |
-| 8. Transactional Email (Resend) | 0/TBD | Not started | - |
-| 9. Gelato Fulfillment & Webhook | 0/TBD | Not started | - |
+| 7. Analytics Outbox (purchase_completed) | 3/3 | Complete | 2026-07-01 |
+| 8. Transactional Email (Resend) | 0/TBD | Not started (next planned) | - |
+| 9. Gelato Fulfillment & Webhook | 0/TBD | Not started (blocked: Phase 7 + Phase 8) | - |
 | 10. Secure Guest Tracking | 0/TBD | Not started | - |
 | 11. Refunds & Exchanges (Admin) | 0/TBD | Not started | - |
 | 12. Ops, Audit & Critical Tests | 0/TBD | Not started | - |

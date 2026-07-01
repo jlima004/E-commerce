@@ -56,9 +56,9 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Analytics Outbox
 
-- [ ] **ANL-01**: On Order creation, a durable `purchase_completed` event is written transactionally to AnalyticsEventLog as a local outbox (INV-5)
-- [ ] **ANL-02**: Downstream effects depend only on the existence of the durable `purchase_completed` record, never on PostHog success or `AnalyticsEventLog.status = sent` (INV-7)
-- [ ] **ANL-03**: A relay delivers outbox analytics events to PostHog asynchronously without blocking order/fulfillment flows
+- [x] **ANL-01**: On Order creation, a durable `purchase_completed` event is written transactionally to AnalyticsEventLog as a local outbox (INV-5). Complete via Phase 07 closure: `07-01` module/contract + `07-02` transactional write/reuse on accepted Order success; idempotency keyed on `purchase_completed:stripe:{payment_intent_id}`.
+- [x] **ANL-02**: Downstream effects depend only on the existence of the durable `purchase_completed` record, never on PostHog success or `AnalyticsEventLog.status = sent` (INV-7). Complete via Phase 07 closure: local gate accepts `recorded | queued | sending | sent | failed | dead_letter`; PostHog failure does not block Order or local gate (`07-02`, `07-03`).
+- [x] **ANL-03**: A relay delivers outbox analytics events to PostHog asynchronously without blocking order/fulfillment flows. Complete via Phase 07 closure: `analytics-posthog-relay` scheduled job with retry/backoff/dead-letter; `posthog-node@^5.38.2` (resolved `5.39.2`); no PostHog real call in tests.
 
 ### Email
 
@@ -161,9 +161,9 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | ORD-01 | Phase 6 | Complete (Phase 06 closure: canonical internal post-webhook Order creation only) |
 | ORD-02 | Phase 6 | Complete (Phase 06 closure: CheckoutCompletionLog idempotency under replay/concurrency) |
 | ORD-03 | Phase 6 | Complete (Phase 06 closure: decoupled `order_status` / `payment_status` in `Order.metadata`) |
-| ANL-01 | Phase 7 | Pending |
-| ANL-02 | Phase 7 | Pending |
-| ANL-03 | Phase 7 | Pending |
+| ANL-01 | Phase 7 | Complete (Phase 07 closure: durable local `purchase_completed` on accepted Order success) |
+| ANL-02 | Phase 7 | Complete (Phase 07 closure: downstream gates on local outbox existence, not PostHog/`sent`) |
+| ANL-03 | Phase 7 | Complete (Phase 07 closure: async PostHog relay with retry/dead-letter, non-blocking) |
 | EMAIL-01 | Phase 8 | Pending |
 | EMAIL-02 | Phase 8 | Pending |
 | FUL-01 | Phase 9 | Pending |
@@ -190,4 +190,4 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 
 ---
 *Requirements defined: 2026-06-22*
-*Last updated: 2026-06-30 after closing Phase 06 documentally and marking ORD-01..ORD-03 complete; Phase 07 remains not started*
+*Last updated: 2026-07-01 after closing Phase 07 documentally and marking ANL-01..ANL-03 complete; Phase 08 remains not started*

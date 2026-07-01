@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 07
-current_phase_name: Analytics Outbox (purchase_completed)
-status: phase-07-planned-manual-gate-execution-blocked
-stopped_at: Phase 07 planning completed; execution blocked until explicit human approval
-last_updated: "2026-07-01T00:00:00-03:00"
+current_phase: 08
+current_phase_name: Transactional Email (Resend)
+status: phase-07-complete-phase-08-planning-ready
+stopped_at: Phase 07 closed at manual gate; Phase 08 planning-ready only — execution blocked until explicit human approval
+last_updated: "2026-07-01T16:00:00-03:00"
 last_activity: 2026-07-01
-last_activity_desc: Phase 07 planning docs corrected for analytics payload grep scope and future PostHog lockfile handling; execution left blocked at manual gate
+last_activity_desc: Phase 07 documentary closure after human acceptance of 07-03-SUMMARY.md; ANL-01..ANL-03 complete; Phase 08 planning-ready, execution blocked
 progress:
   total_phases: 12
-  completed_phases: 6
-  total_plans: 36
-  completed_plans: 32
-  percent: 50
+  completed_phases: 7
+  total_plans: 35
+  completed_plans: 35
+  percent: 58
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 07 — Analytics Outbox (`purchase_completed`) is planned and waiting at the manual review gate; execution remains blocked until explicit human approval.
+**Current focus:** Phase 07 — Analytics Outbox (`purchase_completed`) is complete and closed at the manual gate. Phase 08 — Transactional Email (Resend) is the next logical phase, planning-ready only; execution remains blocked until explicit human approval.
 
 ## Execution Policy
 
@@ -43,26 +43,26 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 07 planning is complete (`07-CONTEXT.md`, `07-RESEARCH.md`, `07-VALIDATION.md`, `07-01-PLAN.md`, `07-02-PLAN.md`, `07-03-PLAN.md`). **Hard constraint preserved:** Order creation consumes only `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 07 does not change the Order birth rule. **Phase 07 execution blocked until explicit human approval.**
+**Current gate:** Phase 07 is complete and accepted at the manual gate (`07-CLOSURE.md`, evidence: `07-03-SUMMARY.md`, 35/35 unit, 3/3 HTTP filtered, build PASS, negative greps PASS). **Hard constraint preserved:** Order creation consumes only `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 07 did not change the Order birth rule. **Phase 08 execution blocked until explicit human approval.** **Phase 09 execution blocked until explicit human approval and required dependencies (Phase 7 + Phase 8).**
 
 **Branch policy:**
 
-`git.branching_strategy` is `phase` (GSD-supported). Active branch: `gsd/phase-04-stripe-payments-payment-attempt` (`phase_branch_template`: `gsd/phase-{phase}-{slug}`).
+`git.branching_strategy` is `phase` (GSD-supported). Active branch (verified 2026-07-01 via `git branch --show-current`): `gsd/phase-04-stripe-payments-payment-attempt` (`phase_branch_template`: `gsd/phase-{phase}-{slug}`). **Branch-name drift:** work through Phases 05–07 landed on this branch without rename; realign to the Phase 08 template branch before Phase 08 execution, or record an explicit decision to keep cumulative work on the current branch.
 
 ## Current Position
 
-Phase: 07 (Analytics Outbox / `purchase_completed`) — planned, not executed
-Plan: `07-CONTEXT.md`, `07-RESEARCH.md`, `07-VALIDATION.md`, and `07-01`..`07-03` plans created
-Status: Phase 07 planning complete; execution blocked pending explicit human approval
-Last activity: 2026-07-01 - Phase 07 planning artifacts created; manual gate preserved
+Phase: 08 (Transactional Email / Resend) — planning-ready, not started
+Plan: Phase 07 closed (`07-CLOSURE.md`); Phase 08 plans TBD
+Status: Phase 07 complete; Phase 08 execution blocked pending explicit human approval
+Last activity: 2026-07-01 - Phase 07 documentary closure after accepted 07-01..07-03 evidence
 
-Progress: [█████-----] 50%
+Progress: [██████----] 58%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 32
+- Total plans completed: 35
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -76,7 +76,8 @@ Progress: [█████-----] 50%
 | 04. Stripe Payments & PaymentAttempt | 6 executed / 6 planned | Complete (pre-Order; production activation blocked) | — |
 | 05. Stripe Webhook Ingestion & Idempotency | 4 executed / 4 planned | Complete (closed 2026-06-30) | — |
 | 06. Idempotent Webhook-Driven Order Creation | 5 executed / 5 planned | Complete (closed 2026-06-30) | — |
-| 07. Analytics Outbox (`purchase_completed`) | 0 executed / 3 planned | Planned (manual gate; execution blocked) | — |
+| 07. Analytics Outbox (`purchase_completed`) | 3 executed / 3 planned | Complete (closed 2026-07-01) | — |
+| 08. Transactional Email (Resend) | 0 planned | Not started (planning-ready; execution blocked) | — |
 
 **Recent Trend:**
 
@@ -134,7 +135,9 @@ Recent decisions affecting current work:
 - [Phase 06 planning]: Planning-only artifacts created for Idempotent Webhook-Driven Order Creation: `06-CONTEXT.md`, `06-RESEARCH.md`, `06-VALIDATION.md`, and five slices `06-01`..`06-05`. The plan defines a single internal post-webhook entrypoint, `CheckoutCompletionLog` idempotency keyed by PaymentIntent, transactional `Order + CheckoutCompletionLog + PaymentAttempt.order_id` correlation, decoupled `order_status/payment_status`, immutable Gelato snapshots on Order LineItems, and negative proofs excluding `purchase_completed`, Gelato, email, analytics, refund and Stripe CLI smoke. No runtime implementation was started.
 - [Phase 06 execution]: Plans `06-01`..`06-05` completed under manual gating. Final validation closed with 5 unit suites / 50 tests, 2 HTTP suites / 15 tests, build PASS, Store completion grep PASS, Phase 07+ runtime-scope grep PASS, secret/payload grep PASS, and docs real-secret grep PASS. Order creation now exists only behind the canonical internal post-webhook flow; `CheckoutCompletionLog` guarantees idempotent replay/concurrency handling; `PaymentAttempt.order_id` is correlated; `Order.metadata.order_status/payment_status` are accepted as decoupled local state; and `LineItem.metadata.gelato_snapshot` is mandatory and immutable. No `purchase_completed`, analytics, email, Gelato fulfillment, refund, Stripe CLI smoke, or real migration execution was introduced.
 - [Phase 06 closure]: Human review accepted Phase 06 at manual gate on 2026-06-30 (evidence: `06-05-SUMMARY.md`, `06-CLOSURE.md`, 5/50 unit matrix, 2/15 HTTP matrix, build PASS, focused negative greps PASS). `ORD-01`, `ORD-02`, and `ORD-03` are complete. Phase 07 may be planned next, but execution is blocked until explicit human approval.
-- [Phase 07 planning]: Planning-only artifacts created for Analytics Outbox (`purchase_completed`): `07-CONTEXT.md`, `07-RESEARCH.md`, `07-VALIDATION.md`, and three slices `07-01`..`07-03`. The plan defines `AnalyticsEventLog`, `purchase_completed:stripe:{payment_intent_id}` idempotency, local durable downstream gate independent of PostHog success, async PostHog relay with retry/dead-letter, and negative proofs excluding Email, Gelato, fulfillment, refund, tracking, Stripe CLI smoke and migration application. Follow-up documentary correction split the prohibited-payload grep into a blocking analytics-payload scope plus broad informational scan so legitimate Phase 06 `gelato_snapshot` usage in Order workflows does not block Phase 07 validation; `07-03` records controlled lockfile handling for any future PostHog SDK install. No runtime implementation was started.
+- [Phase 07 planning]: Planning-only artifacts created for Analytics Outbox (`purchase_completed`): `07-CONTEXT.md`, `07-RESEARCH.md`, `07-VALIDATION.md`, and three slices `07-01`..`07-03`. The plan defines `AnalyticsEventLog`, `purchase_completed:stripe:{payment_intent_id}` idempotency, local durable downstream gate independent of PostHog success, async PostHog relay with retry/dead-letter, and negative proofs excluding Email, Gelato, fulfillment, refund, tracking, Stripe CLI smoke and migration application. Follow-up documentary correction split the prohibited-payload grep into a blocking analytics-payload scope plus broad informational scan so legitimate Phase 06 `gelato_snapshot` usage in Order workflows does not block Phase 07 validation; `07-03` records controlled lockfile handling for any future PostHog SDK install. No runtime implementation was started during planning.
+- [Phase 07 execution]: Plans `07-01`..`07-03` completed under manual gating. Final validation closed with 35 unit tests, 3 filtered HTTP integration tests, build PASS, negative greps PASS, and `git diff --check` PASS. `purchase_completed` is durably recorded in `AnalyticsEventLog` on accepted Order success; local downstream gate accepts `recorded | queued | sending | sent | failed | dead_letter`; async PostHog relay with retry/backoff/dead-letter; PostHog is not a business gate and `status = sent` is not a downstream requirement. `posthog-node@^5.38.2` added (resolved `5.39.2`); root `package-lock.json` updated by workspace npm. No PostHog real call, Email, Gelato, fulfillment, refund, tracking, Stripe CLI smoke, or real migration execution.
+- [Phase 07 closure]: Human review accepted Phase 07 at manual gate on 2026-07-01 (evidence: `07-03-SUMMARY.md`, `07-CLOSURE.md`, 35/35 unit, 3/3 HTTP filtered, build PASS, negative greps PASS). `ANL-01`, `ANL-02`, and `ANL-03` are complete. Phase 08 may be planned next, but execution is blocked until explicit human approval. Phase 09 execution blocked until explicit human approval and required dependencies.
 
 ### Pending Todos
 
@@ -161,10 +164,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-01T00:00:00-03:00
-Stopped at: Phase 07 planning complete; manual gate preserved before execution
-Resume file: `.planning/phases/07-analytics-outbox-purchase-completed/07-VALIDATION.md`
-Next permitted step: Human review of Phase 07 planning artifacts. Phase 07 execution blocked until explicit human approval.
+Last session: 2026-07-01T16:00:00-03:00
+Stopped at: Phase 07 closed at manual gate; Phase 08 planning-ready only — execution blocked
+Resume file: `.planning/phases/07-analytics-outbox-purchase-completed/07-CLOSURE.md`
+Next permitted step: Phase 08 planning may begin after explicit human approval; Phase 08 execution remains blocked until a separate approval gate. **Phase 09 execution blocked until explicit human approval and required dependencies (Phase 7 + Phase 8).**
 
 ## Quick Tasks Completed
 
@@ -184,3 +187,4 @@ Next permitted step: Human review of Phase 07 planning artifacts. Phase 07 execu
 | 2026-06-30 | phase-05-closure | Human review accepted Phase 05 at manual gate; `05-CLOSURE.md` recorded; Phase 06 planning permitted with hard Order-creation constraint; execution not started. |
 | 2026-06-30 | phase-06-closure | Closed Phase 06 documentally after accepted `06-01`..`06-05` evidence; `ORD-01`..`ORD-03` complete; Phase 07 planning-ready only, with execution still blocked. |
 | 2026-07-01 | phase-07-planning | Planned Phase 07 into 3 manual-review-gated slices plus context, research and validation artifacts; later corrected payload grep scope and future PostHog lockfile handling documentally; no runtime, tests, migrations, Stripe CLI smoke, PostHog call, Email, Gelato, fulfillment, refund or tracking work started. |
+| 2026-07-01 | phase-07-closure | Closed Phase 07 documentally after accepted `07-01`..`07-03` evidence; `ANL-01`..`ANL-03` complete; Phase 08 planning-ready only, execution blocked; Phase 09 blocked by dependencies. |
