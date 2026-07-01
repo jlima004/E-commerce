@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Stripe Webhook Ingestion & Idempotency** - Raw-body signature-verified `/hooks/stripe` + WebhookEventLog DB-level dedup
 - [x] **Phase 6: Idempotent Webhook-Driven Order Creation** - Order created only from `payment_confirmed_by_webhook` PaymentAttempt with `order_id = null`, idempotent on payment_intent_id, decoupled state
 - [x] **Phase 7: Analytics Outbox (purchase_completed)** - Durable local outbox written with the Order + async PostHog relay
-- [ ] **Phase 8: Transactional Email (Resend)** - Idempotent confirmation email after Order, before the Gelato attempt *(next planned; not started)*
+- [ ] **Phase 8: Transactional Email (Resend)** - Idempotent confirmation email after confirmed Order + durable local `purchase_completed`, before the Gelato attempt *(planned; awaiting manual review; execution blocked)*
 - [ ] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(blocked: depends on Phase 7 + Phase 8; not started)*
 - [ ] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route
 - [ ] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow
@@ -304,16 +304,30 @@ Plans:
 
 **Goal**: A confirmation email is sent via Resend after Order confirmation and before the Gelato fulfillment attempt, idempotently and auditably.
 **Mode:** mvp
-**Depends on**: Phase 6
+**Depends on**: Phase 7
 **Requirements**: EMAIL-01, EMAIL-02
-**Manual gate:** Phase 08 is not started. Phase 07 is complete (closed 2026-07-01). Phase 08 may be planned next in a separate manual-review-gated cycle — execution blocked until explicit human approval.
+**Manual gate:** Phase 08 is planned and awaiting manual review. Phase 07 is complete (closed 2026-07-01). Phase 08 execution is blocked until explicit human approval. Phase 09 must not start until Phase 08 is accepted and separately approved.
 **Success Criteria** (what must be TRUE):
 
-  1. An `order.created` subscriber sends a confirmation email via Resend after Order confirmation and before any Gelato fulfillment attempt.
+  1. A confirmation email is sent via Resend only after a confirmed Order and durable local `purchase_completed` exist, and before any Gelato fulfillment attempt.
   2. Every email attempt is recorded in EmailDeliveryLog with an `idempotency_key`.
-  3. Redelivery/retry does not send a duplicate email (idempotency_key guard verified).
+  3. Redelivery/retry does not send a duplicate email (local idempotency + Resend `idempotencyKey` guard verified).
+  4. Resend success is not required to validate the Order; email failure is retried/dead-lettered without changing the Order birth rule.
 
-**Plans**: TBD
+**Plans**: 3 planned / 0 executed
+
+Plans:
+**Wave 1**
+
+- [ ] 08-01-PLAN.md - EmailDeliveryLog contract, model, idempotency and migration draft
+
+**Wave 2** *(blocked on Wave 1 manual gate)*
+
+- [ ] 08-02-PLAN.md - Local confirmation-email enqueue after Order + purchase_completed, with real runtime module registration and fail-closed behavior if `EmailDeliveryLog` is unavailable
+
+**Wave 3** *(blocked on Wave 2 manual gate)*
+
+- [ ] 08-03-PLAN.md - Async Resend relay, retry, dead-letter and final validation
 
 ### Phase 9: Gelato Fulfillment & Webhook
 
@@ -388,7 +402,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Stripe Webhook Ingestion & Idempotency | 4/4 | Complete | 2026-06-30 |
 | 6. Idempotent Webhook-Driven Order Creation | 5/5 | Complete | 2026-06-30 |
 | 7. Analytics Outbox (purchase_completed) | 3/3 | Complete | 2026-07-01 |
-| 8. Transactional Email (Resend) | 0/TBD | Not started (next planned) | - |
+| 8. Transactional Email (Resend) | 0/3 | Planned (awaiting manual review; execution blocked) | - |
 | 9. Gelato Fulfillment & Webhook | 0/TBD | Not started (blocked: Phase 7 + Phase 8) | - |
 | 10. Secure Guest Tracking | 0/TBD | Not started | - |
 | 11. Refunds & Exchanges (Admin) | 0/TBD | Not started | - |
