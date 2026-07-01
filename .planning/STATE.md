@@ -4,15 +4,15 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 07
 current_phase_name: Analytics Outbox (purchase_completed)
-status: phase-06-complete-phase-07-planning-ready
-stopped_at: Phase 06 documentary closure completed; Phase 07 execution blocked until explicit human approval
-last_updated: "2026-06-30T19:00:00-03:00"
-last_activity: 2026-06-30
-last_activity_desc: Phase 06 documentary closure recorded from accepted 06-01..06-05 evidence; Phase 07 left planning-ready and execution-blocked
+status: phase-07-planned-manual-gate-execution-blocked
+stopped_at: Phase 07 planning completed; execution blocked until explicit human approval
+last_updated: "2026-07-01T00:00:00-03:00"
+last_activity: 2026-07-01
+last_activity_desc: Phase 07 planning docs corrected for analytics payload grep scope and future PostHog lockfile handling; execution left blocked at manual gate
 progress:
   total_phases: 12
   completed_phases: 6
-  total_plans: 33
+  total_plans: 36
   completed_plans: 32
   percent: 50
 ---
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 07 — Analytics Outbox (`purchase_completed`) is the next planning-ready phase, but execution remains blocked until explicit human approval.
+**Current focus:** Phase 07 — Analytics Outbox (`purchase_completed`) is planned and waiting at the manual review gate; execution remains blocked until explicit human approval.
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 06 is complete and accepted at the manual gate (`06-CLOSURE.md` recorded from accepted `06-01`..`06-05` evidence). **Hard constraint preserved:** Order creation consumes only `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`. **Phase 07 execution blocked until explicit human approval.**
+**Current gate:** Phase 07 planning is complete (`07-CONTEXT.md`, `07-RESEARCH.md`, `07-VALIDATION.md`, `07-01-PLAN.md`, `07-02-PLAN.md`, `07-03-PLAN.md`). **Hard constraint preserved:** Order creation consumes only `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 07 does not change the Order birth rule. **Phase 07 execution blocked until explicit human approval.**
 
 **Branch policy:**
 
@@ -51,10 +51,10 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 07 (Analytics Outbox / `purchase_completed`) — planning-ready, not started
-Plan: Phase 06 closed via `06-CLOSURE.md`; no Phase 07 planning or execution artifacts created in this cycle
-Status: Phase 06 complete; Phase 07 execution blocked pending explicit human approval
-Last activity: 2026-06-30 - Phase 06 documentary closure recorded; Phase 07 remains not started
+Phase: 07 (Analytics Outbox / `purchase_completed`) — planned, not executed
+Plan: `07-CONTEXT.md`, `07-RESEARCH.md`, `07-VALIDATION.md`, and `07-01`..`07-03` plans created
+Status: Phase 07 planning complete; execution blocked pending explicit human approval
+Last activity: 2026-07-01 - Phase 07 planning artifacts created; manual gate preserved
 
 Progress: [█████-----] 50%
 
@@ -76,6 +76,7 @@ Progress: [█████-----] 50%
 | 04. Stripe Payments & PaymentAttempt | 6 executed / 6 planned | Complete (pre-Order; production activation blocked) | — |
 | 05. Stripe Webhook Ingestion & Idempotency | 4 executed / 4 planned | Complete (closed 2026-06-30) | — |
 | 06. Idempotent Webhook-Driven Order Creation | 5 executed / 5 planned | Complete (closed 2026-06-30) | — |
+| 07. Analytics Outbox (`purchase_completed`) | 0 executed / 3 planned | Planned (manual gate; execution blocked) | — |
 
 **Recent Trend:**
 
@@ -133,6 +134,7 @@ Recent decisions affecting current work:
 - [Phase 06 planning]: Planning-only artifacts created for Idempotent Webhook-Driven Order Creation: `06-CONTEXT.md`, `06-RESEARCH.md`, `06-VALIDATION.md`, and five slices `06-01`..`06-05`. The plan defines a single internal post-webhook entrypoint, `CheckoutCompletionLog` idempotency keyed by PaymentIntent, transactional `Order + CheckoutCompletionLog + PaymentAttempt.order_id` correlation, decoupled `order_status/payment_status`, immutable Gelato snapshots on Order LineItems, and negative proofs excluding `purchase_completed`, Gelato, email, analytics, refund and Stripe CLI smoke. No runtime implementation was started.
 - [Phase 06 execution]: Plans `06-01`..`06-05` completed under manual gating. Final validation closed with 5 unit suites / 50 tests, 2 HTTP suites / 15 tests, build PASS, Store completion grep PASS, Phase 07+ runtime-scope grep PASS, secret/payload grep PASS, and docs real-secret grep PASS. Order creation now exists only behind the canonical internal post-webhook flow; `CheckoutCompletionLog` guarantees idempotent replay/concurrency handling; `PaymentAttempt.order_id` is correlated; `Order.metadata.order_status/payment_status` are accepted as decoupled local state; and `LineItem.metadata.gelato_snapshot` is mandatory and immutable. No `purchase_completed`, analytics, email, Gelato fulfillment, refund, Stripe CLI smoke, or real migration execution was introduced.
 - [Phase 06 closure]: Human review accepted Phase 06 at manual gate on 2026-06-30 (evidence: `06-05-SUMMARY.md`, `06-CLOSURE.md`, 5/50 unit matrix, 2/15 HTTP matrix, build PASS, focused negative greps PASS). `ORD-01`, `ORD-02`, and `ORD-03` are complete. Phase 07 may be planned next, but execution is blocked until explicit human approval.
+- [Phase 07 planning]: Planning-only artifacts created for Analytics Outbox (`purchase_completed`): `07-CONTEXT.md`, `07-RESEARCH.md`, `07-VALIDATION.md`, and three slices `07-01`..`07-03`. The plan defines `AnalyticsEventLog`, `purchase_completed:stripe:{payment_intent_id}` idempotency, local durable downstream gate independent of PostHog success, async PostHog relay with retry/dead-letter, and negative proofs excluding Email, Gelato, fulfillment, refund, tracking, Stripe CLI smoke and migration application. Follow-up documentary correction split the prohibited-payload grep into a blocking analytics-payload scope plus broad informational scan so legitimate Phase 06 `gelato_snapshot` usage in Order workflows does not block Phase 07 validation; `07-03` records controlled lockfile handling for any future PostHog SDK install. No runtime implementation was started.
 
 ### Pending Todos
 
@@ -159,10 +161,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-30T19:00:00-03:00
-Stopped at: Phase 06 documentary closure complete; manual gate preserved before Phase 07
-Resume file: `.planning/phases/06-idempotent-webhook-driven-order-creation/06-CLOSURE.md`
-Next permitted step: Human review of Phase 06 closure; only a separate Phase 07 planning cycle is permitted next. Phase 07 execution blocked until explicit human approval.
+Last session: 2026-07-01T00:00:00-03:00
+Stopped at: Phase 07 planning complete; manual gate preserved before execution
+Resume file: `.planning/phases/07-analytics-outbox-purchase-completed/07-VALIDATION.md`
+Next permitted step: Human review of Phase 07 planning artifacts. Phase 07 execution blocked until explicit human approval.
 
 ## Quick Tasks Completed
 
@@ -181,3 +183,4 @@ Next permitted step: Human review of Phase 06 closure; only a separate Phase 07 
 | 2026-06-30 | phase-05-validation-closeout | Closed Phase 05 at `05-04-SUMMARY.md` with green unit/integration/build, negative runtime proofs, documented future Stripe CLI smoke, and explicit manual gate before Phase 06. |
 | 2026-06-30 | phase-05-closure | Human review accepted Phase 05 at manual gate; `05-CLOSURE.md` recorded; Phase 06 planning permitted with hard Order-creation constraint; execution not started. |
 | 2026-06-30 | phase-06-closure | Closed Phase 06 documentally after accepted `06-01`..`06-05` evidence; `ORD-01`..`ORD-03` complete; Phase 07 planning-ready only, with execution still blocked. |
+| 2026-07-01 | phase-07-planning | Planned Phase 07 into 3 manual-review-gated slices plus context, research and validation artifacts; later corrected payload grep scope and future PostHog lockfile handling documentally; no runtime, tests, migrations, Stripe CLI smoke, PostHog call, Email, Gelato, fulfillment, refund or tracking work started. |

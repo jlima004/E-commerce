@@ -283,7 +283,22 @@ Plans:
   3. Killing PostHog connectivity does not block Order creation or downstream gating (verified by test).
   4. Downstream effects depend only on the durable `recorded` record existing, never on `status = sent` or PostHog reachability.
 
-**Plans**: TBD
+**Plans**: 3 planned / 0 executed
+
+Plans:
+**Wave 1**
+
+- [ ] 07-01-PLAN.md - Contrato, modelo e idempotencia de `AnalyticsEventLog`
+
+**Wave 2** *(blocked on Wave 1 manual gate)*
+
+- [ ] 07-02-PLAN.md - Gravacao transacional de `purchase_completed` e gate local downstream
+
+**Wave 3** *(blocked on Wave 2 manual gate)*
+
+- [ ] 07-03-PLAN.md - Relay assincrono PostHog, retry e validacao final da Phase 07
+
+**Planning status (2026-07-01):** Phase 07 planning is complete and manual-review gated. Artifacts created: `07-CONTEXT.md`, `07-RESEARCH.md`, `07-VALIDATION.md`, and plans `07-01` through `07-03`. The validation plan separates the blocking analytics-payload grep from a broad informational scan so legitimate Phase 06 `gelato_snapshot` usage in Order workflows does not fail the Phase 07 payload proof; `07-03` also records that any future PostHog SDK install must keep an existing lockfile consistent without calling PostHog real. No runtime code, tests, migration, Stripe CLI smoke, PostHog call, Email, Gelato, fulfillment, refund or tracking work was executed. Phase 07 execution remains blocked until explicit human approval.
 
 ### Phase 8: Transactional Email (Resend)
 
@@ -370,7 +385,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Stripe Payments & PaymentAttempt | 6/6 | Complete (activation blocked) | 2026-06-29 |
 | 5. Stripe Webhook Ingestion & Idempotency | 4/4 | Complete | 2026-06-30 |
 | 6. Idempotent Webhook-Driven Order Creation | 5/5 | Complete | 2026-06-30 |
-| 7. Analytics Outbox (purchase_completed) | 0/TBD | Not started | - |
+| 7. Analytics Outbox (purchase_completed) | 0/3 planned | Planned (manual gate; execution blocked) | - |
 | 8. Transactional Email (Resend) | 0/TBD | Not started | - |
 | 9. Gelato Fulfillment & Webhook | 0/TBD | Not started | - |
 | 10. Secure Guest Tracking | 0/TBD | Not started | - |
