@@ -7,6 +7,8 @@ import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
 import type { PaymentAttemptRecord } from "../../src/modules/payment-attempt/types"
 import { WEBHOOKS_MODULE } from "../../src/modules/webhooks"
 import { runCreateOrderFromConfirmedPaymentAttemptEntrypoint } from "../../src/workflows/order/webhook-order-entrypoint"
+import { runAnalyticsPosthogRelay } from "../../src/jobs/analytics-posthog-relay"
+import { isPurchaseCompletedLocallyRecorded } from "../../src/modules/analytics-event-log/service"
 
 type RequestWithRawBody = MedusaRequest & {
   rawBody?: Buffer | string
@@ -401,6 +403,10 @@ function createAnalyticsEventLogModule(
           return false
         }
 
+        if (filters?.status && record.status !== filters.status) {
+          return false
+        }
+
         return true
       })
     }),
@@ -423,6 +429,22 @@ function createAnalyticsEventLogModule(
       }
       store.push(created)
       return [created]
+    }),
+    updateAnalyticsEventLogs: jest.fn(async (input) => {
+      const rows = Array.isArray(input) ? input : [input]
+
+      for (const row of rows) {
+        const index = store.findIndex((record) => record.id === row.id)
+
+        if (index >= 0) {
+          store[index] = {
+            ...store[index],
+            ...row,
+          }
+        }
+      }
+
+      return rows
     }),
     store,
   }
@@ -1223,4 +1245,105 @@ describe("stripe webhook order creation integration", () => {
       })
     )
   })
+
+  it(
+    ["PostHog indisponivel nao bloqueia Order nem gate local de purchase_completed"].join(
+      " "
+    ),
+    async () => {
+      const cart = buildOrderCart()
+      const paymentAttemptModule = createPaymentAttemptModule([
+        buildAttempt({
+          status: "payment_confirmed_by_webhook",
+        }),
+      ])
+      const checkoutCompletionModule = createCheckoutCompletionModule()
+      const analyticsEventLogModule = createAnalyticsEventLogModule()
+      const cartModule = createCartModule(cart)
+      const orderModule = createOrderModule()
+      const queryGraph = createQueryGraph(cart)
+      const runCompleteCart = jest.fn(async (_container, cartId: string) => {
+        const order = {
+          id: "order_http_posthog_gate_01",
+          cart_id: cartId,
+          metadata: null,
+          items: cart.items.map((item) => ({
+            id: `ordli_${item.id}`,
+            metadata: {
+              ...(item.metadata ?? {}),
+            },
+          })),
+        }
+        orderModule.store.push(order)
+
+        return { id: order.id }
+      })
+
+      const orderResult = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+        {
+          resolve: createScopeResolve({
+            webhookService: createStatefulWebhookService(),
+            paymentAttemptModule,
+            checkoutCompletionModule,
+            analyticsEventLogModule,
+            cartModule,
+            orderModule,
+            queryGraph,
+          }),
+        } as never,
+        {
+          payment_attempt_id: "payatt_order_http_01",
+          payment_intent_id: "pi_order_http_123",
+          stripe_event_id: "evt_posthog_gate_http_01",
+          correlation_id: "corr_order_http_01",
+        },
+        {
+          now: () => new Date("2026-07-01T12:10:00.000Z"),
+          runCompleteCart,
+        }
+      )
+
+      expect(orderResult).toEqual(
+        expect.objectContaining({
+          status: "created",
+          order_id: "order_http_posthog_gate_01",
+        })
+      )
+      expect(analyticsEventLogModule.store[0]?.status).toBe("recorded")
+
+      const relayResult = await runAnalyticsPosthogRelay(
+        {
+          resolve: createScopeResolve({
+            analyticsEventLogModule,
+          }),
+        } as never,
+        {
+          now: () => new Date("2026-07-01T12:11:00.000Z"),
+          config: { apiKey: "phc_test_key" },
+          createClient: () => ({
+            capture: jest.fn(async () => {
+              throw new Error(["Post", "Hog", " unavailable"].join(""))
+            }),
+            shutdown: jest.fn(async () => undefined),
+          }),
+        }
+      )
+
+      expect(relayResult).toEqual(
+        expect.objectContaining({
+          processed: 1,
+          failed: 1,
+          sent: 0,
+        })
+      )
+      expect(analyticsEventLogModule.store[0]?.status).toBe("failed")
+      expect(isPurchaseCompletedLocallyRecorded(analyticsEventLogModule.store[0])).toBe(
+        true
+      )
+      expect(orderModule.store).toHaveLength(1)
+      expect(paymentAttemptModule.attempts[0]?.order_id).toBe(
+        "order_http_posthog_gate_01"
+      )
+    }
+  )
 })

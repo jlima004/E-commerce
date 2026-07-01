@@ -8,6 +8,7 @@ import {
   runCreateOrderFromConfirmedPaymentAttemptEntrypoint,
   type CreateOrderFromConfirmedPaymentAttemptInput,
 } from "../webhook-order-entrypoint"
+import { isPurchaseCompletedLocallyRecorded } from "../../../modules/analytics-event-log/service"
 
 function joinKey(...parts: string[]): string {
   return parts.join("")
@@ -495,6 +496,25 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
     ).rejects.toThrow("PAYMENT_ATTEMPT_NOT_ELIGIBLE_FOR_ORDER_STATUS")
 
     expect(analyticsEventLogModule.store).toHaveLength(0)
+  })
+
+  it("failed e dead_letter continuam satisfazendo gate local sem exigir sent", () => {
+    expect(
+      isPurchaseCompletedLocallyRecorded({
+        status: "failed",
+      })
+    ).toBe(true)
+    expect(
+      isPurchaseCompletedLocallyRecorded({
+        status: "dead_letter",
+      })
+    ).toBe(true)
+    expect(
+      isPurchaseCompletedLocallyRecorded({
+        status: "sent",
+      })
+    ).toBe(true)
+    expect(isPurchaseCompletedLocallyRecorded("processing")).toBe(false)
   })
 
   it("falha fechado quando o modulo AnalyticsEventLog esta ausente e nao chama completeCartWorkflow", async () => {

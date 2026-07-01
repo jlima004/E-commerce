@@ -497,3 +497,163 @@ export function isPurchaseCompletedLocallyRecorded(
     status as (typeof PURCHASE_COMPLETED_LOCAL_GATE_STATUSES)[number]
   )
 }
+
+export const ANALYTICS_RELAY_MAX_ATTEMPTS = 5 as const
+export const ANALYTICS_RELAY_BACKOFF_BASE_MS = 60_000
+export const ANALYTICS_RELAY_BACKOFF_MAX_MS = 3_600_000
+
+export type PostHogCaptureInput = {
+  event: string
+  distinctId: string
+  properties: PurchaseCompletedPayload
+}
+
+export type AnalyticsRelayClaimUpdate = Pick<
+  AnalyticsEventLogRecord,
+  "status" | "queued_at" | "sending_started_at" | "updated_at"
+>
+
+export type AnalyticsRelaySuccessUpdate = Pick<
+  AnalyticsEventLogRecord,
+  | "status"
+  | "sent_at"
+  | "last_error_code"
+  | "last_error_message"
+  | "next_retry_at"
+  | "updated_at"
+>
+
+export type AnalyticsRelayFailureUpdate = Pick<
+  AnalyticsEventLogRecord,
+  | "status"
+  | "attempt_count"
+  | "last_error_code"
+  | "last_error_message"
+  | "next_retry_at"
+  | "failed_at"
+  | "dead_lettered_at"
+  | "updated_at"
+>
+
+export function computeAnalyticsRelayBackoffMs(attemptCount: number): number {
+  const exponent = Math.max(0, attemptCount - 1)
+  const backoff = ANALYTICS_RELAY_BACKOFF_BASE_MS * 2 ** exponent
+
+  return Math.min(backoff, ANALYTICS_RELAY_BACKOFF_MAX_MS)
+}
+
+export function isAnalyticsRelayDue(
+  nextRetryAt: string | null | undefined,
+  now: Date
+): boolean {
+  if (!nextRetryAt) {
+    return true
+  }
+
+  const retryAt = new Date(nextRetryAt)
+
+  if (Number.isNaN(retryAt.getTime())) {
+    return true
+  }
+
+  return retryAt.getTime() <= now.getTime()
+}
+
+export function isAnalyticsRelayEligibleStatus(
+  status: AnalyticsEventStatus | string
+): boolean {
+  return (
+    status === ANALYTICS_EVENT_STATUS.RECORDED ||
+    status === ANALYTICS_EVENT_STATUS.FAILED
+  )
+}
+
+export function buildPostHogCaptureFromAnalyticsEvent(
+  record: Pick<AnalyticsEventLogRecord, "event_name" | "order_id" | "payload">
+): PostHogCaptureInput {
+  return {
+    event: record.event_name,
+    distinctId: record.order_id,
+    properties: record.payload,
+  }
+}
+
+export function buildAnalyticsRelayClaimUpdate(
+  at: Date = new Date()
+): AnalyticsRelayClaimUpdate {
+  const iso = at.toISOString()
+
+  return {
+    status: ANALYTICS_EVENT_STATUS.QUEUED,
+    queued_at: iso,
+    sending_started_at: iso,
+    updated_at: iso,
+  }
+}
+
+export function buildAnalyticsRelaySendingUpdate(
+  at: Date = new Date()
+): Pick<AnalyticsEventLogRecord, "status" | "updated_at"> {
+  return {
+    status: ANALYTICS_EVENT_STATUS.SENDING,
+    updated_at: at.toISOString(),
+  }
+}
+
+export function buildAnalyticsRelaySuccessUpdate(
+  at: Date = new Date()
+): AnalyticsRelaySuccessUpdate {
+  const iso = at.toISOString()
+
+  return {
+    status: ANALYTICS_EVENT_STATUS.SENT,
+    sent_at: iso,
+    last_error_code: null,
+    last_error_message: null,
+    next_retry_at: null,
+    updated_at: iso,
+  }
+}
+
+export function buildAnalyticsRelayFailureUpdate(
+  error: unknown,
+  attemptCount: number,
+  options: {
+    maxAttempts?: number
+    at?: Date
+  } = {}
+): AnalyticsRelayFailureUpdate {
+  const maxAttempts = options.maxAttempts ?? ANALYTICS_RELAY_MAX_ATTEMPTS
+  const at = options.at ?? new Date()
+  const sanitized = sanitizeAnalyticsError(error)
+  const nextAttemptCount = attemptCount + 1
+  const iso = at.toISOString()
+
+  if (nextAttemptCount >= maxAttempts) {
+    return {
+      status: ANALYTICS_EVENT_STATUS.DEAD_LETTER,
+      attempt_count: nextAttemptCount,
+      last_error_code: sanitized.error_code,
+      last_error_message: sanitized.error_message,
+      next_retry_at: null,
+      failed_at: null,
+      dead_lettered_at: iso,
+      updated_at: iso,
+    }
+  }
+
+  const nextRetryAt = new Date(
+    at.getTime() + computeAnalyticsRelayBackoffMs(nextAttemptCount)
+  )
+
+  return {
+    status: ANALYTICS_EVENT_STATUS.FAILED,
+    attempt_count: nextAttemptCount,
+    last_error_code: sanitized.error_code,
+    last_error_message: sanitized.error_message,
+    next_retry_at: nextRetryAt.toISOString(),
+    failed_at: iso,
+    dead_lettered_at: null,
+    updated_at: iso,
+  }
+}
