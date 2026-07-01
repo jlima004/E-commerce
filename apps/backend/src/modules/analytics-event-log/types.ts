@@ -13,7 +13,7 @@ export const ANALYTICS_EVENT_STATUS = {
   DEAD_LETTER: "dead_letter",
 } as const
 
-export const ANALYTICS_EVENT_STATUSES = [
+const ANALYTICS_EVENT_STATUSES_VALUES = [
   ANALYTICS_EVENT_STATUS.RECORDED,
   ANALYTICS_EVENT_STATUS.QUEUED,
   ANALYTICS_EVENT_STATUS.SENDING,
@@ -22,11 +22,26 @@ export const ANALYTICS_EVENT_STATUSES = [
   ANALYTICS_EVENT_STATUS.DEAD_LETTER,
 ] as const
 
+export const ANALYTICS_EVENT_STATUSES = [
+  ...ANALYTICS_EVENT_STATUSES_VALUES,
+]
+
+const PURCHASE_COMPLETED_LOCAL_GATE_STATUSES_VALUES = [
+  ...ANALYTICS_EVENT_STATUSES_VALUES,
+] as const
+
+export const PURCHASE_COMPLETED_LOCAL_GATE_STATUSES = [
+  ...PURCHASE_COMPLETED_LOCAL_GATE_STATUSES_VALUES,
+]
+
 export type AnalyticsEventName =
   (typeof ANALYTICS_EVENT_NAME)[keyof typeof ANALYTICS_EVENT_NAME]
 
 export type AnalyticsEventStatus =
-  (typeof ANALYTICS_EVENT_STATUSES)[number]
+  (typeof ANALYTICS_EVENT_STATUSES_VALUES)[number]
+
+export type PurchaseCompletedLocalGateStatus =
+  (typeof PURCHASE_COMPLETED_LOCAL_GATE_STATUSES_VALUES)[number]
 
 export type AnalyticsEventMetadataValue =
   | string
@@ -110,4 +125,32 @@ export type CreateAnalyticsEventLogInput = {
   sent_at?: Date | string | null
   failed_at?: Date | string | null
   dead_lettered_at?: Date | string | null
+}
+
+export type AnalyticsEventLogRecord = {
+  id: string
+  event_name: AnalyticsEventName
+  event_version: typeof ANALYTICS_EVENT_VERSION
+  idempotency_key: string
+  order_id: string
+  cart_id: string
+  payment_attempt_id: string
+  checkout_completion_log_id: string
+  payment_intent_id: string
+  status: AnalyticsEventStatus
+  payload: PurchaseCompletedPayload
+  metadata: AnalyticsEventMetadata | null
+  attempt_count: number
+  last_error_code: string | null
+  last_error_message: string | null
+  next_retry_at: string | null
+  recorded_at: string
+  queued_at: string | null
+  sending_started_at: string | null
+  sent_at: string | null
+  failed_at: string | null
+  dead_lettered_at: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
 }

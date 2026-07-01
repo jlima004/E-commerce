@@ -35,6 +35,10 @@ module.exports = defineConfig({
     ...buildRedisModules(env),
     ...buildStorageModule(env),
     {
+      key: "analytics_event_log",
+      resolve: "./src/modules/analytics-event-log",
+    },
+    {
       resolve: "./src/modules/payment-attempt",
     },
   ],

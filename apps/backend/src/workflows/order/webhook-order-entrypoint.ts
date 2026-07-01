@@ -33,6 +33,13 @@ import {
 import {
   buildOrderLineItemGelatoSnapshots,
 } from "./steps/build-order-line-item-gelato-snapshots"
+import { ANALYTICS_EVENT_LOG_MODULE } from "../../modules/analytics-event-log"
+import {
+  buildAnalyticsEventLogRecord,
+  buildPurchaseCompletedIdempotencyKey,
+  isPurchaseCompletedLocallyRecorded,
+} from "../../modules/analytics-event-log/service"
+import type { AnalyticsEventLogRecord } from "../../modules/analytics-event-log/types"
 
 export type CreateOrderFromConfirmedPaymentAttemptInput = {
   payment_attempt_id: string
@@ -115,6 +122,20 @@ type OrderModuleLike = {
     update: Record<string, unknown>
   ) => Promise<Array<Record<string, unknown>>>
 }
+
+type AnalyticsEventLogModuleLike = {
+  listAnalyticsEventLogs?: (
+    filters?: Record<string, unknown>
+  ) => Promise<AnalyticsEventLogRecord[]>
+  createAnalyticsEventLogs?: (
+    data: Record<string, unknown> | Record<string, unknown>[]
+  ) => Promise<AnalyticsEventLogRecord[] | AnalyticsEventLogRecord>
+}
+
+const ANALYTICS_EVENT_LOG_RUNTIME_KEYS = [
+  "analytics_event_log",
+  ANALYTICS_EVENT_LOG_MODULE,
+] as const
 
 type WorkflowRuntimeOverrides = {
   now?: () => Date
@@ -268,6 +289,33 @@ function resolveOrderModule(container: MedusaContainer): OrderModuleLike {
   }
 
   return resolved as OrderModuleLike
+}
+
+function resolveAnalyticsEventLogModule(
+  container: MedusaContainer
+): AnalyticsEventLogModuleLike {
+  const resolved = ANALYTICS_EVENT_LOG_RUNTIME_KEYS
+    .map((key) => container.resolve(key) as AnalyticsEventLogModuleLike | undefined)
+    .find((candidate) => {
+      return (
+        Boolean(candidate) &&
+        typeof candidate?.listAnalyticsEventLogs === "function" &&
+        typeof candidate?.createAnalyticsEventLogs === "function"
+      )
+    })
+
+  if (
+    !resolved ||
+    typeof resolved.listAnalyticsEventLogs !== "function" ||
+    typeof resolved.createAnalyticsEventLogs !== "function"
+  ) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_ANALYTICS_EVENT_LOG_MODULE_UNAVAILABLE",
+      "Modulo de analytics_event_log nao configurado."
+    )
+  }
+
+  return resolved
 }
 
 export function validateCreateOrderFromConfirmedPaymentAttemptInput(
@@ -520,6 +568,156 @@ function extractOrderId(order: Record<string, unknown> | null | undefined): stri
   return typeof id === "string" && id.trim().length > 0 ? id.trim() : null
 }
 
+function normalizeLineItemUnitPrice(input: {
+  item: ConfirmedAttemptCartRecord["items"][number]
+  currencyCode: string
+}): number {
+  const matchingPrice = input.item.variant?.prices?.find((price) => {
+    return price.currency_code?.toLowerCase() === input.currencyCode.toLowerCase()
+  })
+
+  const amount = matchingPrice?.amount
+
+  if (typeof amount !== "number" || !Number.isInteger(amount) || amount <= 0) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_ANALYTICS_UNIT_PRICE_INVALID",
+      "Unit price invalido para o payload local de analytics."
+    )
+  }
+
+  return amount
+}
+
+function buildPurchaseCompletedPayloadItems(
+  cart: ConfirmedAttemptCartRecord
+): AnalyticsEventLogRecord["payload"]["items"] {
+  return cart.items.map((item) => {
+    const variantId = item.variant?.id?.trim()
+
+    if (!variantId) {
+      throw new OrderCreationEntrypointError(
+        "ORDER_ENTRYPOINT_ANALYTICS_VARIANT_ID_REQUIRED",
+        "Variant obrigatoria para o payload local de analytics."
+      )
+    }
+
+    const unitPrice = normalizeLineItemUnitPrice({
+      item,
+      currencyCode: cart.currency_code,
+    })
+
+    return {
+      variant_id: variantId,
+      sku: item.variant?.sku?.trim() || null,
+      quantity: item.quantity,
+      unit_price: unitPrice,
+      subtotal: unitPrice * item.quantity,
+    }
+  })
+}
+
+async function readDurablePurchaseCompletedEvent(input: {
+  module: AnalyticsEventLogModuleLike
+  idempotencyKey: string
+  orderId: string
+}): Promise<AnalyticsEventLogRecord | null> {
+  const byIdempotency =
+    (await input.module.listAnalyticsEventLogs?.({
+      idempotency_key: input.idempotencyKey,
+    })) ?? []
+  const reusableByIdempotency = byIdempotency.find((event) =>
+    isPurchaseCompletedLocallyRecorded(event)
+  )
+
+  if (reusableByIdempotency) {
+    return reusableByIdempotency
+  }
+
+  const byOrder =
+    (await input.module.listAnalyticsEventLogs?.({
+      order_id: input.orderId,
+    })) ?? []
+
+  return (
+    byOrder.find((event) => isPurchaseCompletedLocallyRecorded(event)) ?? null
+  )
+}
+
+async function ensurePurchaseCompletedRecorded(input: {
+  container: MedusaContainer
+  attempt: PaymentAttemptRecord
+  checkoutCompletionLogId: string
+  paymentIntentId: string
+  orderId: string
+  cart: ConfirmedAttemptCartRecord
+  now: Date
+  correlationId: string | null
+  recoveryOrigin: string | null
+}): Promise<AnalyticsEventLogRecord | null> {
+  const idempotencyKey = buildPurchaseCompletedIdempotencyKey({
+    payment_intent_id: input.paymentIntentId,
+  })
+  const existing = await readDurablePurchaseCompletedEvent({
+    module: resolveAnalyticsEventLogModule(input.container),
+    idempotencyKey,
+    orderId: input.orderId,
+  })
+
+  if (existing) {
+    return existing
+  }
+
+  const module = resolveAnalyticsEventLogModule(input.container)
+  const payloadItems = buildPurchaseCompletedPayloadItems(input.cart)
+  const event = buildAnalyticsEventLogRecord(
+    {
+      idempotency_key: idempotencyKey,
+      order_id: input.orderId,
+      cart_id: input.cart.id,
+      payment_attempt_id: input.attempt.id,
+      checkout_completion_log_id: input.checkoutCompletionLogId,
+      payment_intent_id: input.paymentIntentId,
+      status: "recorded",
+      payload: {
+        occurred_at: input.now,
+        order_id: input.orderId,
+        cart_id: input.cart.id,
+        payment_attempt_id: input.attempt.id,
+        checkout_completion_log_id: input.checkoutCompletionLogId,
+        payment_intent_id: input.paymentIntentId,
+        payment_method_type: input.attempt.payment_method_type,
+        amount: input.attempt.amount,
+        currency_code: input.attempt.currency_code,
+        order_status: "confirmed",
+        payment_status: "captured",
+        item_count: payloadItems.length,
+        items: payloadItems,
+      },
+      metadata: {
+        source: "webhook_order_entrypoint",
+        correlation_id: input.correlationId,
+        recovery_origin: input.recoveryOrigin,
+      },
+    },
+    "anlevt_order_entrypoint_pending",
+    input.now
+  )
+
+  try {
+    return asArray(await module.createAnalyticsEventLogs?.(event))[0] ?? null
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error
+    }
+
+    return readDurablePurchaseCompletedEvent({
+      module,
+      idempotencyKey,
+      orderId: input.orderId,
+    })
+  }
+}
+
 async function findExistingOrderForCart(
   container: MedusaContainer,
   cartId: string
@@ -666,6 +864,7 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
   }
 
   assertPaymentAttemptEligibleForOrderCreation(attempt)
+  resolveAnalyticsEventLogModule(container)
 
   let claim: Awaited<ReturnType<typeof claimCheckoutCompletionLog>>
 
@@ -691,6 +890,8 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
   }
 
   const persistOrderState = overrides.persistOrderState ?? persistConfirmedOrderState
+  const loadCart =
+    overrides.getCart ?? loadCartForOrderCreation
 
   if (claim.status === "processing") {
     const existingOrderId = await findExistingOrderForCart(container, attempt.cart_id)
@@ -703,6 +904,17 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
         orderId: existingOrderId,
         now,
         persistOrderState,
+      })
+      await ensurePurchaseCompletedRecorded({
+        container,
+        attempt,
+        checkoutCompletionLogId: claim.log.id,
+        paymentIntentId: validated.payment_intent_id,
+        orderId: existingOrderId,
+        cart: await loadCart(container, attempt.cart_id),
+        now,
+        correlationId: validated.correlation_id ?? null,
+        recoveryOrigin: "existing_order_processing_recovery",
       })
 
       return buildResult({
@@ -730,6 +942,17 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
   if (claim.status === "completed" && claim.order_id) {
     await persistOrderState(container, claim.order_id)
     await correlatePaymentAttemptToOrder(container, attempt, claim.order_id, now)
+    await ensurePurchaseCompletedRecorded({
+      container,
+      attempt,
+      checkoutCompletionLogId: claim.log.id,
+      paymentIntentId: validated.payment_intent_id,
+      orderId: claim.order_id,
+      cart: await loadCart(container, attempt.cart_id),
+      now,
+      correlationId: validated.correlation_id ?? null,
+      recoveryOrigin: "checkout_completion_reuse",
+    })
 
     return buildResult({
       status: "reused_existing_order",
@@ -753,6 +976,17 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       now,
       persistOrderState,
     })
+    await ensurePurchaseCompletedRecorded({
+      container,
+      attempt,
+      checkoutCompletionLogId: claim.log.id,
+      paymentIntentId: validated.payment_intent_id,
+      orderId: existingOrderId,
+      cart: await loadCart(container, attempt.cart_id),
+      now,
+      correlationId: validated.correlation_id ?? null,
+      recoveryOrigin: "existing_order_recovery",
+    })
 
     return buildResult({
       status: "reused_existing_order",
@@ -768,10 +1002,7 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
   let completedOrderId: string | null = null
 
   try {
-    const cart = await (overrides.getCart ?? loadCartForOrderCreation)(
-      container,
-      attempt.cart_id
-    )
+    const cart = await loadCart(container, attempt.cart_id)
 
     assertConfirmedAttemptCartMatchesPaymentAttempt(attempt, cart)
 
@@ -801,6 +1032,17 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       orderId: completedOrder.id,
       now,
       persistOrderState,
+    })
+    await ensurePurchaseCompletedRecorded({
+      container,
+      attempt,
+      checkoutCompletionLogId: claim.log.id,
+      paymentIntentId: validated.payment_intent_id,
+      orderId: completedOrder.id,
+      cart,
+      now,
+      correlationId: validated.correlation_id ?? null,
+      recoveryOrigin: null,
     })
 
     return buildResult({

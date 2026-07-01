@@ -14,6 +14,7 @@ import {
   buildAnalyticsEventLogRecord,
   buildPurchaseCompletedIdempotencyKey,
   buildPurchaseCompletedPayload,
+  isPurchaseCompletedLocallyRecorded,
   sanitizeAnalyticsError,
   sanitizeAnalyticsMetadata,
 } from "../service"
@@ -125,6 +126,20 @@ describe("AnalyticsEventLog vocabulary", () => {
     for (const status of ANALYTICS_EVENT_STATUSES) {
       expect(() => assertValidAnalyticsEventStatus(status)).not.toThrow()
     }
+  })
+
+  it("treats every durable local status as a valid downstream gate", () => {
+    for (const status of ANALYTICS_EVENT_STATUSES) {
+      expect(isPurchaseCompletedLocallyRecorded(status)).toBe(true)
+      expect(
+        isPurchaseCompletedLocallyRecorded({
+          status,
+        } as { status: (typeof ANALYTICS_EVENT_STATUSES)[number] })
+      ).toBe(true)
+    }
+
+    expect(isPurchaseCompletedLocallyRecorded(null)).toBe(false)
+    expect(isPurchaseCompletedLocallyRecorded("processing")).toBe(false)
   })
 
   it("rejects invalid statuses", () => {

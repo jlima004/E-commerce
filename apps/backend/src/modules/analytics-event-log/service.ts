@@ -6,6 +6,8 @@ import {
   ANALYTICS_EVENT_STATUSES,
   ANALYTICS_EVENT_STATUS,
   ANALYTICS_EVENT_VERSION,
+  PURCHASE_COMPLETED_LOCAL_GATE_STATUSES,
+  type AnalyticsEventLogRecord,
   type AnalyticsEventMetadata,
   type AnalyticsEventMetadataValue,
   type AnalyticsEventName,
@@ -408,7 +410,7 @@ export function buildAnalyticsEventLogRecord(
   input: CreateAnalyticsEventLogInput,
   id: string,
   at: Date = new Date()
-) {
+): AnalyticsEventLogRecord {
   const payload = buildPurchaseCompletedPayload(
     input.payload as PurchaseCompletedPayloadInput & Record<string, unknown>
   )
@@ -474,4 +476,24 @@ export function buildAnalyticsEventLogRecord(
     updated_at: at.toISOString(),
     deleted_at: null,
   }
+}
+
+export function isPurchaseCompletedLocallyRecorded(
+  event:
+    | Pick<AnalyticsEventLogRecord, "status">
+    | AnalyticsEventStatus
+    | string
+    | null
+    | undefined
+): boolean {
+  const status =
+    typeof event === "string" ? event : event?.status
+
+  if (!status) {
+    return false
+  }
+
+  return PURCHASE_COMPLETED_LOCAL_GATE_STATUSES.includes(
+    status as (typeof PURCHASE_COMPLETED_LOCAL_GATE_STATUSES)[number]
+  )
 }
