@@ -1,3 +1,4 @@
+import { createHash } from "crypto"
 import { MedusaService } from "@medusajs/framework/utils"
 import { sanitizeString } from "../../observability/sanitize"
 import GelatoFulfillment from "./models/gelato-fulfillment"
@@ -11,6 +12,11 @@ import {
   type CreateGelatoFulfillmentData,
   type CreateGelatoFulfillmentInput,
   type EvaluateGelatoFulfillmentAutomaticEligibilityInput,
+  type GelatoDispatchAddress,
+  type GelatoDispatchCandidateDecision,
+  type GelatoDispatchItem,
+  type GelatoDispatchPayload,
+  type GelatoDispatchResult,
   type GelatoFulfillmentAutomaticEligibilityDecision,
   type GelatoFulfillmentMetadata,
   type GelatoFulfillmentMetadataValue,
@@ -23,6 +29,7 @@ import {
   type GelatoFulfillmentStatus,
   type GelatoFulfillmentTrackingSummary,
   type GelatoFulfillmentTrackingSummaryInput,
+  type GelatoLineItemSnapshot,
 } from "./types"
 
 const ALLOWED_METADATA_KEYS = new Set([
@@ -756,6 +763,688 @@ export function buildGelatoDeadLetterUpdate(
     operator_alerted_at: iso,
     last_error_code: sanitizedError.error_code,
     last_error_message: sanitizedError.error_message,
+    dead_lettered_at: iso,
+    updated_at: iso,
+  }
+}
+
+export const GELATO_DISPATCH_MAX_ATTEMPTS = 5 as const
+export const GELATO_DISPATCH_BACKOFF_BASE_MS = 60_000
+export const GELATO_DISPATCH_BACKOFF_MAX_MS = 3_600_000
+export const GELATO_DISPATCH_STALE_AFTER_MS = 15 * 60_000
+
+type DispatchAddressSource = {
+  first_name?: string | null
+  last_name?: string | null
+  company?: string | null
+  address_1?: string | null
+  address_2?: string | null
+  city?: string | null
+  province?: string | null
+  postal_code?: string | null
+  country_code?: string | null
+  phone?: string | null
+  metadata?: Record<string, unknown> | null
+}
+
+type DispatchLineItemSource = {
+  id?: string | null
+  quantity?: number | null
+  metadata?: Record<string, unknown> | null
+}
+
+type DispatchOrderSource = {
+  id?: string | null
+  display_id?: string | number | null
+  email?: string | null
+  shipping_address?: DispatchAddressSource | null
+  items?: DispatchLineItemSource[] | null
+}
+
+function normalizePositiveQuantity(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error("GELATO_DISPATCH_ITEM_QUANTITY_INVALID")
+  }
+
+  return value
+}
+
+function normalizeHttpUrl(
+  value: string | null | undefined,
+  errorCode: string
+): string {
+  const normalized = normalizeRequiredString(value, errorCode)
+
+  try {
+    const url = new URL(normalized)
+
+    if (url.protocol !== "https:") {
+      throw new Error(errorCode)
+    }
+
+    return url.toString()
+  } catch {
+    throw new Error(errorCode)
+  }
+}
+
+function normalizeEmail(value: string | null | undefined, errorCode: string): string {
+  const normalized = normalizeRequiredString(value, errorCode).toLowerCase()
+
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) {
+    throw new Error(errorCode)
+  }
+
+  return normalized
+}
+
+function readMetadataString(
+  metadata: Record<string, unknown> | null | undefined,
+  key: string
+): string | null {
+  const value = metadata?.[key]
+
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null
+}
+
+function readMetadataBoolean(
+  metadata: Record<string, unknown> | null | undefined,
+  key: string
+): boolean | undefined {
+  const value = metadata?.[key]
+
+  return typeof value === "boolean" ? value : undefined
+}
+
+function parseLineItemSnapshot(
+  value: unknown
+): GelatoLineItemSnapshot & { files: Array<{ type: string; url: string }> } {
+  if (!isPlainObject(value)) {
+    throw new Error("GELATO_DISPATCH_SNAPSHOT_REQUIRED")
+  }
+
+  const rawFiles = value.files
+
+  if (!Array.isArray(rawFiles) || rawFiles.length === 0) {
+    throw new Error("GELATO_DISPATCH_FILES_REQUIRED")
+  }
+
+  const files = rawFiles.map((entry) => {
+    if (!isPlainObject(entry)) {
+      throw new Error("GELATO_DISPATCH_FILE_INVALID")
+    }
+
+    return {
+      type: normalizeRequiredString(
+        typeof entry.type === "string" ? entry.type : null,
+        "GELATO_DISPATCH_FILE_TYPE_REQUIRED"
+      ),
+      url: normalizeHttpUrl(
+        typeof entry.url === "string" ? entry.url : null,
+        "GELATO_DISPATCH_FILE_URL_REQUIRED"
+      ),
+    }
+  })
+
+  return {
+    gelato_product_uid: normalizeRequiredString(
+      typeof value.gelato_product_uid === "string"
+        ? value.gelato_product_uid
+        : null,
+      "GELATO_DISPATCH_PRODUCT_UID_REQUIRED"
+    ),
+    gelato_template_id: normalizeRequiredString(
+      typeof value.gelato_template_id === "string"
+        ? value.gelato_template_id
+        : null,
+      "GELATO_DISPATCH_TEMPLATE_ID_REQUIRED"
+    ),
+    gelato_variant_options: {
+      size: normalizeRequiredString(
+        isPlainObject(value.gelato_variant_options) &&
+          typeof value.gelato_variant_options.size === "string"
+          ? value.gelato_variant_options.size
+          : null,
+        "GELATO_DISPATCH_VARIANT_SIZE_REQUIRED"
+      ),
+      color: normalizeRequiredString(
+        isPlainObject(value.gelato_variant_options) &&
+          typeof value.gelato_variant_options.color === "string"
+          ? value.gelato_variant_options.color
+          : null,
+        "GELATO_DISPATCH_VARIANT_COLOR_REQUIRED"
+      ),
+    },
+    template_mode: normalizeRequiredString(
+      typeof value.template_mode === "string" ? value.template_mode : null,
+      "GELATO_DISPATCH_TEMPLATE_MODE_REQUIRED"
+    ),
+    source_product_variant_id: normalizeRequiredString(
+      typeof value.source_product_variant_id === "string"
+        ? value.source_product_variant_id
+        : null,
+      "GELATO_DISPATCH_SOURCE_VARIANT_ID_REQUIRED"
+    ),
+    source_product_variant_sku: normalizeRequiredString(
+      typeof value.source_product_variant_sku === "string"
+        ? value.source_product_variant_sku
+        : null,
+      "GELATO_DISPATCH_SOURCE_VARIANT_SKU_REQUIRED"
+    ),
+    captured_at: normalizeRequiredString(
+      typeof value.captured_at === "string" ? value.captured_at : null,
+      "GELATO_DISPATCH_CAPTURED_AT_REQUIRED"
+    ),
+    files,
+  }
+}
+
+function buildDispatchCustomerReference(order: DispatchOrderSource): string {
+  const orderId = normalizeRequiredString(order.id, "GELATO_DISPATCH_ORDER_ID_REQUIRED")
+  const displayId =
+    typeof order.display_id === "number" || typeof order.display_id === "string"
+      ? String(order.display_id).trim()
+      : null
+
+  return displayId ? `order:${displayId}`.slice(0, 100) : `order:${orderId}`.slice(0, 100)
+}
+
+export function buildGelatoDispatchAddress(input: {
+  shipping_address: DispatchAddressSource | null | undefined
+  email: string | null | undefined
+}): GelatoDispatchAddress {
+  const shipping = input.shipping_address
+
+  if (!shipping) {
+    throw new Error("GELATO_DISPATCH_SHIPPING_ADDRESS_REQUIRED")
+  }
+
+  const federalTaxId = readMetadataString(shipping.metadata ?? null, "federal_tax_id")
+
+  if (!federalTaxId) {
+    throw new Error("GELATO_DISPATCH_FEDERAL_TAX_ID_REQUIRED")
+  }
+
+  return {
+    firstName: normalizeRequiredString(
+      shipping.first_name,
+      "GELATO_DISPATCH_FIRST_NAME_REQUIRED"
+    ),
+    lastName: normalizeRequiredString(
+      shipping.last_name,
+      "GELATO_DISPATCH_LAST_NAME_REQUIRED"
+    ),
+    company: normalizeOptionalString(shipping.company, 120),
+    addressLine1: normalizeRequiredString(
+      shipping.address_1,
+      "GELATO_DISPATCH_ADDRESS_LINE_1_REQUIRED"
+    ),
+    addressLine2: normalizeOptionalString(shipping.address_2, 120),
+    city: normalizeRequiredString(shipping.city, "GELATO_DISPATCH_CITY_REQUIRED"),
+    state: normalizeOptionalString(shipping.province, 80),
+    zipCode: normalizeRequiredString(
+      shipping.postal_code,
+      "GELATO_DISPATCH_POSTAL_CODE_REQUIRED"
+    ),
+    country: normalizeRequiredString(
+      shipping.country_code,
+      "GELATO_DISPATCH_COUNTRY_REQUIRED",
+      (value) => value.toUpperCase()
+    ),
+    email: normalizeEmail(input.email, "GELATO_DISPATCH_EMAIL_REQUIRED"),
+    phone: normalizeOptionalString(shipping.phone, 40),
+    federalTaxId,
+    isBusiness: readMetadataBoolean(shipping.metadata ?? null, "is_business"),
+    stateTaxId: readMetadataString(shipping.metadata ?? null, "state_tax_id"),
+    registrationStateCode: readMetadataString(
+      shipping.metadata ?? null,
+      "registration_state_code"
+    ),
+  }
+}
+
+export function buildGelatoDispatchItems(
+  items: DispatchLineItemSource[] | null | undefined
+): GelatoDispatchItem[] {
+  if (!items?.length) {
+    throw new Error("GELATO_DISPATCH_ITEMS_REQUIRED")
+  }
+
+  return items.map((item) => {
+    const snapshot = parseLineItemSnapshot(item.metadata?.gelato_snapshot)
+
+    return {
+      itemReferenceId: normalizeRequiredString(
+        item.id,
+        "GELATO_DISPATCH_ITEM_REFERENCE_REQUIRED"
+      ),
+      productUid: snapshot.gelato_product_uid,
+      quantity: normalizePositiveQuantity(item.quantity),
+      files: snapshot.files,
+    }
+  })
+}
+
+export function buildGelatoDispatchPayload(input: {
+  order: DispatchOrderSource
+  fulfillment: Pick<GelatoFulfillmentRecord, "id" | "order_id">
+  shipment_method_uid?: string | null
+}): GelatoDispatchPayload {
+  const orderId = normalizeRequiredString(
+    input.order.id,
+    "GELATO_DISPATCH_ORDER_ID_REQUIRED"
+  )
+  const items = buildGelatoDispatchItems(input.order.items)
+
+  return {
+    orderType: "order",
+    orderReferenceId: orderId,
+    customerReferenceId: buildDispatchCustomerReference(input.order),
+    currency: "BRL",
+    items,
+    shippingAddress: buildGelatoDispatchAddress({
+      shipping_address: input.order.shipping_address,
+      email: input.order.email,
+    }),
+    metadata: {
+      order_id: orderId.slice(0, 100),
+      fulfillment_id: input.fulfillment.id.slice(0, 100),
+    },
+    ...(input.shipment_method_uid?.trim()
+      ? { shipmentMethodUid: input.shipment_method_uid.trim() }
+      : {}),
+  }
+}
+
+export function buildGelatoDispatchRequestHash(
+  payload: GelatoDispatchPayload
+): string {
+  return `sha256:${createHash("sha256").update(JSON.stringify(payload)).digest("hex")}`
+}
+
+export function computeGelatoDispatchBackoffMs(attemptCount: number): number {
+  const exponent = Math.max(0, attemptCount - 1)
+  const backoff = GELATO_DISPATCH_BACKOFF_BASE_MS * 2 ** exponent
+
+  return Math.min(backoff, GELATO_DISPATCH_BACKOFF_MAX_MS)
+}
+
+export function isGelatoDispatchDue(
+  nextRetryAt: string | null | undefined,
+  now: Date
+): boolean {
+  if (!nextRetryAt) {
+    return true
+  }
+
+  const retryAt = new Date(nextRetryAt)
+
+  if (Number.isNaN(retryAt.getTime())) {
+    return true
+  }
+
+  return retryAt.getTime() <= now.getTime()
+}
+
+function isStaleTimestamp(
+  value: string | null | undefined,
+  now: Date,
+  staleAfterMs: number
+): boolean {
+  if (!value) {
+    return true
+  }
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return true
+  }
+
+  return now.getTime() - parsed.getTime() >= staleAfterMs
+}
+
+export function resolveGelatoDispatchCandidateDecision(
+  fulfillment: Pick<
+    GelatoFulfillmentRecord,
+    | "status"
+    | "next_retry_at"
+    | "queued_at"
+    | "dispatching_started_at"
+    | "submitted_at"
+    | "accepted_at"
+    | "gelato_primary_order_id"
+  >,
+  now: Date,
+  staleAfterMs = GELATO_DISPATCH_STALE_AFTER_MS
+): GelatoDispatchCandidateDecision {
+  if (
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.ACCEPTED ||
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.IN_PRODUCTION ||
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.PARTIALLY_SHIPPED ||
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.SHIPPED ||
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.DELIVERED ||
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.CANCELED ||
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.DEAD_LETTER
+  ) {
+    return {
+      action: "skip",
+      reason:
+        fulfillment.status === GELATO_FULFILLMENT_STATUS.ACCEPTED
+          ? "already_accepted"
+          : "terminal_status",
+    }
+  }
+
+  if (
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.SUBMITTED &&
+    fulfillment.gelato_primary_order_id
+  ) {
+    if (isStaleTimestamp(fulfillment.submitted_at, now, staleAfterMs)) {
+      return {
+        action: "operator_attention",
+        reason: "stale_external_uncertain",
+      }
+    }
+
+    return {
+      action: "skip",
+      reason: "already_submitted",
+    }
+  }
+
+  if (
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.DISPATCHING ||
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.SUBMITTED
+  ) {
+    const timestamp =
+      fulfillment.status === GELATO_FULFILLMENT_STATUS.DISPATCHING
+        ? fulfillment.dispatching_started_at
+        : fulfillment.submitted_at
+
+    if (!isStaleTimestamp(timestamp, now, staleAfterMs)) {
+      return {
+        action: "skip",
+        reason:
+          fulfillment.status === GELATO_FULFILLMENT_STATUS.DISPATCHING
+            ? "dispatching_recent"
+            : "submitted_recent",
+      }
+    }
+
+    return {
+      action: "operator_attention",
+      reason: "stale_external_uncertain",
+    }
+  }
+
+  if (fulfillment.status === GELATO_FULFILLMENT_STATUS.QUEUED) {
+    if (!isStaleTimestamp(fulfillment.queued_at, now, staleAfterMs)) {
+      return {
+        action: "skip",
+        reason: "queued_recent",
+      }
+    }
+
+    return {
+      action: "recover_and_dispatch",
+      reason: "queued_stale_recovered",
+    }
+  }
+
+  if (
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.RECORDED ||
+    fulfillment.status === GELATO_FULFILLMENT_STATUS.ELIGIBLE
+  ) {
+    return {
+      action: "dispatch",
+      reason: "ready",
+    }
+  }
+
+  if (fulfillment.status === GELATO_FULFILLMENT_STATUS.FAILED) {
+    return isGelatoDispatchDue(fulfillment.next_retry_at, now)
+      ? {
+          action: "dispatch",
+          reason: "ready",
+        }
+      : {
+          action: "skip",
+          reason: "not_due",
+        }
+  }
+
+  return {
+    action: "skip",
+    reason: "terminal_status",
+  }
+}
+
+export function buildGelatoDispatchClaimUpdate(
+  at: Date = new Date()
+): Pick<
+  GelatoFulfillmentRecord,
+  "status" | "queued_at" | "updated_at"
+> {
+  const iso = at.toISOString()
+
+  return {
+    status: GELATO_FULFILLMENT_STATUS.QUEUED,
+    queued_at: iso,
+    updated_at: iso,
+  }
+}
+
+export function buildGelatoDispatchingUpdate(
+  at: Date = new Date()
+): Pick<
+  GelatoFulfillmentRecord,
+  "status" | "dispatching_started_at" | "updated_at"
+> {
+  const iso = at.toISOString()
+
+  return {
+    status: GELATO_FULFILLMENT_STATUS.DISPATCHING,
+    dispatching_started_at: iso,
+    updated_at: iso,
+  }
+}
+
+export function buildGelatoDispatchSuccessUpdate(
+  input: GelatoDispatchResult,
+  at: Date = new Date()
+): Pick<
+  GelatoFulfillmentRecord,
+  | "status"
+  | "gelato_primary_order_id"
+  | "connected_order_ids"
+  | "response_summary"
+  | "submitted_at"
+  | "accepted_at"
+  | "last_error_code"
+  | "last_error_message"
+  | "next_retry_at"
+  | "requires_operator_attention"
+  | "operator_alert_code"
+  | "operator_alert_message"
+  | "operator_alerted_at"
+  | "updated_at"
+> {
+  const iso = at.toISOString()
+  const status =
+    input.status === GELATO_FULFILLMENT_STATUS.ACCEPTED
+      ? GELATO_FULFILLMENT_STATUS.ACCEPTED
+      : GELATO_FULFILLMENT_STATUS.SUBMITTED
+
+  return {
+    status,
+    gelato_primary_order_id: normalizeRequiredString(
+      input.gelato_primary_order_id,
+      "GELATO_DISPATCH_PRIMARY_ORDER_ID_REQUIRED"
+    ),
+    connected_order_ids: normalizeConnectedOrderIds(
+      "__local__",
+      input.connected_order_ids
+    ),
+    response_summary: buildGelatoFulfillmentResponseSummary({
+      provider: GELATO_FULFILLMENT_PROVIDER.GELATO,
+      status,
+      connected_order_ids: input.connected_order_ids,
+      gelato_primary_order_id: input.gelato_primary_order_id,
+      provider_status: input.provider_status,
+      provider_reference_id: input.provider_reference_id,
+    }),
+    submitted_at: iso,
+    accepted_at:
+      status === GELATO_FULFILLMENT_STATUS.ACCEPTED ? iso : null,
+    last_error_code: null,
+    last_error_message: null,
+    next_retry_at: null,
+    requires_operator_attention: false,
+    operator_alert_code: null,
+    operator_alert_message: null,
+    operator_alerted_at: null,
+    updated_at: iso,
+  }
+}
+
+function classifyDispatchError(error: unknown): {
+  transient: boolean
+  permanent: boolean
+  statusCode: number | null
+} {
+  const statusCode =
+    error &&
+    typeof error === "object" &&
+    typeof (error as { statusCode?: unknown }).statusCode === "number"
+      ? (error as { statusCode: number }).statusCode
+      : null
+
+  if (statusCode === 429) {
+    return { transient: true, permanent: false, statusCode }
+  }
+
+  if (statusCode && statusCode >= 500) {
+    return { transient: true, permanent: false, statusCode }
+  }
+
+  if (statusCode && [400, 401, 404].includes(statusCode)) {
+    return { transient: false, permanent: true, statusCode }
+  }
+
+  if (error instanceof Error) {
+    if (
+      error.message.includes("GELATO_DISPATCH_") ||
+      error.message.includes("GELATO_FULFILLMENT_")
+    ) {
+      return { transient: false, permanent: true, statusCode }
+    }
+  }
+
+  return { transient: false, permanent: false, statusCode }
+}
+
+export function buildGelatoDispatchFailureUpdate(
+  error: unknown,
+  attemptCount: number,
+  options: {
+    maxAttempts?: number
+    at?: Date
+    operatorAlertCode?: string
+    operatorAlertMessage?: string
+  } = {}
+): Pick<
+  GelatoFulfillmentRecord,
+  | "status"
+  | "attempt_count"
+  | "last_error_code"
+  | "last_error_message"
+  | "next_retry_at"
+  | "failed_at"
+  | "dead_lettered_at"
+  | "requires_operator_attention"
+  | "operator_alert_code"
+  | "operator_alert_message"
+  | "operator_alerted_at"
+  | "updated_at"
+> {
+  const maxAttempts = options.maxAttempts ?? GELATO_DISPATCH_MAX_ATTEMPTS
+  const at = options.at ?? new Date()
+  const nextAttemptCount = attemptCount + 1
+  const iso = at.toISOString()
+  const sanitized = sanitizeGelatoFulfillmentError(error)
+  const classification = classifyDispatchError(error)
+
+  if (classification.permanent || nextAttemptCount >= maxAttempts) {
+    return {
+      status: GELATO_FULFILLMENT_STATUS.DEAD_LETTER,
+      attempt_count: nextAttemptCount,
+      last_error_code: sanitized.error_code,
+      last_error_message: sanitized.error_message,
+      next_retry_at: null,
+      failed_at: null,
+      dead_lettered_at: iso,
+      requires_operator_attention: true,
+      operator_alert_code:
+        normalizeRequiredString(
+          options.operatorAlertCode ??
+            (classification.statusCode
+              ? `gelato_dispatch_http_${classification.statusCode}`
+              : "gelato_dispatch_dead_letter"),
+          "GELATO_FULFILLMENT_OPERATOR_ALERT_CODE_REQUIRED"
+        ).slice(0, 120),
+      operator_alert_message:
+        normalizeRequiredString(
+          options.operatorAlertMessage ??
+            "Dispatch Gelato falhou de forma persistente e requer revisao operacional.",
+          "GELATO_FULFILLMENT_OPERATOR_ALERT_MESSAGE_REQUIRED"
+        ).slice(0, 500),
+      operator_alerted_at: iso,
+      updated_at: iso,
+    }
+  }
+
+  return {
+    status: GELATO_FULFILLMENT_STATUS.FAILED,
+    attempt_count: nextAttemptCount,
+    last_error_code: sanitized.error_code,
+    last_error_message: sanitized.error_message,
+    next_retry_at: new Date(
+      at.getTime() + computeGelatoDispatchBackoffMs(nextAttemptCount)
+    ).toISOString(),
+    failed_at: iso,
+    dead_lettered_at: null,
+    requires_operator_attention: false,
+    operator_alert_code: null,
+    operator_alert_message: null,
+    operator_alerted_at: null,
+    updated_at: iso,
+  }
+}
+
+export function buildGelatoStaleOperatorAttentionUpdate(
+  at: Date = new Date()
+): Pick<
+  GelatoFulfillmentRecord,
+  | "status"
+  | "requires_operator_attention"
+  | "operator_alert_code"
+  | "operator_alert_message"
+  | "operator_alerted_at"
+  | "dead_lettered_at"
+  | "updated_at"
+> {
+  const iso = at.toISOString()
+
+  return {
+    status: GELATO_FULFILLMENT_STATUS.DEAD_LETTER,
+    requires_operator_attention: true,
+    operator_alert_code: "gelato_dispatch_reconciliation_required",
+    operator_alert_message:
+      "Dispatch Gelato ficou em estado incerto e exige reconciliacao manual antes de qualquer novo envio.",
+    operator_alerted_at: iso,
     dead_lettered_at: iso,
     updated_at: iso,
   }

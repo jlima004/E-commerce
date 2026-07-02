@@ -257,3 +257,105 @@ export type CreateGelatoFulfillmentData = Omit<
   GelatoFulfillmentRecord,
   "id" | "created_at" | "updated_at" | "deleted_at"
 >
+
+export type GelatoDispatchConfig = {
+  enabled: boolean
+  apiKey?: string
+  shipmentMethodUid?: string
+}
+
+export type GelatoDispatchAddress = {
+  firstName: string
+  lastName: string
+  company?: string | null
+  addressLine1: string
+  addressLine2?: string | null
+  city: string
+  state?: string | null
+  zipCode: string
+  country: string
+  email: string
+  phone?: string | null
+  federalTaxId?: string | null
+  isBusiness?: boolean
+  stateTaxId?: string | null
+  registrationStateCode?: string | null
+}
+
+export type GelatoDispatchItemFile = {
+  type: string
+  url: string
+}
+
+export type GelatoLineItemSnapshot = {
+  gelato_product_uid: string
+  gelato_template_id: string
+  gelato_variant_options: {
+    size: string
+    color: string
+  }
+  template_mode: string
+  source_product_variant_id: string
+  source_product_variant_sku: string
+  captured_at: string
+  files?: GelatoDispatchItemFile[]
+}
+
+export type GelatoDispatchItem = {
+  itemReferenceId: string
+  productUid: string
+  quantity: number
+  files: GelatoDispatchItemFile[]
+}
+
+export type GelatoDispatchPayload = {
+  orderType: "order"
+  orderReferenceId: string
+  customerReferenceId: string
+  currency: "BRL"
+  items: GelatoDispatchItem[]
+  shippingAddress: GelatoDispatchAddress
+  metadata: Record<string, string>
+  shipmentMethodUid?: string
+}
+
+export type GelatoDispatchResult = {
+  status: GelatoFulfillmentStatus
+  gelato_primary_order_id: string
+  connected_order_ids: string[]
+  provider_status: string | null
+  provider_reference_id: string | null
+}
+
+export type GelatoDispatchHttpError = Error & {
+  statusCode?: number
+  responseBody?: string | null
+}
+
+export type GelatoDispatchClient = {
+  createOrder: (input: {
+    payload: GelatoDispatchPayload
+    apiKey: string
+  }) => Promise<GelatoDispatchResult>
+}
+
+export type GelatoDispatchCandidateAction =
+  | "dispatch"
+  | "recover_and_dispatch"
+  | "skip"
+  | "operator_attention"
+
+export type GelatoDispatchCandidateDecision = {
+  action: GelatoDispatchCandidateAction
+  reason:
+    | "ready"
+    | "queued_recent"
+    | "queued_stale_recovered"
+    | "dispatching_recent"
+    | "submitted_recent"
+    | "stale_external_uncertain"
+    | "already_submitted"
+    | "already_accepted"
+    | "terminal_status"
+    | "not_due"
+}
