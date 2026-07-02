@@ -2,6 +2,7 @@ import fs from "fs"
 import path from "path"
 import {
   assertNoSensitiveWebhookMetadata,
+  buildGelatoDeduplicationKey,
   buildStripeDeduplicationKey,
   buildWebhookEventLogRecord,
   buildWebhookPayloadHash,
@@ -41,6 +42,24 @@ describe("WebhookEventLog helpers", () => {
     ).toBe("payload_hash:abc123")
   })
 
+  it("uses Gelato payload.id as the canonical deduplication key", () => {
+    expect(
+      buildGelatoDeduplicationKey({
+        external_event_id: "gel_evt_123",
+        payload_hash: "abc",
+      })
+    ).toBe("gel_evt_123")
+  })
+
+  it("falls back to payload hash only when Gelato payload.id is absent", () => {
+    expect(
+      buildGelatoDeduplicationKey({
+        external_event_id: null,
+        payload_hash: "abc123",
+      })
+    ).toBe("payload_hash:abc123")
+  })
+
   it("builds a stable payload hash for semantically equal payloads", () => {
     const first = buildWebhookPayloadHash({
       type: "payment_intent.succeeded",
@@ -62,12 +81,19 @@ describe("WebhookEventLog helpers", () => {
         payment_attempt_id: "payatt_123",
         correlation_id: "req_123",
         gelato_order_id: "gel_123",
+        order_reference_id: "order_123",
+        fulfillment_id: "gelful_123",
+        provider_status: "shipped",
         ignored_field: "drop-me",
       })
     ).toEqual({
       payment_intent_id: "pi_123",
       payment_attempt_id: "payatt_123",
       correlation_id: "req_123",
+      gelato_order_id: "gel_123",
+      order_reference_id: "order_123",
+      fulfillment_id: "gelful_123",
+      provider_status: "shipped",
     })
   })
 

@@ -20,6 +20,10 @@ const ALLOWED_METADATA_KEYS = new Set([
   "stripe_account",
   "stripe_livemode",
   "delivery_attempt",
+  "gelato_order_id",
+  "order_reference_id",
+  "fulfillment_id",
+  "provider_status",
 ])
 
 function joinKey(...parts: string[]): string {
@@ -43,6 +47,14 @@ const FORBIDDEN_METADATA_KEYS = new Set([
   joinKey("qr", "_", "code"),
   joinKey("raw", "_", "body"),
   joinKey("raw", "body"),
+  joinKey("gelato", "_", "webhook", "_", "secret"),
+  joinKey("x", "-", "gelato", "-", "webhook", "-", "secret"),
+  joinKey("x", "-", "api", "-", "key"),
+  joinKey("gelato", "_", "api", "_", "key"),
+  joinKey("track", "ing", "_", "token"),
+  joinKey("tracking", "_", "url"),
+  joinKey("tracking", "_", "code"),
+  joinKey("pay", "load"),
 ])
 
 const FORBIDDEN_METADATA_VALUE_PATTERNS: RegExp[] = [
@@ -174,6 +186,13 @@ export function buildStripeDeduplicationKey(input: {
   }
 
   return `payload_hash:${input.payload_hash}`
+}
+
+export function buildGelatoDeduplicationKey(input: {
+  external_event_id?: string | null
+  payload_hash: string
+}): string {
+  return buildStripeDeduplicationKey(input)
 }
 
 export function assertNoSensitiveWebhookMetadata(

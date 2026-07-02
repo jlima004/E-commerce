@@ -55,6 +55,8 @@ export type AppEnv = {
   GELATO_DISPATCH_ENABLED: boolean
   GELATO_API_KEY: string | undefined
   GELATO_SHIPMENT_METHOD_UID: string | undefined
+  GELATO_WEBHOOK_AUTH_HEADER_NAME: string
+  GELATO_WEBHOOK_SECRET: string | undefined
 }
 
 function isProduction(input: Record<string, string | undefined>): boolean {
@@ -308,6 +310,8 @@ export function parseEnv(
     GELATO_DISPATCH_ENABLED: z.string().optional(),
     GELATO_API_KEY: z.string().optional(),
     GELATO_SHIPMENT_METHOD_UID: z.string().optional(),
+    GELATO_WEBHOOK_AUTH_HEADER_NAME: z.string().optional(),
+    GELATO_WEBHOOK_SECRET: z.string().optional(),
   })
 
   const parsed = baseSchema.safeParse(normalized)
@@ -385,6 +389,10 @@ export function parseEnv(
     GELATO_API_KEY: data.GELATO_API_KEY?.trim() || undefined,
     GELATO_SHIPMENT_METHOD_UID:
       data.GELATO_SHIPMENT_METHOD_UID?.trim() || undefined,
+    GELATO_WEBHOOK_AUTH_HEADER_NAME:
+      data.GELATO_WEBHOOK_AUTH_HEADER_NAME?.trim() ||
+      "X-GELATO-WEBHOOK-SECRET",
+    GELATO_WEBHOOK_SECRET: data.GELATO_WEBHOOK_SECRET?.trim() || undefined,
   }
 }
 

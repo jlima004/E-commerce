@@ -1449,3 +1449,274 @@ export function buildGelatoStaleOperatorAttentionUpdate(
     updated_at: iso,
   }
 }
+
+export type GelatoOrderStatusUpdatedWebhookPayload = {
+  id: string
+  event: "order_status_updated"
+  orderId: string
+  orderReferenceId: string
+  fulfillmentStatus: string
+  connectedOrderIds?: string[] | null
+  items?: Array<{
+    itemReferenceId?: string | null
+    fulfillmentStatus?: string | null
+    fulfillments?: unknown[] | null
+  }> | null
+}
+
+export class GelatoWebhookError extends Error {
+  readonly webhookDisposition: "failed" | "ignored"
+
+  constructor(
+    public readonly code: string,
+    message: string,
+    webhookDisposition: "failed" | "ignored" = "failed"
+  ) {
+    super(message)
+    this.name = "GelatoWebhookError"
+    this.webhookDisposition = webhookDisposition
+  }
+}
+
+const GELATO_WEBHOOK_SUPPORTED_EVENT = "order_status_updated"
+
+const GELATO_PROVIDER_STATUS_TO_LOCAL: Record<string, GelatoFulfillmentStatus> =
+  {
+    in_production: GELATO_FULFILLMENT_STATUS.IN_PRODUCTION,
+    partially_shipped: GELATO_FULFILLMENT_STATUS.PARTIALLY_SHIPPED,
+    shipped: GELATO_FULFILLMENT_STATUS.SHIPPED,
+    delivered: GELATO_FULFILLMENT_STATUS.DELIVERED,
+    failed: GELATO_FULFILLMENT_STATUS.FAILED,
+    canceled: GELATO_FULFILLMENT_STATUS.CANCELED,
+    cancelled: GELATO_FULFILLMENT_STATUS.CANCELED,
+  }
+
+function normalizeGelatoProviderStatus(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, "_")
+}
+
+export function isGelatoWebhookSupportedEventType(
+  eventType: string | null | undefined
+): eventType is typeof GELATO_WEBHOOK_SUPPORTED_EVENT {
+  return eventType === GELATO_WEBHOOK_SUPPORTED_EVENT
+}
+
+export function parseGelatoOrderStatusUpdatedWebhookPayload(
+  payload: unknown
+): GelatoOrderStatusUpdatedWebhookPayload {
+  if (!isPlainObject(payload)) {
+    throw new GelatoWebhookError(
+      "GELATO_WEBHOOK_PAYLOAD_INVALID",
+      "Payload Gelato invalido."
+    )
+  }
+
+  const event =
+    typeof payload.event === "string" ? payload.event.trim() : ""
+
+  if (event !== GELATO_WEBHOOK_SUPPORTED_EVENT) {
+    throw new GelatoWebhookError(
+      "GELATO_WEBHOOK_EVENT_UNSUPPORTED",
+      "Evento Gelato fora do MVP.",
+      "ignored"
+    )
+  }
+
+  const id = normalizeRequiredString(
+    typeof payload.id === "string" ? payload.id : null,
+    "GELATO_WEBHOOK_EVENT_ID_REQUIRED"
+  )
+  const orderId = normalizeRequiredString(
+    typeof payload.orderId === "string" ? payload.orderId : null,
+    "GELATO_WEBHOOK_ORDER_ID_REQUIRED"
+  )
+  const orderReferenceId = normalizeRequiredString(
+    typeof payload.orderReferenceId === "string"
+      ? payload.orderReferenceId
+      : null,
+    "GELATO_WEBHOOK_ORDER_REFERENCE_ID_REQUIRED"
+  )
+  const fulfillmentStatus = normalizeRequiredString(
+    typeof payload.fulfillmentStatus === "string"
+      ? payload.fulfillmentStatus
+      : null,
+    "GELATO_WEBHOOK_FULFILLMENT_STATUS_REQUIRED"
+  )
+
+  let connectedOrderIds: string[] | null = null
+
+  if (payload.connectedOrderIds !== undefined && payload.connectedOrderIds !== null) {
+    if (!Array.isArray(payload.connectedOrderIds)) {
+      throw new GelatoWebhookError(
+        "GELATO_WEBHOOK_CONNECTED_ORDER_IDS_INVALID",
+        "connectedOrderIds Gelato invalido."
+      )
+    }
+
+    connectedOrderIds = normalizeConnectedOrderIds(
+      orderReferenceId,
+      payload.connectedOrderIds.filter(
+        (entry): entry is string => typeof entry === "string"
+      )
+    )
+  }
+
+  return {
+    id,
+    event: GELATO_WEBHOOK_SUPPORTED_EVENT,
+    orderId,
+    orderReferenceId,
+    fulfillmentStatus,
+    connectedOrderIds,
+    items: null,
+  }
+}
+
+export function mapGelatoFulfillmentStatusFromWebhook(
+  fulfillmentStatus: string
+): GelatoFulfillmentStatus | null {
+  const normalized = normalizeGelatoProviderStatus(fulfillmentStatus)
+  return GELATO_PROVIDER_STATUS_TO_LOCAL[normalized] ?? null
+}
+
+export function shouldApplyGelatoWebhookStatusUpdate(
+  currentStatus: GelatoFulfillmentStatus,
+  mappedStatus: GelatoFulfillmentStatus
+): boolean {
+  if (currentStatus === mappedStatus) {
+    return true
+  }
+
+  if (isGelatoFulfillmentTerminalStatus(currentStatus)) {
+    return false
+  }
+
+  return true
+}
+
+export function resolveGelatoFulfillmentForWebhook(
+  fulfillments: GelatoFulfillmentRecord[],
+  payload: Pick<
+    GelatoOrderStatusUpdatedWebhookPayload,
+    "orderReferenceId" | "orderId" | "connectedOrderIds"
+  >
+): GelatoFulfillmentRecord | null {
+  const orderReferenceId = payload.orderReferenceId.trim()
+  const gelatoOrderId = payload.orderId.trim()
+
+  const candidate = fulfillments.find(
+    (fulfillment) =>
+      fulfillment.order_id === orderReferenceId ||
+      fulfillment.order_reference_id === orderReferenceId
+  )
+
+  if (!candidate) {
+    return null
+  }
+
+  const primaryOrderId = candidate.gelato_primary_order_id?.trim() ?? null
+
+  if (!primaryOrderId) {
+    return candidate
+  }
+
+  const connectedOrderIds = new Set(candidate.connected_order_ids)
+  payload.connectedOrderIds?.forEach((connectedOrderId) => {
+    connectedOrderIds.add(connectedOrderId)
+  })
+
+  if (
+    primaryOrderId === gelatoOrderId ||
+    connectedOrderIds.has(gelatoOrderId)
+  ) {
+    return candidate
+  }
+
+  return null
+}
+
+export function buildGelatoWebhookTrackingSummary(input: {
+  fulfillment: GelatoFulfillmentRecord
+  providerStatus: string
+  connectedOrderIds?: string[] | null
+}): GelatoFulfillmentTrackingSummary {
+  const mappedStatus =
+    mapGelatoFulfillmentStatusFromWebhook(input.providerStatus) ??
+    input.fulfillment.status
+
+  return buildGelatoFulfillmentTrackingSummary({
+    status: mappedStatus,
+    tracking_status: normalizeOptionalString(input.providerStatus, 120),
+    connected_order_ids:
+      input.connectedOrderIds ?? input.fulfillment.connected_order_ids,
+  })
+}
+
+export function buildGelatoWebhookFulfillmentUpdate(input: {
+  fulfillment: GelatoFulfillmentRecord
+  payload: GelatoOrderStatusUpdatedWebhookPayload
+  at?: Date
+}): Pick<
+  GelatoFulfillmentRecord,
+  | "status"
+  | "connected_order_ids"
+  | "response_summary"
+  | "tracking_summary"
+  | "updated_at"
+> {
+  const at = input.at ?? new Date()
+  const iso = at.toISOString()
+  const providerStatus = normalizeGelatoProviderStatus(input.payload.fulfillmentStatus)
+  const mappedStatus = mapGelatoFulfillmentStatusFromWebhook(providerStatus)
+  const mergedConnectedOrderIds = normalizeConnectedOrderIds(
+    input.fulfillment.order_id,
+    [
+      ...input.fulfillment.connected_order_ids,
+      ...(input.payload.connectedOrderIds ?? []),
+      input.payload.orderId,
+    ]
+  )
+
+  const nextStatus =
+    mappedStatus &&
+    shouldApplyGelatoWebhookStatusUpdate(input.fulfillment.status, mappedStatus)
+      ? mappedStatus
+      : input.fulfillment.status
+
+  const responseSummary = buildGelatoFulfillmentResponseSummary({
+    provider: GELATO_FULFILLMENT_PROVIDER.GELATO,
+    status: nextStatus,
+    connected_order_ids: mergedConnectedOrderIds,
+    gelato_primary_order_id:
+      input.fulfillment.gelato_primary_order_id ?? input.payload.orderId,
+    provider_status: providerStatus,
+    provider_reference_id: input.payload.orderId,
+  })
+
+  const trackingSummary = buildGelatoWebhookTrackingSummary({
+    fulfillment: input.fulfillment,
+    providerStatus: input.payload.fulfillmentStatus,
+    connectedOrderIds: mergedConnectedOrderIds,
+  })
+
+  return {
+    status: nextStatus,
+    connected_order_ids: mergedConnectedOrderIds,
+    response_summary: responseSummary,
+    tracking_summary: trackingSummary,
+    updated_at: iso,
+  }
+}
+
+export function applyGelatoOrderStatusUpdatedWebhookToFulfillment(input: {
+  fulfillment: GelatoFulfillmentRecord
+  payload: GelatoOrderStatusUpdatedWebhookPayload
+  at?: Date
+}): GelatoFulfillmentRecord {
+  const update = buildGelatoWebhookFulfillmentUpdate(input)
+
+  return {
+    ...input.fulfillment,
+    ...update,
+  }
+}
