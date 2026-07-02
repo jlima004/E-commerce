@@ -390,35 +390,16 @@ describe("TrackingAccessToken model and migration draft", () => {
 })
 
 describe("TrackingAccessToken negative scope proofs", () => {
-  it("does not create a public tracking route in this slice", () => {
-    const apiRoot = path.resolve(__dirname, "../../../api")
-    const matches: string[] = []
+  it("keeps token transport body-only without path or query route variants", () => {
+    const lookupRoutePath = path.resolve(
+      __dirname,
+      "../../../api/store/tracking/lookup/route.ts"
+    )
+    const source = fs.readFileSync(lookupRoutePath, "utf8")
 
-    function scanDirectory(directory: string) {
-      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-        const fullPath = path.join(directory, entry.name)
-
-        if (entry.isDirectory()) {
-          scanDirectory(fullPath)
-          continue
-        }
-
-        if (!/\.(ts|tsx|js|jsx)$/.test(entry.name)) {
-          continue
-        }
-
-        const source = fs.readFileSync(fullPath, "utf8")
-
-        if (
-          source.includes(joinKey("/store/", "tracking")) ||
-          source.includes(joinKey("POST", " /store/tracking/lookup"))
-        ) {
-          matches.push(fullPath)
-        }
-      }
-    }
-
-    scanDirectory(apiRoot)
-    expect(matches).toEqual([])
+    expect(fs.existsSync(lookupRoutePath)).toBe(true)
+    expect(source).not.toMatch(/\/store\/tracking\/:[^/\s"']+/)
+    expect(source).toContain("parseTrackingLookupRequestBody")
+    expect(source).toContain("rejectTrackingTokenInRequestUrl")
   })
 })
