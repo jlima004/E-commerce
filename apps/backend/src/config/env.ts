@@ -270,10 +270,6 @@ export function parseEnv(
     assertProductionAppVersion(normalized.APP_VERSION)
     assertProductionSecret(normalized.JWT_SECRET, "JWT_SECRET")
     assertProductionSecret(normalized.COOKIE_SECRET, "COOKIE_SECRET")
-    assertProductionSecret(
-      normalized.TRACKING_TOKEN_PEPPER,
-      "TRACKING_TOKEN_PEPPER"
-    )
     assertProductionUrl(normalized.S3_ENDPOINT, "S3_ENDPOINT")
     assertProductionUrl(normalized.S3_REGION, "S3_REGION")
     assertProductionUrl(normalized.S3_BUCKET, "S3_BUCKET")
