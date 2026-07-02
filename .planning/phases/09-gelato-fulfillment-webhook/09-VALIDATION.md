@@ -1,9 +1,10 @@
 ---
 phase: 09-gelato-fulfillment-webhook
-status: planned-validation
+status: validation-complete-awaiting-manual-review
 created_at: 2026-07-02
+validated_at: 2026-07-02T18:56:00-03:00
 manual_review_gate: true
-runtime_executed: false
+runtime_executed: true
 ---
 
 # Phase 09 Validation Strategy
@@ -123,6 +124,19 @@ Executar greps focados nos slices futuros para provar ausencia de escopo proibid
 - Real calls in tests: garantir fake Gelato client, sem chamada a `order.gelatoapis.com` em suites.
 
 Broad scans podem ser informativos quando pegarem falsos positivos historicos, mas a validacao bloqueante deve focar arquivos tocados e runtime surface da Phase 09.
+
+### Grep amplo vs grep escopado (registro 09-05)
+
+O grep amplo de tracking/refund/exchange/Stripe CLI possui falsos positivos historicos fora do surface da Phase 09:
+
+- `integration-tests/http/sentry.spec.ts` — rotas admin `/refunds` em testes de sanitizacao Sentry
+- `integration-tests/http/stripe-webhook-store.spec.ts` — evento `charge.refunded` ignorado (Phase 05)
+- `src/modules/webhooks/types.ts` e migration draft — enum `refund` em `WebhookEventLog`
+- `src/modules/gelato-fulfillment/__tests__/gelato-fulfillment.unit.spec.ts:228` — titulo de teste negativo `without public tracking data`
+
+A validacao bloqueante usa grep escopado aos arquivos/runtime tocados pela Phase 09. O unico match literal no surface escopado e o falso positivo do titulo de teste acima (prova de ausencia de tracking publico, nao implementacao proibida). O grep amplo permanece informativo, nao bloqueante.
+
+Resultado consolidado em `09-05-SUMMARY.md`: 92 testes aprovados, build PASS, grep Gelato-real-em-testes PASS, package/lockfile PASS.
 
 ## Invariant Proofs
 

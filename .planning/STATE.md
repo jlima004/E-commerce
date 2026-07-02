@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 09
 current_phase_name: Gelato Fulfillment & Webhook
-status: phase-09-09-03-complete-09-04-auth-reconciled-awaiting-approval
-stopped_at: Phase 09 09-03 complete; 09-04 authenticity blocker resolved documentally; 09-04 execution blocked until explicit human approval
-last_updated: "2026-07-02T17:54:00-03:00"
+status: phase-09-validation-complete-awaiting-manual-review
+stopped_at: Phase 09 09-05 validation complete; closure not started; Phase 10 blocked
+last_updated: "2026-07-02T18:56:00-03:00"
 last_activity: 2026-07-02
-last_activity_desc: Pre-09-04 documentary reconciliation — Gelato webhook auth confirmed via dashboard HTTP Header; 09-04 execution still blocked
+last_activity_desc: Phase 09 final validation (09-05) — 92 tests green, build PASS, negative proofs documented; awaiting manual review/closure
 progress:
   total_phases: 12
   completed_phases: 8
   total_plans: 43
-  completed_plans: 38
-  percent: 67
+  completed_plans: 43
+  percent: 100
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 09 — Gelato Fulfillment & Webhook is planned and awaiting manual review. Execution remains blocked until explicit human approval.
+**Current focus:** Phase 09 — Gelato Fulfillment & Webhook validation complete (`09-01`..`09-05` executed). Awaiting manual review before closure. Phase 10 remains not started.
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 09 slice `09-03` complete (see `09-03-SUMMARY.md`). Pre-`09-04` documentary reconciliation completed (2026-07-02): Gelato webhook authenticity blocker **resolved documentally** via dashboard/API Portal (Authorization Type = HTTP Header; dedicated header `X-GELATO-WEBHOOK-SECRET`; env `GELATO_WEBHOOK_AUTH_HEADER_NAME` + `GELATO_WEBHOOK_SECRET`; fail-closed before DB side effect; dedupe via `payload.id`). Phase 09 MVP accepts only `order_status_updated`; other Gelato underscore event names remain out of MVP. **`09-04` execution still blocked until explicit human approval.** No runtime, tests, build, real Gelato, real webhook smoke, tracking publico, refund, exchange, Stripe CLI, or Phase 10 work was performed during this reconciliation.
+**Current gate:** Phase 09 final validation complete (see `09-05-SUMMARY.md`). All five slices `09-01`..`09-05` executed on branch `gsd/phase-09-gelato-fulfillment-webhook`. Validation battery: 75 unit + 11 HTTP filtered + 6 HTTP Gelato webhook = **92 tests PASS**, build PASS, negative proofs documented. Grep amplo possui falsos positivos históricos informativos; grep escopado Phase 09 tem um falso positivo em título de teste (`without public tracking data`). **`09-CLOSURE.md` not created.** Phase 10 blocked. No real Gelato, webhook smoke, migration, Resend, PostHog, tracking público, refund, exchange, or Stripe CLI smoke during 09-05.
 
 **Branch policy:**
 
@@ -51,18 +51,18 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 09 (Gelato Fulfillment & Webhook) — 09-03 complete; 09-04 auth reconciled documentally; execution blocked
-Plan: 09-04 ready for execution after explicit human approval (09-01..09-03 executed; 09-05 not started)
-Status: Phase 09 09-04 authenticity blocker resolved documentally; 09-04 execution still blocked until explicit human approval
-Last activity: 2026-07-02 - Pre-09-04 documentary reconciliation (Gelato webhook HTTP Header auth confirmed)
+Phase: 09 (Gelato Fulfillment & Webhook) — validation complete; awaiting manual review/closure
+Plan: 09-05 complete (09-01..09-05 all executed)
+Status: phase-09-validation-complete-awaiting-manual-review
+Last activity: 2026-07-02 - Phase 09 final validation (09-05)
 
-Progress: [████████--] 67%
+Progress: [██████████] 100% (plans); phase closure pending manual review
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 38 / 38 planned
+- Total plans completed: 43 / 43 planned
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -78,7 +78,7 @@ Progress: [████████--] 67%
 | 06. Idempotent Webhook-Driven Order Creation | 5 executed / 5 planned | Complete (closed 2026-06-30) | — |
 | 07. Analytics Outbox (`purchase_completed`) | 3 executed / 3 planned | Complete (closed 2026-07-01) | — |
 | 08. Transactional Email (Resend) | 3 executed / 3 planned | Complete (closed 2026-07-01) | — |
-| 09. Gelato Fulfillment & Webhook | 0 executed / 5 planned | Planned (awaiting manual review; execution blocked) | — |
+| 09. Gelato Fulfillment & Webhook | 5 executed / 5 planned | Validation complete; awaiting manual review/closure | — |
 
 **Recent Trend:**
 
@@ -144,7 +144,9 @@ Recent decisions affecting current work:
 - [Phase 08 closure]: Human review accepted Phase 08 at manual gate on 2026-07-01 (evidence: `08-03-SUMMARY.md`, `08-CLOSURE.md`, 41/41 unit, 4/4 HTTP filtered, build PASS, negative greps PASS). `EMAIL-01` and `EMAIL-02` are complete. Phase 09 may be planned next, but execution is blocked until explicit human approval.
 - [Phase 09 planning]: Planning-only artifacts created for Gelato Fulfillment & Webhook: `09-CONTEXT.md`, `09-RESEARCH.md`, `09-VALIDATION.md`, and five manual-review-gated slices `09-01`..`09-05`. Branch decision B was recorded: use `gsd/phase-09-gelato-fulfillment-webhook`. Documentary correction before execution requires real runtime registration as `gelato_fulfillment`, preserves e-mail `sent` as hard automatic-dispatch gate, moves normal post-email creation/reuse into the `09-03` relay eligibility scan so Stripe webhook replay is not required, closes `FUL-04` through minimal operator-alert fields on `GelatoFulfillment`, requires build for `09-02` and `09-03`, and preserves the `09-04` Gelato webhook authenticity blocker. The plan defines local `GelatoFulfillment`, single-active guard per `Order`, `gelato-dispatch:{order_id}` local idempotency, eligibility after confirmed `Order` + local durable `purchase_completed` + `EmailDeliveryLog(order_confirmation).status = sent`, async dispatch retry/dead-letter/alert contract, Gelato webhook dedupe/status/tracking, and negative proofs excluding refund, exchange, tracking public, Stripe CLI smoke and Phase 10. No runtime implementation, tests, migrations, install, package/lockfile change, real Gelato call/order/webhook/fulfillment, Resend call, PostHog call, refund, exchange, tracking or Stripe CLI smoke was started.
 - [Phase 09 post-hardening reconciliation]: Phase 09 planning reconciled after Phase 08 Email Outbox Hardening. Gelato relay planning includes stale in-flight recovery and no blind redispatch after possible external Gelato call. Phase 09 execution remains blocked until explicit human approval.
-- [Phase 09 pre-09-04 reconciliation]: Gelato webhook authenticity blocker resolved documentally (2026-07-02). Dashboard/API Portal confirms Authorization Type = HTTP Header with configurable Header Name/Value. Chosen mechanism: dedicated header `X-GELATO-WEBHOOK-SECRET`, env `GELATO_WEBHOOK_AUTH_HEADER_NAME` + `GELATO_WEBHOOK_SECRET`; do not reuse `GELATO_API_KEY`; no HMAC/signature/timestamp confirmed; fail-closed before DB side effect; dedupe via `WebhookEventLog.payload.id` with `payload_hash` as safe fallback only. Phase 09 MVP accepts only `order_status_updated`; other official Gelato underscore event names remain out of MVP. `09-04` execution still blocked until explicit human approval.
+- [Phase 09 pre-09-04 reconciliation]: Gelato webhook authenticity blocker resolved documentally (2026-07-02). Dashboard/API Portal confirms Authorization Type = HTTP Header with configurable Header Name/Value. Chosen mechanism: dedicated header `X-GELATO-WEBHOOK-SECRET`, env `GELATO_WEBHOOK_AUTH_HEADER_NAME` + `GELATO_WEBHOOK_SECRET`; do not reuse `GELATO_API_KEY`; no HMAC/signature/timestamp confirmed; fail-closed before DB side effect; dedupe via `WebhookEventLog.payload.id` with `payload_hash` as safe fallback only. Phase 09 MVP accepts only `order_status_updated`; other official Gelato underscore event names remain out of MVP.
+- [Phase 09 execution]: Plans `09-01`..`09-04` completed under manual gating on branch `gsd/phase-09-gelato-fulfillment-webhook`. Branch decision B preserved.
+- [Phase 09 validation]: Plan `09-05` completed (2026-07-02). Final battery: 7 unit suites / 75 tests, 11 HTTP filtered + 6 HTTP Gelato webhook, build PASS. Negative proofs: Gelato-real-in-tests PASS, package/lockfile PASS; scoped grep has one test-title false positive; broad grep informational only. `FUL-01`..`FUL-04` and `WHK-03` evidenced. No real Gelato, webhook smoke, migration, Resend, PostHog, tracking público, refund, exchange, or Stripe CLI smoke. **`09-CLOSURE.md` not created.** Phase 10 not started.
 
 ### Pending Todos
 
@@ -158,7 +160,7 @@ None yet.
 
 - [Roadmap]: REQUIREMENTS.md summary previously stated "44 total"; the v1 list actually contains 45 distinct REQ-IDs. Count corrected to 45 during roadmap creation.
 - [Phase 4/5]: Medusa bundled Stripe native-first is **not** accepted for Phase 04 card/Pix because unsafe provider payloads can persist through `PaymentSession.data`. Phase 04 uses safe layers; production activation still needs migration approval plus real Stripe card/Pix setup before Phase 05/production use.
-- [Phase 9]: Gelato has no official Medusa provider/SDK confirmed in the consulted official docs; REST direct remains planned. ~~Official Gelato webhook signature/authenticity scheme was not confirmed during planning research and is a blocker for accepting any public Gelato webhook route without a future explicit operational decision.~~ **Resolved documentally (2026-07-02):** auth via dashboard HTTP Header (`X-GELATO-WEBHOOK-SECRET`, `GELATO_WEBHOOK_AUTH_HEADER_NAME`, `GELATO_WEBHOOK_SECRET`); implementation must verify fail-closed. **`09-04` execution still blocked until explicit human approval.**
+- [Phase 9]: Gelato has no official Medusa provider/SDK confirmed in the consulted official docs; REST direct remains planned. Gelato webhook auth resolved documentally and implemented (`09-04`): HTTP Header fail-closed. Phase 09 validation complete; **closure pending manual review**. Migration real not applied. Production Gelato/webhook smoke not executed.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
 ## Deferred Items
@@ -171,10 +173,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-02T17:54:00-03:00
-Stopped at: Phase 09 09-04 authenticity blocker resolved documentally; 09-04 execution blocked until explicit human approval
-Resume file: `.planning/phases/09-gelato-fulfillment-webhook/09-04-PLAN.md`
-Next permitted step: Human review of pre-09-04 documentary reconciliation. **`09-04` may be executed only after explicit human approval.**
+Last session: 2026-07-02T18:56:00-03:00
+Stopped at: Phase 09 09-05 validation complete; closure not started; Phase 10 blocked
+Resume file: `.planning/phases/09-gelato-fulfillment-webhook/09-05-SUMMARY.md`
+Next permitted step: Human review of Phase 09 validation evidence. **`09-CLOSURE.md` may be created only after explicit human approval.** Phase 10 remains blocked.
 
 ## Quick Tasks Completed
 
@@ -198,3 +200,4 @@ Next permitted step: Human review of pre-09-04 documentary reconciliation. **`09
 | 2026-07-01 | phase-08-planning | Planned Phase 08 into 3 manual-review-gated slices plus context, research and validation artifacts; no runtime, tests, migrations, install, Resend call, e-mail, PostHog call, Gelato, fulfillment, refund, exchange, tracking or Stripe CLI smoke started. |
 | 2026-07-01 | phase-08-closure | Closed Phase 08 documentally after accepted `08-01`..`08-03` evidence; `EMAIL-01`..`EMAIL-02` complete; Phase 09 planning-ready only, execution blocked. |
 | 2026-07-02 | phase-09-planning | Planned Phase 09 into 5 manual-review-gated slices plus context, research and validation artifacts; branch decision B recorded for `gsd/phase-09-gelato-fulfillment-webhook`; documentary blockers corrected before execution; no runtime, tests, migrations, install, package/lockfile change, real Gelato call/order/webhook/fulfillment, Resend call, PostHog call, refund, exchange, tracking, Stripe CLI smoke or Phase 10 work started. |
+| 2026-07-02 | phase-09-validation | Final validation at `09-05-SUMMARY.md` — 92 tests green, build PASS, FUL-01..FUL-04 and WHK-03 evidenced, negative greps documented; manual gate before closure; Phase 10 not started. |
