@@ -589,6 +589,7 @@ export function buildEmailDeliveryLogRecord(
 export const EMAIL_RESEND_RELAY_MAX_ATTEMPTS = 5 as const
 export const EMAIL_RESEND_RELAY_BACKOFF_BASE_MS = 60_000
 export const EMAIL_RESEND_RELAY_BACKOFF_MAX_MS = 3_600_000
+export const EMAIL_RESEND_RELAY_IN_FLIGHT_STALE_MS = 15 * 60 * 1000
 
 export type ResendEmailSendPayload = {
   from: string
@@ -762,6 +763,48 @@ export function isEmailResendRelayDue(
   }
 
   return retryAt.getTime() <= now.getTime()
+}
+
+function parseEmailResendRelayTimestamp(
+  value: string | null | undefined
+): number | null {
+  if (!value) {
+    return null
+  }
+
+  const date = new Date(value)
+
+  return Number.isNaN(date.getTime()) ? null : date.getTime()
+}
+
+export function isEmailResendRelayStaleInFlight(
+  record: Pick<
+    EmailDeliveryLogRecord,
+    "status" | "queued_at" | "sending_started_at" | "updated_at"
+  >,
+  now: Date,
+  staleMs: number = EMAIL_RESEND_RELAY_IN_FLIGHT_STALE_MS
+): boolean {
+  if (
+    record.status !== EMAIL_DELIVERY_LOG_STATUS.QUEUED &&
+    record.status !== EMAIL_DELIVERY_LOG_STATUS.SENDING
+  ) {
+    return false
+  }
+
+  const candidateTime =
+    record.status === EMAIL_DELIVERY_LOG_STATUS.QUEUED
+      ? parseEmailResendRelayTimestamp(record.queued_at) ??
+        parseEmailResendRelayTimestamp(record.updated_at)
+      : parseEmailResendRelayTimestamp(record.sending_started_at) ??
+        parseEmailResendRelayTimestamp(record.queued_at) ??
+        parseEmailResendRelayTimestamp(record.updated_at)
+
+  if (candidateTime === null) {
+    return true
+  }
+
+  return candidateTime <= now.getTime() - staleMs
 }
 
 export function isEmailResendRelayEligibleStatus(

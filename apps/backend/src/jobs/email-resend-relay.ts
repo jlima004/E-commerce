@@ -12,6 +12,7 @@ import {
   buildEmailResendRelaySendingUpdate,
   buildEmailResendRelaySuccessUpdate,
   buildOrderConfirmationResendSendPayload,
+  isEmailResendRelayStaleInFlight,
   isEmailResendRelayDue,
   isEmailResendRelayEligibleStatus,
   resolveOrderRecipientEmail,
@@ -169,18 +170,29 @@ async function listRelayCandidates(
   module: EmailDeliveryLogModule,
   now: Date
 ): Promise<EmailDeliveryLogRecord[]> {
-  const [recorded, failed] = await Promise.all([
+  const [recorded, failed, queued, sending] = await Promise.all([
     module.listEmailDeliveryLogs({
       status: EMAIL_DELIVERY_LOG_STATUS.RECORDED,
     }),
     module.listEmailDeliveryLogs({
       status: EMAIL_DELIVERY_LOG_STATUS.FAILED,
     }),
+    module.listEmailDeliveryLogs({
+      status: EMAIL_DELIVERY_LOG_STATUS.QUEUED,
+    }),
+    module.listEmailDeliveryLogs({
+      status: EMAIL_DELIVERY_LOG_STATUS.SENDING,
+    }),
   ])
 
-  return [...recorded, ...failed]
-    .filter((event) => isEmailResendRelayEligibleStatus(event.status))
-    .filter((event) => isEmailResendRelayDue(event.next_retry_at, now))
+  return [...recorded, ...failed, ...queued, ...sending]
+    .filter((event) => {
+      if (isEmailResendRelayEligibleStatus(event.status)) {
+        return isEmailResendRelayDue(event.next_retry_at, now)
+      }
+
+      return isEmailResendRelayStaleInFlight(event, now)
+    })
     .sort((left, right) => left.recorded_at.localeCompare(right.recorded_at))
 }
 
