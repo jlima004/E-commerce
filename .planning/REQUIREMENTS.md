@@ -62,8 +62,8 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Email
 
-- [ ] **EMAIL-01**: A confirmation email is sent via Resend after Order confirmation and before the Gelato fulfillment attempt
-- [ ] **EMAIL-02**: Every email attempt is recorded in EmailDeliveryLog
+- [x] **EMAIL-01**: A confirmation email is sent via Resend after Order confirmation and before the Gelato fulfillment attempt. Complete via Phase 08 closure: `08-02` local enqueue after confirmed Order + durable local `purchase_completed`; `08-03` async Resend relay with retry/dead-letter; Resend is not a gate of Order validation.
+- [x] **EMAIL-02**: Every email attempt is recorded in EmailDeliveryLog. Complete via Phase 08 closure: `08-01` module/contract with idempotency key `order-confirmation/{order_id}`; `08-02`/`08-03` audit trail, status lifecycle, retry/dead-letter, sanitized errors; full e-mail not persisted.
 
 ### Fulfillment (Gelato)
 
@@ -164,8 +164,8 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | ANL-01 | Phase 7 | Complete (Phase 07 closure: durable local `purchase_completed` on accepted Order success) |
 | ANL-02 | Phase 7 | Complete (Phase 07 closure: downstream gates on local outbox existence, not PostHog/`sent`) |
 | ANL-03 | Phase 7 | Complete (Phase 07 closure: async PostHog relay with retry/dead-letter, non-blocking) |
-| EMAIL-01 | Phase 8 | Pending |
-| EMAIL-02 | Phase 8 | Pending |
+| EMAIL-01 | Phase 8 | Complete (Phase 08 closure: async Resend confirmation after Order + durable local `purchase_completed`) |
+| EMAIL-02 | Phase 8 | Complete (Phase 08 closure: `EmailDeliveryLog` idempotency, audit, retry/dead-letter) |
 | FUL-01 | Phase 9 | Pending |
 | FUL-02 | Phase 9 | Pending |
 | FUL-03 | Phase 9 | Pending |
@@ -190,4 +190,4 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 
 ---
 *Requirements defined: 2026-06-22*
-*Last updated: 2026-07-01 after closing Phase 07 documentally and marking ANL-01..ANL-03 complete; Phase 08 remains not started*
+*Last updated: 2026-07-01 after closing Phase 08 documentally and marking EMAIL-01..EMAIL-02 complete; Phase 09 remains not started*
