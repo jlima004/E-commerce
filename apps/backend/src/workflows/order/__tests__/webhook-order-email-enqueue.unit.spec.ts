@@ -115,8 +115,10 @@ function buildOrder(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function createPaymentAttemptModule(attempt: PaymentAttemptRecord) {
-  const store = [attempt]
+function createPaymentAttemptModule(
+  attempts: PaymentAttemptRecord | PaymentAttemptRecord[]
+) {
+  const store = Array.isArray(attempts) ? [...attempts] : [attempts]
 
   return {
     listPaymentAttempts: jest.fn(async (filters?: Record<string, unknown>) => {
@@ -254,6 +256,7 @@ function createEmailDeliveryLogModule(records: Array<Record<string, unknown>> = 
       if (
         store.some(
           (record) =>
+            (row.id && record.id === row.id) ||
             record.idempotency_key === row.idempotency_key ||
             (record.email_type === row.email_type &&
               record.order_id === row.order_id)
@@ -429,7 +432,24 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
         amount: 9900,
         currency_code: "brl",
         item_count: 1,
+        items: [
+          {
+            sku: "SKU-EMAIL-01",
+            quantity: 1,
+            unit_price: 9900,
+            subtotal: 9900,
+          },
+        ],
       })
+    )
+    const createInput = emailDeliveryLogModule.createEmailDeliveryLogs.mock
+      .calls[0]?.[0] as Record<string, unknown>
+    expect(createInput).not.toHaveProperty("id")
+    expect(createInput).not.toHaveProperty("created_at")
+    expect(createInput).not.toHaveProperty("updated_at")
+    expect(createInput).not.toHaveProperty("deleted_at")
+    expect(JSON.stringify(createInput)).not.toContain(
+      joinKey("emlog", "_order_entrypoint", "_pending")
     )
     const audit = buildRecipientEmailAudit(ORDER_EMAIL)
     expect(emailDeliveryLogModule.store[0]).toEqual(
@@ -439,6 +459,186 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
       })
     )
     expect(JSON.stringify(emailDeliveryLogModule.store[0])).not.toContain(ORDER_EMAIL)
+  })
+
+  it("dois Orders distintos criam EmailDeliveryLogs com ids gerados distintos", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule([
+      buildAttempt(),
+      buildAttempt({
+        id: "payatt_email_02",
+        cart_id: "cart_email_02",
+        payment_collection_id: "paycol_email_02",
+        payment_session_id: "payses_email_02",
+        provider_payment_intent_id: "pi_email_02",
+        provider_payment_session_id: "ps_email_02",
+      }),
+    ])
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const analyticsEventLogModule = createAnalyticsEventLogModule()
+    const emailDeliveryLogModule = createEmailDeliveryLogModule()
+    const orderModule = createOrderModule()
+    const baseCart = buildCart()
+    const baseItem = baseCart.items[0]
+    const cart2 = {
+      ...baseCart,
+      id: "cart_email_02",
+      items: [
+        {
+          ...baseItem,
+          id: "line_item_email_02",
+          variant: {
+            ...baseItem.variant,
+            id: "variant_email_02",
+            sku: "SKU-EMAIL-02",
+          },
+        },
+      ],
+    }
+
+    await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        analyticsEventLogModule,
+        emailDeliveryLogModule,
+        orderModule,
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-07-01T12:00:00.000Z"),
+        getCart: async () => buildCart(),
+        persistCartSnapshots: jest.fn(async () => undefined),
+        runCompleteCart: jest.fn(async () => {
+          orderModule.store.push(buildOrder())
+          return { id: "order_email_01" }
+        }),
+      }
+    )
+
+    await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        analyticsEventLogModule,
+        emailDeliveryLogModule,
+        orderModule,
+      }),
+      buildInput({
+        payment_attempt_id: "payatt_email_02",
+        payment_intent_id: "pi_email_02",
+        stripe_event_id: "evt_email_02",
+        correlation_id: "corr_email_02",
+      }),
+      {
+        now: () => new Date("2026-07-01T12:01:00.000Z"),
+        getCart: async () => cart2,
+        persistCartSnapshots: jest.fn(async () => undefined),
+        runCompleteCart: jest.fn(async () => {
+          orderModule.store.push(
+            buildOrder({
+              id: "order_email_02",
+              cart_id: "cart_email_02",
+              display_id: 1002,
+            })
+          )
+          return { id: "order_email_02" }
+        }),
+      }
+    )
+
+    expect(emailDeliveryLogModule.store).toHaveLength(2)
+    expect(emailDeliveryLogModule.store.map((record) => record.id)).toEqual([
+      "emlog_email_1",
+      "emlog_email_2",
+    ])
+    expect(
+      emailDeliveryLogModule.createEmailDeliveryLogs.mock.calls.map(
+        ([input]) => (input as Record<string, unknown>).id
+      )
+    ).toEqual([undefined, undefined])
+  })
+
+  it("unique violation sem registro reutilizavel nao vira sucesso silencioso", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const analyticsEventLogModule = createAnalyticsEventLogModule()
+    const emailDeliveryLogModule = createEmailDeliveryLogModule()
+    emailDeliveryLogModule.createEmailDeliveryLogs.mockImplementation(async () => {
+      throw new Error("duplicate key value violates unique constraint")
+    })
+    const orderModule = createOrderModule()
+
+    await expect(
+      runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+        createContainer({
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          analyticsEventLogModule,
+          emailDeliveryLogModule,
+          orderModule,
+        }),
+        buildInput(),
+        {
+          now: () => new Date("2026-07-01T12:00:00.000Z"),
+          getCart: async () => buildCart(),
+          persistCartSnapshots: jest.fn(async () => undefined),
+          runCompleteCart: jest.fn(async () => {
+            orderModule.store.push(buildOrder())
+            return { id: "order_email_01" }
+          }),
+        }
+      )
+    ).rejects.toThrow("duplicate key value violates unique constraint")
+  })
+
+  it("SKU ausente usa fallback estavel e nao bloqueia Order, purchase_completed ou EmailDeliveryLog", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const analyticsEventLogModule = createAnalyticsEventLogModule()
+    const emailDeliveryLogModule = createEmailDeliveryLogModule()
+    const orderModule = createOrderModule()
+    const baseCart = buildCart()
+    const baseItem = baseCart.items[0]
+    const cartWithoutSku = {
+      ...baseCart,
+      items: [
+        {
+          ...baseItem,
+          variant: {
+            ...baseItem.variant,
+            sku: null,
+          },
+        },
+      ],
+    }
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        analyticsEventLogModule,
+        emailDeliveryLogModule,
+        orderModule,
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-07-01T12:00:00.000Z"),
+        getCart: async () => cartWithoutSku,
+        persistCartSnapshots: jest.fn(async () => undefined),
+        runCompleteCart: jest.fn(async () => {
+          orderModule.store.push(buildOrder())
+          return { id: "order_email_01" }
+        }),
+      }
+    )
+
+    expect(result.status).toBe("created")
+    expect(analyticsEventLogModule.store).toHaveLength(1)
+    expect(emailDeliveryLogModule.store).toHaveLength(1)
+    const storedEmail = emailDeliveryLogModule.store[0] as {
+      payload: { items: Array<{ sku: string }> }
+    }
+    expect(storedEmail.payload.items[0]?.sku).toBe("variant_email_01")
   })
 
   it("replay reutiliza EmailDeliveryLog existente sem duplicar Order, analytics ou e-mail", async () => {

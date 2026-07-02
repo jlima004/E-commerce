@@ -190,6 +190,7 @@ const ORDER_CART_FIELDS = [
   "completed_at",
   "items.id",
   "items.quantity",
+  "items.variant_id",
   "items.metadata",
   "items.variant.id",
   "items.variant.sku",
@@ -778,14 +779,7 @@ function buildOrderConfirmationEmailPayloadItems(
   cart: ConfirmedAttemptCartRecord
 ): OrderConfirmationEmailItemInput[] {
   return cart.items.map((item) => {
-    const sku = item.variant?.sku?.trim()
-
-    if (!sku) {
-      throw new OrderCreationEntrypointError(
-        "ORDER_ENTRYPOINT_EMAIL_ITEM_SKU_REQUIRED",
-        "SKU obrigatoria para o payload local de e-mail."
-      )
-    }
+    const sku = resolveOrderConfirmationEmailItemSku(item)
 
     const unitPrice = normalizeLineItemUnitPrice({
       item,
@@ -799,6 +793,53 @@ function buildOrderConfirmationEmailPayloadItems(
       subtotal: unitPrice * item.quantity,
     }
   })
+}
+
+function resolveOrderConfirmationEmailItemSku(
+  item: ConfirmedAttemptCartRecord["items"][number]
+): string {
+  const itemWithVariantId = item as typeof item & {
+    variant_id?: string | null
+  }
+  const sku =
+    item.variant?.sku?.trim() ||
+    item.variant?.id?.trim() ||
+    itemWithVariantId.variant_id?.trim() ||
+    item.id.trim()
+
+  if (!sku) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_EMAIL_ITEM_SKU_REQUIRED",
+      "SKU ou fallback estavel obrigatorio para o payload local de e-mail."
+    )
+  }
+
+  return sku
+}
+
+function normalizeCartLineItemSkuFallbacks(
+  cart: ConfirmedAttemptCartRecord
+): ConfirmedAttemptCartRecord {
+  return {
+    ...cart,
+    items: cart.items.map((item) => {
+      if (item.variant?.sku?.trim()) {
+        return item
+      }
+
+      if (!item.variant) {
+        return item
+      }
+
+      return {
+        ...item,
+        variant: {
+          ...item.variant,
+          sku: resolveOrderConfirmationEmailItemSku(item),
+        },
+      }
+    }),
+  }
 }
 
 function buildOrderReference(order: Record<string, unknown>): string {
@@ -947,22 +988,33 @@ async function ensureOrderConfirmationEmailRecorded(input: {
         recovery_origin: input.recoveryOrigin,
       },
     },
-    "emlog_order_entrypoint_pending",
+    "emlog_order_entrypoint_create_preview",
     input.now
   )
+  const createInput: Record<string, unknown> = { ...record }
+  delete createInput.id
+  delete createInput.created_at
+  delete createInput.updated_at
+  delete createInput.deleted_at
 
   try {
-    return asArray(await module.createEmailDeliveryLogs?.(record))[0] ?? null
+    return asArray(await module.createEmailDeliveryLogs?.(createInput))[0] ?? null
   } catch (error) {
     if (!isUniqueConstraintError(error)) {
       throw error
     }
 
-    return readReusableOrderConfirmationEmailLog({
+    const reusable = await readReusableOrderConfirmationEmailLog({
       module,
       idempotencyKey,
       orderId: input.orderId,
     })
+
+    if (!reusable) {
+      throw error
+    }
+
+    return reusable
   }
 }
 
@@ -1270,7 +1322,9 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
   let completedOrderId: string | null = null
 
   try {
-    const cart = await loadCart(container, attempt.cart_id)
+    const cart = normalizeCartLineItemSkuFallbacks(
+      await loadCart(container, attempt.cart_id)
+    )
 
     assertConfirmedAttemptCartMatchesPaymentAttempt(attempt, cart)
 
