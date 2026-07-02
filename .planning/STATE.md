@@ -8,7 +8,7 @@ status: phase-09-planned-awaiting-manual-review
 stopped_at: Phase 09 planning complete; execution blocked until explicit human approval
 last_updated: "2026-07-02T00:00:00-03:00"
 last_activity: 2026-07-02
-last_activity_desc: Phase 09 planning documentary blockers corrected; execution remains blocked
+last_activity_desc: Phase 09 planning reconciled after Phase 08 Email Outbox Hardening; execution remains blocked
 progress:
   total_phases: 12
   completed_phases: 8
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 09 planning is complete and awaiting manual review (`09-CONTEXT.md`, `09-RESEARCH.md`, `09-VALIDATION.md`, `09-01-PLAN.md` through `09-05-PLAN.md`). Documentary blockers were corrected before any execution: `gelato_fulfillment` runtime registration is required, e-mail `sent` is a hard automatic-dispatch gate, the `09-03` relay performs eligibility scan after e-mail delivery, `FUL-04` is closed by minimal operator-alert fields on `GelatoFulfillment`, and `09-04` remains blocked unless Gelato webhook authenticity is confirmed. **Hard constraint preserved:** Order creation consumes only `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 09 planning did not change the Order birth rule. **Phase 09 execution blocked until explicit human approval.**
+**Current gate:** Phase 09 planning is complete and awaiting manual review (`09-CONTEXT.md`, `09-RESEARCH.md`, `09-VALIDATION.md`, `09-01-PLAN.md` through `09-05-PLAN.md`). Documentary blockers were corrected before any execution: `gelato_fulfillment` runtime registration is required, e-mail `sent` is a hard automatic-dispatch gate, the `09-03` relay performs eligibility scan after e-mail delivery, `FUL-04` is closed by minimal operator-alert fields on `GelatoFulfillment`, and `09-04` remains blocked unless Gelato webhook authenticity is confirmed. Phase 09 planning was reconciled after Phase 08 Email Outbox Hardening: Gelato relay planning includes stale in-flight recovery and no blind redispatch after possible external Gelato call. **Hard constraint preserved:** Order creation consumes only `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 09 planning did not change the Order birth rule. **Phase 09 execution blocked until explicit human approval.**
 
 **Branch policy:**
 
@@ -54,7 +54,7 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 Phase: 09 (Gelato Fulfillment & Webhook) — planned, awaiting manual review, execution blocked
 Plan: 09-01 through 09-05 drafted
 Status: Phase 09 planning complete; execution blocked pending explicit human approval
-Last activity: 2026-07-02 - Phase 09 planning documentary blockers corrected; execution remains blocked
+Last activity: 2026-07-02 - Phase 09 planning reconciled after Phase 08 Email Outbox Hardening; execution remains blocked
 
 Progress: [████████--] 67%
 
@@ -143,6 +143,7 @@ Recent decisions affecting current work:
 - [Phase 08 execution]: Plans `08-01`..`08-03` completed under manual gating. Final validation closed with 41 unit tests, 4 filtered HTTP integration tests, build PASS, negative greps PASS, and `git diff --check` PASS. Confirmation e-mail is enqueued locally after accepted Order success + durable local `purchase_completed`; async Resend relay with retry/backoff/dead-letter; idempotency key `order-confirmation/{order_id}`; `Order.email` sole recipient source; full e-mail not persisted in `EmailDeliveryLog`; Resend is not a gate of Order; `status = sent` is not required to validate Order; future automatic Gelato requires `EmailDeliveryLog(order_confirmation).status = sent` or explicit operational decision; `dead_letter` never authorizes automatic Gelato. `resend@^4.8.0` added (resolved `4.8.0`); root `package-lock.json` updated by workspace npm. No Resend real call, real e-mail, PostHog real call, Gelato, fulfillment, refund, exchange, tracking, Stripe CLI smoke, or real migration execution.
 - [Phase 08 closure]: Human review accepted Phase 08 at manual gate on 2026-07-01 (evidence: `08-03-SUMMARY.md`, `08-CLOSURE.md`, 41/41 unit, 4/4 HTTP filtered, build PASS, negative greps PASS). `EMAIL-01` and `EMAIL-02` are complete. Phase 09 may be planned next, but execution is blocked until explicit human approval.
 - [Phase 09 planning]: Planning-only artifacts created for Gelato Fulfillment & Webhook: `09-CONTEXT.md`, `09-RESEARCH.md`, `09-VALIDATION.md`, and five manual-review-gated slices `09-01`..`09-05`. Branch decision B was recorded: use `gsd/phase-09-gelato-fulfillment-webhook`. Documentary correction before execution requires real runtime registration as `gelato_fulfillment`, preserves e-mail `sent` as hard automatic-dispatch gate, moves normal post-email creation/reuse into the `09-03` relay eligibility scan so Stripe webhook replay is not required, closes `FUL-04` through minimal operator-alert fields on `GelatoFulfillment`, requires build for `09-02` and `09-03`, and preserves the `09-04` Gelato webhook authenticity blocker. The plan defines local `GelatoFulfillment`, single-active guard per `Order`, `gelato-dispatch:{order_id}` local idempotency, eligibility after confirmed `Order` + local durable `purchase_completed` + `EmailDeliveryLog(order_confirmation).status = sent`, async dispatch retry/dead-letter/alert contract, Gelato webhook dedupe/status/tracking, and negative proofs excluding refund, exchange, tracking public, Stripe CLI smoke and Phase 10. No runtime implementation, tests, migrations, install, package/lockfile change, real Gelato call/order/webhook/fulfillment, Resend call, PostHog call, refund, exchange, tracking or Stripe CLI smoke was started.
+- [Phase 09 post-hardening reconciliation]: Phase 09 planning reconciled after Phase 08 Email Outbox Hardening. Gelato relay planning includes stale in-flight recovery and no blind redispatch after possible external Gelato call. Phase 09 execution remains blocked until explicit human approval.
 
 ### Pending Todos
 
@@ -170,7 +171,7 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-02T00:00:00-03:00
-Stopped at: Phase 09 planning complete; execution blocked
+Stopped at: Phase 09 planning reconciled after Phase 08 Email Outbox Hardening; execution blocked
 Resume file: `.planning/phases/09-gelato-fulfillment-webhook/09-CONTEXT.md`
 Next permitted step: Human review of corrected Phase 09 planning. `09-01` may be executed only after explicit human approval. **Phase 09 execution blocked until explicit human approval.**
 

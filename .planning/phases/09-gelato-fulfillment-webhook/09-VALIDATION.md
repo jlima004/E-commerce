@@ -44,6 +44,13 @@ Este arquivo define a validacao esperada quando a Phase 09 for executada futuram
   - exige `purchase_completed` local duravel;
   - exige `EmailDeliveryLog(order_confirmation).status = sent`;
   - cria ou reutiliza `GelatoFulfillment` local antes de dispatch;
+  - stale in-flight recovery para `queued`/`dispatching`/`submitted`;
+  - `queued` recente nao e reprocessado;
+  - `dispatching` recente nao e reprocessado;
+  - `queued` stale pode ser recuperado sem chamada externa duplicada;
+  - `dispatching`/`submitted` stale nao gera redispatch cego;
+  - ausencia de reconciliacao oficial segura gera `requires_operator_attention`;
+  - Gelato relay nao cria pedido externo duplicado apos crash entre claim e persistencia;
   - nao exige replay do webhook Stripe quando e-mail vira `sent` depois do webhook original;
   - nao cria fulfillment quando e-mail esta `dead_letter`;
   - nao cria fulfillment quando e-mail esta `recorded`, `queued`, `sending` ou `failed`;
@@ -122,6 +129,7 @@ Broad scans podem ser informativos quando pegarem falsos positivos historicos, m
 - `WHK-03`: webhook Gelato usa ingestao persistida, deduplicada e autenticada/fail-closed.
 - Se a assinatura/autenticidade oficial Gelato nao for resolvida, `09-04` deve parar como blocked e `WHK-03` nao pode ser marcado como complete.
 - Gelato falho nao reverte `Order`.
+- Gelato relay stale in-flight recovery does not cause blind duplicate Gelato dispatch.
 - `EmailDeliveryLog.dead_letter` nao permite Gelato automatico.
 - PostHog continua fora do gate.
 - Phase 10 tracking publico nao e iniciado.

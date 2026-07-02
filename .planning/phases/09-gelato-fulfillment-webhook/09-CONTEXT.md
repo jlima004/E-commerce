@@ -50,6 +50,10 @@ A Phase 09 define como disparar producao Gelato de forma idempotente e auditavel
   - `EmailDeliveryLog.status = sent` nao valida `Order`.
   - Gelato automatico futuro exige `EmailDeliveryLog(order_confirmation).status = sent` ou decisao operacional explicita.
   - `dead_letter` de e-mail nao autoriza Gelato automatico.
+- Phase 08 hardening:
+  - corrigiu create real de `EmailDeliveryLog` sem id fixo;
+  - corrigiu fallback de SKU no e-mail;
+  - corrigiu stale recovery para `queued`/`sending` no relay Resend.
 
 ## Implementation Decisions
 
@@ -122,6 +126,17 @@ Nao persistir raw body, Authorization, cookies, headers integrais, `X-API-KEY`, 
 
 Refund, exchange, tracking publico, Stripe CLI smoke, PostHog real, Resend real, Gelato real, migrations reais e Phase 10 permanecem fora do escopo.
 
+### D09-16 - Gelato Relay Stale In-Flight Recovery
+
+O relay Gelato deve tratar estados in-flight stale de forma conservadora.
+`queued` e `dispatching`/`submitted` nao podem gerar redispatch cego se houver risco de chamada externa ja realizada.
+
+Se o estado indicar possivel chamada externa sem `gelato_primary_order_id` persistido, o fluxo deve:
+
+- tentar reconciliacao oficial por `orderReferenceId` quando suportado e documentado;
+- ou marcar o `GelatoFulfillment` para atencao operacional;
+- nunca criar outro pedido Gelato automaticamente sem prova de que nenhum pedido externo foi aceito.
+
 ## Requirements Covered
 
 - `FUL-01`
@@ -140,6 +155,7 @@ Downstream planning/execution must read:
 - `.planning/phases/06-idempotent-webhook-driven-order-creation/06-CLOSURE.md` - accepted Order birth rule and immutable Gelato snapshot.
 - `.planning/phases/07-analytics-outbox-purchase-completed/07-CLOSURE.md` - durable local `purchase_completed` downstream gate.
 - `.planning/phases/08-transactional-email-resend/08-CLOSURE.md` - email sent gate and dead-letter exclusion for future Gelato.
+- `.planning/phases/08-transactional-email-resend/08-HARDENING-SUMMARY.md` - Phase 08 hardening reference for real `EmailDeliveryLog` create, SKU fallback and Resend relay stale recovery.
 - `apps/backend/src/modules/webhooks/*` - existing `WebhookEventLog` pattern.
 - `apps/backend/src/modules/analytics-event-log/*` - `purchase_completed` local gate pattern.
 - `apps/backend/src/modules/email-delivery-log/*` - confirmation email status and relay pattern.
