@@ -585,3 +585,272 @@ export function buildEmailDeliveryLogRecord(
     deleted_at: null,
   }
 }
+
+export const EMAIL_RESEND_RELAY_MAX_ATTEMPTS = 5 as const
+export const EMAIL_RESEND_RELAY_BACKOFF_BASE_MS = 60_000
+export const EMAIL_RESEND_RELAY_BACKOFF_MAX_MS = 3_600_000
+
+export type ResendEmailSendPayload = {
+  from: string
+  to: string[]
+  subject: string
+  html: string
+  text: string
+  reply_to?: string
+}
+
+export type EmailResendRelayClaimUpdate = Pick<
+  EmailDeliveryLogRecord,
+  "status" | "queued_at" | "sending_started_at" | "updated_at"
+>
+
+export type EmailResendRelaySuccessUpdate = Pick<
+  EmailDeliveryLogRecord,
+  | "status"
+  | "sent_at"
+  | "provider_message_id"
+  | "last_error_code"
+  | "last_error_message"
+  | "next_retry_at"
+  | "updated_at"
+>
+
+export type EmailResendRelayFailureUpdate = Pick<
+  EmailDeliveryLogRecord,
+  | "status"
+  | "attempt_count"
+  | "last_error_code"
+  | "last_error_message"
+  | "next_retry_at"
+  | "failed_at"
+  | "dead_lettered_at"
+  | "updated_at"
+>
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
+export function formatOrderConfirmationAmount(
+  amount: number,
+  currencyCode: string
+): string {
+  if (currencyCode === "brl") {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(amount / 100)
+  }
+
+  return `${amount} ${currencyCode.toUpperCase()}`
+}
+
+export function renderOrderConfirmationEmailText(
+  payload: OrderConfirmationEmailPayload
+): string {
+  const lines = [
+    "Pedido confirmado",
+    "",
+    `Referencia: ${payload.order_reference}`,
+    `Total: ${formatOrderConfirmationAmount(payload.amount, payload.currency_code)}`,
+    `Itens: ${payload.item_count}`,
+    "",
+    ...payload.items.map(
+      (item) =>
+        `- ${item.sku} x${item.quantity} (${formatOrderConfirmationAmount(item.subtotal, payload.currency_code)})`
+    ),
+    "",
+    `Suporte: ${payload.support_email}`,
+  ]
+
+  return lines.join("\n")
+}
+
+export function renderOrderConfirmationEmailHtml(
+  payload: OrderConfirmationEmailPayload
+): string {
+  const itemsHtml = payload.items
+    .map(
+      (item) =>
+        `<li>${escapeHtml(item.sku)} x${item.quantity} - ${escapeHtml(formatOrderConfirmationAmount(item.subtotal, payload.currency_code))}</li>`
+    )
+    .join("")
+
+  return [
+    "<!DOCTYPE html>",
+    "<html>",
+    "<body>",
+    "<h1>Pedido confirmado</h1>",
+    `<p>Referencia: ${escapeHtml(payload.order_reference)}</p>`,
+    `<p>Total: ${escapeHtml(formatOrderConfirmationAmount(payload.amount, payload.currency_code))}</p>`,
+    `<ul>${itemsHtml}</ul>`,
+    `<p>Suporte: ${escapeHtml(payload.support_email)}</p>`,
+    "</body>",
+    "</html>",
+  ].join("")
+}
+
+export function buildOrderConfirmationResendSendPayload(input: {
+  payload: OrderConfirmationEmailPayload
+  recipientEmail: string
+  fromEmail: string
+  replyTo?: string
+}): ResendEmailSendPayload {
+  if (containsForbiddenData(input)) {
+    throw new Error("EMAIL_RESEND_SEND_PAYLOAD_FORBIDDEN")
+  }
+
+  const sendPayload: ResendEmailSendPayload = {
+    from: normalizeRequiredString(
+      input.fromEmail,
+      "EMAIL_RESEND_FROM_EMAIL_INVALID"
+    ),
+    to: [
+      normalizeEmailAddress(
+        input.recipientEmail,
+        "EMAIL_RESEND_RECIPIENT_EMAIL_INVALID"
+      ),
+    ],
+    subject: "Pedido confirmado",
+    html: renderOrderConfirmationEmailHtml(input.payload),
+    text: renderOrderConfirmationEmailText(input.payload),
+  }
+
+  if (input.replyTo?.trim()) {
+    sendPayload.reply_to = normalizeEmailAddress(
+      input.replyTo,
+      "EMAIL_RESEND_REPLY_TO_INVALID"
+    )
+  }
+
+  return sendPayload
+}
+
+export function resolveOrderRecipientEmail(
+  order: { email?: string | null } | null | undefined
+): string {
+  if (!order?.email?.trim()) {
+    throw new Error("EMAIL_RESEND_ORDER_EMAIL_MISSING")
+  }
+
+  return normalizeEmailAddress(order.email, "EMAIL_RESEND_ORDER_EMAIL_INVALID")
+}
+
+export function computeEmailResendRelayBackoffMs(attemptCount: number): number {
+  const exponent = Math.max(0, attemptCount - 1)
+  const backoff = EMAIL_RESEND_RELAY_BACKOFF_BASE_MS * 2 ** exponent
+
+  return Math.min(backoff, EMAIL_RESEND_RELAY_BACKOFF_MAX_MS)
+}
+
+export function isEmailResendRelayDue(
+  nextRetryAt: string | null | undefined,
+  now: Date
+): boolean {
+  if (!nextRetryAt) {
+    return true
+  }
+
+  const retryAt = new Date(nextRetryAt)
+
+  if (Number.isNaN(retryAt.getTime())) {
+    return true
+  }
+
+  return retryAt.getTime() <= now.getTime()
+}
+
+export function isEmailResendRelayEligibleStatus(
+  status: EmailDeliveryStatus | string
+): boolean {
+  return (
+    status === EMAIL_DELIVERY_LOG_STATUS.RECORDED ||
+    status === EMAIL_DELIVERY_LOG_STATUS.FAILED
+  )
+}
+
+export function buildEmailResendRelayClaimUpdate(
+  at: Date = new Date()
+): EmailResendRelayClaimUpdate {
+  const iso = at.toISOString()
+
+  return {
+    status: EMAIL_DELIVERY_LOG_STATUS.QUEUED,
+    queued_at: iso,
+    sending_started_at: iso,
+    updated_at: iso,
+  }
+}
+
+export function buildEmailResendRelaySendingUpdate(
+  at: Date = new Date()
+): Pick<EmailDeliveryLogRecord, "status" | "updated_at"> {
+  return {
+    status: EMAIL_DELIVERY_LOG_STATUS.SENDING,
+    updated_at: at.toISOString(),
+  }
+}
+
+export function buildEmailResendRelaySuccessUpdate(
+  providerMessageId: string,
+  at: Date = new Date()
+): EmailResendRelaySuccessUpdate {
+  const iso = at.toISOString()
+
+  return {
+    status: EMAIL_DELIVERY_LOG_STATUS.SENT,
+    sent_at: iso,
+    provider_message_id: sanitizeString(providerMessageId).slice(0, 255),
+    last_error_code: null,
+    last_error_message: null,
+    next_retry_at: null,
+    updated_at: iso,
+  }
+}
+
+export function buildEmailResendRelayFailureUpdate(
+  error: unknown,
+  attemptCount: number,
+  options: {
+    maxAttempts?: number
+    at?: Date
+  } = {}
+): EmailResendRelayFailureUpdate {
+  const maxAttempts = options.maxAttempts ?? EMAIL_RESEND_RELAY_MAX_ATTEMPTS
+  const at = options.at ?? new Date()
+  const sanitized = sanitizeEmailDeliveryError(error)
+  const nextAttemptCount = attemptCount + 1
+  const iso = at.toISOString()
+
+  if (nextAttemptCount >= maxAttempts) {
+    return {
+      status: EMAIL_DELIVERY_LOG_STATUS.DEAD_LETTER,
+      attempt_count: nextAttemptCount,
+      last_error_code: sanitized.error_code,
+      last_error_message: sanitized.error_message,
+      next_retry_at: null,
+      failed_at: iso,
+      dead_lettered_at: iso,
+      updated_at: iso,
+    }
+  }
+
+  const nextRetryAt = new Date(
+    at.getTime() + computeEmailResendRelayBackoffMs(nextAttemptCount)
+  )
+
+  return {
+    status: EMAIL_DELIVERY_LOG_STATUS.FAILED,
+    attempt_count: nextAttemptCount,
+    last_error_code: sanitized.error_code,
+    last_error_message: sanitized.error_message,
+    next_retry_at: nextRetryAt.toISOString(),
+    failed_at: iso,
+    dead_lettered_at: null,
+    updated_at: iso,
+  }
+}

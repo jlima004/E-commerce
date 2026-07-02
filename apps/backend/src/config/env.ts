@@ -48,6 +48,10 @@ export type AppEnv = {
   STRIPE_PIX_EXPIRES_AFTER_SECONDS: number
   STRIPE_WEBHOOK_SECRET: string | undefined
   STRIPE_WEBHOOK_INGESTION_ENABLED: boolean
+  RESEND_API_KEY: string | undefined
+  RESEND_FROM_EMAIL: string | undefined
+  RESEND_ORDER_CONFIRMATION_ENABLED: boolean
+  RESEND_REPLY_TO: string | undefined
 }
 
 function isProduction(input: Record<string, string | undefined>): boolean {
@@ -294,6 +298,10 @@ export function parseEnv(
     STRIPE_PIX_EXPIRES_AFTER_SECONDS: z.string().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
     STRIPE_WEBHOOK_INGESTION_ENABLED: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
+    RESEND_FROM_EMAIL: z.string().optional(),
+    RESEND_ORDER_CONFIRMATION_ENABLED: z.string().optional(),
+    RESEND_REPLY_TO: z.string().optional(),
   })
 
   const parsed = baseSchema.safeParse(normalized)
@@ -310,6 +318,10 @@ export function parseEnv(
   const stripeWebhookIngestionEnabled = parseBoolean(
     normalized.STRIPE_WEBHOOK_INGESTION_ENABLED,
     "STRIPE_WEBHOOK_INGESTION_ENABLED"
+  )
+  const resendOrderConfirmationEnabled = parseBoolean(
+    normalized.RESEND_ORDER_CONFIRMATION_ENABLED,
+    "RESEND_ORDER_CONFIRMATION_ENABLED"
   )
 
   return {
@@ -355,6 +367,10 @@ export function parseEnv(
       stripeWebhookIngestionEnabled
     ),
     STRIPE_WEBHOOK_INGESTION_ENABLED: stripeWebhookIngestionEnabled,
+    RESEND_API_KEY: data.RESEND_API_KEY?.trim() || undefined,
+    RESEND_FROM_EMAIL: data.RESEND_FROM_EMAIL?.trim() || undefined,
+    RESEND_ORDER_CONFIRMATION_ENABLED: resendOrderConfirmationEnabled,
+    RESEND_REPLY_TO: data.RESEND_REPLY_TO?.trim() || undefined,
   }
 }
 

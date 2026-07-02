@@ -20,6 +20,10 @@ import {
   buildOrderConfirmationEmailIdempotencyKey,
   buildOrderConfirmationEmailPayload,
   buildRecipientEmailAudit,
+  buildEmailResendRelayFailureUpdate,
+  computeEmailResendRelayBackoffMs,
+  isEmailResendRelayDue,
+  isEmailResendRelayEligibleStatus,
   sanitizeEmailDeliveryError,
   sanitizeEmailDeliveryMetadata,
 } from "../service"
@@ -421,6 +425,48 @@ describe("EmailDeliveryLog metadata and errors", () => {
     expect(record.last_error_code).toBe("delivery [REDACTED]")
     expect(record.last_error_message).toBe("failed [REDACTED] [REDACTED]")
     expect(record.last_error_message).not.toContain(customerAddress)
+  })
+})
+
+describe("EmailDeliveryLog resend relay helpers", () => {
+  it("considera recorded e failed elegiveis", () => {
+    expect(isEmailResendRelayEligibleStatus(EMAIL_DELIVERY_LOG_STATUS.RECORDED)).toBe(
+      true
+    )
+    expect(isEmailResendRelayEligibleStatus(EMAIL_DELIVERY_LOG_STATUS.FAILED)).toBe(
+      true
+    )
+    expect(isEmailResendRelayEligibleStatus(EMAIL_DELIVERY_LOG_STATUS.SENT)).toBe(
+      false
+    )
+    expect(
+      isEmailResendRelayEligibleStatus(EMAIL_DELIVERY_LOG_STATUS.DEAD_LETTER)
+    ).toBe(false)
+  })
+
+  it("aplica backoff exponencial com teto", () => {
+    expect(computeEmailResendRelayBackoffMs(1)).toBe(60_000)
+    expect(computeEmailResendRelayBackoffMs(2)).toBe(120_000)
+    expect(computeEmailResendRelayBackoffMs(10)).toBe(3_600_000)
+  })
+
+  it("respeita next_retry_at ao selecionar candidatos", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+
+    expect(isEmailResendRelayDue(null, now)).toBe(true)
+    expect(isEmailResendRelayDue("2026-07-01T11:59:00.000Z", now)).toBe(true)
+    expect(isEmailResendRelayDue("2026-07-01T12:01:00.000Z", now)).toBe(false)
+  })
+
+  it("marca dead_letter apos esgotar tentativas", () => {
+    const update = buildEmailResendRelayFailureUpdate(new Error("relay down"), 4, {
+      maxAttempts: 5,
+      at: new Date("2026-07-01T12:05:00.000Z"),
+    })
+
+    expect(update.status).toBe(EMAIL_DELIVERY_LOG_STATUS.DEAD_LETTER)
+    expect(update.attempt_count).toBe(5)
+    expect(update.next_retry_at).toBeNull()
   })
 })
 
