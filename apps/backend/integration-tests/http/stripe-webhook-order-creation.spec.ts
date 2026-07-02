@@ -8,7 +8,13 @@ import type { PaymentAttemptRecord } from "../../src/modules/payment-attempt/typ
 import { WEBHOOKS_MODULE } from "../../src/modules/webhooks"
 import { runCreateOrderFromConfirmedPaymentAttemptEntrypoint } from "../../src/workflows/order/webhook-order-entrypoint"
 import { runAnalyticsPosthogRelay } from "../../src/jobs/analytics-posthog-relay"
+import { runEmailResendRelay } from "../../src/jobs/email-resend-relay"
 import { isPurchaseCompletedLocallyRecorded } from "../../src/modules/analytics-event-log/service"
+import { EMAIL_DELIVERY_LOG_MODULE } from "../../src/modules/email-delivery-log"
+import {
+  buildRecipientEmailAudit,
+  isOrderConfirmationEmailLocallyRecorded,
+} from "../../src/modules/email-delivery-log/service"
 
 type RequestWithRawBody = MedusaRequest & {
   rawBody?: Buffer | string
@@ -77,6 +83,39 @@ type StoredAnalyticsEventRecord = {
   deleted_at?: string | null
 }
 
+type StoredEmailDeliveryRecord = {
+  id: string
+  email_type: string
+  template_key: string
+  template_version: number
+  provider: string
+  idempotency_key: string
+  order_id: string
+  cart_id: string
+  payment_attempt_id: string
+  checkout_completion_log_id: string
+  analytics_event_log_id: string
+  payment_intent_id: string
+  status: string
+  recipient_email_hash: string
+  recipient_email_domain: string
+  payload: Record<string, unknown>
+  metadata?: Record<string, unknown> | null
+  attempt_count: number
+  last_error_code?: string | null
+  last_error_message?: string | null
+  next_retry_at?: string | null
+  recorded_at: string
+  queued_at?: string | null
+  sending_started_at?: string | null
+  sent_at?: string | null
+  failed_at?: string | null
+  dead_lettered_at?: string | null
+  created_at: string
+  updated_at: string
+  deleted_at?: string | null
+}
+
 type OrderCartLineItemRecord = {
   id: string
   quantity: number
@@ -118,6 +157,13 @@ const FORBIDDEN_STRINGS = [
   ["gelato", "order", "id"].join("_"),
   ["ref", "und"].join(""),
 ] as const
+
+function joinKey(...parts: string[]): string {
+  return parts.join("")
+}
+
+const SUPPORT_EMAIL = joinKey("support", "@", "lojinha", ".", "test")
+const ORDER_EMAIL = joinKey("comprador", "@", "loja", ".", "test")
 
 function buildAttempt(
   overrides: Partial<PaymentAttemptRecord> = {}
@@ -450,6 +496,73 @@ function createAnalyticsEventLogModule(
   }
 }
 
+function createEmailDeliveryLogModule(
+  records: StoredEmailDeliveryRecord[] = []
+) {
+  const store = [...records]
+
+  return {
+    listEmailDeliveryLogs: jest.fn(async (filters?: Record<string, unknown>) => {
+      return store.filter((record) => {
+        if (
+          filters?.idempotency_key &&
+          record.idempotency_key !== filters.idempotency_key
+        ) {
+          return false
+        }
+
+        if (filters?.order_id && record.order_id !== filters.order_id) {
+          return false
+        }
+
+        if (filters?.status && record.status !== filters.status) {
+          return false
+        }
+
+        return true
+      })
+    }),
+    createEmailDeliveryLogs: jest.fn(async (input) => {
+      const row = Array.isArray(input) ? input[0] : input
+
+      if (
+        store.some(
+          (record) =>
+            record.idempotency_key === row.idempotency_key ||
+            (record.email_type === row.email_type &&
+              record.order_id === row.order_id)
+        )
+      ) {
+        throw new Error("duplicate key value violates unique constraint")
+      }
+
+      const created: StoredEmailDeliveryRecord = {
+        ...row,
+        id: `emlog_http_${store.length + 1}`,
+      }
+      store.push(created)
+      return [created]
+    }),
+    updateEmailDeliveryLogs: jest.fn(async (input) => {
+      const rows = Array.isArray(input) ? input : [input]
+
+      for (const row of rows) {
+        const index = store.findIndex((record) => record.id === row.id)
+
+        if (index >= 0) {
+          store[index] = {
+            ...store[index],
+            ...row,
+          }
+        }
+      }
+
+      return rows
+    }),
+    store,
+  }
+}
+
 function createCartModule(cart: OrderCartRecord) {
   return {
     updateLineItems: jest.fn(async (updates) => {
@@ -533,10 +646,16 @@ function createScopeResolve(input: {
   paymentAttemptModule?: ReturnType<typeof createPaymentAttemptModule>
   checkoutCompletionModule?: ReturnType<typeof createCheckoutCompletionModule>
   analyticsEventLogModule?: ReturnType<typeof createAnalyticsEventLogModule>
+  emailDeliveryLogModule?: ReturnType<typeof createEmailDeliveryLogModule>
   cartModule?: ReturnType<typeof createCartModule>
   orderModule?: ReturnType<typeof createOrderModule>
   queryGraph?: ReturnType<typeof createQueryGraph>
 }) {
+  const analyticsEventLogModule =
+    input.analyticsEventLogModule ?? createAnalyticsEventLogModule()
+  const emailDeliveryLogModule =
+    input.emailDeliveryLogModule ?? createEmailDeliveryLogModule()
+
   return jest.fn((key: string) => {
     if (key === WEBHOOKS_MODULE) {
       return input.webhookService
@@ -550,8 +669,12 @@ function createScopeResolve(input: {
       return input.checkoutCompletionModule
     }
 
-    if (key === ANALYTICS_EVENT_LOG_MODULE) {
-      return input.analyticsEventLogModule
+    if (key === ANALYTICS_EVENT_LOG_MODULE || key === "analytics_event_log") {
+      return analyticsEventLogModule
+    }
+
+    if (key === EMAIL_DELIVERY_LOG_MODULE || key === "email_delivery_log") {
+      return emailDeliveryLogModule
     }
 
     if (key === Modules.CART) {
@@ -604,6 +727,20 @@ function serializeProof(payload: unknown) {
 }
 
 describe("stripe webhook order creation integration", () => {
+  const originalSupportEmail = process.env.SUPPORT_EMAIL
+
+  beforeEach(() => {
+    process.env.SUPPORT_EMAIL = SUPPORT_EMAIL
+  })
+
+  afterEach(() => {
+    if (originalSupportEmail === undefined) {
+      delete process.env.SUPPORT_EMAIL
+    } else {
+      process.env.SUPPORT_EMAIL = originalSupportEmail
+    }
+  })
+
   it("webhook valido cria fluxo interno, completa correlacao e nao expande para efeitos da Phase 07", async () => {
     const webhookService = createStatefulWebhookService()
     const paymentAttemptModule = createPaymentAttemptModule([buildAttempt()])
@@ -824,6 +961,8 @@ describe("stripe webhook order creation integration", () => {
       const order = {
         id: "order_http_real_01",
         cart_id: cartId,
+        email: ORDER_EMAIL,
+        display_id: 2001,
         metadata: null,
         items: cart.items.map((item) => ({
           id: `ordli_${item.id}`,
@@ -1107,6 +1246,8 @@ describe("stripe webhook order creation integration", () => {
       const order = {
         id: "order_http_outbox_01",
         cart_id: cartId,
+        email: ORDER_EMAIL,
+        display_id: 3001,
         metadata: null,
         items: cart.items.map((item) => ({
           id: `ordli_${item.id}`,
@@ -1204,6 +1345,8 @@ describe("stripe webhook order creation integration", () => {
     orderModule.store.push({
       id: "order_http_recovered_01",
       cart_id: "cart_order_http_01",
+      email: ORDER_EMAIL,
+      display_id: 3002,
       metadata: null,
     })
     const queryGraph = createQueryGraph(cart)
@@ -1266,6 +1409,8 @@ describe("stripe webhook order creation integration", () => {
         const order = {
           id: "order_http_posthog_gate_01",
           cart_id: cartId,
+          email: ORDER_EMAIL,
+          display_id: 3003,
           metadata: null,
           items: cart.items.map((item) => ({
             id: `ordli_${item.id}`,
@@ -1346,4 +1491,491 @@ describe("stripe webhook order creation integration", () => {
       )
     }
   )
+
+  it("EmailDeliveryLog local e gravado depois de purchase_completed sem chamar Resend", async () => {
+    const cart = buildOrderCart({
+      items: [
+        {
+          id: "line_item_http_email_01",
+          quantity: 1,
+          metadata: {
+            safe_note: "preserve",
+          },
+          variant: {
+            id: "variant_http_email_01",
+            sku: "SKU-HTTP-EMAIL-01",
+            metadata: {
+              gelato_product_uid: "gelato_prod_http_email_01",
+              gelato_template_id: "tmpl_http_email_01",
+              gelato_variant_options: {
+                size: "M",
+                color: "Azul",
+              },
+              template_mode: "fixed",
+            },
+            prices: [
+              {
+                amount: 9900,
+                currency_code: "brl",
+              },
+            ],
+          },
+        },
+      ],
+    })
+    const paymentAttemptModule = createPaymentAttemptModule([
+      buildAttempt({
+        payment_method_type: "pix",
+        status: "payment_confirmed_by_webhook",
+      }),
+    ])
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const analyticsEventLogModule = createAnalyticsEventLogModule()
+    const emailDeliveryLogModule = createEmailDeliveryLogModule()
+    const cartModule = createCartModule(cart)
+    const orderModule = createOrderModule()
+    const queryGraph = createQueryGraph(cart)
+    const runCompleteCart = jest.fn(async (_container, cartId: string) => {
+      const order = {
+        id: "order_http_email_01",
+        cart_id: cartId,
+        email: ORDER_EMAIL,
+        display_id: 4001,
+        metadata: null,
+        items: cart.items.map((item) => ({
+          id: `ordli_${item.id}`,
+          metadata: {
+            ...(item.metadata ?? {}),
+          },
+        })),
+      }
+      orderModule.store.push(order)
+
+      return { id: order.id }
+    })
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      {
+        resolve: createScopeResolve({
+          webhookService: createStatefulWebhookService(),
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          analyticsEventLogModule,
+          emailDeliveryLogModule,
+          cartModule,
+          orderModule,
+          queryGraph,
+        }),
+      } as never,
+      {
+        payment_attempt_id: "payatt_order_http_01",
+        payment_intent_id: "pi_order_http_123",
+        stripe_event_id: "evt_email_http_01",
+        correlation_id: "corr_order_http_01",
+      },
+      {
+        now: () => new Date("2026-07-01T12:20:00.000Z"),
+        runCompleteCart,
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "created",
+        order_id: "order_http_email_01",
+      })
+    )
+    expect(analyticsEventLogModule.store).toHaveLength(1)
+    expect(isPurchaseCompletedLocallyRecorded(analyticsEventLogModule.store[0])).toBe(
+      true
+    )
+    expect(emailDeliveryLogModule.store).toHaveLength(1)
+    expect(emailDeliveryLogModule.store[0]).toEqual(
+      expect.objectContaining({
+        email_type: "order_confirmation",
+        template_key: "order_confirmation_v1",
+        template_version: 1,
+        provider: "resend",
+        idempotency_key: "order-confirmation/order_http_email_01",
+        order_id: "order_http_email_01",
+        status: "recorded",
+        analytics_event_log_id: "anlevt_http_1",
+      })
+    )
+    const audit = buildRecipientEmailAudit(ORDER_EMAIL)
+    expect(emailDeliveryLogModule.store[0]).toEqual(
+      expect.objectContaining({
+        recipient_email_hash: audit.recipient_email_hash,
+        recipient_email_domain: audit.recipient_email_domain,
+      })
+    )
+    const serialized = JSON.stringify(emailDeliveryLogModule.store[0])
+    expect(serialized).not.toContain(ORDER_EMAIL)
+    expect(serialized).not.toContain(["Res", "end"].join(""))
+  })
+
+  it("email recovery cria EmailDeliveryLog ausente para Order e purchase_completed existentes", async () => {
+    const cart = buildOrderCart({
+      completed_at: "2026-07-01T11:59:00.000Z",
+    })
+    const paymentAttemptModule = createPaymentAttemptModule([
+      buildAttempt({
+        status: "payment_confirmed_by_webhook",
+      }),
+    ])
+    const checkoutCompletionModule = createCheckoutCompletionModule([
+      {
+        id: "chkcpl_http_email_processing",
+        idempotency_key: "pi_order_http_123",
+        cart_id: "cart_order_http_01",
+        payment_intent_id: "pi_order_http_123",
+        payment_attempt_id: "payatt_order_http_01",
+        order_id: null,
+        status: "processing",
+        metadata: null,
+      },
+    ])
+    const analyticsEventLogModule = createAnalyticsEventLogModule([
+      {
+        id: "anlevt_http_email_recovery",
+        event_name: "purchase_completed",
+        event_version: 1,
+        idempotency_key: "purchase_completed:stripe:pi_order_http_123",
+        order_id: "order_http_email_recovery_01",
+        cart_id: "cart_order_http_01",
+        payment_attempt_id: "payatt_order_http_01",
+        checkout_completion_log_id: "chkcpl_http_email_processing",
+        payment_intent_id: "pi_order_http_123",
+        status: "recorded",
+        payload: {
+          order_id: "order_http_email_recovery_01",
+          cart_id: "cart_order_http_01",
+          payment_attempt_id: "payatt_order_http_01",
+          checkout_completion_log_id: "chkcpl_http_email_processing",
+          payment_intent_id: "pi_order_http_123",
+          payment_method_type: "card",
+          amount: 9900,
+          currency_code: "brl",
+          order_status: "confirmed",
+          payment_status: "captured",
+          item_count: 2,
+          items: [],
+        },
+        metadata: null,
+        attempt_count: 0,
+        recorded_at: "2026-07-01T12:00:00.000Z",
+        created_at: "2026-07-01T12:00:00.000Z",
+        updated_at: "2026-07-01T12:00:00.000Z",
+        deleted_at: null,
+      },
+    ])
+    const emailDeliveryLogModule = createEmailDeliveryLogModule()
+    const orderModule = createOrderModule()
+    orderModule.store.push({
+      id: "order_http_email_recovery_01",
+      cart_id: "cart_order_http_01",
+      email: ORDER_EMAIL,
+      display_id: 4002,
+      metadata: null,
+    })
+    const queryGraph = createQueryGraph(cart)
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      {
+        resolve: createScopeResolve({
+          webhookService: createStatefulWebhookService(),
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          analyticsEventLogModule,
+          emailDeliveryLogModule,
+          orderModule,
+          queryGraph,
+        }),
+      } as never,
+      {
+        payment_attempt_id: "payatt_order_http_01",
+        payment_intent_id: "pi_order_http_123",
+        stripe_event_id: "evt_email_recovery_http_01",
+        correlation_id: "corr_order_http_01",
+      },
+      {
+        now: () => new Date("2026-07-01T12:21:00.000Z"),
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "reused_existing_order",
+        order_id: "order_http_email_recovery_01",
+      })
+    )
+    expect(emailDeliveryLogModule.store).toHaveLength(1)
+    expect(emailDeliveryLogModule.store[0]).toEqual(
+      expect.objectContaining({
+        order_id: "order_http_email_recovery_01",
+        idempotency_key: "order-confirmation/order_http_email_recovery_01",
+        status: "recorded",
+      })
+    )
+  })
+
+  it(
+    ["Resend indisponivel does not block Order depois de EmailDeliveryLog.recorded"].join(
+      " "
+    ),
+    async () => {
+      const cart = buildOrderCart()
+      const paymentAttemptModule = createPaymentAttemptModule([
+        buildAttempt({
+          status: "payment_confirmed_by_webhook",
+        }),
+      ])
+      const checkoutCompletionModule = createCheckoutCompletionModule()
+      const analyticsEventLogModule = createAnalyticsEventLogModule()
+      const emailDeliveryLogModule = createEmailDeliveryLogModule()
+      const cartModule = createCartModule(cart)
+      const orderModule = createOrderModule()
+      const queryGraph = createQueryGraph(cart)
+      const runCompleteCart = jest.fn(async (_container, cartId: string) => {
+        const order = {
+          id: "order_http_resend_gate_01",
+          cart_id: cartId,
+          email: ORDER_EMAIL,
+          display_id: 5001,
+          metadata: null,
+          items: cart.items.map((item) => ({
+            id: `ordli_${item.id}`,
+            metadata: {
+              ...(item.metadata ?? {}),
+            },
+          })),
+        }
+        orderModule.store.push(order)
+
+        return { id: order.id }
+      })
+
+      const orderResult = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+        {
+          resolve: createScopeResolve({
+            webhookService: createStatefulWebhookService(),
+            paymentAttemptModule,
+            checkoutCompletionModule,
+            analyticsEventLogModule,
+            emailDeliveryLogModule,
+            cartModule,
+            orderModule,
+            queryGraph,
+          }),
+        } as never,
+        {
+          payment_attempt_id: "payatt_order_http_01",
+          payment_intent_id: "pi_order_http_123",
+          stripe_event_id: "evt_resend_gate_http_01",
+          correlation_id: "corr_order_http_01",
+        },
+        {
+          now: () => new Date("2026-07-01T12:20:00.000Z"),
+          runCompleteCart,
+        }
+      )
+
+      expect(orderResult).toEqual(
+        expect.objectContaining({
+          status: "created",
+          order_id: "order_http_resend_gate_01",
+        })
+      )
+      expect(emailDeliveryLogModule.store[0]?.status).toBe("recorded")
+
+      const relayResult = await runEmailResendRelay(
+        {
+          resolve: createScopeResolve({
+            webhookService: createStatefulWebhookService(),
+            emailDeliveryLogModule,
+            orderModule,
+          }),
+        } as never,
+        {
+          now: () => new Date("2026-07-01T12:21:00.000Z"),
+          config: {
+            apiKey: joinKey("re", "_", "test", "_", "relay"),
+            fromEmail: joinKey("pedidos", "@", "lojinha", ".", "test"),
+          },
+          createClient: () => ({
+            send: jest.fn(async () => {
+              throw new Error(["Re", "send", " unavailable"].join(""))
+            }),
+          }),
+        }
+      )
+
+      expect(relayResult).toEqual(
+        expect.objectContaining({
+          processed: 1,
+          failed: 1,
+          sent: 0,
+        })
+      )
+      expect(emailDeliveryLogModule.store[0]?.status).toBe("failed")
+      expect(isOrderConfirmationEmailLocallyRecorded(emailDeliveryLogModule.store[0])).toBe(
+        true
+      )
+      expect(orderModule.store).toHaveLength(1)
+      expect(paymentAttemptModule.attempts[0]?.order_id).toBe(
+        "order_http_resend_gate_01"
+      )
+    }
+  )
+
+  it("EmailDeliveryLog replay remains idempotent when Resend relay fails", async () => {
+    const cart = buildOrderCart()
+    const paymentAttemptModule = createPaymentAttemptModule([
+      buildAttempt({
+        status: "payment_confirmed_by_webhook",
+      }),
+    ])
+    const checkoutCompletionModule = createCheckoutCompletionModule([
+      {
+        id: "chkcpl_http_resend_replay",
+        idempotency_key: "pi_order_http_123",
+        cart_id: "cart_order_http_01",
+        payment_intent_id: "pi_order_http_123",
+        payment_attempt_id: "payatt_order_http_01",
+        order_id: "order_http_resend_replay_01",
+        status: "completed",
+        metadata: null,
+      },
+    ])
+    const analyticsEventLogModule = createAnalyticsEventLogModule([
+      {
+        id: "anlevt_http_resend_replay",
+        event_name: "purchase_completed",
+        event_version: 1,
+        idempotency_key: "purchase_completed:stripe:pi_order_http_123",
+        order_id: "order_http_resend_replay_01",
+        cart_id: "cart_order_http_01",
+        payment_attempt_id: "payatt_order_http_01",
+        checkout_completion_log_id: "chkcpl_http_resend_replay",
+        payment_intent_id: "pi_order_http_123",
+        status: "recorded",
+        payload: {
+          order_id: "order_http_resend_replay_01",
+        },
+        metadata: null,
+        attempt_count: 0,
+        recorded_at: "2026-07-01T12:00:00.000Z",
+        created_at: "2026-07-01T12:00:00.000Z",
+        updated_at: "2026-07-01T12:00:00.000Z",
+      },
+    ])
+    const emailDeliveryLogModule = createEmailDeliveryLogModule([
+      {
+        id: "emlog_http_resend_replay",
+        email_type: "order_confirmation",
+        template_key: "order_confirmation_v1",
+        template_version: 1,
+        provider: "resend",
+        idempotency_key: "order-confirmation/order_http_resend_replay_01",
+        order_id: "order_http_resend_replay_01",
+        cart_id: "cart_order_http_01",
+        payment_attempt_id: "payatt_order_http_01",
+        checkout_completion_log_id: "chkcpl_http_resend_replay",
+        analytics_event_log_id: "anlevt_http_resend_replay",
+        payment_intent_id: "pi_order_http_123",
+        status: "failed",
+        recipient_email_hash: buildRecipientEmailAudit(ORDER_EMAIL).recipient_email_hash,
+        recipient_email_domain: buildRecipientEmailAudit(ORDER_EMAIL).recipient_email_domain,
+        payload: {
+          order_id: "order_http_resend_replay_01",
+          order_reference: "5002",
+          amount: 9900,
+          currency_code: "brl",
+          item_count: 1,
+          items: [
+            {
+              sku: "SKU-HTTP-RESEND-01",
+              quantity: 1,
+              unit_price: 9900,
+              subtotal: 9900,
+            },
+          ],
+          support_email: SUPPORT_EMAIL,
+        },
+        metadata: null,
+        attempt_count: 1,
+        next_retry_at: "2026-07-01T12:19:00.000Z",
+        recorded_at: "2026-07-01T12:00:00.000Z",
+        created_at: "2026-07-01T12:00:00.000Z",
+        updated_at: "2026-07-01T12:20:00.000Z",
+      },
+    ])
+    const orderModule = createOrderModule([
+      {
+        id: "order_http_resend_replay_01",
+        cart_id: "cart_order_http_01",
+        email: ORDER_EMAIL,
+        display_id: 5002,
+        metadata: null,
+      },
+    ])
+    const cartModule = createCartModule(cart)
+    const queryGraph = createQueryGraph(cart)
+
+    const replayResult = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      {
+        resolve: createScopeResolve({
+          webhookService: createStatefulWebhookService(),
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          analyticsEventLogModule,
+          emailDeliveryLogModule,
+          cartModule,
+          orderModule,
+          queryGraph,
+        }),
+      } as never,
+      {
+        payment_attempt_id: "payatt_order_http_01",
+        payment_intent_id: "pi_order_http_123",
+        stripe_event_id: "evt_resend_replay_http_01",
+        correlation_id: "corr_order_http_01",
+      },
+      {
+        now: () => new Date("2026-07-01T12:22:00.000Z"),
+      }
+    )
+
+    expect(replayResult.status).toBe("reused_existing_order")
+    expect(emailDeliveryLogModule.createEmailDeliveryLogs).not.toHaveBeenCalled()
+    expect(emailDeliveryLogModule.store).toHaveLength(1)
+
+    await runEmailResendRelay(
+      {
+        resolve: createScopeResolve({
+          webhookService: createStatefulWebhookService(),
+          emailDeliveryLogModule,
+          orderModule,
+        }),
+      } as never,
+      {
+        now: () => new Date("2026-07-01T12:23:00.000Z"),
+        config: {
+          apiKey: joinKey("re", "_", "test", "_", "relay"),
+          fromEmail: joinKey("pedidos", "@", "lojinha", ".", "test"),
+        },
+        createClient: () => ({
+          send: jest.fn(async () => {
+            throw new Error(["Re", "send", " unavailable"].join(""))
+          }),
+        }),
+      }
+    )
+
+    expect(emailDeliveryLogModule.store).toHaveLength(1)
+    expect(emailDeliveryLogModule.store[0]?.status).toBe("failed")
+    expect(isOrderConfirmationEmailLocallyRecorded(emailDeliveryLogModule.store[0])).toBe(
+      true
+    )
+  })
 })

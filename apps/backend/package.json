@@ -41,6 +41,7 @@
     "posthog-node": "^5.38.2",
     "react-i18next": "13.5.0",
     "react-router-dom": "6.30.3",
+    "resend": "^4.8.0",
     "stripe": "19.1.0",
     "zod": "4.2.0"
   },

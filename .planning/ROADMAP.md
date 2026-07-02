@@ -20,8 +20,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Stripe Webhook Ingestion & Idempotency** - Raw-body signature-verified `/hooks/stripe` + WebhookEventLog DB-level dedup
 - [x] **Phase 6: Idempotent Webhook-Driven Order Creation** - Order created only from `payment_confirmed_by_webhook` PaymentAttempt with `order_id = null`, idempotent on payment_intent_id, decoupled state
 - [x] **Phase 7: Analytics Outbox (purchase_completed)** - Durable local outbox written with the Order + async PostHog relay
-- [ ] **Phase 8: Transactional Email (Resend)** - Idempotent confirmation email after confirmed Order + durable local `purchase_completed`, before the Gelato attempt *(planned; awaiting manual review; execution blocked)*
-- [ ] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(blocked: depends on Phase 7 + Phase 8; not started)*
+- [x] **Phase 8: Transactional Email (Resend)** - Idempotent confirmation email after confirmed Order + durable local `purchase_completed`, before the Gelato attempt *(complete; closed 2026-07-01)*
+- [ ] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(planning-ready; not started; execution blocked until explicit human approval)*
 - [ ] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route
 - [ ] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow
 - [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests
@@ -306,7 +306,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 7
 **Requirements**: EMAIL-01, EMAIL-02
-**Manual gate:** Phase 08 is planned and awaiting manual review. Phase 07 is complete (closed 2026-07-01). Phase 08 execution is blocked until explicit human approval. Phase 09 must not start until Phase 08 is accepted and separately approved.
+**Manual gate:** Phase 08 is complete and accepted at the manual gate on 2026-07-01. Phase 09 may be planned next, but execution remains blocked until explicit human approval.
 **Success Criteria** (what must be TRUE):
 
   1. A confirmation email is sent via Resend only after a confirmed Order and durable local `purchase_completed` exist, and before any Gelato fulfillment attempt.
@@ -314,20 +314,22 @@ Plans:
   3. Redelivery/retry does not send a duplicate email (local idempotency + Resend `idempotencyKey` guard verified).
   4. Resend success is not required to validate the Order; email failure is retried/dead-lettered without changing the Order birth rule.
 
-**Plans**: 3 planned / 0 executed
+**Plans**: 3/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 08-01-PLAN.md - EmailDeliveryLog contract, model, idempotency and migration draft
+- [x] 08-01-PLAN.md - EmailDeliveryLog contract, model, idempotency and migration draft
 
 **Wave 2** *(blocked on Wave 1 manual gate)*
 
-- [ ] 08-02-PLAN.md - Local confirmation-email enqueue after Order + purchase_completed, with real runtime module registration and fail-closed behavior if `EmailDeliveryLog` is unavailable
+- [x] 08-02-PLAN.md - Local confirmation-email enqueue after Order + purchase_completed, with real runtime module registration and fail-closed behavior if `EmailDeliveryLog` is unavailable
 
 **Wave 3** *(blocked on Wave 2 manual gate)*
 
-- [ ] 08-03-PLAN.md - Async Resend relay, retry, dead-letter and final validation
+- [x] 08-03-PLAN.md - Async Resend relay, retry, dead-letter and final validation
+
+**Closure status (2026-07-01):** Phase 08 is complete. `08-01` through `08-03` were executed and verified (unit: 41/41; HTTP filtered: 4/4; build PASS; negative greps PASS; `git diff --check` PASS). `EMAIL-01` and `EMAIL-02` are complete. The accepted outcome is: confirmation e-mail enqueued locally after confirmed Order + durable local `purchase_completed`; async Resend relay with retry/backoff/dead-letter; idempotency key `order-confirmation/{order_id}`; `Order.email` as sole recipient source; full e-mail not persisted in `EmailDeliveryLog`; Resend is not a gate of Order; `status = sent` is not required to validate Order; future automatic Gelato requires `EmailDeliveryLog(order_confirmation).status = sent` or explicit operational decision; `dead_letter` never authorizes automatic Gelato; Order birth rule unchanged. `resend@^4.8.0` added (resolved `4.8.0`); root `package-lock.json` updated by workspace npm. No Resend real call, real e-mail, PostHog real call, Gelato, fulfillment, refund, exchange, tracking, Stripe CLI smoke, or real migration execution. Human review accepted Phase 08 at the manual gate (`08-03-SUMMARY.md`). Phase 09 may be planned next, but execution remains blocked until explicit human approval.
 
 ### Phase 9: Gelato Fulfillment & Webhook
 
@@ -335,7 +337,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 7, Phase 8
 **Requirements**: FUL-01, FUL-02, FUL-03, FUL-04, WHK-03
-**Manual gate:** Phase 09 is not started and remains blocked until Phase 7 + Phase 8 are complete and explicit human approval is given for Phase 09 execution.
+**Manual gate:** Phase 09 is not started and remains blocked until explicit human approval is given for Phase 09 execution. Required dependencies (Phase 7 + Phase 8) are complete.
 **Success Criteria** (what must be TRUE):
 
   1. Gelato fulfillment is triggered only when a confirmed Order and a durable local `purchase_completed` record both exist.
@@ -402,8 +404,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Stripe Webhook Ingestion & Idempotency | 4/4 | Complete | 2026-06-30 |
 | 6. Idempotent Webhook-Driven Order Creation | 5/5 | Complete | 2026-06-30 |
 | 7. Analytics Outbox (purchase_completed) | 3/3 | Complete | 2026-07-01 |
-| 8. Transactional Email (Resend) | 0/3 | Planned (awaiting manual review; execution blocked) | - |
-| 9. Gelato Fulfillment & Webhook | 0/TBD | Not started (blocked: Phase 7 + Phase 8) | - |
+| 8. Transactional Email (Resend) | 3/3 | Complete | 2026-07-01 |
+| 9. Gelato Fulfillment & Webhook | 0/TBD | Not started (planning-ready; execution blocked) | - |
 | 10. Secure Guest Tracking | 0/TBD | Not started | - |
 | 11. Refunds & Exchanges (Admin) | 0/TBD | Not started | - |
 | 12. Ops, Audit & Critical Tests | 0/TBD | Not started | - |

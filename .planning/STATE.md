@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 08
-current_phase_name: Transactional Email (Resend)
-status: phase-08-planned-awaiting-manual-review
-stopped_at: Phase 08 planned at manual gate; execution blocked until explicit human approval; Phase 09 not started
-last_updated: "2026-07-01T17:01:09-03:00"
+current_phase: 09
+current_phase_name: Gelato Fulfillment & Webhook
+status: phase-08-complete-phase-09-planning-ready
+stopped_at: Phase 08 closed at manual gate; Phase 09 planning-ready; execution blocked until explicit human approval
+last_updated: "2026-07-01T22:00:00-03:00"
 last_activity: 2026-07-01
-last_activity_desc: Phase 08 planning-only documentary correction applied for Transactional Email (Resend); execution blocked at manual gate
+last_activity_desc: Phase 08 documentary closure after accepted 08-01..08-03 evidence; Phase 09 planning-ready only, execution blocked
 progress:
   total_phases: 12
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 38
-  completed_plans: 35
-  percent: 58
+  completed_plans: 38
+  percent: 67
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 08 — Transactional Email (Resend) is planned and awaiting manual review. Execution remains blocked until explicit human approval.
+**Current focus:** Phase 08 — Transactional Email (Resend) is complete and closed at the manual gate. Phase 09 — Gelato Fulfillment & Webhook is planning-ready only; execution remains blocked until explicit human approval.
 
 ## Execution Policy
 
@@ -43,26 +43,26 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 08 planning is complete and stopped at the manual gate (`08-CONTEXT.md`, `08-RESEARCH.md`, `08-VALIDATION.md`, `08-01-PLAN.md`, `08-02-PLAN.md`, `08-03-PLAN.md`). **Hard constraint preserved:** Order creation consumes only `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 08 planning does not change the Order birth rule. **Phase 08 execution blocked until explicit human approval.** **Phase 09 execution blocked until explicit human approval and required dependencies (Phase 7 + Phase 8).**
+**Current gate:** Phase 08 is complete and accepted at the manual gate (`08-CLOSURE.md`, `08-03-SUMMARY.md`). **Hard constraint preserved:** Order creation consumes only `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 08 did not change the Order birth rule. **Phase 09 execution blocked until explicit human approval.**
 
 **Branch policy:**
 
-`git.branching_strategy` is `phase` (GSD-supported). Active branch (verified 2026-07-01 via `git branch --show-current`): `gsd/phase-04-stripe-payments-payment-attempt` (`phase_branch_template`: `gsd/phase-{phase}-{slug}`). **Branch-name drift:** work through Phases 05–07 landed on this branch without rename. Before executing `08-01`, make an explicit branch decision: Either realign to a Phase 08 branch or explicitly continue on the current cumulative branch. Do not change branches during this documentary correction cycle.
+`git.branching_strategy` is `phase` (GSD-supported). Active branch (verified 2026-07-01 via `git branch --show-current`): `gsd/phase-04-stripe-payments-payment-attempt` (`phase_branch_template`: `gsd/phase-{phase}-{slug}`). **Branch-name drift:** work through Phases 05–08 landed on this cumulative branch without rename; Phase 08 execution and closure accepted on that branch. Before planning or executing Phase 09, make an explicit branch decision: either realign to a Phase 09 branch or explicitly continue on the current cumulative branch.
 
 ## Current Position
 
-Phase: 08 (Transactional Email / Resend) — planned, awaiting manual review
-Plan: 08-01, 08-02, 08-03 planned; execution not started
-Status: Phase 08 execution blocked pending explicit human approval
-Last activity: 2026-07-01 - Phase 08 planning-only artifacts created and stopped at manual gate
+Phase: 09 (Gelato Fulfillment & Webhook) — planning-ready, execution blocked
+Plan: Phase 09 not planned yet
+Status: Phase 08 complete; Phase 09 execution blocked pending explicit human approval
+Last activity: 2026-07-01 - Phase 08 documentary closure after accepted 08-01..08-03 evidence
 
-Progress: [██████----] 58%
+Progress: [████████--] 67%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 35 / 38 planned
+- Total plans completed: 38 / 38 planned
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -77,7 +77,8 @@ Progress: [██████----] 58%
 | 05. Stripe Webhook Ingestion & Idempotency | 4 executed / 4 planned | Complete (closed 2026-06-30) | — |
 | 06. Idempotent Webhook-Driven Order Creation | 5 executed / 5 planned | Complete (closed 2026-06-30) | — |
 | 07. Analytics Outbox (`purchase_completed`) | 3 executed / 3 planned | Complete (closed 2026-07-01) | — |
-| 08. Transactional Email (Resend) | 0 executed / 3 planned | Planned (manual review; execution blocked) | — |
+| 08. Transactional Email (Resend) | 3 executed / 3 planned | Complete (closed 2026-07-01) | — |
+| 09. Gelato Fulfillment & Webhook | 0 / TBD | Not started (planning-ready; execution blocked) | — |
 
 **Recent Trend:**
 
@@ -139,6 +140,8 @@ Recent decisions affecting current work:
 - [Phase 07 execution]: Plans `07-01`..`07-03` completed under manual gating. Final validation closed with 35 unit tests, 3 filtered HTTP integration tests, build PASS, negative greps PASS, and `git diff --check` PASS. `purchase_completed` is durably recorded in `AnalyticsEventLog` on accepted Order success; local downstream gate accepts `recorded | queued | sending | sent | failed | dead_letter`; async PostHog relay with retry/backoff/dead-letter; PostHog is not a business gate and `status = sent` is not a downstream requirement. `posthog-node@^5.38.2` added (resolved `5.39.2`); root `package-lock.json` updated by workspace npm. No PostHog real call, Email, Gelato, fulfillment, refund, tracking, Stripe CLI smoke, or real migration execution.
 - [Phase 07 closure]: Human review accepted Phase 07 at manual gate on 2026-07-01 (evidence: `07-03-SUMMARY.md`, `07-CLOSURE.md`, 35/35 unit, 3/3 HTTP filtered, build PASS, negative greps PASS). `ANL-01`, `ANL-02`, and `ANL-03` are complete. Phase 08 may be planned next, but execution is blocked until explicit human approval. Phase 09 execution blocked until explicit human approval and required dependencies.
 - [Phase 08 planning]: Planning-only artifacts created for Transactional Email (Resend): `08-CONTEXT.md`, `08-RESEARCH.md`, `08-VALIDATION.md`, and three slices `08-01`..`08-03`. The plan defines `EmailDeliveryLog`, idempotency key `order-confirmation/{order_id}`, local enqueue after confirmed Order + durable local `purchase_completed`, canonical recipient source `Order.email`, async Resend relay with retry/backoff/dead-letter, and negative proofs excluding Gelato, fulfillment, refund, exchange, tracking, Stripe CLI smoke and migration application. No runtime implementation, tests, migrations, install, package/lockfile change, Resend call, real e-mail, PostHog call, Gelato, fulfillment, refund, exchange or tracking work was started during planning.
+- [Phase 08 execution]: Plans `08-01`..`08-03` completed under manual gating. Final validation closed with 41 unit tests, 4 filtered HTTP integration tests, build PASS, negative greps PASS, and `git diff --check` PASS. Confirmation e-mail is enqueued locally after accepted Order success + durable local `purchase_completed`; async Resend relay with retry/backoff/dead-letter; idempotency key `order-confirmation/{order_id}`; `Order.email` sole recipient source; full e-mail not persisted in `EmailDeliveryLog`; Resend is not a gate of Order; `status = sent` is not required to validate Order; future automatic Gelato requires `EmailDeliveryLog(order_confirmation).status = sent` or explicit operational decision; `dead_letter` never authorizes automatic Gelato. `resend@^4.8.0` added (resolved `4.8.0`); root `package-lock.json` updated by workspace npm. No Resend real call, real e-mail, PostHog real call, Gelato, fulfillment, refund, exchange, tracking, Stripe CLI smoke, or real migration execution.
+- [Phase 08 closure]: Human review accepted Phase 08 at manual gate on 2026-07-01 (evidence: `08-03-SUMMARY.md`, `08-CLOSURE.md`, 41/41 unit, 4/4 HTTP filtered, build PASS, negative greps PASS). `EMAIL-01` and `EMAIL-02` are complete. Phase 09 may be planned next, but execution is blocked until explicit human approval.
 
 ### Pending Todos
 
@@ -165,10 +168,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-01T16:42:40-03:00
-Stopped at: Phase 08 planned at manual gate; execution blocked
-Resume file: `.planning/phases/08-transactional-email-resend/08-VALIDATION.md`
-Next permitted step: Human review of Phase 08 planning artifacts. Phase 08 execution remains blocked until a separate approval gate. **Phase 09 execution blocked until explicit human approval and required dependencies (Phase 7 + Phase 8).**
+Last session: 2026-07-01T22:00:00-03:00
+Stopped at: Phase 08 closed at manual gate; Phase 09 planning-ready; execution blocked
+Resume file: `.planning/phases/08-transactional-email-resend/08-CLOSURE.md`
+Next permitted step: Human review of Phase 08 closure. Phase 09 may be planned in a separate manual-review-gated cycle only. **Phase 09 execution blocked until explicit human approval.**
 
 ## Quick Tasks Completed
 
@@ -190,3 +193,4 @@ Next permitted step: Human review of Phase 08 planning artifacts. Phase 08 execu
 | 2026-07-01 | phase-07-planning | Planned Phase 07 into 3 manual-review-gated slices plus context, research and validation artifacts; later corrected payload grep scope and future PostHog lockfile handling documentally; no runtime, tests, migrations, Stripe CLI smoke, PostHog call, Email, Gelato, fulfillment, refund or tracking work started. |
 | 2026-07-01 | phase-07-closure | Closed Phase 07 documentally after accepted `07-01`..`07-03` evidence; `ANL-01`..`ANL-03` complete; Phase 08 planning-ready only, execution blocked; Phase 09 blocked by dependencies. |
 | 2026-07-01 | phase-08-planning | Planned Phase 08 into 3 manual-review-gated slices plus context, research and validation artifacts; no runtime, tests, migrations, install, Resend call, e-mail, PostHog call, Gelato, fulfillment, refund, exchange, tracking or Stripe CLI smoke started. |
+| 2026-07-01 | phase-08-closure | Closed Phase 08 documentally after accepted `08-01`..`08-03` evidence; `EMAIL-01`..`EMAIL-02` complete; Phase 09 planning-ready only, execution blocked. |
