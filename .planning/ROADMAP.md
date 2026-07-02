@@ -21,8 +21,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Idempotent Webhook-Driven Order Creation** - Order created only from `payment_confirmed_by_webhook` PaymentAttempt with `order_id = null`, idempotent on payment_intent_id, decoupled state
 - [x] **Phase 7: Analytics Outbox (purchase_completed)** - Durable local outbox written with the Order + async PostHog relay
 - [x] **Phase 8: Transactional Email (Resend)** - Idempotent confirmation email after confirmed Order + durable local `purchase_completed`, before the Gelato attempt *(complete; closed 2026-07-01)*
-- [ ] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(planned; awaiting manual review; execution blocked until explicit human approval)*
-- [ ] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route
+- [x] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(complete; closed 2026-07-02)*
+- [ ] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route *(not started; blocked until explicit approval)*
 - [ ] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow
 - [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests
 
@@ -337,7 +337,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 7, Phase 8
 **Requirements**: FUL-01, FUL-02, FUL-03, FUL-04, WHK-03
-**Manual gate:** Phase 09 planning is complete; execution is not started and remains blocked until explicit human approval is given for Phase 09 execution. Required dependencies (Phase 7 + Phase 8) are complete.
+**Manual gate:** Phase 09 is complete and accepted at the manual gate on 2026-07-02. `FUL-01`..`FUL-04` and `WHK-03` are complete. Phase 10 may be planned next, but execution remains blocked until explicit human approval.
 **Success Criteria** (what must be TRUE):
 
   1. Gelato fulfillment is triggered only when:
@@ -350,30 +350,30 @@ Plans:
   4. Transient Gelato failures are retried; persistent failures mark `GelatoFulfillment.status = dead_letter` and `requires_operator_attention = true` with sanitized operator alert fields rather than being silently lost. This is the Phase 09 minimal alert contract and does not start the broad Phase 12 `OperationalAlert` module.
   5. `EmailDeliveryLog.dead_letter` never authorizes automatic Gelato dispatch.
 
-**Plans**: 0 executed / 5 planned
+**Plans**: 5/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 09-01-PLAN.md - Gelato fulfillment contract, local model, idempotency and single-active guard
+- [x] 09-01-PLAN.md - Gelato fulfillment contract, local model, idempotency and single-active guard
 
 **Wave 2** *(blocked on Wave 1 manual gate)*
 
-- [ ] 09-02-PLAN.md - Local Gelato eligibility gate after Order + purchase_completed + EmailDeliveryLog sent
+- [x] 09-02-PLAN.md - Local Gelato eligibility gate after Order + purchase_completed + EmailDeliveryLog sent
 
 **Wave 3** *(blocked on Wave 2 manual gate)*
 
-- [ ] 09-03-PLAN.md - Async Gelato dispatch relay with eligibility scan, retry/backoff/dead-letter and local operator alert
+- [x] 09-03-PLAN.md - Async Gelato dispatch relay with eligibility scan, retry/backoff/dead-letter and local operator alert
 
 **Wave 4** *(blocked on Wave 3 manual gate)*
 
-- [ ] 09-04-PLAN.md - Gelato webhook ingestion, deduplication, authenticity, status/tracking update contract
+- [x] 09-04-PLAN.md - Gelato webhook ingestion, deduplication, authenticity, status/tracking update contract
 
 **Wave 5** *(blocked on Wave 4 manual gate)*
 
-- [ ] 09-05-PLAN.md - Final validation, invariant tests and negative proofs
+- [x] 09-05-PLAN.md - Final validation, invariant tests and negative proofs
 
-**Planning status (2026-07-02):** Phase 09 planning artifacts were created on branch `gsd/phase-09-gelato-fulfillment-webhook` after the explicit branch decision **B) Criar/usar branch gsd/phase-09-gelato-fulfillment-webhook**. Documentary correction added the hard e-mail `sent` gate, relay eligibility scan after e-mail delivery, real runtime module registration requirement for `gelato_fulfillment`, build requirements for runtime/config slices, and the Phase 09 minimal operator-alert contract on `GelatoFulfillment`. Planning only: no runtime implementation, tests, migrations, install, package/lockfile change, real Gelato call/order/webhook/fulfillment, Resend call, PostHog call, Stripe CLI smoke, tracking public, refund, exchange or Phase 10 work was started. Execution remains blocked until explicit human approval. Research blocker preserved: official Gelato webhook signature/authenticity scheme must be confirmed before accepting a public webhook route, or an explicit operational decision must approve an app-level fail-closed authenticity mechanism.
+**Closure status (2026-07-02):** Phase 09 is complete/closed. `09-01` through `09-05` were executed and verified on branch `gsd/phase-09-gelato-fulfillment-webhook` (branch decision B). Validation evidence: unit 75/75, HTTP filtered 11/11, HTTP Gelato webhook 6/6 — **92 tests PASS**, build PASS. `FUL-01`, `FUL-02`, `FUL-03`, `FUL-04`, and `WHK-03` are complete. Accepted outcome includes: local `GelatoFulfillment` aggregate; single-active guard per Order; `gelato-dispatch:{order_id}` local idempotency; eligibility after confirmed Order + durable local `purchase_completed` + `EmailDeliveryLog(order_confirmation).status = sent`; async Gelato dispatch relay with retry/backoff/dead-letter and minimal operator alert fields; stale in-flight recovery without blind redispatch; `POST /hooks/gelato` with HTTP Header fail-closed auth; `WebhookEventLog` provider=gelato with dedupe by `payload.id`; MVP event `order_status_updated` only; status/tracking update into internal fulfillment summary only. No real Gelato call/order/webhook smoke, no migration applied, no tracking public route, no TrackingAccessToken, no refund, exchange, Resend real, PostHog real, or Stripe CLI smoke. Migration real, production Gelato dispatch, and production webhook dashboard smoke remain separate future gates. Human review accepted Phase 09 at the manual gate (`09-05-SUMMARY.md`, `09-CLOSURE.md`). Phase 10 is **not started** and blocked until explicit human approval.
 
 ### Phase 10: Secure Guest Tracking
 
@@ -433,8 +433,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Idempotent Webhook-Driven Order Creation | 5/5 | Complete | 2026-06-30 |
 | 7. Analytics Outbox (purchase_completed) | 3/3 | Complete | 2026-07-01 |
 | 8. Transactional Email (Resend) | 3/3 | Complete | 2026-07-01 |
-| 9. Gelato Fulfillment & Webhook | 0/5 planned | Planned (awaiting manual review; execution blocked) | - |
-| 10. Secure Guest Tracking | 0/TBD | Not started | - |
+| 9. Gelato Fulfillment & Webhook | 5/5 | Complete / Closed | 2026-07-02 |
+| 10. Secure Guest Tracking | 0/TBD | Not started (blocked until explicit approval) | - |
 | 11. Refunds & Exchanges (Admin) | 0/TBD | Not started | - |
 | 12. Ops, Audit & Critical Tests | 0/TBD | Not started | - |
 
