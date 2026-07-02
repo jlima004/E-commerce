@@ -22,8 +22,10 @@ import {
   buildRecipientEmailAudit,
   buildEmailResendRelayFailureUpdate,
   computeEmailResendRelayBackoffMs,
+  EMAIL_RESEND_RELAY_IN_FLIGHT_STALE_MS,
   isEmailResendRelayDue,
   isEmailResendRelayEligibleStatus,
+  isEmailResendRelayStaleInFlight,
   sanitizeEmailDeliveryError,
   sanitizeEmailDeliveryMetadata,
 } from "../service"
@@ -442,6 +444,12 @@ describe("EmailDeliveryLog resend relay helpers", () => {
     expect(
       isEmailResendRelayEligibleStatus(EMAIL_DELIVERY_LOG_STATUS.DEAD_LETTER)
     ).toBe(false)
+    expect(isEmailResendRelayEligibleStatus(EMAIL_DELIVERY_LOG_STATUS.QUEUED)).toBe(
+      false
+    )
+    expect(
+      isEmailResendRelayEligibleStatus(EMAIL_DELIVERY_LOG_STATUS.SENDING)
+    ).toBe(false)
   })
 
   it("aplica backoff exponencial com teto", () => {
@@ -456,6 +464,72 @@ describe("EmailDeliveryLog resend relay helpers", () => {
     expect(isEmailResendRelayDue(null, now)).toBe(true)
     expect(isEmailResendRelayDue("2026-07-01T11:59:00.000Z", now)).toBe(true)
     expect(isEmailResendRelayDue("2026-07-01T12:01:00.000Z", now)).toBe(false)
+  })
+
+  it("recupera somente queued/sending stale por timestamps locais", () => {
+    const now = new Date("2026-07-01T12:30:00.000Z")
+    const stale = new Date(
+      now.getTime() - EMAIL_RESEND_RELAY_IN_FLIGHT_STALE_MS - 1
+    ).toISOString()
+    const recent = new Date(
+      now.getTime() - EMAIL_RESEND_RELAY_IN_FLIGHT_STALE_MS + 1
+    ).toISOString()
+
+    expect(
+      isEmailResendRelayStaleInFlight(
+        {
+          status: EMAIL_DELIVERY_LOG_STATUS.QUEUED,
+          queued_at: recent,
+          sending_started_at: null,
+          updated_at: stale,
+        },
+        now
+      )
+    ).toBe(false)
+    expect(
+      isEmailResendRelayStaleInFlight(
+        {
+          status: EMAIL_DELIVERY_LOG_STATUS.QUEUED,
+          queued_at: null,
+          sending_started_at: null,
+          updated_at: stale,
+        },
+        now
+      )
+    ).toBe(true)
+    expect(
+      isEmailResendRelayStaleInFlight(
+        {
+          status: EMAIL_DELIVERY_LOG_STATUS.SENDING,
+          queued_at: recent,
+          sending_started_at: recent,
+          updated_at: stale,
+        },
+        now
+      )
+    ).toBe(false)
+    expect(
+      isEmailResendRelayStaleInFlight(
+        {
+          status: EMAIL_DELIVERY_LOG_STATUS.SENDING,
+          queued_at: recent,
+          sending_started_at: stale,
+          updated_at: recent,
+        },
+        now
+      )
+    ).toBe(true)
+    expect(
+      isEmailResendRelayStaleInFlight(
+        {
+          status: EMAIL_DELIVERY_LOG_STATUS.SENT,
+          queued_at: stale,
+          sending_started_at: stale,
+          updated_at: stale,
+        },
+        now
+      )
+    ).toBe(false)
   })
 
   it("marca dead_letter apos esgotar tentativas", () => {

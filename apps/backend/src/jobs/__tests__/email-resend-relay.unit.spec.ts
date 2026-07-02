@@ -452,6 +452,155 @@ describe("runEmailResendRelay", () => {
     })
     expect(Object.keys(emailModule.store[0] ?? {})).not.toContain("payment_attempt")
   })
+
+  it("nao reprocessa queued ou sending recentes", async () => {
+    const emailModule = createEmailModule([
+      buildRecord({
+        id: "emlog_relay_queued_recent",
+        status: EMAIL_DELIVERY_LOG_STATUS.QUEUED,
+        queued_at: "2026-07-01T12:20:00.000Z",
+        updated_at: "2026-07-01T12:20:00.000Z",
+      }),
+      buildRecord({
+        id: "emlog_relay_sending_recent",
+        status: EMAIL_DELIVERY_LOG_STATUS.SENDING,
+        sending_started_at: "2026-07-01T12:21:00.000Z",
+        updated_at: "2026-07-01T12:21:00.000Z",
+      }),
+    ])
+    const orderModule = createOrderModule([
+      {
+        id: "order_relay_01",
+        email: ORDER_EMAIL,
+      },
+    ])
+    const send = jest.fn()
+
+    const result = await runEmailResendRelay(
+      createContainer({ emailModule, orderModule }),
+      {
+        now: () => new Date("2026-07-01T12:30:00.000Z"),
+        config: {
+          apiKey: API_KEY,
+          fromEmail: FROM_EMAIL,
+        },
+        createClient: () => ({
+          send,
+        }),
+      }
+    )
+
+    expect(result.processed).toBe(0)
+    expect(send).not.toHaveBeenCalled()
+    expect(emailModule.store.map((record) => record.status)).toEqual([
+      EMAIL_DELIVERY_LOG_STATUS.QUEUED,
+      EMAIL_DELIVERY_LOG_STATUS.SENDING,
+    ])
+  })
+
+  it("reprocessa queued e sending stale mantendo idempotencyKey canonica", async () => {
+    const emailModule = createEmailModule([
+      buildRecord({
+        id: "emlog_relay_queued_stale",
+        status: EMAIL_DELIVERY_LOG_STATUS.QUEUED,
+        queued_at: "2026-07-01T12:00:00.000Z",
+        updated_at: "2026-07-01T12:00:00.000Z",
+      }),
+      buildRecord({
+        id: "emlog_relay_sending_stale",
+        order_id: "order_relay_02",
+        idempotency_key: "order-confirmation/order_relay_02",
+        status: EMAIL_DELIVERY_LOG_STATUS.SENDING,
+        queued_at: "2026-07-01T12:01:00.000Z",
+        sending_started_at: "2026-07-01T12:01:00.000Z",
+        updated_at: "2026-07-01T12:01:00.000Z",
+        payload: {
+          ...buildRecord().payload,
+          order_id: "order_relay_02",
+        },
+      }),
+    ])
+    const orderModule = createOrderModule([
+      {
+        id: "order_relay_01",
+        email: ORDER_EMAIL,
+      },
+      {
+        id: "order_relay_02",
+        email: ORDER_EMAIL,
+      },
+    ])
+    const send = jest.fn(async () => ({
+      providerMessageId: "provider_msg_stale",
+    }))
+
+    const result = await runEmailResendRelay(
+      createContainer({ emailModule, orderModule }),
+      {
+        now: () => new Date("2026-07-01T12:30:00.000Z"),
+        config: {
+          apiKey: API_KEY,
+          fromEmail: FROM_EMAIL,
+        },
+        createClient: () => ({
+          send,
+        }),
+      }
+    )
+
+    expect(result).toEqual({
+      processed: 2,
+      sent: 2,
+      failed: 0,
+      dead_lettered: 0,
+      skipped_missing_config: false,
+      skipped_disabled: false,
+    })
+    expect(send).toHaveBeenNthCalledWith(1, expect.any(Object), {
+      idempotencyKey: "order-confirmation/order_relay_01",
+    })
+    expect(send).toHaveBeenNthCalledWith(2, expect.any(Object), {
+      idempotencyKey: "order-confirmation/order_relay_02",
+    })
+    expect(emailModule.store.map((record) => record.status)).toEqual([
+      EMAIL_DELIVERY_LOG_STATUS.SENT,
+      EMAIL_DELIVERY_LOG_STATUS.SENT,
+    ])
+  })
+
+  it("nunca reprocessa sent ou dead_letter", async () => {
+    const emailModule = createEmailModule([
+      buildRecord({
+        id: "emlog_relay_sent",
+        status: EMAIL_DELIVERY_LOG_STATUS.SENT,
+        sent_at: "2026-07-01T12:00:00.000Z",
+      }),
+      buildRecord({
+        id: "emlog_relay_dead",
+        status: EMAIL_DELIVERY_LOG_STATUS.DEAD_LETTER,
+        dead_lettered_at: "2026-07-01T12:00:00.000Z",
+      }),
+    ])
+    const send = jest.fn()
+
+    const result = await runEmailResendRelay(createContainer({ emailModule }), {
+      now: () => new Date("2026-07-01T12:30:00.000Z"),
+      config: {
+        apiKey: API_KEY,
+        fromEmail: FROM_EMAIL,
+      },
+      createClient: () => ({
+        send,
+      }),
+    })
+
+    expect(result.processed).toBe(0)
+    expect(send).not.toHaveBeenCalled()
+    expect(emailModule.store.map((record) => record.status)).toEqual([
+      EMAIL_DELIVERY_LOG_STATUS.SENT,
+      EMAIL_DELIVERY_LOG_STATUS.DEAD_LETTER,
+    ])
+  })
 })
 
 describe("email resend relay helpers", () => {
