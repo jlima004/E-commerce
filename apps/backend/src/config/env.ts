@@ -52,6 +52,11 @@ export type AppEnv = {
   RESEND_FROM_EMAIL: string | undefined
   RESEND_ORDER_CONFIRMATION_ENABLED: boolean
   RESEND_REPLY_TO: string | undefined
+  GELATO_DISPATCH_ENABLED: boolean
+  GELATO_API_KEY: string | undefined
+  GELATO_SHIPMENT_METHOD_UID: string | undefined
+  GELATO_WEBHOOK_AUTH_HEADER_NAME: string
+  GELATO_WEBHOOK_SECRET: string | undefined
 }
 
 function isProduction(input: Record<string, string | undefined>): boolean {
@@ -302,6 +307,11 @@ export function parseEnv(
     RESEND_FROM_EMAIL: z.string().optional(),
     RESEND_ORDER_CONFIRMATION_ENABLED: z.string().optional(),
     RESEND_REPLY_TO: z.string().optional(),
+    GELATO_DISPATCH_ENABLED: z.string().optional(),
+    GELATO_API_KEY: z.string().optional(),
+    GELATO_SHIPMENT_METHOD_UID: z.string().optional(),
+    GELATO_WEBHOOK_AUTH_HEADER_NAME: z.string().optional(),
+    GELATO_WEBHOOK_SECRET: z.string().optional(),
   })
 
   const parsed = baseSchema.safeParse(normalized)
@@ -322,6 +332,10 @@ export function parseEnv(
   const resendOrderConfirmationEnabled = parseBoolean(
     normalized.RESEND_ORDER_CONFIRMATION_ENABLED,
     "RESEND_ORDER_CONFIRMATION_ENABLED"
+  )
+  const gelatoDispatchEnabled = parseBoolean(
+    normalized.GELATO_DISPATCH_ENABLED,
+    "GELATO_DISPATCH_ENABLED"
   )
 
   return {
@@ -371,6 +385,14 @@ export function parseEnv(
     RESEND_FROM_EMAIL: data.RESEND_FROM_EMAIL?.trim() || undefined,
     RESEND_ORDER_CONFIRMATION_ENABLED: resendOrderConfirmationEnabled,
     RESEND_REPLY_TO: data.RESEND_REPLY_TO?.trim() || undefined,
+    GELATO_DISPATCH_ENABLED: gelatoDispatchEnabled,
+    GELATO_API_KEY: data.GELATO_API_KEY?.trim() || undefined,
+    GELATO_SHIPMENT_METHOD_UID:
+      data.GELATO_SHIPMENT_METHOD_UID?.trim() || undefined,
+    GELATO_WEBHOOK_AUTH_HEADER_NAME:
+      data.GELATO_WEBHOOK_AUTH_HEADER_NAME?.trim() ||
+      "X-GELATO-WEBHOOK-SECRET",
+    GELATO_WEBHOOK_SECRET: data.GELATO_WEBHOOK_SECRET?.trim() || undefined,
   }
 }
 

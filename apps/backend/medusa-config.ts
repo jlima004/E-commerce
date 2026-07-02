@@ -43,6 +43,10 @@ module.exports = defineConfig({
       resolve: "./src/modules/email-delivery-log",
     },
     {
+      key: "gelato_fulfillment",
+      resolve: "./src/modules/gelato-fulfillment",
+    },
+    {
       resolve: "./src/modules/payment-attempt",
     },
   ],
