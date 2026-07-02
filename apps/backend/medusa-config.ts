@@ -39,6 +39,10 @@ module.exports = defineConfig({
       resolve: "./src/modules/analytics-event-log",
     },
     {
+      key: "email_delivery_log",
+      resolve: "./src/modules/email-delivery-log",
+    },
+    {
       resolve: "./src/modules/payment-attempt",
     },
   ],

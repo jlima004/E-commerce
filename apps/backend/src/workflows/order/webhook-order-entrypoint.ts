@@ -40,6 +40,18 @@ import {
   isPurchaseCompletedLocallyRecorded,
 } from "../../modules/analytics-event-log/service"
 import type { AnalyticsEventLogRecord } from "../../modules/analytics-event-log/types"
+import { EMAIL_DELIVERY_LOG_MODULE } from "../../modules/email-delivery-log"
+import {
+  buildEmailDeliveryLogRecord,
+  buildOrderConfirmationEmailIdempotencyKey,
+  buildOrderConfirmationEmailPayload,
+  isOrderConfirmationEmailLocallyRecorded,
+  resolveOrderConfirmationSupportEmail,
+} from "../../modules/email-delivery-log/service"
+import type {
+  EmailDeliveryLogRecord,
+  OrderConfirmationEmailItemInput,
+} from "../../modules/email-delivery-log/types"
 
 export type CreateOrderFromConfirmedPaymentAttemptInput = {
   payment_attempt_id: string
@@ -132,9 +144,23 @@ type AnalyticsEventLogModuleLike = {
   ) => Promise<AnalyticsEventLogRecord[] | AnalyticsEventLogRecord>
 }
 
+type EmailDeliveryLogModuleLike = {
+  listEmailDeliveryLogs?: (
+    filters?: Record<string, unknown>
+  ) => Promise<EmailDeliveryLogRecord[]>
+  createEmailDeliveryLogs?: (
+    data: Record<string, unknown> | Record<string, unknown>[]
+  ) => Promise<EmailDeliveryLogRecord[] | EmailDeliveryLogRecord>
+}
+
 const ANALYTICS_EVENT_LOG_RUNTIME_KEYS = [
   "analytics_event_log",
   ANALYTICS_EVENT_LOG_MODULE,
+] as const
+
+const EMAIL_DELIVERY_LOG_RUNTIME_KEYS = [
+  "email_delivery_log",
+  EMAIL_DELIVERY_LOG_MODULE,
 ] as const
 
 type WorkflowRuntimeOverrides = {
@@ -312,6 +338,36 @@ function resolveAnalyticsEventLogModule(
     throw new OrderCreationEntrypointError(
       "ORDER_ENTRYPOINT_ANALYTICS_EVENT_LOG_MODULE_UNAVAILABLE",
       "Modulo de analytics_event_log nao configurado."
+    )
+  }
+
+  return resolved
+}
+
+function resolveEmailDeliveryLogModule(
+  container: MedusaContainer
+): EmailDeliveryLogModuleLike {
+  const resolved = EMAIL_DELIVERY_LOG_RUNTIME_KEYS.map((key) =>
+    container.resolve(key)
+  )
+    .find((candidate) => {
+      return (
+        Boolean(candidate) &&
+        typeof (candidate as EmailDeliveryLogModuleLike)
+          .listEmailDeliveryLogs === "function" &&
+        typeof (candidate as EmailDeliveryLogModuleLike)
+          .createEmailDeliveryLogs === "function"
+      )
+    }) as EmailDeliveryLogModuleLike | undefined
+
+  if (
+    !resolved ||
+    typeof resolved.listEmailDeliveryLogs !== "function" ||
+    typeof resolved.createEmailDeliveryLogs !== "function"
+  ) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_EMAIL_DELIVERY_LOG_MODULE_UNAVAILABLE",
+      "Modulo de email_delivery_log nao configurado."
     )
   }
 
@@ -718,6 +774,217 @@ async function ensurePurchaseCompletedRecorded(input: {
   }
 }
 
+function buildOrderConfirmationEmailPayloadItems(
+  cart: ConfirmedAttemptCartRecord
+): OrderConfirmationEmailItemInput[] {
+  return cart.items.map((item) => {
+    const sku = item.variant?.sku?.trim()
+
+    if (!sku) {
+      throw new OrderCreationEntrypointError(
+        "ORDER_ENTRYPOINT_EMAIL_ITEM_SKU_REQUIRED",
+        "SKU obrigatoria para o payload local de e-mail."
+      )
+    }
+
+    const unitPrice = normalizeLineItemUnitPrice({
+      item,
+      currencyCode: cart.currency_code,
+    })
+
+    return {
+      sku,
+      quantity: item.quantity,
+      unit_price: unitPrice,
+      subtotal: unitPrice * item.quantity,
+    }
+  })
+}
+
+function buildOrderReference(order: Record<string, unknown>): string {
+  const displayId = order.display_id
+
+  if (typeof displayId === "number" && Number.isFinite(displayId)) {
+    return String(displayId)
+  }
+
+  if (typeof displayId === "string" && displayId.trim().length > 0) {
+    return displayId.trim()
+  }
+
+  const orderId = order.id
+
+  if (typeof orderId === "string" && orderId.trim().length > 0) {
+    return orderId.trim()
+  }
+
+  throw new OrderCreationEntrypointError(
+    "ORDER_ENTRYPOINT_ORDER_REFERENCE_UNAVAILABLE",
+    "Referencia da Order indisponivel."
+  )
+}
+
+async function loadOrderForEmailConfirmation(
+  container: MedusaContainer,
+  orderId: string
+): Promise<Record<string, unknown>> {
+  const orderModule = resolveOrderModule(container)
+  const order = (await orderModule.listOrders?.({ id: orderId }))?.[0] ?? null
+
+  if (!order) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_ORDER_NOT_FOUND",
+      "Order nao encontrada para enqueue local de e-mail."
+    )
+  }
+
+  return order
+}
+
+function extractCanonicalOrderEmail(order: Record<string, unknown>): string {
+  const email = order.email
+
+  if (typeof email !== "string" || email.trim().length === 0) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_ORDER_EMAIL_REQUIRED",
+      "E-mail canonico da Order ausente."
+    )
+  }
+
+  return email.trim()
+}
+
+async function readReusableOrderConfirmationEmailLog(input: {
+  module: EmailDeliveryLogModuleLike
+  idempotencyKey: string
+  orderId: string
+}): Promise<EmailDeliveryLogRecord | null> {
+  const byIdempotency =
+    (await input.module.listEmailDeliveryLogs?.({
+      idempotency_key: input.idempotencyKey,
+    })) ?? []
+  const reusableByIdempotency = byIdempotency.find((log) =>
+    isOrderConfirmationEmailLocallyRecorded(log)
+  )
+
+  if (reusableByIdempotency) {
+    return reusableByIdempotency
+  }
+
+  const byOrder =
+    (await input.module.listEmailDeliveryLogs?.({
+      order_id: input.orderId,
+    })) ?? []
+
+  return (
+    byOrder.find((log) => isOrderConfirmationEmailLocallyRecorded(log)) ?? null
+  )
+}
+
+async function ensureOrderConfirmationEmailRecorded(input: {
+  container: MedusaContainer
+  attempt: PaymentAttemptRecord
+  checkoutCompletionLogId: string
+  paymentIntentId: string
+  orderId: string
+  cart: ConfirmedAttemptCartRecord
+  purchaseCompletedEvent: AnalyticsEventLogRecord | null
+  now: Date
+  correlationId: string | null
+  recoveryOrigin: string | null
+}): Promise<EmailDeliveryLogRecord | null> {
+  if (
+    !input.purchaseCompletedEvent ||
+    !isPurchaseCompletedLocallyRecorded(input.purchaseCompletedEvent)
+  ) {
+    return null
+  }
+
+  const idempotencyKey = buildOrderConfirmationEmailIdempotencyKey({
+    order_id: input.orderId,
+  })
+  const module = resolveEmailDeliveryLogModule(input.container)
+  const existing = await readReusableOrderConfirmationEmailLog({
+    module,
+    idempotencyKey,
+    orderId: input.orderId,
+  })
+
+  if (existing) {
+    return existing
+  }
+
+  const order = await loadOrderForEmailConfirmation(input.container, input.orderId)
+  const recipientEmail = extractCanonicalOrderEmail(order)
+  const payloadItems = buildOrderConfirmationEmailPayloadItems(input.cart)
+  const record = buildEmailDeliveryLogRecord(
+    {
+      email_type: "order_confirmation",
+      template_key: "order_confirmation_v1",
+      template_version: 1,
+      provider: "resend",
+      idempotency_key: idempotencyKey,
+      order_id: input.orderId,
+      cart_id: input.cart.id,
+      payment_attempt_id: input.attempt.id,
+      checkout_completion_log_id: input.checkoutCompletionLogId,
+      analytics_event_log_id: input.purchaseCompletedEvent.id,
+      payment_intent_id: input.paymentIntentId,
+      status: "recorded",
+      recipient_email: recipientEmail,
+      payload: buildOrderConfirmationEmailPayload({
+        order_id: input.orderId,
+        order_reference: buildOrderReference(order),
+        amount: input.attempt.amount,
+        currency_code: input.attempt.currency_code,
+        item_count: payloadItems.length,
+        items: payloadItems,
+        support_email: resolveOrderConfirmationSupportEmail(),
+      }),
+      metadata: {
+        source: "webhook_order_entrypoint",
+        correlation_id: input.correlationId,
+        recovery_origin: input.recoveryOrigin,
+      },
+    },
+    "emlog_order_entrypoint_pending",
+    input.now
+  )
+
+  try {
+    return asArray(await module.createEmailDeliveryLogs?.(record))[0] ?? null
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error
+    }
+
+    return readReusableOrderConfirmationEmailLog({
+      module,
+      idempotencyKey,
+      orderId: input.orderId,
+    })
+  }
+}
+
+async function finalizePostOrderLocalRecords(input: {
+  container: MedusaContainer
+  attempt: PaymentAttemptRecord
+  checkoutCompletionLogId: string
+  paymentIntentId: string
+  orderId: string
+  cart: ConfirmedAttemptCartRecord
+  now: Date
+  correlationId: string | null
+  recoveryOrigin: string | null
+}): Promise<void> {
+  const purchaseCompletedEvent = await ensurePurchaseCompletedRecorded(input)
+
+  await ensureOrderConfirmationEmailRecorded({
+    ...input,
+    purchaseCompletedEvent,
+  })
+}
+
 async function findExistingOrderForCart(
   container: MedusaContainer,
   cartId: string
@@ -865,6 +1132,7 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
 
   assertPaymentAttemptEligibleForOrderCreation(attempt)
   resolveAnalyticsEventLogModule(container)
+  resolveEmailDeliveryLogModule(container)
 
   let claim: Awaited<ReturnType<typeof claimCheckoutCompletionLog>>
 
@@ -905,7 +1173,7 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
         now,
         persistOrderState,
       })
-      await ensurePurchaseCompletedRecorded({
+      await finalizePostOrderLocalRecords({
         container,
         attempt,
         checkoutCompletionLogId: claim.log.id,
@@ -942,7 +1210,7 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
   if (claim.status === "completed" && claim.order_id) {
     await persistOrderState(container, claim.order_id)
     await correlatePaymentAttemptToOrder(container, attempt, claim.order_id, now)
-    await ensurePurchaseCompletedRecorded({
+    await finalizePostOrderLocalRecords({
       container,
       attempt,
       checkoutCompletionLogId: claim.log.id,
@@ -976,7 +1244,7 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       now,
       persistOrderState,
     })
-    await ensurePurchaseCompletedRecorded({
+    await finalizePostOrderLocalRecords({
       container,
       attempt,
       checkoutCompletionLogId: claim.log.id,
@@ -1033,7 +1301,7 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       now,
       persistOrderState,
     })
-    await ensurePurchaseCompletedRecorded({
+    await finalizePostOrderLocalRecords({
       container,
       attempt,
       checkoutCompletionLogId: claim.log.id,

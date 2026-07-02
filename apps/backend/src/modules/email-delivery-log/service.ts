@@ -220,6 +220,41 @@ class EmailDeliveryLogModuleService extends MedusaService({
 
 export default EmailDeliveryLogModuleService
 
+export function isOrderConfirmationEmailLocallyRecorded(
+  log:
+    | Pick<EmailDeliveryLogRecord, "status">
+    | EmailDeliveryStatus
+    | string
+    | null
+    | undefined
+): boolean {
+  const status = typeof log === "string" ? log : log?.status
+
+  if (!status) {
+    return false
+  }
+
+  return EMAIL_DELIVERY_LOG_STATUSES.includes(status as EmailDeliveryStatus)
+}
+
+export function resolveOrderConfirmationSupportEmail(
+  env: Record<string, string | undefined> = process.env as Record<
+    string,
+    string | undefined
+  >
+): string {
+  const configured = env.SUPPORT_EMAIL?.trim()
+
+  if (!configured) {
+    throw new Error("EMAIL_DELIVERY_SUPPORT_EMAIL_NOT_CONFIGURED")
+  }
+
+  return normalizeEmailAddress(
+    configured,
+    "EMAIL_DELIVERY_SUPPORT_EMAIL_INVALID"
+  )
+}
+
 export function assertValidEmailDeliveryEmailType(
   emailType: string
 ): asserts emailType is EmailDeliveryEmailType {
