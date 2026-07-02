@@ -15,6 +15,7 @@ import {
   buildRecipientEmailAudit,
   isOrderConfirmationEmailLocallyRecorded,
 } from "../../src/modules/email-delivery-log/service"
+import { GELATO_FULFILLMENT_MODULE } from "../../src/modules/gelato-fulfillment"
 
 type RequestWithRawBody = MedusaRequest & {
   rawBody?: Buffer | string
@@ -109,6 +110,45 @@ type StoredEmailDeliveryRecord = {
   queued_at?: string | null
   sending_started_at?: string | null
   sent_at?: string | null
+  failed_at?: string | null
+  dead_lettered_at?: string | null
+  created_at: string
+  updated_at: string
+  deleted_at?: string | null
+}
+
+type StoredGelatoFulfillmentRecord = {
+  id: string
+  order_id: string
+  cart_id: string
+  payment_attempt_id: string
+  checkout_completion_log_id: string
+  analytics_event_log_id: string
+  email_delivery_log_id: string
+  idempotency_key: string
+  order_reference_id: string
+  customer_reference_id?: string | null
+  status: string
+  gelato_primary_order_id?: string | null
+  connected_order_ids: string[]
+  request_hash: string
+  request_summary: Record<string, unknown>
+  response_summary?: Record<string, unknown> | null
+  tracking_summary?: Record<string, unknown> | null
+  metadata?: Record<string, unknown> | null
+  attempt_count: number
+  last_error_code?: string | null
+  last_error_message?: string | null
+  next_retry_at?: string | null
+  requires_operator_attention: boolean
+  operator_alert_code?: string | null
+  operator_alert_message?: string | null
+  operator_alerted_at?: string | null
+  recorded_at: string
+  queued_at?: string | null
+  dispatching_started_at?: string | null
+  submitted_at?: string | null
+  accepted_at?: string | null
   failed_at?: string | null
   dead_lettered_at?: string | null
   created_at: string
@@ -578,6 +618,63 @@ function createCartModule(cart: OrderCartRecord) {
   }
 }
 
+function createGelatoFulfillmentModule(
+  records: StoredGelatoFulfillmentRecord[] = [],
+  options: { duplicateOnCreate?: boolean; misconfigured?: boolean } = {}
+) {
+  const store = [...records]
+
+  if (options.misconfigured) {
+    return {
+      listGelatoFulfillments: undefined,
+      createGelatoFulfillments: undefined,
+      store,
+    }
+  }
+
+  return {
+    listGelatoFulfillments: jest.fn(async (filters?: Record<string, unknown>) => {
+      return store.filter((record) => {
+        if (filters?.idempotency_key && record.idempotency_key !== filters.idempotency_key) {
+          return false
+        }
+        if (filters?.order_id && record.order_id !== filters.order_id) {
+          return false
+        }
+
+        return true
+      })
+    }),
+    createGelatoFulfillments: jest.fn(async (input) => {
+      const row = Array.isArray(input) ? input[0] : input
+
+      if (options.duplicateOnCreate) {
+        if (store.length === 0) {
+          store.push({
+            ...row,
+            id: "gelful_http_existing",
+            created_at: "2026-07-01T12:31:00.000Z",
+            updated_at: "2026-07-01T12:31:00.000Z",
+            deleted_at: null,
+          } as StoredGelatoFulfillmentRecord)
+        }
+        throw new Error("duplicate key value violates unique constraint")
+      }
+
+      const created: StoredGelatoFulfillmentRecord = {
+        ...row,
+        id: `gelful_http_${store.length + 1}`,
+        created_at: "2026-07-01T12:31:00.000Z",
+        updated_at: "2026-07-01T12:31:00.000Z",
+        deleted_at: null,
+      }
+      store.push(created)
+      return [created]
+    }),
+    store,
+  }
+}
+
 function createOrderModule() {
   const store: Array<Record<string, unknown>> = []
 
@@ -647,6 +744,7 @@ function createScopeResolve(input: {
   checkoutCompletionModule?: ReturnType<typeof createCheckoutCompletionModule>
   analyticsEventLogModule?: ReturnType<typeof createAnalyticsEventLogModule>
   emailDeliveryLogModule?: ReturnType<typeof createEmailDeliveryLogModule>
+  gelatoFulfillmentModule?: ReturnType<typeof createGelatoFulfillmentModule>
   cartModule?: ReturnType<typeof createCartModule>
   orderModule?: ReturnType<typeof createOrderModule>
   queryGraph?: ReturnType<typeof createQueryGraph>
@@ -675,6 +773,10 @@ function createScopeResolve(input: {
 
     if (key === EMAIL_DELIVERY_LOG_MODULE || key === "email_delivery_log") {
       return emailDeliveryLogModule
+    }
+
+    if (key === GELATO_FULFILLMENT_MODULE || key === "gelato_fulfillment") {
+      return input.gelatoFulfillmentModule
     }
 
     if (key === Modules.CART) {
@@ -1910,15 +2012,14 @@ describe("stripe webhook order creation integration", () => {
         updated_at: "2026-07-01T12:20:00.000Z",
       },
     ])
-    const orderModule = createOrderModule([
-      {
-        id: "order_http_resend_replay_01",
-        cart_id: "cart_order_http_01",
-        email: ORDER_EMAIL,
-        display_id: 5002,
-        metadata: null,
-      },
-    ])
+    const orderModule = createOrderModule()
+    orderModule.store.push({
+      id: "order_http_resend_replay_01",
+      cart_id: "cart_order_http_01",
+      email: ORDER_EMAIL,
+      display_id: 5002,
+      metadata: null,
+    })
     const cartModule = createCartModule(cart)
     const queryGraph = createQueryGraph(cart)
 
@@ -1977,5 +2078,340 @@ describe("stripe webhook order creation integration", () => {
     expect(isOrderConfirmationEmailLocallyRecorded(emailDeliveryLogModule.store[0])).toBe(
       true
     )
+  })
+
+  it("accepted Order path cria Order e logs locais, mas Gelato fica bloqueado ate EmailDeliveryLog sent", async () => {
+    const cart = buildOrderCart()
+    const paymentAttemptModule = createPaymentAttemptModule([
+      buildAttempt({
+        status: "payment_confirmed_by_webhook",
+      }),
+    ])
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const analyticsEventLogModule = createAnalyticsEventLogModule()
+    const emailDeliveryLogModule = createEmailDeliveryLogModule()
+    const gelatoFulfillmentModule = createGelatoFulfillmentModule()
+    const cartModule = createCartModule(cart)
+    const orderModule = createOrderModule()
+    const queryGraph = createQueryGraph(cart)
+    const runCompleteCart = jest.fn(async (_container, cartId: string) => {
+      const order = {
+        id: "order_http_gelato_blocked_01",
+        cart_id: cartId,
+        email: ORDER_EMAIL,
+        display_id: 6001,
+        metadata: null,
+        items: cart.items.map((item) => ({
+          id: `ordli_${item.id}`,
+          metadata: {
+            ...(item.metadata ?? {}),
+          },
+        })),
+      }
+      orderModule.store.push(order)
+
+      return { id: order.id }
+    })
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      {
+        resolve: createScopeResolve({
+          webhookService: createStatefulWebhookService(),
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          analyticsEventLogModule,
+          emailDeliveryLogModule,
+          gelatoFulfillmentModule,
+          cartModule,
+          orderModule,
+          queryGraph,
+        }),
+      } as never,
+      {
+        payment_attempt_id: "payatt_order_http_01",
+        payment_intent_id: "pi_order_http_123",
+        stripe_event_id: "evt_gelato_blocked_http_01",
+        correlation_id: "corr_order_http_01",
+      },
+      {
+        now: () => new Date("2026-07-01T12:30:00.000Z"),
+        runCompleteCart,
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "created",
+        order_id: "order_http_gelato_blocked_01",
+      })
+    )
+    expect(analyticsEventLogModule.store).toHaveLength(1)
+    expect(emailDeliveryLogModule.store[0]?.status).toBe("recorded")
+    expect(gelatoFulfillmentModule.store).toHaveLength(0)
+  })
+
+  it("quando EmailDeliveryLog sent existe em recovery/replay, cria exatamente um GelatoFulfillment local", async () => {
+    const cart = buildOrderCart({
+      completed_at: "2026-07-01T11:59:00.000Z",
+    })
+    const paymentAttemptModule = createPaymentAttemptModule([
+      buildAttempt({
+        status: "payment_confirmed_by_webhook",
+      }),
+    ])
+    const checkoutCompletionModule = createCheckoutCompletionModule([
+      {
+        id: "chkcpl_http_gelato_replay",
+        idempotency_key: "pi_order_http_123",
+        cart_id: "cart_order_http_01",
+        payment_intent_id: "pi_order_http_123",
+        payment_attempt_id: "payatt_order_http_01",
+        order_id: "order_http_gelato_replay_01",
+        status: "completed",
+        metadata: null,
+      },
+    ])
+    const analyticsEventLogModule = createAnalyticsEventLogModule([
+      {
+        id: "anlevt_http_gelato_replay",
+        event_name: "purchase_completed",
+        event_version: 1,
+        idempotency_key: "purchase_completed:stripe:pi_order_http_123",
+        order_id: "order_http_gelato_replay_01",
+        cart_id: "cart_order_http_01",
+        payment_attempt_id: "payatt_order_http_01",
+        checkout_completion_log_id: "chkcpl_http_gelato_replay",
+        payment_intent_id: "pi_order_http_123",
+        status: "sent",
+        payload: {
+          order_id: "order_http_gelato_replay_01",
+        },
+        metadata: null,
+        attempt_count: 0,
+        recorded_at: "2026-07-01T12:00:00.000Z",
+        created_at: "2026-07-01T12:00:00.000Z",
+        updated_at: "2026-07-01T12:00:00.000Z",
+      },
+    ])
+    const emailDeliveryLogModule = createEmailDeliveryLogModule([
+      {
+        id: "emlog_http_gelato_replay",
+        email_type: "order_confirmation",
+        template_key: "order_confirmation_v1",
+        template_version: 1,
+        provider: "resend",
+        idempotency_key: "order-confirmation/order_http_gelato_replay_01",
+        order_id: "order_http_gelato_replay_01",
+        cart_id: "cart_order_http_01",
+        payment_attempt_id: "payatt_order_http_01",
+        checkout_completion_log_id: "chkcpl_http_gelato_replay",
+        analytics_event_log_id: "anlevt_http_gelato_replay",
+        payment_intent_id: "pi_order_http_123",
+        status: "sent",
+        recipient_email_hash: buildRecipientEmailAudit(ORDER_EMAIL).recipient_email_hash,
+        recipient_email_domain: buildRecipientEmailAudit(ORDER_EMAIL).recipient_email_domain,
+        payload: {
+          order_id: "order_http_gelato_replay_01",
+        },
+        metadata: null,
+        attempt_count: 1,
+        next_retry_at: null,
+        recorded_at: "2026-07-01T12:00:00.000Z",
+        queued_at: "2026-07-01T12:01:00.000Z",
+        sending_started_at: "2026-07-01T12:02:00.000Z",
+        sent_at: "2026-07-01T12:03:00.000Z",
+        failed_at: null,
+        dead_lettered_at: null,
+        created_at: "2026-07-01T12:00:00.000Z",
+        updated_at: "2026-07-01T12:03:00.000Z",
+      },
+    ])
+    const gelatoFulfillmentModule = createGelatoFulfillmentModule([], {
+      duplicateOnCreate: true,
+    })
+    const orderModule = createOrderModule()
+    orderModule.store.push({
+      id: "order_http_gelato_replay_01",
+      cart_id: "cart_order_http_01",
+      email: ORDER_EMAIL,
+      display_id: 6002,
+      metadata: {
+        order_status: "confirmed",
+        payment_status: "captured",
+      },
+    })
+    const queryGraph = createQueryGraph(cart)
+
+    const first = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      {
+        resolve: createScopeResolve({
+          webhookService: createStatefulWebhookService(),
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          analyticsEventLogModule,
+          emailDeliveryLogModule,
+          gelatoFulfillmentModule,
+          orderModule,
+          queryGraph,
+        }),
+      } as never,
+      {
+        payment_attempt_id: "payatt_order_http_01",
+        payment_intent_id: "pi_order_http_123",
+        stripe_event_id: "evt_gelato_replay_http_01",
+        correlation_id: "corr_order_http_01",
+      },
+      {
+        now: () => new Date("2026-07-01T12:31:00.000Z"),
+      }
+    )
+
+    const replay = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      {
+        resolve: createScopeResolve({
+          webhookService: createStatefulWebhookService(),
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          analyticsEventLogModule,
+          emailDeliveryLogModule,
+          gelatoFulfillmentModule,
+          orderModule,
+          queryGraph,
+        }),
+      } as never,
+      {
+        payment_attempt_id: "payatt_order_http_01",
+        payment_intent_id: "pi_order_http_123",
+        stripe_event_id: "evt_gelato_replay_http_02",
+        correlation_id: "corr_order_http_01",
+      },
+      {
+        now: () => new Date("2026-07-01T12:31:01.000Z"),
+      }
+    )
+
+    expect(first.status).toBe("reused_existing_order")
+    expect(replay.status).toBe("reused_existing_order")
+    expect(gelatoFulfillmentModule.store).toHaveLength(1)
+  })
+
+  it("dead_letter e statuses nao sent nao criam GelatoFulfillment local", async () => {
+    for (const status of ["dead_letter", "recorded", "queued", "sending", "failed"]) {
+      const cart = buildOrderCart({
+        completed_at: "2026-07-01T11:59:00.000Z",
+      })
+      const paymentAttemptModule = createPaymentAttemptModule([
+        buildAttempt({
+          status: "payment_confirmed_by_webhook",
+        }),
+      ])
+      const checkoutCompletionModule = createCheckoutCompletionModule([
+        {
+          id: `chkcpl_http_gelato_block_${status}`,
+          idempotency_key: "pi_order_http_123",
+          cart_id: "cart_order_http_01",
+          payment_intent_id: "pi_order_http_123",
+          payment_attempt_id: "payatt_order_http_01",
+          order_id: "order_http_gelato_block_01",
+          status: "completed",
+          metadata: null,
+        },
+      ])
+      const analyticsEventLogModule = createAnalyticsEventLogModule([
+        {
+          id: `anlevt_http_gelato_block_${status}`,
+          event_name: "purchase_completed",
+          event_version: 1,
+          idempotency_key: "purchase_completed:stripe:pi_order_http_123",
+          order_id: "order_http_gelato_block_01",
+          cart_id: "cart_order_http_01",
+          payment_attempt_id: "payatt_order_http_01",
+          checkout_completion_log_id: `chkcpl_http_gelato_block_${status}`,
+          payment_intent_id: "pi_order_http_123",
+          status: "recorded",
+          payload: {
+            order_id: "order_http_gelato_block_01",
+          },
+          metadata: null,
+          attempt_count: 0,
+          recorded_at: "2026-07-01T12:00:00.000Z",
+          created_at: "2026-07-01T12:00:00.000Z",
+          updated_at: "2026-07-01T12:00:00.000Z",
+        },
+      ])
+      const emailDeliveryLogModule = createEmailDeliveryLogModule([
+        {
+          id: `emlog_http_gelato_block_${status}`,
+          email_type: "order_confirmation",
+          template_key: "order_confirmation_v1",
+          template_version: 1,
+          provider: "resend",
+          idempotency_key: "order-confirmation/order_http_gelato_block_01",
+          order_id: "order_http_gelato_block_01",
+          cart_id: "cart_order_http_01",
+          payment_attempt_id: "payatt_order_http_01",
+          checkout_completion_log_id: `chkcpl_http_gelato_block_${status}`,
+          analytics_event_log_id: `anlevt_http_gelato_block_${status}`,
+          payment_intent_id: "pi_order_http_123",
+          status,
+          recipient_email_hash: buildRecipientEmailAudit(ORDER_EMAIL).recipient_email_hash,
+          recipient_email_domain: buildRecipientEmailAudit(ORDER_EMAIL).recipient_email_domain,
+          payload: {
+            order_id: "order_http_gelato_block_01",
+          },
+          metadata: null,
+          attempt_count: 1,
+          next_retry_at: null,
+          recorded_at: "2026-07-01T12:00:00.000Z",
+          queued_at: null,
+          sending_started_at: null,
+          sent_at: null,
+          failed_at: status === "failed" ? "2026-07-01T12:02:00.000Z" : null,
+          dead_lettered_at:
+            status === "dead_letter" ? "2026-07-01T12:03:00.000Z" : null,
+          created_at: "2026-07-01T12:00:00.000Z",
+          updated_at: "2026-07-01T12:03:00.000Z",
+        },
+      ])
+      const gelatoFulfillmentModule = createGelatoFulfillmentModule()
+      const orderModule = createOrderModule()
+      orderModule.store.push({
+        id: "order_http_gelato_block_01",
+        cart_id: "cart_order_http_01",
+        email: ORDER_EMAIL,
+        display_id: 6003,
+        metadata: {
+          order_status: "confirmed",
+          payment_status: "captured",
+        },
+      })
+      const queryGraph = createQueryGraph(cart)
+
+      await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+        {
+          resolve: createScopeResolve({
+            webhookService: createStatefulWebhookService(),
+            paymentAttemptModule,
+            checkoutCompletionModule,
+            analyticsEventLogModule,
+            emailDeliveryLogModule,
+            gelatoFulfillmentModule,
+            orderModule,
+            queryGraph,
+          }),
+        } as never,
+        {
+          payment_attempt_id: "payatt_order_http_01",
+          payment_intent_id: "pi_order_http_123",
+          stripe_event_id: `evt_gelato_block_${status}`,
+          correlation_id: "corr_order_http_01",
+        },
+        {
+          now: () => new Date("2026-07-01T12:32:00.000Z"),
+        }
+      )
+
+      expect(gelatoFulfillmentModule.store).toHaveLength(0)
+    }
   })
 })

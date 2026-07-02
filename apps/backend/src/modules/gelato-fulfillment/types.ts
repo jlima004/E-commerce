@@ -53,15 +53,15 @@ const GELATO_FULFILLMENT_TERMINAL_STATUSES_VALUES = [
   GELATO_FULFILLMENT_STATUS.CANCELED,
 ] as const
 
-export const GELATO_FULFILLMENT_STATUSES = [
+export const GELATO_FULFILLMENT_STATUSES: GelatoFulfillmentStatus[] = [
   ...GELATO_FULFILLMENT_STATUSES_VALUES,
 ]
 
-export const GELATO_FULFILLMENT_ACTIVE_STATUSES = [
+export const GELATO_FULFILLMENT_ACTIVE_STATUSES: GelatoFulfillmentStatus[] = [
   ...GELATO_FULFILLMENT_ACTIVE_STATUSES_VALUES,
 ]
 
-export const GELATO_FULFILLMENT_TERMINAL_STATUSES = [
+export const GELATO_FULFILLMENT_TERMINAL_STATUSES: GelatoFulfillmentStatus[] = [
   ...GELATO_FULFILLMENT_TERMINAL_STATUSES_VALUES,
 ]
 
@@ -91,6 +91,34 @@ export type GelatoFulfillmentMetadata = Record<
 
 export type BuildGelatoDispatchIdempotencyKeyInput = {
   order_id: string
+}
+
+export type GelatoFulfillmentAutomaticEligibilityReason =
+  | "eligible"
+  | "order_not_confirmed"
+  | "purchase_completed_missing"
+  | "email_not_sent"
+  | "fulfillment_already_exists"
+
+export type GelatoFulfillmentAutomaticEligibilityOrder = {
+  id: string | null
+  order_status: string | null
+  payment_status: string | null
+}
+
+export type EvaluateGelatoFulfillmentAutomaticEligibilityInput = {
+  order: GelatoFulfillmentAutomaticEligibilityOrder | null
+  has_local_purchase_completed: boolean
+  email_delivery_status: string | null
+  existing_fulfillment:
+    | Pick<GelatoFulfillmentRecord, "order_id" | "status">
+    | null
+    | undefined
+}
+
+export type GelatoFulfillmentAutomaticEligibilityDecision = {
+  eligible: boolean
+  reason: GelatoFulfillmentAutomaticEligibilityReason
 }
 
 export type GelatoFulfillmentRequestSummaryInput = {
@@ -224,3 +252,8 @@ export type GelatoFulfillmentRecord = {
   updated_at: string
   deleted_at: string | null
 }
+
+export type CreateGelatoFulfillmentData = Omit<
+  GelatoFulfillmentRecord,
+  "id" | "created_at" | "updated_at" | "deleted_at"
+>

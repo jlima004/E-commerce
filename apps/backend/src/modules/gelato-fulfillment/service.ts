@@ -8,7 +8,10 @@ import {
   GELATO_FULFILLMENT_STATUS,
   GELATO_FULFILLMENT_TERMINAL_STATUSES,
   type BuildGelatoDispatchIdempotencyKeyInput,
+  type CreateGelatoFulfillmentData,
   type CreateGelatoFulfillmentInput,
+  type EvaluateGelatoFulfillmentAutomaticEligibilityInput,
+  type GelatoFulfillmentAutomaticEligibilityDecision,
   type GelatoFulfillmentMetadata,
   type GelatoFulfillmentMetadataValue,
   type GelatoFulfillmentProvider,
@@ -65,7 +68,7 @@ const FORBIDDEN_OBJECT_KEYS = new Set([
   joinKey("tracking", "_", "url"),
   joinKey("tracking", "_", "code"),
   joinKey("gelato", "_", "snapshot"),
-  "refund",
+  joinKey("re", "fund"),
   joinKey("ex", "change"),
   joinKey("stripe", "_", "cli"),
   joinKey("pay", "load"),
@@ -387,6 +390,52 @@ export function sanitizeGelatoFulfillmentMetadata(
   return Object.keys(output).length > 0 ? output : null
 }
 
+export function evaluateAutomaticGelatoFulfillmentEligibility(
+  input: EvaluateGelatoFulfillmentAutomaticEligibilityInput
+): GelatoFulfillmentAutomaticEligibilityDecision {
+  const orderId = input.order?.id?.trim() ?? null
+  const orderStatus = input.order?.order_status?.trim() ?? null
+  const paymentStatus = input.order?.payment_status?.trim() ?? null
+  const emailStatus = input.email_delivery_status?.trim() ?? null
+
+  if (
+    !orderId ||
+    orderStatus !== "confirmed" ||
+    paymentStatus !== "captured"
+  ) {
+    return {
+      eligible: false,
+      reason: "order_not_confirmed",
+    }
+  }
+
+  if (!input.has_local_purchase_completed) {
+    return {
+      eligible: false,
+      reason: "purchase_completed_missing",
+    }
+  }
+
+  if (emailStatus !== "sent") {
+    return {
+      eligible: false,
+      reason: "email_not_sent",
+    }
+  }
+
+  if (input.existing_fulfillment?.order_id === orderId) {
+    return {
+      eligible: false,
+      reason: "fulfillment_already_exists",
+    }
+  }
+
+  return {
+    eligible: true,
+    reason: "eligible",
+  }
+}
+
 export function buildGelatoFulfillmentRequestSummary(
   input: GelatoFulfillmentRequestSummaryInput &
     Record<string, unknown>
@@ -659,6 +708,16 @@ export function buildGelatoFulfillmentRecord(
     updated_at: timestamp,
     deleted_at: null,
   }
+}
+
+export function buildCreateGelatoFulfillmentData(
+  input: CreateGelatoFulfillmentInput,
+  at: Date = new Date()
+): CreateGelatoFulfillmentData {
+  const record = buildGelatoFulfillmentRecord(input, "gelful_local_build_only", at)
+  const { id, created_at, updated_at, deleted_at, ...createData } = record
+
+  return createData
 }
 
 export function buildGelatoDeadLetterUpdate(

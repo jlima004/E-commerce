@@ -1,3 +1,4 @@
+import { createHash } from "crypto"
 import { completeCartWorkflow } from "@medusajs/core-flows"
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
@@ -52,6 +53,13 @@ import type {
   EmailDeliveryLogRecord,
   OrderConfirmationEmailItemInput,
 } from "../../modules/email-delivery-log/types"
+import { GELATO_FULFILLMENT_MODULE } from "../../modules/gelato-fulfillment"
+import {
+  buildCreateGelatoFulfillmentData,
+  buildGelatoDispatchIdempotencyKey,
+  evaluateAutomaticGelatoFulfillmentEligibility,
+} from "../../modules/gelato-fulfillment/service"
+import type { GelatoFulfillmentRecord } from "../../modules/gelato-fulfillment/types"
 
 export type CreateOrderFromConfirmedPaymentAttemptInput = {
   payment_attempt_id: string
@@ -153,6 +161,15 @@ type EmailDeliveryLogModuleLike = {
   ) => Promise<EmailDeliveryLogRecord[] | EmailDeliveryLogRecord>
 }
 
+type GelatoFulfillmentModuleLike = {
+  listGelatoFulfillments?: (
+    filters?: Record<string, unknown>
+  ) => Promise<GelatoFulfillmentRecord[]>
+  createGelatoFulfillments?: (
+    data: Record<string, unknown> | Record<string, unknown>[]
+  ) => Promise<GelatoFulfillmentRecord[] | GelatoFulfillmentRecord>
+}
+
 const ANALYTICS_EVENT_LOG_RUNTIME_KEYS = [
   "analytics_event_log",
   ANALYTICS_EVENT_LOG_MODULE,
@@ -161,6 +178,11 @@ const ANALYTICS_EVENT_LOG_RUNTIME_KEYS = [
 const EMAIL_DELIVERY_LOG_RUNTIME_KEYS = [
   "email_delivery_log",
   EMAIL_DELIVERY_LOG_MODULE,
+] as const
+
+const GELATO_FULFILLMENT_RUNTIME_KEYS = [
+  "gelato_fulfillment",
+  GELATO_FULFILLMENT_MODULE,
 ] as const
 
 type WorkflowRuntimeOverrides = {
@@ -206,6 +228,39 @@ function requireNonEmpty(value: string | null | undefined, code: string): string
   }
 
   return normalized
+}
+
+function assertPaymentAttemptReplayCompatibility(
+  attempt: Pick<
+    PaymentAttemptRecord,
+    | "status"
+    | "provider"
+    | "provider_payment_intent_id"
+    | "amount"
+    | "currency_code"
+  >
+): void {
+  if (attempt.status !== "payment_confirmed_by_webhook") {
+    throw new Error("PAYMENT_ATTEMPT_NOT_ELIGIBLE_FOR_ORDER_STATUS")
+  }
+
+  if (attempt.provider !== "stripe") {
+    throw new Error("PAYMENT_ATTEMPT_PROVIDER_NOT_ELIGIBLE")
+  }
+
+  const paymentIntentId = attempt.provider_payment_intent_id?.trim()
+  if (!paymentIntentId) {
+    throw new Error("PAYMENT_ATTEMPT_PAYMENT_INTENT_ID_REQUIRED")
+  }
+
+  if (!(attempt.amount > 0)) {
+    throw new Error("PAYMENT_ATTEMPT_AMOUNT_INVALID")
+  }
+
+  const currencyCode = attempt.currency_code?.trim().toLowerCase()
+  if (currencyCode !== "brl") {
+    throw new Error("PAYMENT_ATTEMPT_CURRENCY_NOT_ELIGIBLE")
+  }
 }
 
 function asArray<T>(value: T | T[] | null | undefined): T[] {
@@ -368,6 +423,36 @@ function resolveEmailDeliveryLogModule(
     throw new OrderCreationEntrypointError(
       "ORDER_ENTRYPOINT_EMAIL_DELIVERY_LOG_MODULE_UNAVAILABLE",
       "Modulo de email_delivery_log nao configurado."
+    )
+  }
+
+  return resolved
+}
+
+function resolveGelatoFulfillmentModule(
+  container: MedusaContainer
+): GelatoFulfillmentModuleLike {
+  const resolved = GELATO_FULFILLMENT_RUNTIME_KEYS.map((key) =>
+    container.resolve(key)
+  )
+    .find((candidate) => {
+      return (
+        Boolean(candidate) &&
+        typeof (candidate as GelatoFulfillmentModuleLike)
+          .listGelatoFulfillments === "function" &&
+        typeof (candidate as GelatoFulfillmentModuleLike)
+          .createGelatoFulfillments === "function"
+      )
+    }) as GelatoFulfillmentModuleLike | undefined
+
+  if (
+    !resolved ||
+    typeof resolved.listGelatoFulfillments !== "function" ||
+    typeof resolved.createGelatoFulfillments !== "function"
+  ) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_GELATO_FULFILLMENT_MODULE_UNAVAILABLE",
+      "Modulo de gelato_fulfillment nao configurado."
     )
   }
 
@@ -854,6 +939,35 @@ function extractCanonicalOrderEmail(order: Record<string, unknown>): string {
   return email.trim()
 }
 
+function readOrderStateValue(
+  order: Record<string, unknown>,
+  key: "order_status" | "payment_status"
+): string | null {
+  const metadata = order.metadata
+
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null
+  }
+
+  const value = (metadata as Record<string, unknown>)[key]
+
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null
+}
+
+function projectOrderForGelatoEligibility(order: Record<string, unknown>): {
+  id: string | null
+  order_status: string | null
+  payment_status: string | null
+} {
+  return {
+    id: extractOrderId(order),
+    order_status: readOrderStateValue(order, "order_status"),
+    payment_status: readOrderStateValue(order, "payment_status"),
+  }
+}
+
 async function readReusableOrderConfirmationEmailLog(input: {
   module: EmailDeliveryLogModuleLike
   idempotencyKey: string
@@ -966,6 +1080,160 @@ async function ensureOrderConfirmationEmailRecorded(input: {
   }
 }
 
+async function readReusableGelatoFulfillment(input: {
+  module: GelatoFulfillmentModuleLike
+  idempotencyKey: string
+  orderId: string
+}): Promise<GelatoFulfillmentRecord | null> {
+  const byIdempotency =
+    (await input.module.listGelatoFulfillments?.({
+      idempotency_key: input.idempotencyKey,
+    })) ?? []
+  const reusableByIdempotency = byIdempotency.find((fulfillment) => {
+    return fulfillment.order_id === input.orderId
+  })
+
+  if (reusableByIdempotency) {
+    return reusableByIdempotency
+  }
+
+  const byOrder =
+    (await input.module.listGelatoFulfillments?.({
+      order_id: input.orderId,
+    })) ?? []
+
+  return byOrder.find((fulfillment) => fulfillment.order_id === input.orderId) ?? null
+}
+
+function buildLocalGelatoRequestHash(input: {
+  orderId: string
+  checkoutCompletionLogId: string
+  paymentAttemptId: string
+  analyticsEventLogId: string
+  emailDeliveryLogId: string
+  status: "eligible" | "queued"
+}): string {
+  const payload = [
+    input.orderId,
+    input.checkoutCompletionLogId,
+    input.paymentAttemptId,
+    input.analyticsEventLogId,
+    input.emailDeliveryLogId,
+    input.status,
+  ].join(":")
+
+  return `sha256:${createHash("sha256").update(payload).digest("hex")}`
+}
+
+async function ensureLocalGelatoFulfillmentRecorded(input: {
+  container: MedusaContainer
+  attempt: PaymentAttemptRecord
+  checkoutCompletionLogId: string
+  orderId: string
+  cart: ConfirmedAttemptCartRecord
+  purchaseCompletedEvent: AnalyticsEventLogRecord | null
+  emailDeliveryLog: EmailDeliveryLogRecord | null
+  now: Date
+  correlationId: string | null
+  recoveryOrigin: string | null
+}): Promise<GelatoFulfillmentRecord | null> {
+  const order = await loadOrderForEmailConfirmation(input.container, input.orderId)
+  const preliminaryDecision = evaluateAutomaticGelatoFulfillmentEligibility({
+    order: projectOrderForGelatoEligibility(order),
+    has_local_purchase_completed: Boolean(
+      input.purchaseCompletedEvent &&
+        isPurchaseCompletedLocallyRecorded(input.purchaseCompletedEvent)
+    ),
+    email_delivery_status: input.emailDeliveryLog?.status ?? null,
+    existing_fulfillment: null,
+  })
+
+  if (!preliminaryDecision.eligible) {
+    return null
+  }
+
+  const module = resolveGelatoFulfillmentModule(input.container)
+  const idempotencyKey = buildGelatoDispatchIdempotencyKey({
+    order_id: input.orderId,
+  })
+  const existing = await readReusableGelatoFulfillment({
+    module,
+    idempotencyKey,
+    orderId: input.orderId,
+  })
+  const decision = evaluateAutomaticGelatoFulfillmentEligibility({
+    order: projectOrderForGelatoEligibility(order),
+    has_local_purchase_completed: true,
+    email_delivery_status: input.emailDeliveryLog?.status ?? null,
+    existing_fulfillment: existing,
+  })
+
+  if (!decision.eligible) {
+    return existing
+  }
+
+  const createData = buildCreateGelatoFulfillmentData(
+    {
+      order_id: input.orderId,
+      cart_id: input.cart.id,
+      payment_attempt_id: input.attempt.id,
+      checkout_completion_log_id: input.checkoutCompletionLogId,
+      analytics_event_log_id: input.purchaseCompletedEvent?.id ?? "",
+      email_delivery_log_id: input.emailDeliveryLog?.id ?? "",
+      status: "eligible",
+      request_hash: buildLocalGelatoRequestHash({
+        orderId: input.orderId,
+        checkoutCompletionLogId: input.checkoutCompletionLogId,
+        paymentAttemptId: input.attempt.id,
+        analyticsEventLogId: input.purchaseCompletedEvent?.id ?? "",
+        emailDeliveryLogId: input.emailDeliveryLog?.id ?? "",
+        status: "eligible",
+      }),
+      request_summary: {
+        order_id: input.orderId,
+        cart_id: input.cart.id,
+        payment_attempt_id: input.attempt.id,
+        checkout_completion_log_id: input.checkoutCompletionLogId,
+        analytics_event_log_id: input.purchaseCompletedEvent?.id ?? "",
+        email_delivery_log_id: input.emailDeliveryLog?.id ?? "",
+        idempotency_key: idempotencyKey,
+        request_hash: buildLocalGelatoRequestHash({
+          orderId: input.orderId,
+          checkoutCompletionLogId: input.checkoutCompletionLogId,
+          paymentAttemptId: input.attempt.id,
+          analyticsEventLogId: input.purchaseCompletedEvent?.id ?? "",
+          emailDeliveryLogId: input.emailDeliveryLog?.id ?? "",
+          status: "eligible",
+        }),
+        item_count: input.cart.items.length,
+        currency_code: input.cart.currency_code,
+        status: "eligible",
+      },
+      metadata: {
+        source: "webhook_order_entrypoint",
+        correlation_id: input.correlationId,
+        recovery_origin: input.recoveryOrigin,
+      },
+      recorded_at: input.now,
+    },
+    input.now
+  )
+
+  try {
+    return asArray(await module.createGelatoFulfillments?.(createData))[0] ?? null
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error
+    }
+
+    return readReusableGelatoFulfillment({
+      module,
+      idempotencyKey,
+      orderId: input.orderId,
+    })
+  }
+}
+
 async function finalizePostOrderLocalRecords(input: {
   container: MedusaContainer
   attempt: PaymentAttemptRecord
@@ -979,9 +1247,15 @@ async function finalizePostOrderLocalRecords(input: {
 }): Promise<void> {
   const purchaseCompletedEvent = await ensurePurchaseCompletedRecorded(input)
 
-  await ensureOrderConfirmationEmailRecorded({
+  const emailDeliveryLog = await ensureOrderConfirmationEmailRecorded({
     ...input,
     purchaseCompletedEvent,
+  })
+
+  await ensureLocalGelatoFulfillmentRecorded({
+    ...input,
+    purchaseCompletedEvent,
+    emailDeliveryLog,
   })
 }
 
@@ -1130,7 +1404,11 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
     )
   }
 
-  assertPaymentAttemptEligibleForOrderCreation(attempt)
+  if (attempt.order_id == null) {
+    assertPaymentAttemptEligibleForOrderCreation(attempt)
+  } else {
+    assertPaymentAttemptReplayCompatibility(attempt)
+  }
   resolveAnalyticsEventLogModule(container)
   resolveEmailDeliveryLogModule(container)
 
