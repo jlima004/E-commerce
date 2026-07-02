@@ -61,8 +61,11 @@ Este arquivo define a validacao esperada quando a Phase 09 for executada futuram
   - falha persistente marca `dead_letter` e `requires_operator_attention = true` no fulfillment;
   - Gelato falho nao reverte `Order`, `PaymentAttempt`, `CheckoutCompletionLog`, `AnalyticsEventLog` ou `EmailDeliveryLog`.
 - Webhook Gelato:
-  - autenticidade validada ou fail-closed;
-  - dedupe por event `id`;
+  - autenticidade via HTTP Header confirmada documentalmente (dashboard Gelato: Authorization Type = HTTP Header, Header Name/Value configuraveis);
+  - header dedicado `X-GELATO-WEBHOOK-SECRET`; env `GELATO_WEBHOOK_AUTH_HEADER_NAME` + `GELATO_WEBHOOK_SECRET`; nao reutilizar `GELATO_API_KEY`;
+  - rejeitar antes de qualquer DB side effect se header ausente/incorreto (fail-closed);
+  - aceitar apenas `order_status_updated` no MVP; demais eventos Gelato (underscores) fora do escopo salvo decisao futura;
+  - dedupe por event `id`; `payload_hash` apenas fallback seguro;
   - replay sequencial e concorrente idempotente;
   - update de status/tracking por `orderReferenceId`/`orderId`;
   - eventos de split order atualizam o mesmo fulfillment;
@@ -81,9 +84,10 @@ Filtrar suites para Phase 09, sem chamadas externas reais:
 - Fake Gelato client sucesso registra `gelato_primary_order_id`, `connected_order_ids` e status local saneado.
 - Fake Gelato client falha transiente marca retry sem reverter `Order`.
 - Fake Gelato client falha persistente marca `dead_letter` e `requires_operator_attention = true`.
-- Webhook Gelato fake com assinatura/autenticidade valida atualiza status/tracking.
+- Webhook Gelato fake com HTTP Header autentico atualiza status/tracking.
 - Webhook Gelato duplicado retorna `2xx`/no-op e mantem um unico evento processado.
-- Webhook Gelato sem autenticidade valida rejeita antes de efeito persistente.
+- Webhook Gelato sem header autentico valido rejeita antes de efeito persistente.
+- Webhook Gelato com evento fora do MVP (`order_item_status_updated`, etc.) rejeita ou ignora sem efeito persistente.
 
 ## Build
 
@@ -126,8 +130,7 @@ Broad scans podem ser informativos quando pegarem falsos positivos historicos, m
 - `FUL-02`: replay/concurrency/manual retry nao cria mais de um fulfillment ativo por `Order`.
 - `FUL-03`: webhook Gelato idempotente atualiza fulfillment local com status/tracking.
 - `FUL-04`: falhas transientes retry; falhas persistentes `dead_letter` + `requires_operator_attention = true` no proprio `GelatoFulfillment`.
-- `WHK-03`: webhook Gelato usa ingestao persistida, deduplicada e autenticada/fail-closed.
-- Se a assinatura/autenticidade oficial Gelato nao for resolvida, `09-04` deve parar como blocked e `WHK-03` nao pode ser marcado como complete.
+- `WHK-03`: webhook Gelato usa ingestao persistida, deduplicada e autenticada/fail-closed via HTTP Header (auth confirmada documentalmente via dashboard Gelato; implementacao deve verificar fail-closed).
 - Gelato falho nao reverte `Order`.
 - Gelato relay stale in-flight recovery does not cause blind duplicate Gelato dispatch.
 - `EmailDeliveryLog.dead_letter` nao permite Gelato automatico.

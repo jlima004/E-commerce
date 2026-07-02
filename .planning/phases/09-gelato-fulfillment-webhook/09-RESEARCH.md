@@ -1,6 +1,6 @@
 ---
 phase: 09-gelato-fulfillment-webhook
-status: researched-with-blockers
+status: researched
 created_at: 2026-07-02
 scope: planning-only
 runtime_executed: false
@@ -111,15 +111,27 @@ Decisao recomendada:
 
 ## Webhook Findings
 
-### Event Types And Payload
+### Event Types (Official Names)
 
-Evento principal para Phase 09:
+Nomes oficiais documentados usam underscores:
 
-```text
-order_status_updated
-```
+- `order_status_updated`
+- `order_item_status_updated`
+- `order_item_tracking_code_updated`
+- `order_delivery_estimate_updated`
+- `store_product_template_created`
+- `store_product_template_updated`
+- `store_product_template_deleted`
+- `store_product_created`
+- `store_product_updated`
+- `store_product_deleted`
 
-Payload documentado:
+Decisao Phase 09 MVP:
+
+- Aceitar apenas `order_status_updated`.
+- Demais eventos permanecem fora do MVP, salvo decisao futura explicita.
+
+### Event Payload (`order_status_updated`)
 
 - `id`: identificador unico do evento.
 - `event`: `order_status_updated`.
@@ -137,13 +149,7 @@ Payload documentado:
 - `items[].fulfillments[].fulfillmentStateProvince`
 - `items[].fulfillments[].fulfillmentFacilityId`
 
-Evento adicional documentado:
-
-```text
-order_item_status_updated
-```
-
-Pode ser usado depois para granularidade por item, mas `FUL-03` pode fechar com `order_status_updated` se o contrato local agregar status/tracking por item no fulfillment.
+Evento adicional documentado (`order_item_status_updated`) pode ser usado depois para granularidade por item, mas `FUL-03` fecha com `order_status_updated` agregando status/tracking por item no fulfillment local. Demais eventos listados acima permanecem fora do MVP Phase 09.
 
 ### Delivery / Response
 
@@ -155,14 +161,27 @@ O campo `id` do webhook e o melhor `deduplication_key` oficial disponivel na pes
 
 ### Signature / Authenticity
 
-Blocker de pesquisa:
+Resolvido documentalmente via dashboard/API Portal Gelato (2026-07-02):
 
-- As fontes primarias consultadas nao confirmaram assinatura HMAC, header de assinatura, secret de webhook, allowlist de IP, timestamp assinado ou retry policy formal da Gelato.
+- O dashboard Gelato expoe configuracao de webhook com:
+  - Authorization checkbox
+  - Authorization Type: **HTTP Header**
+  - Header Name (configuravel)
+  - Header Value (configuravel)
+- Nao ha HMAC/signature/timestamp confirmado nas fontes consultadas.
+- Nao reutilizar `GELATO_API_KEY` como webhook secret.
 
-Consequencia:
+Mecanismo escolhido para Phase 09:
 
-- `WHK-03` nao deve implementar uma rota publica que aceite webhooks Gelato sem mecanismo de autenticidade.
-- O plano `09-04` deve comecar por refresh de docs/fonte oficial. Se a assinatura/autenticidade continuar nao confirmada, o slice deve parar em blocker documental ou exigir decisao operacional explicita para mecanismo app-level, por exemplo token compartilhado em header ou URL secreta, sem persistir o segredo.
+- Header dedicado: `X-GELATO-WEBHOOK-SECRET`
+- Env backend: `GELATO_WEBHOOK_AUTH_HEADER_NAME` (default esperado: `X-GELATO-WEBHOOK-SECRET`)
+- Env backend: `GELATO_WEBHOOK_SECRET` (valor compartilhado configurado no dashboard)
+
+Contrato de implementacao (`09-04`):
+
+- Rejeitar antes de qualquer DB side effect se header ausente ou incorreto (fail-closed).
+- Replay/dedupe via `WebhookEventLog` usando `payload.id`; `payload_hash` apenas como fallback seguro quando `id` ausente.
+- Nao criar rota publica que aceite webhooks sem verificacao do header configurado.
 
 ## SDK / Provider Official Compatibility
 
@@ -186,7 +205,7 @@ Padrões existentes que Phase 09 deve seguir:
 
 ## Planning Blockers / Pending Decisions
 
-1. Confirmar oficialmente autenticidade/assinatura de webhook Gelato antes de implementar rota publica.
+1. ~~Confirmar oficialmente autenticidade/assinatura de webhook Gelato antes de implementar rota publica.~~ **Resolvido documentalmente (2026-07-02):** auth via dashboard HTTP Header; header dedicado `X-GELATO-WEBHOOK-SECRET`; env `GELATO_WEBHOOK_AUTH_HEADER_NAME` + `GELATO_WEBHOOK_SECRET`; fail-closed antes de DB side effect; dedupe por `payload.id`.
 2. Confirmar fonte final dos print files (`files[]`) para cada item Gelato se o snapshot atual nao contem URL/ID de arquivo de impressao suficiente.
 3. Confirmar se a Phase 09 deve usar `shipmentMethodUid` fixo/configurado, Quote API anterior ou omissao para cheapest. O planejamento recomenda config/env allowlist ou omissao consciente, nunca valor hardcoded sem decisao.
 4. Resolvido no planejamento: representar alerta operacional minimo no proprio `GelatoFulfillment` com `requires_operator_attention`, `operator_alert_code`, `operator_alert_message` e `operator_alerted_at`. O modulo amplo `OperationalAlert` permanece para Phase 12.
@@ -198,5 +217,5 @@ A Phase 09 e planejavel em cinco slices pequenos:
 1. Contrato/modelo/idempotencia/single-active.
 2. Eligibility gate apos `Order` + `purchase_completed` + e-mail `sent`.
 3. Relay assincrono de dispatch Gelato com retry/dead-letter.
-4. Webhook Gelato idempotente com blocker explicito de autenticidade.
+4. Webhook Gelato idempotente com auth confirmada via dashboard HTTP Header; implementacao deve verificar fail-closed.
 5. Validacao final, invariant tests e greps negativos.

@@ -110,9 +110,27 @@ Contrato: falha persistente de Gelato deve marcar `status = dead_letter` e `requ
 
 Webhook Gelato deve reutilizar o padrao `WebhookEventLog` com `provider = gelato`, dedupe por event `id` quando presente, fallback por hash somente quando permitido, e update idempotente do fulfillment local por `orderReferenceId`/`orderId`.
 
-### D09-12 - Webhook Authenticity Blocker
+Eventos oficiais Gelato usam underscores. Para Phase 09 MVP aceitar apenas `order_status_updated`. Demais eventos documentados (`order_item_status_updated`, `order_item_tracking_code_updated`, `order_delivery_estimate_updated`, `store_product_template_*`, `store_product_*`) permanecem fora do MVP, salvo decisao futura explicita.
 
-A documentacao primaria consultada nao confirmou assinatura/HMAC de webhook Gelato. A execucao de webhook publico deve falhar fechada ate a assinatura/autenticidade ser confirmada por fonte oficial ou ate haver decisao operacional explicita para um mecanismo app-level.
+### D09-12 - Webhook Authenticity (Resolved Documentally)
+
+**Resolvido documentalmente (2026-07-02)** via dashboard/API Portal Gelato:
+
+- Dashboard Gelato possui Authorization checkbox, Authorization Type **HTTP Header**, Header Name e Header Value configuraveis.
+- Nao ha HMAC/signature/timestamp confirmado.
+- Nao reutilizar `GELATO_API_KEY` como webhook secret.
+
+Mecanismo escolhido:
+
+- Header dedicado: `X-GELATO-WEBHOOK-SECRET`
+- Env backend: `GELATO_WEBHOOK_AUTH_HEADER_NAME`
+- Env backend: `GELATO_WEBHOOK_SECRET`
+
+Contrato de implementacao (`09-04`):
+
+- Rejeitar antes de qualquer DB side effect se header ausente ou incorreto (fail-closed).
+- Replay/dedupe via `WebhookEventLog` usando `payload.id`; `payload_hash` apenas fallback seguro.
+- Execucao de `09-04` permanece bloqueada ate aprovacao humana explicita, mas o blocker de autenticidade documental esta resolvido.
 
 ### D09-13 - Canonical Status And Tracking
 
