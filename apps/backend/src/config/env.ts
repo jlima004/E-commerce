@@ -57,6 +57,7 @@ export type AppEnv = {
   GELATO_SHIPMENT_METHOD_UID: string | undefined
   GELATO_WEBHOOK_AUTH_HEADER_NAME: string
   GELATO_WEBHOOK_SECRET: string | undefined
+  TRACKING_TOKEN_PEPPER: string | undefined
 }
 
 function isProduction(input: Record<string, string | undefined>): boolean {
@@ -269,6 +270,10 @@ export function parseEnv(
     assertProductionAppVersion(normalized.APP_VERSION)
     assertProductionSecret(normalized.JWT_SECRET, "JWT_SECRET")
     assertProductionSecret(normalized.COOKIE_SECRET, "COOKIE_SECRET")
+    assertProductionSecret(
+      normalized.TRACKING_TOKEN_PEPPER,
+      "TRACKING_TOKEN_PEPPER"
+    )
     assertProductionUrl(normalized.S3_ENDPOINT, "S3_ENDPOINT")
     assertProductionUrl(normalized.S3_REGION, "S3_REGION")
     assertProductionUrl(normalized.S3_BUCKET, "S3_BUCKET")
@@ -312,6 +317,7 @@ export function parseEnv(
     GELATO_SHIPMENT_METHOD_UID: z.string().optional(),
     GELATO_WEBHOOK_AUTH_HEADER_NAME: z.string().optional(),
     GELATO_WEBHOOK_SECRET: z.string().optional(),
+    TRACKING_TOKEN_PEPPER: z.string().optional(),
   })
 
   const parsed = baseSchema.safeParse(normalized)
@@ -393,6 +399,7 @@ export function parseEnv(
       data.GELATO_WEBHOOK_AUTH_HEADER_NAME?.trim() ||
       "X-GELATO-WEBHOOK-SECRET",
     GELATO_WEBHOOK_SECRET: data.GELATO_WEBHOOK_SECRET?.trim() || undefined,
+    TRACKING_TOKEN_PEPPER: data.TRACKING_TOKEN_PEPPER?.trim() || undefined,
   }
 }
 

@@ -1,4 +1,14 @@
-# Custom Module
+# Custom Modules
+
+Project-local Medusa modules in this directory include:
+
+- `analytics-event-log` — durable analytics outbox
+- `checkout-completion` — webhook-driven order completion idempotency
+- `email-delivery-log` — transactional email outbox
+- `gelato-fulfillment` — Gelato dispatch and webhook state
+- `payment-attempt` — pre-Order Stripe payment attempts
+- `tracking-access-token` — guest tracking token contract (hash-only persistence; no public route in 10-01)
+- `webhooks` — webhook event dedupe log
 
 A module is a package of reusable functionalities. It can be integrated into your Medusa application without affecting the overall system. You can create a module as part of a plugin.
 
