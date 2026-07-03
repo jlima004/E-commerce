@@ -23,8 +23,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 8: Transactional Email (Resend)** - Idempotent confirmation email after confirmed Order + durable local `purchase_completed`, before the Gelato attempt *(complete; closed 2026-07-01)*
 - [x] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(complete; closed 2026-07-02)*
 - [x] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route *(complete; closed 2026-07-02)*
-- [ ] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow *(not started; blocked until explicit approval)*
-- [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests
+- [x] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow *(complete; closed 2026-07-03)*
+- [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests *(not started; blocked until explicit approval)*
 
 ## Phase Details
 
@@ -411,7 +411,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 6
 **Requirements**: REF-01, REF-02, EXC-01, EXC-02
-**Manual gate:** Phase 11 is **not started** and blocked until explicit human approval.
+**Manual gate:** Phase 11 is complete and accepted at the manual gate on 2026-07-03. `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Phase 12 is **not started** and blocked until explicit human approval.
 **Success Criteria** (what must be TRUE):
 
   1. Operator can request a refund from the Admin; local financial state updates only after a reliable Stripe refund webhook confirms it.
@@ -419,7 +419,26 @@ Plans:
   3. Operator can create and manage an ExchangeRequest for defective/wrong prints from the Admin.
   4. Reverse logistics use a manual/semi-automatic Correios flow (tracking codes entered in the Admin) with no automated Correios API integration.
 
-**Plans**: TBD
+**Plans**: 4/4 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 11-01-PLAN.md - RefundRequest contract, model, Admin-safe reservation, concurrency/idempotency
+
+**Wave 2** *(blocked on Wave 1 manual gate)*
+
+- [x] 11-02-PLAN.md - Stripe refund webhook confirmation, financial recomputation, `refund.created` hardening
+
+**Wave 3** *(blocked on Wave 2 manual gate)*
+
+- [x] 11-03-PLAN.md - ExchangeRequest Admin workflow, manual Correios fields, raw body allowlist
+
+**Wave 4** *(blocked on Wave 3 manual gate)*
+
+- [x] 11-04-PLAN.md - Final validation, negative proofs and manual gate before Phase 12
+
+**Closure status (2026-07-03):** Phase 11 is complete/closed. `11-01` through `11-04` were executed and verified on branch `gsd/phase-11-refunds-exchanges-admin`. Validation evidence: unit 75/75, HTTP 29/29 — **104 tests PASS**, build PASS, greps G1–G7 PASS (G4 informational only — sanitizer Gelato URL pattern), config/lockfile no diff, `git diff --check` PASS. `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Accepted outcome includes: RefundRequest Admin-safe reservation with captured-truth guards; idempotency; process-local per-order concurrency claim; Stripe refund object webhook as sole local financial truth; `refund.created` never finalizes money; `charge.refunded` informational/idempotent; `payment_status` recomputation without auto-canceling `order_status`; ExchangeRequest operational workflow for `defect`/`wrong_product`; manual Correios reverse logistics; raw body allowlist on exchange routes; sanitization of notes, affected_items, and payloads. No real migration, `medusa db:migrate`, deploy, Stripe real, Stripe CLI smoke, Gelato real, Correios API, broad OperationalAlert, broad AdminActionLog, or Phase 12 work. Migration real, cross-dyno refund lock, and Stripe refund production smoke remain separate future gates. Human review accepted Phase 11 at the manual gate (`11-04-SUMMARY.md`, `11-CLOSURE.md`). Phase 12 is **not started** and blocked until explicit human approval.
 
 ### Phase 12: Ops, Audit & Critical Tests
 
@@ -427,6 +446,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phases 1-11
 **Requirements**: OPS-01, OPS-02, TEST-01
+**Manual gate:** Phase 12 is **not started** and blocked until explicit human approval.
 **Success Criteria** (what must be TRUE):
 
   1. Failed fulfillments and stuck payments surface as persisted OperationalAlerts.
@@ -452,8 +472,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Transactional Email (Resend) | 3/3 | Complete | 2026-07-01 |
 | 9. Gelato Fulfillment & Webhook | 5/5 | Complete / Closed | 2026-07-02 |
 | 10. Secure Guest Tracking | 3/3 | Complete / Closed | 2026-07-02 |
-| 11. Refunds & Exchanges (Admin) | 0/TBD | Not started (blocked until explicit approval) | - |
-| 12. Ops, Audit & Critical Tests | 0/TBD | Not started | - |
+| 11. Refunds & Exchanges (Admin) | 4/4 | Complete / Closed | 2026-07-03 |
+| 12. Ops, Audit & Critical Tests | 0/TBD | Not started (blocked until explicit approval) | - |
 
 ---
 *Roadmap created: 2026-06-22*
