@@ -1,172 +1,211 @@
 ---
 phase: 11-refunds-exchanges-admin
-status: planned
+status: validation-complete-awaiting-manual-review
 created_at: 2026-07-02
-validation_scope: planned-for-future-execution
-documentary_validation_this_cycle: git-diff-check-only
+validated_at: 2026-07-03T13:31:00-03:00
+manual_review_gate: true
+runtime_executed: true
+plans_accepted: [11-01, 11-02, 11-03]
+validation_plan: 11-04
 ---
 
-# Phase 11 Validation Plan
+# Phase 11 Validation — Final Evidence
 
-## Boundary For This Planning Cycle
+## Execution Summary
 
-Run only:
+Plan `11-04` executed on branch `gsd/phase-11-refunds-exchanges-admin` with clean git status. Consolidated validation of Phase 11 slices `11-01`..`11-03`. No runtime changes in the validation slice.
+
+| Check | Result |
+|-------|--------|
+| Unit tests (Phase 11 focused) | **75/75 PASS** |
+| HTTP integration (Phase 11 focused) | **29/29 PASS** |
+| Total | **104/104 PASS** |
+| Build (`ADMIN_DISABLED=true`) | **PASS** |
+| `git diff --check` | **PASS** |
+| `package.json` / lockfile diff | **none** |
+
+## Slice Acceptance
+
+| Slice | Status | Requirements |
+|-------|--------|--------------|
+| 11-01 | **accepted** | REF-01 (reservation half), REF-02 (create path) |
+| 11-02 | **accepted** | REF-01 (webhook financial truth), REF-02 (no auto-cancel) |
+| 11-03 | **accepted** | EXC-01, EXC-02 |
+| 11-04 | **executed** | Consolidated validation (this document) |
+
+## Requirement Matrix
+
+### REF-01 — Admin refund request; financial truth only after trusted Stripe refund webhook
+
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Zero amount rejected | PASS | Unit + HTTP admin-refunds |
+| Negative amount rejected | PASS | Unit + HTTP admin-refunds |
+| Over-captured rejected | PASS | Unit + HTTP admin-refunds |
+| Currency mismatch rejected | PASS | Unit + HTTP admin-refunds |
+| Requires existing confirmed/captured Order | PASS | Unit captured-truth + HTTP harness |
+| Refund request never creates Order | PASS | Unit + HTTP negative |
+| Refund request does not mark final financial truth at create | PASS | Status stays `requested`; no `confirmed_at` |
+| Idempotent replay reuses one RefundRequest | PASS | Unit + HTTP |
+| Concurrent reservations cannot exceed captured | PASS | Unit + HTTP (process-local claim) |
+| `refund.created` never finalizes money (incl. `status=succeeded`) | PASS | Unit + HTTP stripe-refund-webhook |
+| Terminal `refund.updated`/`refund.failed` confirms money | PASS | Unit + HTTP |
+| `charge.refunded` does not duplicate confirmed amount | PASS | Unit + HTTP |
+| Partial refund recomputes `payment_status` | PASS | Unit financial-recomputation + HTTP |
+| Total refund recomputes `payment_status` | PASS | Unit + HTTP |
+| Fake/injectable Stripe in tests; no real Stripe | PASS | Boundary layer + grep G7 |
+
+### REF-02 — Refund never auto-cancels order_status
+
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Partial refund preserves `order_status` | PASS | Unit `preserves order_status while updating payment_status metadata` |
+| Total refund preserves `order_status` | PASS | Unit + HTTP `confirms total refund without forcing order_status canceled` |
+| No runtime `order_status = canceled` from refund code | PASS | Grep G2 |
+
+### EXC-01 — ExchangeRequest for defect and wrong_product
+
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Create defect exchange | PASS | Unit + HTTP |
+| Create wrong_product exchange | PASS | Unit + HTTP |
+| Status transitions validated | PASS | Unit transition matrix + HTTP invalid transition |
+| Terminal statuses immutable | PASS | Unit |
+| Raw body allowlist enforced | PASS | Unit + HTTP forbidden top-level keys |
+
+### EXC-02 — Manual Correios reverse logistics; no API integration
+
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Manual tracking/authorization/label fields on create | PASS | Unit + HTTP |
+| Fields updatable without status change | PASS | Unit + HTTP update route |
+| Milestone timestamps on `return_received` / `resolved` | PASS | Unit |
+| No Correios API client/call | PASS | Grep G3; service import proof |
+| No automatic label purchase or polling | PASS | No fetch/axios in exchange module |
+
+## Negative Proof Matrix
+
+| Invariant | Status | Evidence |
+|-----------|--------|----------|
+| Refund does not create Order | PASS | Unit + HTTP + G1 |
+| Refund does not auto-change `order_status` | PASS | Unit + HTTP webhook tests |
+| Total refund does not force `order_status=canceled` | PASS | Unit + HTTP + G2 |
+| Exchange does not create RefundRequest | PASS | Unit record shape + HTTP harness |
+| Exchange does not update financial state | PASS | HTTP payment_status unchanged |
+| Exchange does not create Order | PASS | G1 |
+| Exchange does not call Correios API | PASS | G3 |
+| Exchange does not call/trigger Gelato | PASS | Import proof; G4 sanitizer-only match |
+| Exchange does not trigger replacement/redispatch | PASS | Operational status vocabulary only |
+| No Gelato dispatch/tracking/public tracking alteration in Phase 11 scope | PASS | stripe-refund-webhook HTTP negative harness |
+| No Order birth rule alteration | PASS | Refund/exchange paths do not touch checkout completion |
+| No broad OperationalAlert | PASS | G6 |
+| No broad AdminActionLog | PASS | G6 |
+| No Stripe CLI smoke | PASS | G5 |
+| No real migration applied | PASS | `TBD-*` drafts only |
+| No real Stripe in tests | PASS | G7 |
+| No Gelato real | PASS | Not called |
+| Phase 12 not started | PASS | No phase 12 planning dir |
+| package.json / lockfile unchanged | PASS | git diff empty |
+
+## Test Commands (canonical)
 
 ```bash
+# Unit
+cd apps/backend && TMPDIR=/tmp npm run test:unit -- --runTestsByPath \
+  src/modules/refund-request/__tests__/*.spec.ts \
+  src/modules/exchange-request/__tests__/exchange-request.unit.spec.ts
+
+# HTTP integration
+cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath \
+  integration-tests/http/admin-refunds.spec.ts \
+  integration-tests/http/stripe-refund-webhook.spec.ts \
+  integration-tests/http/admin-exchanges.spec.ts
+
+# Build
+cd apps/backend && HOME=/tmp XDG_CONFIG_HOME=/tmp TMPDIR=/tmp ADMIN_DISABLED=true npm run build
+
+# Whitespace
 git diff --check
 ```
 
-Do not run Jest, integration tests, build, migrations, deploy, Stripe real
-calls, Gelato real calls, Correios API calls, Stripe CLI smoke, or Phase 12 work
-during this planning cycle.
+## Negative Grep Commands (blocking scope)
 
-## Future Execution Validation Matrix
+```bash
+cd apps/backend
 
-When Phase 11 execution is separately approved, validation must prove each
-criterion below.
+# G1 — no Order creation in Phase 11 runtime
+rg -n "createOrder|orders\.create|order\.create" \
+  src/modules/refund-request src/modules/exchange-request \
+  src/api/admin/refunds src/api/admin/exchanges src/workflows/refund \
+  --glob '!**/__tests__/**' --glob '!**/migrations/**'
 
-### Refund Request Validation
+# G2 — no auto order_status=canceled
+rg -n 'order_status.*canceled|canceled.*order_status|order_status\s*=\s*["\x27]canceled' \
+  src/modules/refund-request src/modules/exchange-request \
+  src/api/admin/refunds src/api/admin/exchanges src/workflows/refund \
+  --glob '!**/__tests__/**'
 
-- Refund amount zero is rejected.
-- Refund amount negative is rejected.
-- Refund above locally available `captured_amount` is rejected.
-- Refund currency diverging from payment currency is rejected.
-- Refund request requires an existing Order already created by the accepted
-  webhook-driven Order path.
-- Refund request never creates an Order.
-- Refund request does not mark local financial state as refunded.
-- Refund request stores only safe local intent/reservation state.
-- Stripe client is fake/injectable in tests; no real Stripe call occurs.
+# G3 — no Correios API
+rg -n -i 'api\.correios|correios\.com\.br|CORREIOS_API' \
+  src/modules/exchange-request src/api/admin/exchanges --glob '!**/__tests__/**'
 
-### Concurrency And Idempotency
+# G4 — no Gelato dispatch (informational: sanitizer URL pattern allowed)
+rg -n -i 'gelatoapis|dispatchGelato|createGelato|gelato.*dispatch|redispatch' \
+  src/modules/exchange-request src/api/admin/exchanges \
+  src/modules/refund-request src/api/admin/refunds src/workflows/refund \
+  --glob '!**/__tests__/**'
 
-- Repeating the same Admin refund request with the same idempotency key reuses
-  one local `RefundRequest`.
-- Concurrent refund requests cannot reserve more than captured amount.
-- Concurrent webhook deliveries cannot confirm more refunded amount than
-  captured amount.
-- Duplicate Stripe refund webhook events are no-ops after the first accepted
-  update.
-- `charge.refunded` plus `refund.updated` cannot duplicate
-  `confirmed_refunded_amount`; refund object events remain canonical for final
-  financial truth.
-- Failed/canceled refund events release or terminalize only the relevant local
-  request and do not subtract confirmed refunded amount.
+# G5 — no Stripe CLI smoke
+rg -n -i 'stripe listen|stripe cli|stripe trigger' \
+  src/modules/refund-request src/modules/exchange-request \
+  integration-tests/http/admin-refunds.spec.ts \
+  integration-tests/http/stripe-refund-webhook.spec.ts \
+  integration-tests/http/admin-exchanges.spec.ts
 
-### Webhook-Confirmed Financial Truth
+# G6 — no broad alert/audit modules
+rg -n 'OperationalAlert|AdminActionLog' \
+  src/modules/refund-request src/modules/exchange-request \
+  src/api/admin/refunds src/api/admin/exchanges src/workflows/refund \
+  --glob '!**/__tests__/**'
 
-- `refund.created` or non-terminal refund states do not update final local
-  financial truth.
-- Local confirmed refunded amount updates only after trusted Stripe refund
-  webhook confirmation.
-- Local `payment_status` is recomputed transactionally with the refund
-  confirmation.
-- Partial refund yields partial financial state without changing operational
-  status.
-- Total refund yields total-refunded financial state without forcing
-  `order_status = canceled`.
-- Refund failure does not revert Order, Gelato fulfillment, tracking, email or
-  analytics state.
+# G7 — no real Stripe SDK
+rg -n 'new Stripe\(|stripe\.refunds\.create|stripe\.paymentIntents' \
+  src/modules/refund-request src/modules/exchange-request \
+  src/api/admin/refunds src/api/admin/exchanges src/workflows/refund \
+  integration-tests/http/admin-refunds.spec.ts \
+  integration-tests/http/stripe-refund-webhook.spec.ts \
+  integration-tests/http/admin-exchanges.spec.ts \
+  --glob '!**/__tests__/**'
+```
 
-### Order Status Separation
+**G4 note:** single match in `exchange-request/service.ts` is a forbidden-URL sanitizer pattern, not a Gelato client or dispatch path.
 
-- Refund does not automatically change `order_status` to `canceled`.
-- Total refund does not automatically change `order_status` to `canceled`.
-- Existing decoupled `order_status/payment_status` metadata remains the
-  contract.
-- Any operational cancellation must remain a separate explicit operator flow,
-  not a side effect of refund confirmation.
+## Build and Migration Policy (observed)
 
-### ExchangeRequest
+- Build ran because `11-01`..`11-03` altered module registration and Admin routes — **PASS**
+- Draft migrations exist but were **not applied**
+- No `medusa db:migrate` executed
 
-- Operator can create an `ExchangeRequest` for `defect`.
-- Operator can create an `ExchangeRequest` for `wrong_product`.
-- Exchange status transitions are validated.
-- Exchange cannot create a refund automatically.
-- Exchange cannot update local financial state.
-- Exchange does not create an Order.
-- Exchange does not trigger automatic Gelato dispatch/replacement.
-- Exchange stores only safe affected-item summary and sanitized notes.
+## Deferred / Known Limitations
 
-### Manual Correios Reverse Logistics
-
-- Operator can enter a Correios/manual reverse tracking code.
-- Operator can update return milestones manually.
-- Backend does not call Correios API.
-- Backend does not buy labels or quote shipping automatically.
-- Backend does not poll Correios tracking automatically.
-
-### Scope Negatives
-
-- No broad `OperationalAlert` module is started.
-- No broad `AdminActionLog` module is started.
-- No Phase 12 invariant-test program is started.
-- No alteration in Gelato dispatch.
-- No alteration in Gelato tracking ingestion.
-- No alteration in public tracking route.
-- No alteration in Order birth rule.
-- No Stripe CLI smoke real.
-- No migration real applied unless a separate deployment gate approves it.
-- No real Stripe refund call in tests.
-- No real Gelato call.
-- No real Correios API call.
-- No Phase 12 start.
-
-## Planned Future Unit Tests
-
-Future execution should add focused tests for:
-
-- `RefundRequest` amount/currency/status/idempotency helpers;
-- local captured-amount availability calculation;
-- transaction/concurrency guard for refund reservations;
-- Stripe refund webhook handler correlation and terminal-state handling;
-- `payment_status` recomputation that never mutates `order_status`;
-- `ExchangeRequest` status transitions and manual reverse-logistics fields;
-- sanitizers rejecting prohibited fields in refund/exchange metadata.
-
-## Planned Future HTTP / Admin Integration Tests
-
-Future execution should add filtered Admin/API tests for:
-
-- Admin refund request happy path with fake Stripe boundary;
-- zero/negative/over-captured/currency-mismatch rejections;
-- idempotent replay of same refund request;
-- webhook confirmation of partial refund;
-- webhook confirmation of total refund without auto-canceling Order;
-- webhook failure path;
-- Admin exchange create/update for defect/wrong product;
-- manual Correios code entry and milestone updates;
-- exchange not creating refund and not calling Correios/Gelato.
-
-## Build And Migration Policy
-
-- Slices that alter module registration, environment contracts, Admin route
-  registration, or Medusa runtime wiring must run build during future execution.
-- This planning cycle must not run build.
-- Future execution may create draft migrations for local models.
-- No `medusa db:migrate` or real migration application is approved in this
-  planning cycle.
-
-## Planned Negative Greps
-
-Future final validation should include scoped negative greps proving:
-
-- no new checkout/storefront Order creation path;
-- no automatic `order_status = canceled` from refund code;
-- no exchange-triggered refund creation;
-- no Correios API client/base URL/token usage;
-- no real Stripe CLI smoke commands;
-- no real Gelato dispatch/tracking changes;
-- no Phase 12 `OperationalAlert` or `AdminActionLog` module start;
-- no secrets, raw Stripe payloads, full headers, full customer PII, Pix QR,
-  `client_secret`, or plaintext tracking token in persisted refund/exchange
-  metadata.
-
-Broad greps may be informational when they catch historical references. Blocking
-greps must focus on files touched by Phase 11 and runtime surfaces that could
-violate the invariants.
+| Limitation | Disposition |
+|------------|-------------|
+| Real DB migrations | Deferred — separate deployment gate |
+| Cross-dyno Redis/DB global lock for refund reservation/confirmation | Deferred — process-local claim documented in 11-01/11-02 |
+| Broad OperationalAlert | Phase 12 |
+| Broad AdminActionLog | Phase 12 |
+| Stripe CLI smoke / production refund smoke | Not executed |
+| Gelato/Correios real calls | Not executed |
 
 ## Manual Gate
 
-After all future Phase 11 slices are executed and their summaries are accepted,
-stop at the Phase 11 manual gate. Do not start Phase 12.
+Phase 11 validation is complete. **Stop here.**
+
+Do **not** create `11-CLOSURE.md` or start Phase 12 without separate explicit human approval.
+
+Next permitted steps after human review:
+
+1. Accept Phase 11 at manual gate → create `11-CLOSURE.md` (separate approval)
+2. Apply migrations (separate deployment gate)
+3. Production Stripe refund webhook smoke (separate gate)
+4. Cross-dyno reservation lock hardening (optional separate slice)
