@@ -128,3 +128,39 @@ export function resolveOrderCapturedPaymentTruth(
     currency_code: input.payment_attempt.currency_code.trim().toLowerCase(),
   }
 }
+
+export function resolveOrderCapturedAmountForFinancialRecomputation(
+  input: ResolveOrderCapturedPaymentTruthInput
+): OrderCapturedPaymentTruth {
+  const normalizedOrderId = input.order_id.trim()
+
+  if (!normalizedOrderId) {
+    throw new Error("REFUND_REQUEST_ORDER_ID_REQUIRED")
+  }
+
+  const { order_status } = readOrderRefundEligibilityMetadata(input.order_metadata)
+
+  if (order_status !== "confirmed") {
+    throw new Error("REFUND_REQUEST_ORDER_STATUS_NOT_ELIGIBLE")
+  }
+
+  if (!input.payment_attempt) {
+    throw new Error("REFUND_REQUEST_PAYMENT_ATTEMPT_NOT_FOUND")
+  }
+
+  assertPaymentAttemptEligibleForRefundSource(
+    input.payment_attempt,
+    input.order_id
+  )
+
+  const paymentIntentId =
+    input.payment_attempt.provider_payment_intent_id?.trim() ?? ""
+
+  return {
+    order_id: normalizedOrderId,
+    payment_attempt_id: input.payment_attempt.id,
+    payment_intent_id: paymentIntentId,
+    captured_amount: input.payment_attempt.amount,
+    currency_code: input.payment_attempt.currency_code.trim().toLowerCase(),
+  }
+}
