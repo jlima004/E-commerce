@@ -35,6 +35,7 @@ import {
   normalizeRouteOrJob,
 } from "../observability/logger"
 import { buildSentryCaptureContext, shouldCaptureError } from "../observability/sentry-scrub"
+import { createStoreTrackingLookupGuardMiddleware } from "../modules/tracking-access-token/lookup"
 
 const CORRELATION_HEADER = "x-correlation-id"
 const CORRELATION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
@@ -258,6 +259,9 @@ export const correlationAndAccessLogMiddleware =
 
 export const sentryErrorMiddleware = createSentryErrorHandler()
 
+export const storeTrackingLookupGuardMiddleware =
+  createStoreTrackingLookupGuardMiddleware()
+
 export default defineMiddlewares({
   errorHandler: sentryErrorMiddleware,
   routes: [
@@ -327,6 +331,11 @@ export default defineMiddlewares({
       bodyParser: {
         preserveRawBody: true,
       },
+    },
+    {
+      method: ["POST"],
+      matcher: "/store/tracking/lookup",
+      middlewares: [storeTrackingLookupGuardMiddleware],
     },
     {
       method: ["POST"],

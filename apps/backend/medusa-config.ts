@@ -47,6 +47,10 @@ module.exports = defineConfig({
       resolve: "./src/modules/gelato-fulfillment",
     },
     {
+      key: "tracking_access_token",
+      resolve: "./src/modules/tracking-access-token",
+    },
+    {
       resolve: "./src/modules/payment-attempt",
     },
   ],

@@ -22,8 +22,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: Analytics Outbox (purchase_completed)** - Durable local outbox written with the Order + async PostHog relay
 - [x] **Phase 8: Transactional Email (Resend)** - Idempotent confirmation email after confirmed Order + durable local `purchase_completed`, before the Gelato attempt *(complete; closed 2026-07-01)*
 - [x] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(complete; closed 2026-07-02)*
-- [ ] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route *(not started; blocked until explicit approval)*
-- [ ] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow
+- [x] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route *(complete; closed 2026-07-02)*
+- [ ] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow *(not started; blocked until explicit approval)*
 - [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests
 
 ## Phase Details
@@ -381,13 +381,29 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 9
 **Requirements**: TRK-01, TRK-02
+**Manual gate:** Phase 10 is complete and accepted at the manual gate on 2026-07-02. `TRK-01` and `TRK-02` are complete. Phase 11 may be planned next, but execution remains blocked until explicit human approval.
 **Success Criteria** (what must be TRUE):
 
   1. A guest can access order/tracking status via a TrackingAccessToken-gated public route.
   2. Tracking tokens are persisted only as a hash (with `expires_at`/`revoked_at`) — a DB and log grep finds no plaintext token.
   3. The tracking route validates tokens server-side with a constant-time compare and is rate-limited against enumeration.
 
-**Plans**: TBD
+**Plans**: 3/3 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 10-01-PLAN.md - TrackingAccessToken contract, model, HMAC hash, expiry/revocation and migration draft
+
+**Wave 2** *(blocked on Wave 1 manual gate)*
+
+- [x] 10-02-PLAN.md - Public token-gated tracking route with sanitized allowlist response
+
+**Wave 3** *(blocked on Wave 2 manual gate)*
+
+- [x] 10-03-PLAN.md - Rate limit, enumeration protection and final validation
+
+**Closure status (2026-07-02):** Phase 10 is complete/closed. `10-01` through `10-03` were executed and verified on branch `gsd/phase-10-secure-guest-tracking`. Validation evidence: unit 45/45, HTTP 11/11, build PASS, blocking runtime grep PASS, config/lockfile no diff, `git diff --check` PASS. `TRK-01` and `TRK-02` are complete. Accepted outcome includes: `TrackingAccessToken` hash-only persistence with HMAC-SHA256 and constant-time compare; `POST /store/tracking/lookup` body-only token route; allowlist-only public response without `trackingCode`/`trackingUrl`; rate limit / enumeration guard with indistinguishable 429; process-local in-memory store with documented multi-instance limitation. No migration applied, no Gelato real, no webhook smoke real, no refund, exchange, admin ops, deploy, or Phase 11 work. Migration real, global Redis rate limit, and client token delivery remain separate future gates. Human review accepted Phase 10 at the manual gate (`10-03-SUMMARY.md`, `10-CLOSURE.md`). Phase 11 is **not started** and blocked until explicit human approval.
 
 ### Phase 11: Refunds & Exchanges (Admin)
 
@@ -395,6 +411,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 6
 **Requirements**: REF-01, REF-02, EXC-01, EXC-02
+**Manual gate:** Phase 11 is **not started** and blocked until explicit human approval.
 **Success Criteria** (what must be TRUE):
 
   1. Operator can request a refund from the Admin; local financial state updates only after a reliable Stripe refund webhook confirms it.
@@ -434,8 +451,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Analytics Outbox (purchase_completed) | 3/3 | Complete | 2026-07-01 |
 | 8. Transactional Email (Resend) | 3/3 | Complete | 2026-07-01 |
 | 9. Gelato Fulfillment & Webhook | 5/5 | Complete / Closed | 2026-07-02 |
-| 10. Secure Guest Tracking | 0/TBD | Not started (blocked until explicit approval) | - |
-| 11. Refunds & Exchanges (Admin) | 0/TBD | Not started | - |
+| 10. Secure Guest Tracking | 3/3 | Complete / Closed | 2026-07-02 |
+| 11. Refunds & Exchanges (Admin) | 0/TBD | Not started (blocked until explicit approval) | - |
 | 12. Ops, Audit & Critical Tests | 0/TBD | Not started | - |
 
 ---
