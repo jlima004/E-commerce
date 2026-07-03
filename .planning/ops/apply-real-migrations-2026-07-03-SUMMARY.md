@@ -2,19 +2,19 @@
 gate: apply-real-migrations
 date: 2026-07-03
 branch: ops/apply-real-migrations-2026-07-03
-status: partial-success-manual-review-required
+status: success-manual-gate
 phase_12: not-started
-runtime_changes: none
+runtime_changes: module-registration-only
 deploy: none
 ---
 
-# Gate Operacional — Aplicação de Migrations Reais (2026-07-03)
+# Gate Operacional — Registro de Módulos + Migrations Pendentes (2026-07-03)
 
 ## Resultado
 
-**Parcialmente concluído.** Seis migrations customizadas foram aplicadas nesta execução (além de `Migration20260629000000`, já aplicada em 2026-06-29). **Duas migrations de fases fechadas não foram aplicadas** porque os módulos `webhooks` e `checkout-completion` **não estão registrados** em `apps/backend/medusa-config.ts`. Registrar esses módulos exigiria alteração de runtime — fora do escopo deste gate.
+**Concluído com sucesso.** Os módulos `webhooks` e `checkout-completion` foram registrados em `medusa-config.ts`. As duas migrations pendentes foram aplicadas no DB local. Build e smoke de health passaram. Nenhuma alteração em `package.json` / lockfile.
 
-O gate para aqui para **revisão manual** antes de qualquer próximo passo (registro de módulos, reaplicação das migrations pendentes ou deploy).
+O gate para aqui no **manual gate** — sem deploy, sem Phase 12, sem integrações reais.
 
 ---
 
@@ -23,8 +23,7 @@ O gate para aqui para **revisão manual** antes de qualquer próximo passo (regi
 | Item | Valor |
 |------|-------|
 | Branch operacional | `ops/apply-real-migrations-2026-07-03` |
-| Base | `gsd/phase-11-refunds-exchanges-admin` |
-| Working tree pós-gate | limpo (`git status --short` vazio; apenas este summary adicionado) |
+| Working tree pós-gate | `apps/backend/medusa-config.ts` + este summary (não commitados) |
 
 ---
 
@@ -33,140 +32,107 @@ O gate para aqui para **revisão manual** antes de qualquer próximo passo (regi
 | Check | Resultado |
 |-------|-----------|
 | `git status --short` (início) | limpo |
-| `git branch --show-current` | `gsd/phase-11-refunds-exchanges-admin` → trocado para branch ops |
+| `git branch --show-current` | `ops/apply-real-migrations-2026-07-03` |
 | `which node` | `/home/jlima/.nvm/versions/node/v22.23.1/bin/node` (WSL/Linux) |
 | `which npm` | `/home/jlima/.nvm/versions/node/v22.23.1/bin/npm` |
 | `node -v` | v22.23.1 |
 | `npm -v` | 10.9.8 |
-| Phase 12 | não iniciada (confirmado via `STATE.md` e `11-CLOSURE.md`) |
+| Phase 12 | não iniciada |
 
 ---
 
-## Inventário de migrations
-
-Paths reais no projeto: `apps/backend/src/modules/*/migrations/*` (nenhum arquivo em `apps/backend/migrations/`).
-
-| # | Módulo | Arquivo | Fase | Status antes | Status depois |
-|---|--------|---------|------|--------------|---------------|
-| 1 | PaymentAttempt | `Migration20260629000000.ts` | 04 | **já aplicada** (2026-06-29) | aplicada |
-| 2 | WebhookEventLog | `Migration20260701000000.ts` | 05 | pendente | **NÃO aplicada** |
-| 3 | CheckoutCompletionLog | `Migration20260702000000.ts` | 06 | pendente | **NÃO aplicada** |
-| 4 | AnalyticsEventLog | `Migration20260701010000.ts` | 07 | pendente | **aplicada** (esta execução) |
-| 5 | EmailDeliveryLog | `Migration20260701181000.ts` | 08 | pendente | **aplicada** (esta execução) |
-| 6 | GelatoFulfillment | `TBD-gelato-fulfillment.ts` | 09 | draft pendente | **aplicada** (esta execução) |
-| 7 | TrackingAccessToken | `TBD-tracking-access-token.ts` | 10 | draft pendente | **aplicada** (esta execução) |
-| 8 | RefundRequest | `TBD-refund-request.ts` | 11 | draft pendente | **aplicada** (esta execução) |
-| 9 | ExchangeRequest | `TBD-exchange-request.ts` | 11 | draft pendente | **aplicada** (esta execução) |
-
-### Ordem esperada de aplicação (dependências)
-
-```
-PaymentAttempt
-  → WebhookEventLog
-    → CheckoutCompletionLog
-      → AnalyticsEventLog
-        → EmailDeliveryLog
-          → GelatoFulfillment (FK lógicas: order_id, checkout_completion_log_id, analytics_event_log_id, email_delivery_log_id)
-            → TrackingAccessToken (gelato_fulfillment_id)
-              → RefundRequest / ExchangeRequest (order_id, payment_attempt_id)
-```
-
-### Migrations ignoradas e motivo
-
-| Migration | Motivo |
-|-----------|--------|
-| `Migration20260701000000` (WebhookEventLog) | Módulo `./src/modules/webhooks` **ausente** de `medusa-config.ts`; runner não executa migrations de módulos não registrados. Correção exige registro em runtime — fora do escopo. |
-| `Migration20260702000000` (CheckoutCompletionLog) | Módulo `./src/modules/checkout-completion` **ausente** de `medusa-config.ts`; mesma limitação. |
-
-### Migrations draft `TBD-*`
-
-O runner Medusa **reconheceu e aplicou** os arquivos `TBD-*` sem renomeação (`Migrating TBD-gelato-fulfillment`, etc.). Nenhuma alteração de arquivo de migration foi necessária.
-
-### Correspondência com fases fechadas
-
-Todas as migrations pendentes mapeiam para fases 04–11 (fechadas). Nenhuma migration Phase 12 identificada. Gate de fase: **PASS**.
-
----
-
-## Backup
-
-| Campo | Valor |
-|-------|-------|
-| Método | `pg_dump --format=custom --no-owner --no-acl` |
-| Timestamp | 2026-07-03 ~16:13:29 -03 |
-| Path local (fora do repo) | `/home/jlima/backups/ecommerce/medusa_backend_2026-07-03_161329.dump` |
-| Tamanho | 426K |
-| Conexão | `DATABASE_MIGRATION_URL` (direct/session; porta 5432; pooler 6543 bloqueado pelo script) |
-
-Variável confirmada presente; host/porta/db verificados sem imprimir credenciais.
-
-> **Nota:** O `.env` local aponta para Postgres em `127.0.0.1:5432` / `medusa_backend` (dev local), não Supabase remoto. O script `db:migrate:safe` validou URL direct/session (não pooler).
-
----
-
-## Preflight DB
+## Pré-validação (antes de alterar)
 
 | Check | Resultado |
 |-------|-----------|
-| Conectividade | OK |
-| Tabelas de controle | `mikro_orm_migrations`, `link_module_migrations`, `script_migrations` |
-| Migration parcial | nenhuma detectada |
-| `npm run db:migrate:safe -- --check-only` | PASS |
-| Build pré-migration | PASS (`ADMIN_DISABLED=true`, ~23s) |
-
-### Estado de tabelas custom — antes
-
-| Tabela | Antes |
-|--------|-------|
-| `payment_attempt` | exists |
-| `webhook_event_log` | missing |
-| `checkout_completion_log` | missing |
-| `analytics_event_log` | missing |
-| `email_delivery_log` | missing |
-| `gelato_fulfillment` | missing |
-| `tracking_access_token` | missing |
-| `refund_request` | missing |
-| `exchange_request` | missing |
-
-### Estado de tabelas custom — depois
-
-| Tabela | Depois | Índices |
-|--------|--------|---------|
-| `payment_attempt` | exists | 6 |
-| `webhook_event_log` | **missing** | — |
-| `checkout_completion_log` | **missing** | — |
-| `analytics_event_log` | exists | 8 |
-| `email_delivery_log` | exists | 9 |
-| `gelato_fulfillment` | exists | 9 |
-| `tracking_access_token` | exists | 5 |
-| `refund_request` | exists | 6 |
-| `exchange_request` | exists | 4 |
+| `apps/backend/src/modules/webhooks` | existe |
+| `apps/backend/src/modules/checkout-completion` | existe |
+| `Migration20260701000000.ts` | existe |
+| `Migration20260702000000.ts` | existe |
+| `webhook_event_log` (antes) | **missing** |
+| `checkout_completion_log` (antes) | **missing** |
 
 ---
 
-## Aplicação
+## Alteração de runtime (escopo aprovado)
+
+Registro em `apps/backend/medusa-config.ts`:
+
+| Módulo | Key | Resolve |
+|--------|-----|---------|
+| webhooks | `webhooks` | `./src/modules/webhooks` |
+| checkout-completion | `checkout_completion` | `./src/modules/checkout-completion` |
+
+Nenhum outro arquivo de código alterado (service/model/migration/env/package).
+
+---
+
+## Build
+
+| Item | Resultado |
+|------|-----------|
+| Comando | `cd apps/backend && HOME=/tmp XDG_CONFIG_HOME=/tmp TMPDIR=/tmp ADMIN_DISABLED=true npm run build` |
+| Exit code | 0 |
+| Duração | ~24s |
+| Status | **PASS** |
+
+---
+
+## Migration
 
 | Item | Valor |
 |------|-------|
 | Comando | `cd apps/backend && npm run db:migrate:safe` |
-| Implementação | `node scripts/run-migrations.mjs` → `npx medusa db:migrate` com `DATABASE_URL` sobrescrito por `DATABASE_MIGRATION_URL` no subprocesso |
 | Execuções | 1 |
 | Exit code | 0 |
-| Seed / reset / drop / truncate | não executados |
-| Deploy | não executado |
+| Target | DB local (`DATABASE_MIGRATION_URL` / `.env`) |
+| Supabase/produção | **não migrado** |
 
-### Migrations aplicadas nesta execução (registro `mikro_orm_migrations`)
+### Migrations aplicadas nesta execução
 
-- `Migration20260701010000`
-- `Migration20260701181000`
-- `TBD-gelato-fulfillment`
-- `TBD-tracking-access-token`
-- `TBD-refund-request`
-- `TBD-exchange-request`
+| Migration | Tabela | Executed at |
+|-----------|--------|-------------|
+| `Migration20260701000000` | `webhook_event_log` | 2026-07-03T19:31:30.057Z |
+| `Migration20260702000000` | `checkout_completion_log` | 2026-07-03T19:31:30.235Z |
 
-### Migrations já aplicadas (pré-gate)
+Demais módulos: skipped (já up-to-date).
 
-- `Migration20260629000000` (PaymentAttempt, 2026-06-29)
+---
+
+## Tabelas — antes / depois
+
+| Tabela | Antes | Depois |
+|--------|-------|--------|
+| `webhook_event_log` | missing | **exists** |
+| `checkout_completion_log` | missing | **exists** |
+
+### Índices principais — `webhook_event_log`
+
+- `webhook_event_log_pkey`
+- `IDX_webhook_event_log_provider_deduplication_key_unique`
+- `IDX_webhook_event_log_provider_external_event_id_unique`
+- `IDX_webhook_event_log_provider_payload_hash`
+- `IDX_webhook_event_log_entity`
+- `IDX_webhook_event_log_event_type`
+- `IDX_webhook_event_log_status_received_at`
+
+### Constraints — `webhook_event_log`
+
+- PK + checks: `provider`, `entity_type`, `status`, `processing_attempts`
+
+### Índices principais — `checkout_completion_log`
+
+- `checkout_completion_log_pkey`
+- `IDX_checkout_completion_log_idempotency_key_unique`
+- `IDX_checkout_completion_log_payment_intent_id`
+- `IDX_checkout_completion_log_cart_id`
+- `IDX_checkout_completion_log_payment_attempt_id`
+- `IDX_checkout_completion_log_order_id`
+- `IDX_checkout_completion_log_status_locked_at`
+
+### Constraints — `checkout_completion_log`
+
+- PK + checks: `operation`, `status`
 
 ---
 
@@ -174,14 +140,19 @@ Variável confirmada presente; host/porta/db verificados sem imprimir credenciai
 
 | Check | Resultado |
 |-------|-----------|
-| `GET /health/live` | HTTP 200 |
-| `GET /health/ready` | HTTP 200 — `postgres: up`, `redis: up` |
-| Build pós-migration | não reexecutado (nenhuma alteração de código) |
-| Schema read-only | tabelas/índices confirmados via `information_schema` / `pg_indexes` |
-| `git diff --check` | PASS |
-| `package.json` / `package-lock.json` | sem diff |
+| `GET /health/live` | HTTP **200** |
+| `GET /health/ready` | HTTP **200** — `postgres: up`, `redis: up` |
+| Mutação de negócio | **nenhuma** |
 
-Nenhuma mutação de negócio: sem Orders, pagamentos, refunds, webhooks reais, Gelato, Correios.
+---
+
+## Validação documental
+
+| Check | Resultado |
+|-------|-----------|
+| `git diff --check` | PASS |
+| `package.json` / `package-lock.json` / `apps/backend/package.json` | **sem diff** |
+| Arquivos alterados | `apps/backend/medusa-config.ts`, `.planning/ops/apply-real-migrations-2026-07-03-SUMMARY.md` |
 
 ---
 
@@ -189,73 +160,32 @@ Nenhuma mutação de negócio: sem Orders, pagamentos, refunds, webhooks reais, 
 
 | Restrição | Status |
 |-----------|--------|
-| Runtime novo | **não** — nenhum arquivo de código alterado |
+| Runtime novo além de registro de módulos | **não** |
+| Regras de negócio alteradas | **não** |
 | Phase 12 | **não iniciada** |
 | Stripe real / Stripe CLI | **não** |
 | Gelato real | **não** |
 | Correios API | **não** |
+| Order / refund / webhook real | **não** |
 | Deploy | **não** |
+| Supabase/produção migrado | **não** |
 | `package.json` / lockfile | **sem alteração** |
-| Secrets em logs/summary | **não impressos** |
 
 ---
 
-## Deferidos / remanescentes
+## Contexto do gate anterior (mesma branch, execução ~16:13)
 
-1. **Registro de módulos em `medusa-config.ts`** — adicionar `webhooks` e `checkout-completion` requer gate de runtime separado (fora deste escopo migration-only).
-2. **Aplicar migrations pendentes** após registro:
-   - `Migration20260701000000` → `webhook_event_log`
-   - `Migration20260702000000` → `checkout_completion_log`
-3. **Renomeação `TBD-*` → `Migration{timestamp}`** — não necessária nesta execução; runner aceitou nomes draft. Opcional para higiene futura.
-4. **Supabase production** — este gate rodou contra DB local do `.env`. Aplicar o mesmo procedimento em Supabase direct/session exige `DATABASE_MIGRATION_URL` de produção/staging em gate separado.
-5. **GelatoFulfillment sem `checkout_completion_log`** — tabela `gelato_fulfillment` foi criada com coluna `checkout_completion_log_id` NOT NULL, mas a tabela referenciada ainda não existe. Fluxos que persistem GelatoFulfillment falharão até `checkout_completion_log` existir.
+Na execução anterior deste gate (migration-only, sem registro de módulos), seis migrations foram aplicadas; `webhook_event_log` e `checkout_completion_log` ficaram pendentes. Backup disponível em:
 
----
-
-## Rollback plan (não executado)
-
-### Restaurar backup completo
-
-```bash
-# Parar app/worker antes do restore
-pg_restore \
-  --clean \
-  --if-exists \
-  --no-owner \
-  --no-acl \
-  --dbname="$DATABASE_MIGRATION_URL" \
-  /home/jlima/backups/ecommerce/medusa_backend_2026-07-03_161329.dump
-```
-
-Substituir `$DATABASE_MIGRATION_URL` pela variável de ambiente real (não colar URL no terminal histórico).
-
-### Rollback seletivo (apenas migrations desta execução)
-
-Requer revisão manual dos `down()` de cada migration aplicada hoje. **Não automatizar** sem análise de dependências. Ordem inversa sugerida:
-
-1. `TBD-exchange-request`
-2. `TBD-refund-request`
-3. `TBD-tracking-access-token`
-4. `TBD-gelato-fulfillment`
-5. `Migration20260701181000`
-6. `Migration20260701010000`
-
-Remover entradas correspondentes de `mikro_orm_migrations` somente se o `down()` foi executado com sucesso.
-
-### Se migration falhar parcialmente
-
-1. **Parar imediatamente** — não reexecutar `db:migrate:safe`.
-2. Registrar estado em `mikro_orm_migrations` e tabelas afetadas.
-3. Restaurar backup completo ou executar `down()` documentado.
-4. Não prosseguir para deploy ou Phase 12.
+`/home/jlima/backups/ecommerce/medusa_backend_2026-07-03_161329.dump`
 
 ---
 
 ## Próximo passo recomendado (manual gate)
 
-1. Revisar este summary e aceitar o escopo parcial **ou** aprovar gate separado para registrar `webhooks` + `checkout-completion` em `medusa-config.ts`.
-2. Reexecutar `npm run db:migrate:safe` uma vez após registro para aplicar as duas migrations restantes.
-3. Validar existência de `webhook_event_log` e `checkout_completion_log` + smoke read-only.
-4. Somente então considerar deploy ou gates de integração real (Stripe/Gelato).
+1. Revisar diff de `medusa-config.ts` e este summary.
+2. Commitar na branch ops se aprovado.
+3. Considerar gate separado para Supabase/produção (`DATABASE_MIGRATION_URL` de staging/prod).
+4. Considerar deploy ou gates de integração real (Stripe/Gelato) somente após aprovação explícita.
 
-**Não prosseguir automaticamente.**
+**Não prosseguir automaticamente para Phase 12, deploy ou integrações reais.**
