@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 11
 current_phase_name: Refunds & Exchanges (Admin)
-status: phase-10-closed-phase-11-blocked
-stopped_at: Phase 10 closed; Phase 11 not started; next phase blocked until explicit approval
-last_updated: "2026-07-02T21:45:00-03:00"
+status: phase-11-planned-awaiting-manual-review
+stopped_at: Phase 11 planning complete; execution blocked at manual gate
+last_updated: "2026-07-02T22:05:21-03:00"
 last_activity: 2026-07-02
-last_activity_desc: Phase 10 documentary closure accepted at manual gate; Phase 11 blocked
+last_activity_desc: Phase 11 planning-only artifacts created; execution blocked at manual gate
 progress:
   total_phases: 12
   completed_phases: 10
-  total_plans: 46
+  total_plans: 50
   completed_plans: 46
-  percent: 100
+  percent: 92
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 10 — Secure Guest Tracking closed at manual gate. Phase 11 — Refunds & Exchanges (Admin) is next logical phase but remains blocked and not started until explicit human approval.
+**Current focus:** Phase 11 — Refunds & Exchanges (Admin) is planned behind a manual gate. Execution is blocked until explicit human approval.
 
 ## Execution Policy
 
@@ -43,26 +43,26 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 10 is complete and closed at the manual gate (`10-CLOSURE.md`). Evidence: `10-01`..`10-03` accepted; TRK-01 and TRK-02 complete; consolidated validation 45/45 unit, 11/11 HTTP, build PASS, blocking runtime grep PASS, config/lockfile no diff, `git diff --check` PASS. Branch: `gsd/phase-10-secure-guest-tracking`. This closure cycle updated planning documents only — no runtime, tests, build, migration, deploy, real Gelato, real webhook smoke, refund, exchange, or Phase 11 work. Phase 11 remains blocked until explicit human approval.
+**Current gate:** Phase 11 is planned and awaiting manual review. Planning artifacts created: `11-CONTEXT.md`, `11-RESEARCH.md`, `11-VALIDATION.md`, and `11-01`..`11-04` plans. This cycle updated planning documents only — no runtime, tests, build, migration, deploy, real Stripe, real Gelato, real Correios API, Stripe CLI smoke, or Phase 12 work. Phase 11 execution remains blocked until explicit human approval.
 
 **Branch policy:**
 
-`git.branching_strategy` is `phase` (GSD-supported). Active branch for Phase 09 planning: `gsd/phase-09-gelato-fulfillment-webhook` (`phase_branch_template`: `gsd/phase-{phase}-{slug}`). Explicit branch decision recorded in `09-CONTEXT.md`: **B) Criar/usar branch gsd/phase-09-gelato-fulfillment-webhook**. Summaries and future documentary state for Phase 09 must preserve this decision unless a new human decision supersedes it.
+`git.branching_strategy` is `phase` (GSD-supported). Active branch for Phase 11 planning/execution gate: `gsd/phase-11-refunds-exchanges-admin` (`phase_branch_template`: `gsd/phase-{phase}-{slug}`). Explicit branch decision recorded in `11-CONTEXT.md`: use `gsd/phase-11-refunds-exchanges-admin`. Historical Phase 09 branch decision remains preserved in `09-CONTEXT.md` and Phase 09 closure records, but it is no longer the active branch policy entry.
 
 ## Current Position
 
-Phase: 11 (Refunds & Exchanges Admin) — not started; blocked until explicit approval
-Plan: Phase 11 not planned
-Status: phase-10-closed-phase-11-blocked
-Last activity: 2026-07-02 - Phase 10 documentary closure accepted at manual gate
+Phase: 11 (Refunds & Exchanges Admin) — planned; awaiting manual review
+Plan: 4 planned / 0 executed
+Status: phase-11-planned-awaiting-manual-review
+Last activity: 2026-07-02 - Phase 11 planning-only artifacts created
 
-Progress: [██████████] 100% (46/46 plans complete); Phase 10 closed; Phase 11 blocked
+Progress: [█████████░] 92% (46/50 plans complete); Phase 11 planned; execution blocked
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 46 / 46 planned
+- Total plans completed: 46 / 50 planned
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -80,6 +80,7 @@ Progress: [██████████] 100% (46/46 plans complete); Phase 10
 | 08. Transactional Email (Resend) | 3 executed / 3 planned | Complete (closed 2026-07-01) | — |
 | 09. Gelato Fulfillment & Webhook | 5 executed / 5 planned | Complete / Closed | — |
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
+| 11. Refunds & Exchanges (Admin) | 0 executed / 4 planned | Planned / Awaiting manual review | — |
 
 **Recent Trend:**
 
@@ -152,6 +153,7 @@ Recent decisions affecting current work:
 - [Phase 10 planning]: Planning-only artifacts created for Secure Guest Tracking: `10-CONTEXT.md`, `10-RESEARCH.md`, `10-VALIDATION.md`, and three manual-review-gated slices `10-01`..`10-03`. The plan defines a tokenized public guest tracking surface, `TrackingAccessToken` hash-only persistence with `expires_at`/`revoked_at`, server-side constant-time comparison, sanitized minimal public response, rate limit against enumeration, and explicit negative proofs excluding `order_id`-only lookup, e-mail/telefone/CPF lookup, financial data exposure, refund, exchange, admin ops, and Phase 11. No runtime implementation, tests, build, migration, deploy, real Gelato, real webhook smoke, or Phase 11 work was started during planning.
 - [Phase 10 execution]: Plans `10-01`..`10-03` completed under manual gating on branch `gsd/phase-10-secure-guest-tracking`. Final validation closed with 45 unit tests, 11 HTTP integration tests, build PASS, blocking runtime grep PASS, config/lockfile no diff, and `git diff --check` PASS. `TrackingAccessToken` hash-only module; `POST /store/tracking/lookup` body-only token route; allowlist-only public response; rate limit / enumeration guard with indistinguishable 429; process-local limitation documented. No migration applied, no Gelato real, no webhook smoke real, no refund, exchange, admin ops, deploy, or Phase 11 work.
 - [Phase 10 closure]: Human review accepted Phase 10 at manual gate on 2026-07-02 (evidence: `10-03-SUMMARY.md`, `10-CLOSURE.md`, 45/45 unit, 11/11 HTTP, build PASS, blocking grep PASS). `TRK-01` and `TRK-02` complete. Migration real, global Redis rate limit, and client token delivery remain deferred. Phase 11 may be planned next, but execution remains blocked until explicit human approval.
+- [Phase 11 planning]: Planning-only artifacts created for Refunds & Exchanges (Admin): `11-CONTEXT.md`, `11-RESEARCH.md`, `11-VALIDATION.md`, and four manual-review-gated slices `11-01`..`11-04`. Branch registered as `gsd/phase-11-refunds-exchanges-admin`. The plan defines local `RefundRequest`, Admin-safe refund request/reservation, Stripe refund object webhook confirmation as the only local final financial truth, transactional `payment_status` recomputation without automatic `order_status = canceled`, local concurrency/idempotency guards against over-refund, operational `ExchangeRequest`, and manual/semi-automatic Correios reverse-logistics fields entered in Admin. `charge.refunded` cannot double-count financial truth; if handled, it is informational/idempotent and subordinate to refund object events. No runtime implementation, tests, build, migration, deploy, real Stripe, real Gelato, Correios API call, Stripe CLI smoke, broad `OperationalAlert`, broad `AdminActionLog`, or Phase 12 work was started.
 
 ### Pending Todos
 
@@ -166,7 +168,8 @@ None yet.
 - [Roadmap]: REQUIREMENTS.md summary previously stated "44 total"; the v1 list actually contains 45 distinct REQ-IDs. Count corrected to 45 during roadmap creation.
 - [Phase 4/5]: Medusa bundled Stripe native-first is **not** accepted for Phase 04 card/Pix because unsafe provider payloads can persist through `PaymentSession.data`. Phase 04 uses safe layers; production activation still needs migration approval plus real Stripe card/Pix setup before Phase 05/production use.
 - [Phase 9]: Gelato has no official Medusa provider/SDK confirmed in the consulted official docs; REST direct remains planned. Gelato webhook auth resolved documentally and implemented (`09-04`): HTTP Header fail-closed. Phase 09 closed at manual gate (`09-CLOSURE.md`). Migration real not applied. Production Gelato dispatch/webhook smoke not executed — separate deployment gates remain.
-- [Phase 10]: Public guest tracking implemented as token-only, hash-only, sanitized, rate-limited, fail-closed surface on branch `gsd/phase-10-secure-guest-tracking`. Phase 10 closed at manual gate (`10-CLOSURE.md`). Migration real not applied. Process-local rate limit documented; global Redis/DB-backed limiter deferred. Phase 11 refund/exchange/admin scope remains not started and blocked until explicit approval.
+- [Phase 10]: Public guest tracking implemented as token-only, hash-only, sanitized, rate-limited, fail-closed surface on branch `gsd/phase-10-secure-guest-tracking`. Phase 10 closed at manual gate (`10-CLOSURE.md`). Migration real not applied. Process-local rate limit documented; global Redis/DB-backed limiter deferred.
+- [Phase 11]: Refund/exchange/admin scope is planned only on branch `gsd/phase-11-refunds-exchanges-admin`. Execution remains blocked. Refund financial truth must wait for trusted Stripe refund object webhook confirmation; `charge.refunded` must not double-count confirmed refunded amount; refund must not create Order or auto-cancel `order_status`; exchanges remain operational and do not create refunds automatically; Correios remains manual/semi-automatic with no API integration; broad `OperationalAlert` / `AdminActionLog` stays Phase 12.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
 ## Deferred Items
@@ -179,10 +182,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-02T21:45:00-03:00
-Stopped at: Phase 10 closed; Phase 11 not started; next phase blocked until explicit approval
-Resume file: `.planning/phases/10-secure-guest-tracking/10-CLOSURE.md`
-Next permitted step: Human review of Phase 10 closure only. No Phase 11 planning, execution, refund, exchange, admin ops, real Gelato/webhook smoke, migration, deploy, or runtime work without separate explicit approval.
+Last session: 2026-07-02T22:05:21-03:00
+Stopped at: Phase 11 planning complete; execution blocked at manual gate
+Resume file: `.planning/phases/11-refunds-exchanges-admin/11-VALIDATION.md`
+Next permitted step: Human review of Phase 11 planning only. No Phase 11 execution, runtime, tests, build, migration, deploy, real Stripe, real Gelato, Correios API, Stripe CLI smoke, broad Phase 12 alert/audit module, or Phase 12 work without separate explicit approval.
 
 ## Quick Tasks Completed
 
@@ -210,3 +213,4 @@ Next permitted step: Human review of Phase 10 closure only. No Phase 11 planning
 | 2026-07-02 | phase-09-closure | Closed Phase 09 documentally after accepted `09-01`..`09-05` evidence; `FUL-01`..`FUL-04` and `WHK-03` complete; branch decision B preserved; Phase 10 planning-ready only, execution blocked. |
 | 2026-07-02 | phase-10-planning | Planned Phase 10 into 3 manual-review-gated slices plus context, research and validation artifacts; no runtime, tests, build, migration, deploy, real Gelato, real webhook smoke, refund, exchange, admin ops or Phase 11 work started. |
 | 2026-07-02 | phase-10-closure | Closed Phase 10 documentally after accepted `10-01`..`10-03` evidence; `TRK-01` and `TRK-02` complete; Phase 11 blocked until explicit approval. |
+| 2026-07-02 | phase-11-planning | Planned Phase 11 into 4 manual-review-gated slices plus context, research and validation artifacts; no runtime, tests, build, migration, deploy, real Stripe, real Gelato, Correios API, Stripe CLI smoke, broad Phase 12 alert/audit module, or Phase 12 work started. |
