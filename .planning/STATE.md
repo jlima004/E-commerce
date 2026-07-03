@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 10
-current_phase_name: Secure Guest Tracking
-status: phase-10-planned-awaiting-manual-review
-stopped_at: Phase 10 planning documentary correction completed; manual review gate before any execution; Phase 11 not started
-last_updated: "2026-07-02T19:35:00-03:00"
+current_phase: 11
+current_phase_name: Refunds & Exchanges (Admin)
+status: phase-10-closed-phase-11-blocked
+stopped_at: Phase 10 closed; Phase 11 not started; next phase blocked until explicit approval
+last_updated: "2026-07-02T21:45:00-03:00"
 last_activity: 2026-07-02
-last_activity_desc: Phase 10 planning-only documentary correction applied; execution not started
+last_activity_desc: Phase 10 documentary closure accepted at manual gate; Phase 11 blocked
 progress:
   total_phases: 12
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 46
-  completed_plans: 43
-  percent: 93
+  completed_plans: 46
+  percent: 100
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 10 — Secure Guest Tracking planned at manual gate. Execution not started; only planning artifacts exist. Phase 11 remains blocked and not started.
+**Current focus:** Phase 10 — Secure Guest Tracking closed at manual gate. Phase 11 — Refunds & Exchanges (Admin) is next logical phase but remains blocked and not started until explicit human approval.
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 10 planning is complete and awaiting manual review. Planning artifacts created: `10-CONTEXT.md`, `10-RESEARCH.md`, `10-VALIDATION.md`, and `10-01`..`10-03` plan slices. Documentary correction recorded that slice summaries are expected outputs and that slices changing env/config/module registration must run build in-slice during future execution. No Phase 10 runtime implementation, tests, build, migration, deploy, real Gelato, real webhook smoke, refund, exchange, admin ops, or Phase 11 work was started. Documentary validation for this cycle is limited to `git diff --check`.
+**Current gate:** Phase 10 is complete and closed at the manual gate (`10-CLOSURE.md`). Evidence: `10-01`..`10-03` accepted; TRK-01 and TRK-02 complete; consolidated validation 45/45 unit, 11/11 HTTP, build PASS, blocking runtime grep PASS, config/lockfile no diff, `git diff --check` PASS. Branch: `gsd/phase-10-secure-guest-tracking`. This closure cycle updated planning documents only — no runtime, tests, build, migration, deploy, real Gelato, real webhook smoke, refund, exchange, or Phase 11 work. Phase 11 remains blocked until explicit human approval.
 
 **Branch policy:**
 
@@ -51,18 +51,18 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 ## Current Position
 
-Phase: 10 (Secure Guest Tracking) — planned; awaiting manual review before any execution
-Plan: `10-CONTEXT.md`, `10-RESEARCH.md`, `10-VALIDATION.md`, `10-01`..`10-03`
-Status: phase-10-planned-awaiting-manual-review
-Last activity: 2026-07-02 - Phase 10 planning-only documentary correction applied
+Phase: 11 (Refunds & Exchanges Admin) — not started; blocked until explicit approval
+Plan: Phase 11 not planned
+Status: phase-10-closed-phase-11-blocked
+Last activity: 2026-07-02 - Phase 10 documentary closure accepted at manual gate
 
-Progress: [█████████░] 93% (43/46 plans complete); Phase 10 planned; execution blocked
+Progress: [██████████] 100% (46/46 plans complete); Phase 10 closed; Phase 11 blocked
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 43 / 46 planned
+- Total plans completed: 46 / 46 planned
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -79,7 +79,7 @@ Progress: [█████████░] 93% (43/46 plans complete); Phase 10 
 | 07. Analytics Outbox (`purchase_completed`) | 3 executed / 3 planned | Complete (closed 2026-07-01) | — |
 | 08. Transactional Email (Resend) | 3 executed / 3 planned | Complete (closed 2026-07-01) | — |
 | 09. Gelato Fulfillment & Webhook | 5 executed / 5 planned | Complete / Closed | — |
-| 10. Secure Guest Tracking | 0 executed / 3 planned | Planned / Awaiting manual review | — |
+| 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 
 **Recent Trend:**
 
@@ -150,6 +150,8 @@ Recent decisions affecting current work:
 - [Phase 09 validation]: Plan `09-05` completed (2026-07-02). Final battery: 7 unit suites / 75 tests, 11 HTTP filtered + 6 HTTP Gelato webhook = **92 tests PASS**, build PASS. Negative proofs documented. `FUL-01`..`FUL-04` and `WHK-03` evidenced.
 - [Phase 09 closure]: Human review accepted Phase 09 at manual gate on 2026-07-02 (evidence: `09-05-SUMMARY.md`, `09-CLOSURE.md`, 92/92 tests, build PASS). `FUL-01`..`FUL-04` and `WHK-03` complete. Branch decision B preserved (`gsd/phase-09-gelato-fulfillment-webhook`). Migration real not applied; production Gelato dispatch/webhook smoke deferred. Phase 10 may be planned next, but execution remains blocked until explicit human approval.
 - [Phase 10 planning]: Planning-only artifacts created for Secure Guest Tracking: `10-CONTEXT.md`, `10-RESEARCH.md`, `10-VALIDATION.md`, and three manual-review-gated slices `10-01`..`10-03`. The plan defines a tokenized public guest tracking surface, `TrackingAccessToken` hash-only persistence with `expires_at`/`revoked_at`, server-side constant-time comparison, sanitized minimal public response, rate limit against enumeration, and explicit negative proofs excluding `order_id`-only lookup, e-mail/telefone/CPF lookup, financial data exposure, refund, exchange, admin ops, and Phase 11. No runtime implementation, tests, build, migration, deploy, real Gelato, real webhook smoke, or Phase 11 work was started during planning.
+- [Phase 10 execution]: Plans `10-01`..`10-03` completed under manual gating on branch `gsd/phase-10-secure-guest-tracking`. Final validation closed with 45 unit tests, 11 HTTP integration tests, build PASS, blocking runtime grep PASS, config/lockfile no diff, and `git diff --check` PASS. `TrackingAccessToken` hash-only module; `POST /store/tracking/lookup` body-only token route; allowlist-only public response; rate limit / enumeration guard with indistinguishable 429; process-local limitation documented. No migration applied, no Gelato real, no webhook smoke real, no refund, exchange, admin ops, deploy, or Phase 11 work.
+- [Phase 10 closure]: Human review accepted Phase 10 at manual gate on 2026-07-02 (evidence: `10-03-SUMMARY.md`, `10-CLOSURE.md`, 45/45 unit, 11/11 HTTP, build PASS, blocking grep PASS). `TRK-01` and `TRK-02` complete. Migration real, global Redis rate limit, and client token delivery remain deferred. Phase 11 may be planned next, but execution remains blocked until explicit human approval.
 
 ### Pending Todos
 
@@ -164,7 +166,7 @@ None yet.
 - [Roadmap]: REQUIREMENTS.md summary previously stated "44 total"; the v1 list actually contains 45 distinct REQ-IDs. Count corrected to 45 during roadmap creation.
 - [Phase 4/5]: Medusa bundled Stripe native-first is **not** accepted for Phase 04 card/Pix because unsafe provider payloads can persist through `PaymentSession.data`. Phase 04 uses safe layers; production activation still needs migration approval plus real Stripe card/Pix setup before Phase 05/production use.
 - [Phase 9]: Gelato has no official Medusa provider/SDK confirmed in the consulted official docs; REST direct remains planned. Gelato webhook auth resolved documentally and implemented (`09-04`): HTTP Header fail-closed. Phase 09 closed at manual gate (`09-CLOSURE.md`). Migration real not applied. Production Gelato dispatch/webhook smoke not executed — separate deployment gates remain.
-- [Phase 10 planning]: Public guest tracking must remain token-only, hash-only, sanitized, rate-limited, and fail-closed; no `order_id`-only, e-mail, telefone or CPF lookup is allowed. Phase 10 execution remains blocked until explicit human approval. Phase 11 refund/exchange/admin scope remains not started.
+- [Phase 10]: Public guest tracking implemented as token-only, hash-only, sanitized, rate-limited, fail-closed surface on branch `gsd/phase-10-secure-guest-tracking`. Phase 10 closed at manual gate (`10-CLOSURE.md`). Migration real not applied. Process-local rate limit documented; global Redis/DB-backed limiter deferred. Phase 11 refund/exchange/admin scope remains not started and blocked until explicit approval.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
 ## Deferred Items
@@ -177,10 +179,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-02T19:35:00-03:00
-Stopped at: Phase 10 planning documentary correction completed; manual review gate before execution; Phase 11 not started
-Resume file: `.planning/phases/10-secure-guest-tracking/10-03-PLAN.md`
-Next permitted step: Human review of the Phase 10 planning artifacts only. No Phase 10 execution, public tracking route, TrackingAccessToken runtime, tests, build, refund, exchange, real Gelato/webhook smoke, migration, or Phase 11 without separate approval.
+Last session: 2026-07-02T21:45:00-03:00
+Stopped at: Phase 10 closed; Phase 11 not started; next phase blocked until explicit approval
+Resume file: `.planning/phases/10-secure-guest-tracking/10-CLOSURE.md`
+Next permitted step: Human review of Phase 10 closure only. No Phase 11 planning, execution, refund, exchange, admin ops, real Gelato/webhook smoke, migration, deploy, or runtime work without separate explicit approval.
 
 ## Quick Tasks Completed
 
@@ -207,3 +209,4 @@ Next permitted step: Human review of the Phase 10 planning artifacts only. No Ph
 | 2026-07-02 | phase-09-validation | Final validation at `09-05-SUMMARY.md` — 92 tests green, build PASS, FUL-01..FUL-04 and WHK-03 evidenced, negative greps documented; manual gate before closure; Phase 10 not started. |
 | 2026-07-02 | phase-09-closure | Closed Phase 09 documentally after accepted `09-01`..`09-05` evidence; `FUL-01`..`FUL-04` and `WHK-03` complete; branch decision B preserved; Phase 10 planning-ready only, execution blocked. |
 | 2026-07-02 | phase-10-planning | Planned Phase 10 into 3 manual-review-gated slices plus context, research and validation artifacts; no runtime, tests, build, migration, deploy, real Gelato, real webhook smoke, refund, exchange, admin ops or Phase 11 work started. |
+| 2026-07-02 | phase-10-closure | Closed Phase 10 documentally after accepted `10-01`..`10-03` evidence; `TRK-01` and `TRK-02` complete; Phase 11 blocked until explicit approval. |
