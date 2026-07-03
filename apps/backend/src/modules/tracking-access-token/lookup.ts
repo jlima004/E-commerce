@@ -143,6 +143,12 @@ export function buildTrackingLookupInvalidTokenResponseBody(): {
   }
 }
 
+export function buildTrackingLookupRateLimitedResponseBody(): ReturnType<
+  typeof buildTrackingLookupInvalidTokenResponseBody
+> {
+  return buildTrackingLookupInvalidTokenResponseBody()
+}
+
 export function createStoreTrackingLookupGuardMiddleware() {
   return function storeTrackingLookupGuardMiddleware(
     req: {

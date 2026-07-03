@@ -18,6 +18,12 @@ import {
   TRACKING_LOOKUP_INVALID_TOKEN_MESSAGE,
 } from "../../src/modules/tracking-access-token/lookup"
 import {
+  configureTrackingLookupRateLimitForTests,
+  inMemoryTrackingLookupRateLimitStore,
+  listInMemoryTrackingLookupRateLimitBucketKeysForTests,
+  resetTrackingLookupRateLimitForTests,
+} from "../../src/modules/tracking-access-token/lookup-rate-limit"
+import {
   getTrackingLookupBodyOnlyTokenMessage,
   parseTrackingLookupRequestBody,
 } from "../../src/modules/tracking-access-token/lookup-body"
@@ -318,12 +324,18 @@ function expectResponseDoesNotLeakSensitiveData(body: unknown, token?: string) {
 describe("POST /store/tracking/lookup", () => {
   const originalPepper = process.env.TRACKING_TOKEN_PEPPER
 
+  beforeEach(() => {
+    resetTrackingLookupRateLimitForTests()
+    configureTrackingLookupRateLimitForTests()
+  })
+
   beforeAll(() => {
     process.env.TRACKING_TOKEN_PEPPER = TEST_PEPPER
   })
 
   afterAll(() => {
     process.env.TRACKING_TOKEN_PEPPER = originalPepper
+    resetTrackingLookupRateLimitForTests()
   })
 
   it("returns sanitized public tracking for a valid token", async () => {
@@ -529,5 +541,178 @@ describe("POST /store/tracking/lookup", () => {
     for (const needle of forbidden) {
       expect(routeSource).not.toContain(needle)
     }
+  })
+
+  it("rate-limits repeated invalid token attempts without revealing token existence", async () => {
+    configureTrackingLookupRateLimitForTests({ maxAttempts: 3, windowMs: 60_000 })
+    const trackingModule = createTrackingAccessTokenModule([])
+    const reqBase = {
+      headers: {
+        "x-forwarded-for": "203.0.113.55",
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+      },
+    }
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const req = createRequest({
+        ...reqBase,
+        body: { token: `invalid-token-${attempt}` },
+      })
+      wireScope(req, { trackingModule })
+      const res = createResponse()
+
+      await trackingLookupRoute(req, res)
+
+      expect(res.statusCode).toBe(401)
+      expectSameInvalidTokenBody(res.json.mock.calls[0][0])
+    }
+
+    const limitedReq = createRequest({
+      ...reqBase,
+      body: { token: "invalid-token-final" },
+    })
+    wireScope(limitedReq, { trackingModule })
+    const limitedRes = createResponse()
+
+    await trackingLookupRoute(limitedReq, limitedRes)
+
+    expect(limitedRes.statusCode).toBe(429)
+    expectSameInvalidTokenBody(limitedRes.json.mock.calls[0][0])
+    expectResponseDoesNotLeakSensitiveData(limitedRes.json.mock.calls[0][0])
+  })
+
+  it("rate-limits repeated malformed attempts on the same public bucket", async () => {
+    configureTrackingLookupRateLimitForTests({ maxAttempts: 3, windowMs: 60_000 })
+    const trackingModule = createTrackingAccessTokenModule([])
+    const reqBase = {
+      headers: {
+        "x-forwarded-for": "198.51.100.22",
+        "user-agent": "curl/8.5.0",
+      },
+    }
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const req = createRequest({
+        ...reqBase,
+        body: { order_id: `${SENSITIVE_CANARIES.orderId}-${attempt}` },
+      })
+      wireScope(req, { trackingModule })
+      const res = createResponse()
+
+      await expect(trackingLookupRoute(req, res)).rejects.toMatchObject({
+        type: MedusaError.Types.INVALID_DATA,
+      })
+    }
+
+    const limitedReq = createRequest({
+      ...reqBase,
+      body: { email: SENSITIVE_CANARIES.email },
+    })
+    wireScope(limitedReq, { trackingModule })
+    const limitedRes = createResponse()
+
+    await trackingLookupRoute(limitedReq, limitedRes)
+
+    expect(limitedRes.statusCode).toBe(429)
+    expectSameInvalidTokenBody(limitedRes.json.mock.calls[0][0])
+  })
+
+  it("still allows a valid token before the public lookup limit is reached", async () => {
+    configureTrackingLookupRateLimitForTests({ maxAttempts: 3, windowMs: 60_000 })
+    const { record, plaintextToken } = buildTokenRecord({
+      id: "trkacc_before_limit",
+      plaintextToken: "valid-before-limit-token",
+    })
+    const trackingModule = createTrackingAccessTokenModule([record])
+    const reqBase = {
+      headers: {
+        "x-forwarded-for": "203.0.113.77",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+      },
+    }
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const invalidReq = createRequest({
+        ...reqBase,
+        body: { token: `bad-token-${attempt}` },
+      })
+      wireScope(invalidReq, { trackingModule })
+      const invalidRes = createResponse()
+
+      await trackingLookupRoute(invalidReq, invalidRes)
+      expect(invalidRes.statusCode).toBe(401)
+    }
+
+    const validReq = createRequest({
+      ...reqBase,
+      body: { token: plaintextToken },
+    })
+    wireScope(validReq, { trackingModule })
+    const validRes = createResponse()
+
+    await trackingLookupRoute(validReq, validRes)
+
+    expect(validRes.statusCode).toBe(200)
+    expect(validRes.json.mock.calls[0][0].tracking.order_reference).toBe("9101")
+  })
+
+  it("does not persist raw IP, full user-agent or plaintext token in rate-limit buckets", async () => {
+    configureTrackingLookupRateLimitForTests({ maxAttempts: 5, windowMs: 60_000 })
+
+    const rawIp = "203.0.113.99"
+    const fullUserAgent =
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SecretBrowserFingerprint/1.0"
+    const trackingModule = createTrackingAccessTokenModule([])
+    const req = createRequest({
+      headers: {
+        "x-forwarded-for": rawIp,
+        "user-agent": fullUserAgent,
+      },
+      body: { token: "unknown-rate-limit-bucket-token" },
+    })
+    wireScope(req, { trackingModule })
+    const res = createResponse()
+
+    await trackingLookupRoute(req, res)
+
+    const storedKeys = listInMemoryTrackingLookupRateLimitBucketKeysForTests()
+    const storedValues = await Promise.all(
+      storedKeys.map((key) => inMemoryTrackingLookupRateLimitStore.get(key))
+    )
+
+    expect(storedKeys).toHaveLength(1)
+    expect(storedKeys[0]).toMatch(/^[a-f0-9]{64}$/)
+    expect(JSON.stringify(storedKeys)).not.toContain(rawIp)
+    expect(JSON.stringify(storedValues)).not.toContain(rawIp)
+    expect(JSON.stringify(storedKeys)).not.toContain(fullUserAgent.toLowerCase())
+    expect(JSON.stringify(storedValues)).not.toContain(fullUserAgent.toLowerCase())
+    expect(JSON.stringify(storedKeys)).not.toContain("unknown-rate-limit-bucket-token")
+    expect(JSON.stringify(storedValues)).not.toContain("unknown-rate-limit-bucket-token")
+  })
+
+  it("does not emit token values through route logging or Sentry capture paths", () => {
+    const routeSource = require("fs").readFileSync(
+      require("path").join(
+        __dirname,
+        "../../src/api/store/tracking/lookup/route.ts"
+      ),
+      "utf8"
+    )
+    const rateLimitSource = require("fs").readFileSync(
+      require("path").join(
+        __dirname,
+        "../../src/modules/tracking-access-token/lookup-rate-limit.ts"
+      ),
+      "utf8"
+    )
+
+    expect(routeSource).not.toMatch(/\breq\.log\b/)
+    expect(routeSource).not.toMatch(/\bcaptureException\b/)
+    expect(routeSource).not.toMatch(/\bcaptureMessage\b/)
+    expect(rateLimitSource).not.toMatch(/\bconsole\.(log|info|warn|error)\b/)
+    expect(rateLimitSource).not.toMatch(/\bSentry\b/)
+    expect(routeSource).not.toMatch(/\.log\([^)]*candidateToken/)
+    expect(routeSource).not.toMatch(/\.log\([^)]*token/)
   })
 })

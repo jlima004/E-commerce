@@ -14,10 +14,16 @@ import { GELATO_FULFILLMENT_MODULE } from "../../../../modules/gelato-fulfillmen
 import {
   buildTrackingAccessTokenLastUsedPatch,
   buildTrackingLookupInvalidTokenResponseBody,
+  buildTrackingLookupRateLimitedResponseBody,
   rejectTrackingTokenInRequestUrl,
   resolveTrackingLookupContext,
   TrackingLookupInvalidTokenError,
 } from "../../../../modules/tracking-access-token/lookup"
+import {
+  buildTrackingLookupRateLimitContextFromRequest,
+  isTrackingLookupRateLimited,
+  recordTrackingLookupRateLimitFailure,
+} from "../../../../modules/tracking-access-token/lookup-rate-limit"
 import { parseTrackingLookupRequestBody } from "../../../../modules/tracking-access-token/lookup-body"
 import { TRACKING_ACCESS_TOKEN_MODULE } from "../../../../modules/tracking-access-token"
 import type { TrackingAccessTokenRecord } from "../../../../modules/tracking-access-token/types"
@@ -96,14 +102,42 @@ function respondTrackingLookupInvalidToken(res: MedusaResponse): void {
   res.status(401).json(buildTrackingLookupInvalidTokenResponseBody())
 }
 
+function respondTrackingLookupRateLimited(res: MedusaResponse): void {
+  res.status(429).json(buildTrackingLookupRateLimitedResponseBody())
+}
+
+async function respondAfterTrackingLookupFailure(
+  res: MedusaResponse,
+  rateLimitContext: ReturnType<typeof buildTrackingLookupRateLimitContextFromRequest>,
+  respond: () => void
+): Promise<void> {
+  const failure = await recordTrackingLookupRateLimitFailure(rateLimitContext)
+
+  if (failure.limited) {
+    respondTrackingLookupRateLimited(res)
+    return
+  }
+
+  respond()
+}
+
 export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<void> {
+  const rateLimitContext = buildTrackingLookupRateLimitContextFromRequest(req)
+
+  if (await isTrackingLookupRateLimited(rateLimitContext)) {
+    respondTrackingLookupRateLimited(res)
+    return
+  }
+
   try {
     rejectTrackingTokenInRequestUrl({
       query: req.query as Record<string, unknown>,
       params: req.params as Record<string, unknown>,
     })
   } catch {
-    respondTrackingLookupInvalidToken(res)
+    await respondAfterTrackingLookupFailure(res, rateLimitContext, () =>
+      respondTrackingLookupInvalidToken(res)
+    )
     return
   }
 
@@ -113,13 +147,19 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
     ;({ token: candidateToken } = parseTrackingLookupRequestBody(req.body))
   } catch (error) {
     if (error instanceof MedusaError) {
-      throw error
+      await respondAfterTrackingLookupFailure(res, rateLimitContext, () => {
+        throw error
+      })
+      return
     }
 
-    throw new MedusaError(
-      MedusaError.Types.INVALID_DATA,
-      "Requisicao de rastreio invalida."
-    )
+    await respondAfterTrackingLookupFailure(res, rateLimitContext, () => {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "Requisicao de rastreio invalida."
+      )
+    })
+    return
   }
 
   const trackingModule = req.scope.resolve(
@@ -147,12 +187,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
       },
     })
   } catch (error) {
-    if (error instanceof TrackingLookupInvalidTokenError) {
-      respondTrackingLookupInvalidToken(res)
-      return
-    }
+    await respondAfterTrackingLookupFailure(res, rateLimitContext, () => {
+      if (error instanceof TrackingLookupInvalidTokenError) {
+        respondTrackingLookupInvalidToken(res)
+        return
+      }
 
-    respondTrackingLookupInvalidToken(res)
+      respondTrackingLookupInvalidToken(res)
+    })
     return
   }
 
