@@ -59,6 +59,7 @@ export type AppEnv = {
   GELATO_WEBHOOK_SECRET: string | undefined
   TRACKING_TOKEN_PEPPER: string | undefined
   ADMIN_REFUND_REQUEST_ENABLED: boolean
+  ADMIN_EXCHANGE_REQUEST_ENABLED: boolean
 }
 
 function isProduction(input: Record<string, string | undefined>): boolean {
@@ -316,6 +317,7 @@ export function parseEnv(
     GELATO_WEBHOOK_SECRET: z.string().optional(),
     TRACKING_TOKEN_PEPPER: z.string().optional(),
     ADMIN_REFUND_REQUEST_ENABLED: z.string().optional(),
+    ADMIN_EXCHANGE_REQUEST_ENABLED: z.string().optional(),
   })
 
   const parsed = baseSchema.safeParse(normalized)
@@ -401,6 +403,11 @@ export function parseEnv(
     ADMIN_REFUND_REQUEST_ENABLED: parseBoolean(
       normalized.ADMIN_REFUND_REQUEST_ENABLED,
       "ADMIN_REFUND_REQUEST_ENABLED",
+      true
+    ),
+    ADMIN_EXCHANGE_REQUEST_ENABLED: parseBoolean(
+      normalized.ADMIN_EXCHANGE_REQUEST_ENABLED,
+      "ADMIN_EXCHANGE_REQUEST_ENABLED",
       true
     ),
   }
