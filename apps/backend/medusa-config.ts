@@ -53,5 +53,13 @@ module.exports = defineConfig({
     {
       resolve: "./src/modules/payment-attempt",
     },
+    {
+      key: "refund_request",
+      resolve: "./src/modules/refund-request",
+    },
+    {
+      key: "exchange_request",
+      resolve: "./src/modules/exchange-request",
+    },
   ],
 })

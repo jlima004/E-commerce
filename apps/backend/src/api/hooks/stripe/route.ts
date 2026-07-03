@@ -27,13 +27,30 @@ import {
   runCreateOrderFromConfirmedPaymentAttemptEntrypoint,
   type CreateOrderFromConfirmedPaymentAttemptResult,
 } from "../../../workflows/order/webhook-order-entrypoint"
+import { RefundWebhookError } from "../../../modules/refund-request/stripe-refund-webhook"
+import {
+  augmentRefundWebhookEventInput,
+  isStripeRefundRelatedEventType,
+  processStripeRefundRelatedEvent,
+  resolveRefundWebhookEntityContext,
+} from "./refund-events"
 
 const STRIPE_PROVIDER = "stripe"
 const STRIPE_SIGNATURE_HEADER = "stripe-signature"
-const SUPPORTED_EVENT_TYPES = new Set([
+const PAYMENT_INTENT_EVENT_TYPES = new Set([
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "payment_intent.canceled",
+])
+const REFUND_EVENT_TYPES = new Set([
+  "refund.created",
+  "refund.updated",
+  "refund.failed",
+  "charge.refunded",
+])
+const SUPPORTED_EVENT_TYPES = new Set([
+  ...PAYMENT_INTENT_EVENT_TYPES,
+  ...REFUND_EVENT_TYPES,
 ])
 const FINAL_WEBHOOK_STATUSES = new Set<WebhookEventLogStatus>([
   "processed",
@@ -204,7 +221,7 @@ function buildWebhookEventInput(input: {
     : "ignored"
   const entityType: WebhookEntityType = "unknown"
 
-  return {
+  const baseInput: CreateWebhookEventLogInput = {
     provider: STRIPE_PROVIDER,
     external_event_id: input.event.id,
     event_type: input.event.type,
@@ -225,6 +242,12 @@ function buildWebhookEventInput(input: {
     received_at: input.now.toISOString(),
     ignored_at: status === "ignored" ? input.now.toISOString() : null,
   }
+
+  if (isStripeRefundRelatedEventType(input.event.type)) {
+    return augmentRefundWebhookEventInput(baseInput, input.event)
+  }
+
+  return baseInput
 }
 
 function resolveWebhooksModule(req: RequestWithRawBody): WebhooksModuleLike {
@@ -576,27 +599,49 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
     }
 
     let finalStatus: WebhookEventLogStatus = "received"
+    const refundContext = isStripeRefundRelatedEventType(event.type)
+      ? resolveRefundWebhookEntityContext(event)
+      : null
+    const erroredPaymentIntentId =
+      paymentIntentId ?? refundContext?.paymentIntentId ?? null
 
     try {
-      finalStatus = await processStripePaymentIntentEvent({
-        req: request,
-        event,
-        record,
-        webhooksModule: service,
-        now: now(),
-        runOrderEntrypoint,
-      })
+      if (isStripeRefundRelatedEventType(event.type)) {
+        finalStatus = await processStripeRefundRelatedEvent({
+          req: request,
+          event,
+          record,
+          webhooksModule: service,
+          now: now(),
+        })
+      } else {
+        finalStatus = await processStripePaymentIntentEvent({
+          req: request,
+          event,
+          record,
+          webhooksModule: service,
+          now: now(),
+          runOrderEntrypoint,
+        })
+      }
     } catch (error) {
-      const disposition =
-        error instanceof PaymentAttemptWebhookError
+      const rawDisposition =
+        error instanceof PaymentAttemptWebhookError ||
+        error instanceof RefundWebhookError
           ? error.webhookDisposition
           : "failed"
+      const disposition: "failed" | "ignored" =
+        rawDisposition === "ignored" ? "ignored" : "failed"
       const sanitized = sanitizeWebhookError(error)
 
       await updateWebhookRecord(service, {
         id: record.id,
         status: disposition,
-        entity_type: paymentIntentId ? "payment_attempt" : "unknown",
+        entity_type: erroredPaymentIntentId
+          ? isStripeRefundRelatedEventType(event.type)
+            ? "refund"
+            : "payment_attempt"
+          : "unknown",
         entity_id: null,
         processed_at: null,
         failed_at: disposition === "failed" ? now().toISOString() : null,
@@ -605,7 +650,7 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
         error_message: sanitized.error_message,
         metadata: buildErroredMetadata({
           record,
-          paymentIntentId,
+          paymentIntentId: erroredPaymentIntentId,
           status: disposition,
         }),
       })
