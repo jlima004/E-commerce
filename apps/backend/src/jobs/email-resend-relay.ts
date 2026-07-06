@@ -1,5 +1,6 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { Modules } from "@medusajs/framework/utils"
+import { isReleaseMigrationMode } from "../infrastructure/release-migration-mode"
 import { Resend } from "resend"
 import { EMAIL_DELIVERY_LOG_MODULE } from "../modules/email-delivery-log"
 import {
@@ -373,6 +374,10 @@ export async function runEmailResendRelay(
 }
 
 export default async function emailResendRelayJob(container: MedusaContainer) {
+  if (isReleaseMigrationMode()) {
+    return
+  }
+
   await runEmailResendRelay(container)
 }
 

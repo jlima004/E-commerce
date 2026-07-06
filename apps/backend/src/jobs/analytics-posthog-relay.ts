@@ -1,4 +1,5 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
+import { isReleaseMigrationMode } from "../infrastructure/release-migration-mode"
 import { PostHog } from "posthog-node"
 import {
   ANALYTICS_EVENT_LOG_MODULE,
@@ -258,6 +259,10 @@ export async function runAnalyticsPosthogRelay(
 export default async function analyticsPosthogRelayJob(
   container: MedusaContainer
 ) {
+  if (isReleaseMigrationMode()) {
+    return
+  }
+
   await runAnalyticsPosthogRelay(container)
 }
 

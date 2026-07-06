@@ -1,6 +1,7 @@
 import type { LoaderOptions } from "@medusajs/framework/types"
 import { asValue } from "@medusajs/framework/awilix"
 import { env } from "../../../config/env"
+import { isReleaseMigrationMode } from "../../../infrastructure/release-migration-mode"
 import { STRIPE_CARD_INITIATION_LAYER } from "../card"
 import { STRIPE_PIX_INITIATION_LAYER } from "../pix"
 import {
@@ -12,6 +13,10 @@ import {
 export default async function stripeRealInitiationLoader({
   container,
 }: LoaderOptions) {
+  if (isReleaseMigrationMode()) {
+    return
+  }
+
   console.log("[stripe-real-initiation] loader reached")
   console.log(
     "[stripe-real-initiation] enabled:",

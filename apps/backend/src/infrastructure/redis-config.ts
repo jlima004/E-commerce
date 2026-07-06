@@ -1,4 +1,5 @@
 import type { AppEnv } from "../config/env"
+import { isReleaseMigrationMode } from "./release-migration-mode"
 
 export type MedusaModuleDescriptor = {
   resolve: string
@@ -42,6 +43,10 @@ export function hasRedisModuleContracts(env: AppEnv): boolean {
 }
 
 export function shouldWireRedisModules(env: AppEnv): boolean {
+  if (isReleaseMigrationMode()) {
+    return false
+  }
+
   if (env.NODE_ENV === "production") {
     return true
   }

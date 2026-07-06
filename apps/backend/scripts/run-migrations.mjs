@@ -4,6 +4,8 @@ import { spawnSync } from "node:child_process"
 import { loadEnv } from "@medusajs/framework/utils"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
+
+process.env.DTC_RELEASE_MIGRATION_MODE ??= "true"
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
 const backendRoot = path.resolve(
@@ -37,6 +39,7 @@ export function buildMigrationChildEnv(sourceEnv) {
 
   assertMigrationUrl(migrationUrl)
   childEnv.DATABASE_URL = migrationUrl
+  childEnv.DTC_RELEASE_MIGRATION_MODE ??= "true"
 
   return childEnv
 }

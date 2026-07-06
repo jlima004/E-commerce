@@ -1,5 +1,6 @@
 import { createHash } from "crypto"
 import type { MedusaContainer } from "@medusajs/framework/types"
+import { isReleaseMigrationMode } from "../infrastructure/release-migration-mode"
 import { Modules } from "@medusajs/framework/utils"
 import { ANALYTICS_EVENT_LOG_MODULE } from "../modules/analytics-event-log"
 import type { AnalyticsEventLogRecord } from "../modules/analytics-event-log/types"
@@ -753,6 +754,10 @@ export async function runGelatoDispatchRelay(
 }
 
 export default async function gelatoDispatchRelayJob(container: MedusaContainer) {
+  if (isReleaseMigrationMode()) {
+    return
+  }
+
   await runGelatoDispatchRelay(container)
 }
 

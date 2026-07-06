@@ -39,6 +39,7 @@ const originalRedisTlsRejectUnauthorized =
   process.env.REDIS_TLS_REJECT_UNAUTHORIZED
 const originalRedisCacheProviderDisabled =
   process.env.REDIS_CACHE_PROVIDER_DISABLED
+const originalReleaseMigrationMode = process.env.DTC_RELEASE_MIGRATION_MODE
 
 function productionFixture(
   overrides: Record<string, string | undefined> = {}
@@ -174,9 +175,19 @@ function getRedisModuleOptions(modules: MedusaModuleDescriptor[]) {
   }
 }
 
+function restoreReleaseMigrationModeEnv() {
+  if (originalReleaseMigrationMode === undefined) {
+    delete process.env.DTC_RELEASE_MIGRATION_MODE
+    return
+  }
+
+  process.env.DTC_RELEASE_MIGRATION_MODE = originalReleaseMigrationMode
+}
+
 afterEach(() => {
   restoreRedisTlsEnv()
   restoreRedisCacheProviderDisabledEnv()
+  restoreReleaseMigrationModeEnv()
 })
 
 describe("redisOptionsForUrl", () => {
@@ -472,6 +483,26 @@ describe("redis module wiring", () => {
       "REDIS_URL",
       [sharedRedisUrl]
     )
+  })
+
+  it("skips Redis modules during Heroku release migration mode", () => {
+    process.env.DTC_RELEASE_MIGRATION_MODE = "true"
+
+    const env = parseProductionEnv()
+
+    expect(shouldWireRedisModules(env)).toBe(false)
+    expect(buildRedisModules(env)).toEqual([])
+    expect(resolveProjectRedisUrl(env)).toBeUndefined()
+  })
+
+  it("keeps production Redis modules when release migration mode is absent", () => {
+    delete process.env.DTC_RELEASE_MIGRATION_MODE
+
+    const env = parseProductionEnv()
+
+    expect(shouldWireRedisModules(env)).toBe(true)
+    expect(buildRedisModules(env)).toHaveLength(4)
+    expect(resolveProjectRedisUrl(env)).toBe(sharedRedisUrl)
   })
 })
 
