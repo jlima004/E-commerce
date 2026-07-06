@@ -66,7 +66,9 @@ export type StartCardPaymentAttemptResult = {
   paymentSessionData: Record<string, unknown>
 }
 
-const STRIPE_SAFE_PROVIDER = "stripe_safe_layer"
+const STRIPE_CANONICAL_PROVIDER = "stripe"
+const STRIPE_SAFE_LAYER_METADATA_KEY = "stripe_initiation_layer"
+const STRIPE_SAFE_LAYER_LABEL = "stripe_safe_layer"
 export const STRIPE_CARD_INITIATION_LAYER = "stripeCardInitiationLayer"
 
 function toCardPaymentAttemptResponse(
@@ -176,7 +178,7 @@ export async function startCardPaymentAttempt(
       cart_id: input.cart.id,
       payment_collection_id: paymentCollectionId,
       payment_session_id: persistable.provider_payment_session_id,
-      provider: STRIPE_SAFE_PROVIDER,
+      provider: STRIPE_CANONICAL_PROVIDER,
       provider_payment_intent_id: persistable.provider_payment_intent_id,
       provider_payment_session_id: persistable.provider_payment_session_id,
       payment_method_type: "card",
@@ -184,7 +186,10 @@ export async function startCardPaymentAttempt(
       currency_code: persistable.currency_code,
       expires_at: persistable.expires_at,
       metadata: withPaymentAttemptCartFingerprintMetadata(
-        persistable.metadata,
+        {
+          ...(persistable.metadata ?? {}),
+          [STRIPE_SAFE_LAYER_METADATA_KEY]: STRIPE_SAFE_LAYER_LABEL,
+        },
         cartFingerprint
       ),
     },

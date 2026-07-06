@@ -311,7 +311,7 @@ function resolveCheckoutCompletionModule(
 ): CheckoutCompletionModuleLike {
   const module = container.resolve(
     CHECKOUT_COMPLETION_MODULE
-  ) as CheckoutCompletionModuleLike
+  ) as unknown as CheckoutCompletionModuleLike
 
   if (
     !module ||

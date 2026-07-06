@@ -152,6 +152,10 @@ describe("04-04 startCardPaymentAttempt", () => {
     })
 
     expect(result.attempt.order_id).toBeNull()
+    expect(result.attempt.provider).toBe("stripe")
+    expect(result.attempt.metadata?.stripe_initiation_layer).toBe(
+      "stripe_safe_layer"
+    )
     expect(result.attempt.provider_payment_intent_id).toBe("pi_card_init_mock")
     expect(result.attempt.amount).toBe(9900)
     expect(result.attempt.currency_code).toBe("brl")

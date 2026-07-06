@@ -35,6 +35,14 @@ module.exports = defineConfig({
     ...buildRedisModules(env),
     ...buildStorageModule(env),
     {
+      key: "webhooks",
+      resolve: "./src/modules/webhooks",
+    },
+    {
+      key: "checkoutCompletion",
+      resolve: "./src/modules/checkout-completion",
+    },
+    {
       key: "analytics_event_log",
       resolve: "./src/modules/analytics-event-log",
     },
