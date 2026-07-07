@@ -188,6 +188,39 @@ describe("payment attempt webhook validation", () => {
     ).toThrow("Amount do PaymentIntent divergente da tentativa.")
   })
 
+  it("aceita amount string do Postgres contra PaymentIntent inteiro da Stripe", () => {
+    expect(() =>
+      validatePaymentIntentForAttempt(
+        buildAttempt({
+          amount: "9900" as unknown as number,
+        }),
+        buildPaymentIntent({ amount: 9900, amount_received: 9900 }),
+        "payment_intent.succeeded"
+      )
+    ).not.toThrow()
+  })
+
+  it("rejeita amount string divergente com PAYMENT_ATTEMPT_AMOUNT_MISMATCH", () => {
+    try {
+      validatePaymentIntentForAttempt(
+        buildAttempt({
+          amount: "9901" as unknown as number,
+        }),
+        buildPaymentIntent({ amount: 9900, amount_received: 9900 }),
+        "payment_intent.succeeded"
+      )
+      throw new Error("expected validation to fail")
+    } catch (error) {
+      expect(error).toBeInstanceOf(PaymentAttemptWebhookError)
+      expect((error as PaymentAttemptWebhookError).code).toBe(
+        "PAYMENT_ATTEMPT_AMOUNT_MISMATCH"
+      )
+      expect((error as PaymentAttemptWebhookError).message).toBe(
+        "Amount do PaymentIntent divergente da tentativa."
+      )
+    }
+  })
+
   it("rejeita currency divergente", () => {
     expect(() =>
       validatePaymentIntentForAttempt(

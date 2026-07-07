@@ -275,6 +275,44 @@ function matchesExpectedPaymentMethodType(
   return paymentMethodTypes.includes(attemptPaymentMethodType)
 }
 
+function toCanonicalPaymentAmount(value: unknown): bigint | null {
+  if (typeof value === "bigint") {
+    return value >= 0n ? value : null
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 0) {
+      return null
+    }
+
+    return BigInt(value)
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (trimmed.length === 0) {
+      return null
+    }
+
+    try {
+      const parsed = BigInt(trimmed)
+      return parsed >= 0n ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
+  return null
+}
+
+function paymentIntentAmountToBigInt(value: unknown): bigint | null {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    return null
+  }
+
+  return BigInt(value)
+}
+
 function resolveTargetStatusForStripeEvent(
   eventType: SupportedStripePaymentIntentEventType
 ): PaymentAttemptStatus {
@@ -321,9 +359,13 @@ export function validatePaymentIntentForAttempt(
     }
   }
 
+  const attemptAmount = toCanonicalPaymentAmount(attempt.amount)
   const comparableAmounts = [paymentIntent.amount_received, paymentIntent.amount]
-    .filter((value): value is number => typeof value === "number")
-  const amountMatches = comparableAmounts.some((value) => value === attempt.amount)
+    .map(paymentIntentAmountToBigInt)
+    .filter((value): value is bigint => value !== null)
+  const amountMatches =
+    attemptAmount !== null &&
+    comparableAmounts.some((value) => value === attemptAmount)
 
   if (!amountMatches) {
     throw new PaymentAttemptWebhookError(
