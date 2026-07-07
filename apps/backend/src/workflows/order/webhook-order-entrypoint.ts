@@ -1,5 +1,6 @@
 import { createHash } from "crypto"
 import { completeCartWorkflow } from "@medusajs/core-flows"
+import { AwilixResolutionError } from "@medusajs/framework/awilix"
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import {
@@ -285,6 +286,46 @@ function getErrorCode(error: Error): string | null {
   return typeof code === "string" ? code : null
 }
 
+function isAwilixResolutionError(error: unknown): boolean {
+  return (
+    error instanceof AwilixResolutionError ||
+    (error instanceof Error &&
+      error.name === "AwilixResolutionError" &&
+      /could not resolve/i.test(error.message))
+  )
+}
+
+function buildUnavailableModuleMessage(
+  moduleName: string,
+  keys: readonly string[]
+): string {
+  return `Modulo de ${moduleName} nao configurado. Keys tentadas: ${keys.join(", ")}.`
+}
+
+function resolveFirstAvailable<T>(
+  container: MedusaContainer,
+  keys: readonly string[],
+  isSupported: (candidate: T | undefined) => boolean
+): T | undefined {
+  for (const key of keys) {
+    try {
+      const candidate = container.resolve(key) as T | undefined
+
+      if (isSupported(candidate)) {
+        return candidate
+      }
+    } catch (error) {
+      if (isAwilixResolutionError(error)) {
+        continue
+      }
+
+      throw error
+    }
+  }
+
+  return undefined
+}
+
 function resolvePaymentAttemptModule(
   container: MedusaContainer
 ): PaymentAttemptModuleLike {
@@ -376,9 +417,10 @@ function resolveOrderModule(container: MedusaContainer): OrderModuleLike {
 function resolveAnalyticsEventLogModule(
   container: MedusaContainer
 ): AnalyticsEventLogModuleLike {
-  const resolved = ANALYTICS_EVENT_LOG_RUNTIME_KEYS
-    .map((key) => container.resolve(key) as AnalyticsEventLogModuleLike | undefined)
-    .find((candidate) => {
+  const resolved = resolveFirstAvailable<AnalyticsEventLogModuleLike>(
+    container,
+    ANALYTICS_EVENT_LOG_RUNTIME_KEYS,
+    (candidate) => {
       return (
         Boolean(candidate) &&
         typeof candidate?.listAnalyticsEventLogs === "function" &&
@@ -393,7 +435,10 @@ function resolveAnalyticsEventLogModule(
   ) {
     throw new OrderCreationEntrypointError(
       "ORDER_ENTRYPOINT_ANALYTICS_EVENT_LOG_MODULE_UNAVAILABLE",
-      "Modulo de analytics_event_log nao configurado."
+      buildUnavailableModuleMessage(
+        "analytics_event_log",
+        ANALYTICS_EVENT_LOG_RUNTIME_KEYS
+      )
     )
   }
 
@@ -403,18 +448,17 @@ function resolveAnalyticsEventLogModule(
 function resolveEmailDeliveryLogModule(
   container: MedusaContainer
 ): EmailDeliveryLogModuleLike {
-  const resolved = EMAIL_DELIVERY_LOG_RUNTIME_KEYS.map((key) =>
-    container.resolve(key)
-  )
-    .find((candidate) => {
+  const resolved = resolveFirstAvailable<EmailDeliveryLogModuleLike>(
+    container,
+    EMAIL_DELIVERY_LOG_RUNTIME_KEYS,
+    (candidate) => {
       return (
         Boolean(candidate) &&
-        typeof (candidate as EmailDeliveryLogModuleLike)
-          .listEmailDeliveryLogs === "function" &&
-        typeof (candidate as EmailDeliveryLogModuleLike)
-          .createEmailDeliveryLogs === "function"
+        typeof candidate?.listEmailDeliveryLogs === "function" &&
+        typeof candidate?.createEmailDeliveryLogs === "function"
       )
-    }) as EmailDeliveryLogModuleLike | undefined
+    }
+  )
 
   if (
     !resolved ||
@@ -423,7 +467,10 @@ function resolveEmailDeliveryLogModule(
   ) {
     throw new OrderCreationEntrypointError(
       "ORDER_ENTRYPOINT_EMAIL_DELIVERY_LOG_MODULE_UNAVAILABLE",
-      "Modulo de email_delivery_log nao configurado."
+      buildUnavailableModuleMessage(
+        "email_delivery_log",
+        EMAIL_DELIVERY_LOG_RUNTIME_KEYS
+      )
     )
   }
 
@@ -433,18 +480,17 @@ function resolveEmailDeliveryLogModule(
 function resolveGelatoFulfillmentModule(
   container: MedusaContainer
 ): GelatoFulfillmentModuleLike {
-  const resolved = GELATO_FULFILLMENT_RUNTIME_KEYS.map((key) =>
-    container.resolve(key)
-  )
-    .find((candidate) => {
+  const resolved = resolveFirstAvailable<GelatoFulfillmentModuleLike>(
+    container,
+    GELATO_FULFILLMENT_RUNTIME_KEYS,
+    (candidate) => {
       return (
         Boolean(candidate) &&
-        typeof (candidate as GelatoFulfillmentModuleLike)
-          .listGelatoFulfillments === "function" &&
-        typeof (candidate as GelatoFulfillmentModuleLike)
-          .createGelatoFulfillments === "function"
+        typeof candidate?.listGelatoFulfillments === "function" &&
+        typeof candidate?.createGelatoFulfillments === "function"
       )
-    }) as GelatoFulfillmentModuleLike | undefined
+    }
+  )
 
   if (
     !resolved ||
@@ -453,7 +499,10 @@ function resolveGelatoFulfillmentModule(
   ) {
     throw new OrderCreationEntrypointError(
       "ORDER_ENTRYPOINT_GELATO_FULFILLMENT_MODULE_UNAVAILABLE",
-      "Modulo de gelato_fulfillment nao configurado."
+      buildUnavailableModuleMessage(
+        "gelato_fulfillment",
+        GELATO_FULFILLMENT_RUNTIME_KEYS
+      )
     )
   }
 

@@ -23,6 +23,12 @@ function joinKey(...parts: string[]): string {
 const SUPPORT_EMAIL = joinKey("support", "@", "lojinha", ".", "test")
 const ORDER_EMAIL = joinKey("cliente", "@", "compras", ".", "test")
 
+function buildAwilixResolutionError(key: string): Error {
+  const error = new Error(`Could not resolve '${key}'`)
+  error.name = "AwilixResolutionError"
+  return error
+}
+
 function buildAttempt(
   overrides: Partial<PaymentAttemptRecord> = {}
 ): PaymentAttemptRecord {
@@ -558,6 +564,133 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
     ).toEqual([undefined, undefined])
   })
 
+  it("tolera alias legado ausente quando a key canonica email_delivery_log ja resolve", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule([
+      {
+        id: "chkcpl_email_alias",
+        idempotency_key: "pi_email_01",
+        cart_id: "cart_email_01",
+        payment_intent_id: "pi_email_01",
+        payment_attempt_id: "payatt_email_01",
+        order_id: "order_email_01",
+        status: "completed",
+        metadata: null,
+      },
+    ])
+    const analyticsEventLogModule = createAnalyticsEventLogModule([
+      {
+        id: "anlevt_email_alias",
+        event_name: "purchase_completed",
+        event_version: 1,
+        idempotency_key: "purchase_completed:stripe:pi_email_01",
+        order_id: "order_email_01",
+        cart_id: "cart_email_01",
+        payment_attempt_id: "payatt_email_01",
+        checkout_completion_log_id: "chkcpl_email_alias",
+        payment_intent_id: "pi_email_01",
+        status: "recorded",
+        payload: {
+          order_id: "order_email_01",
+        },
+        metadata: null,
+        attempt_count: 0,
+        recorded_at: "2026-07-01T12:00:00.000Z",
+        created_at: "2026-07-01T12:00:00.000Z",
+        updated_at: "2026-07-01T12:00:00.000Z",
+        deleted_at: null,
+      },
+    ])
+    const emailDeliveryLogModule = createEmailDeliveryLogModule([
+      {
+        id: "emlog_email_alias",
+        email_type: "order_confirmation",
+        template_key: "order_confirmation_v1",
+        template_version: 1,
+        provider: "resend",
+        idempotency_key: "order-confirmation/order_email_01",
+        order_id: "order_email_01",
+        cart_id: "cart_email_01",
+        payment_attempt_id: "payatt_email_01",
+        checkout_completion_log_id: "chkcpl_email_alias",
+        analytics_event_log_id: "anlevt_email_alias",
+        payment_intent_id: "pi_email_01",
+        status: "recorded",
+        recipient_email_hash: "hash",
+        recipient_email_domain: "compras.test",
+        payload: {
+          order_id: "order_email_01",
+        },
+        metadata: null,
+        attempt_count: 0,
+        next_retry_at: null,
+        recorded_at: "2026-07-01T12:00:00.000Z",
+        queued_at: null,
+        sending_started_at: null,
+        sent_at: null,
+        failed_at: null,
+        dead_lettered_at: null,
+        created_at: "2026-07-01T12:00:00.000Z",
+        updated_at: "2026-07-01T12:00:00.000Z",
+        deleted_at: null,
+      },
+    ])
+    const orderModule = createOrderModule([buildOrder()])
+
+    const container = {
+      resolve: jest.fn((key: string) => {
+        if (key === PAYMENT_ATTEMPT_MODULE) {
+          return paymentAttemptModule
+        }
+
+        if (key === CHECKOUT_COMPLETION_MODULE) {
+          return checkoutCompletionModule
+        }
+
+        if (key === "analytics_event_log" || key === ANALYTICS_EVENT_LOG_MODULE) {
+          return analyticsEventLogModule
+        }
+
+        if (key === "email_delivery_log") {
+          return emailDeliveryLogModule
+        }
+
+        if (key === EMAIL_DELIVERY_LOG_MODULE) {
+          throw buildAwilixResolutionError(key)
+        }
+
+        if (key === Modules.ORDER) {
+          return orderModule
+        }
+
+        if (key === ContainerRegistrationKeys.QUERY) {
+          return createQueryGraph(buildCart())
+        }
+
+        if (key === Modules.CART) {
+          return {
+            updateLineItems: jest.fn(async () => undefined),
+          }
+        }
+
+        return undefined
+      }),
+    } as unknown as MedusaContainer
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      container,
+      buildInput({ stripe_event_id: "evt_email_alias" }),
+      {
+        now: () => new Date("2026-07-01T12:05:30.000Z"),
+        getCart: async () => buildCart(),
+      }
+    )
+
+    expect(result.status).toBe("reused_existing_order")
+    expect(container.resolve).toHaveBeenCalledWith("email_delivery_log")
+    expect(container.resolve).not.toHaveBeenCalledWith(EMAIL_DELIVERY_LOG_MODULE)
+  })
+
   it("unique violation sem registro reutilizavel nao vira sucesso silencioso", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule()
@@ -904,7 +1037,8 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
     ).rejects.toMatchObject({
       name: "OrderCreationEntrypointError",
       code: "ORDER_ENTRYPOINT_EMAIL_DELIVERY_LOG_MODULE_UNAVAILABLE",
-      message: "Modulo de email_delivery_log nao configurado.",
+      message:
+        "Modulo de email_delivery_log nao configurado. Keys tentadas: email_delivery_log, email-delivery-log.",
     })
 
     expect(runCompleteCart).not.toHaveBeenCalled()

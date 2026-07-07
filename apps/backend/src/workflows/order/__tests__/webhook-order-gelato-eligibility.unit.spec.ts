@@ -7,6 +7,12 @@ import { PAYMENT_ATTEMPT_MODULE } from "../../../modules/payment-attempt"
 import type { PaymentAttemptRecord } from "../../../modules/payment-attempt/types"
 import { runCreateOrderFromConfirmedPaymentAttemptEntrypoint } from "../webhook-order-entrypoint"
 
+function buildAwilixResolutionError(key: string): Error {
+  const error = new Error(`Could not resolve '${key}'`)
+  error.name = "AwilixResolutionError"
+  return error
+}
+
 function buildAttempt(
   overrides: Partial<PaymentAttemptRecord> = {}
 ): PaymentAttemptRecord {
@@ -556,6 +562,62 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint gelato eligibility
     )
 
     expect(gelatoFulfillmentModule.store).toHaveLength(1)
+  })
+
+  it("tolera alias legado ausente quando a key canonica gelato_fulfillment ja resolve", async () => {
+    const gelatoFulfillmentModule = createGelatoFulfillmentModule()
+
+    const container = {
+      resolve: jest.fn((key: string) => {
+        if (key === PAYMENT_ATTEMPT_MODULE) {
+          return createPaymentAttemptModule(buildAttempt())
+        }
+        if (key === CHECKOUT_COMPLETION_MODULE) {
+          return createCheckoutCompletionModule()
+        }
+        if (key === ANALYTICS_EVENT_LOG_MODULE || key === "analytics_event_log") {
+          return createAnalyticsEventLogModule()
+        }
+        if (key === EMAIL_DELIVERY_LOG_MODULE || key === "email_delivery_log") {
+          return createEmailDeliveryLogModule("sent")
+        }
+        if (key === "gelato_fulfillment") {
+          return gelatoFulfillmentModule
+        }
+        if (key === "gelato-fulfillment") {
+          throw buildAwilixResolutionError(key)
+        }
+        if (key === Modules.ORDER) {
+          return createOrderModule()
+        }
+        if (key === Modules.CART) {
+          return {
+            updateLineItems: jest.fn(async (rows) => rows),
+          }
+        }
+        if (key === ContainerRegistrationKeys.QUERY) {
+          return {
+            graph: jest.fn(async () => ({
+              data: [buildCart()],
+            })),
+          }
+        }
+
+        return undefined
+      }),
+    } as unknown as MedusaContainer
+
+    await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      container,
+      buildInput(),
+      {
+        now: () => new Date("2026-07-02T12:00:02.000Z"),
+      }
+    )
+
+    expect(gelatoFulfillmentModule.createGelatoFulfillments).toHaveBeenCalledTimes(1)
+    expect(container.resolve).toHaveBeenCalledWith("gelato_fulfillment")
+    expect(container.resolve).not.toHaveBeenCalledWith("gelato-fulfillment")
   })
 
   it("modulo gelato_fulfillment ausente ou mal configurado falha fechado sem sucesso silencioso", async () => {

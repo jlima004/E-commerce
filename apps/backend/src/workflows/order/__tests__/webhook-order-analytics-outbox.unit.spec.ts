@@ -2,6 +2,7 @@ import type { MedusaContainer } from "@medusajs/framework/types"
 import { Modules } from "@medusajs/framework/utils"
 import { ANALYTICS_EVENT_LOG_MODULE } from "../../../modules/analytics-event-log"
 import { CHECKOUT_COMPLETION_MODULE } from "../../../modules/checkout-completion"
+import { EMAIL_DELIVERY_LOG_MODULE } from "../../../modules/email-delivery-log"
 import { PAYMENT_ATTEMPT_MODULE } from "../../../modules/payment-attempt"
 import type { PaymentAttemptRecord } from "../../../modules/payment-attempt/types"
 import {
@@ -15,6 +16,12 @@ function joinKey(...parts: string[]): string {
 }
 
 const SNAPSHOT_KEY = joinKey("gelato", "_", "snapshot")
+
+function buildAwilixResolutionError(key: string): Error {
+  const error = new Error(`Could not resolve '${key}'`)
+  error.name = "AwilixResolutionError"
+  return error
+}
 
 function buildAttempt(
   overrides: Partial<PaymentAttemptRecord> = {}
@@ -240,10 +247,72 @@ function createAnalyticsEventLogModule(records: Array<Record<string, unknown>> =
   }
 }
 
+function createEmailDeliveryLogModule(records: Array<Record<string, unknown>> = []) {
+  const store = [...records]
+
+  return {
+    listEmailDeliveryLogs: jest.fn(async (filters?: Record<string, unknown>) => {
+      return store.filter((record) => {
+        if (filters?.idempotency_key && record.idempotency_key !== filters.idempotency_key) {
+          return false
+        }
+
+        if (filters?.order_id && record.order_id !== filters.order_id) {
+          return false
+        }
+
+        return true
+      })
+    }),
+    createEmailDeliveryLogs: jest.fn(async (input) => {
+      const row = Array.isArray(input) ? input[0] : input
+      const created = {
+        ...row,
+        id: `emlog_outbox_${store.length + 1}`,
+      }
+      store.push(created)
+      return [created]
+    }),
+    store,
+  }
+}
+
+function createGelatoFulfillmentModule(records: Array<Record<string, unknown>> = []) {
+  const store = [...records]
+
+  return {
+    listGelatoFulfillments: jest.fn(async (filters?: Record<string, unknown>) => {
+      return store.filter((record) => {
+        if (filters?.idempotency_key && record.idempotency_key !== filters.idempotency_key) {
+          return false
+        }
+
+        if (filters?.order_id && record.order_id !== filters.order_id) {
+          return false
+        }
+
+        return true
+      })
+    }),
+    createGelatoFulfillments: jest.fn(async (input) => {
+      const row = Array.isArray(input) ? input[0] : input
+      const created = {
+        ...row,
+        id: `gelful_outbox_${store.length + 1}`,
+      }
+      store.push(created)
+      return [created]
+    }),
+    store,
+  }
+}
+
 function createContainer(input: {
   paymentAttemptModule: ReturnType<typeof createPaymentAttemptModule>
   checkoutCompletionModule: ReturnType<typeof createCheckoutCompletionModule>
   analyticsEventLogModule?: ReturnType<typeof createAnalyticsEventLogModule>
+  emailDeliveryLogModule?: ReturnType<typeof createEmailDeliveryLogModule>
+  gelatoFulfillmentModule?: ReturnType<typeof createGelatoFulfillmentModule>
   orderModule?: ReturnType<typeof createOrderModule>
 }) {
   return {
@@ -256,8 +325,16 @@ function createContainer(input: {
         return input.checkoutCompletionModule
       }
 
-      if (key === ANALYTICS_EVENT_LOG_MODULE) {
+      if (key === ANALYTICS_EVENT_LOG_MODULE || key === "analytics_event_log") {
         return input.analyticsEventLogModule
+      }
+
+      if (key === EMAIL_DELIVERY_LOG_MODULE || key === "email_delivery_log") {
+        return input.emailDeliveryLogModule ?? createEmailDeliveryLogModule()
+      }
+
+      if (key === "gelato_fulfillment" || key === "gelato-fulfillment") {
+        return input.gelatoFulfillmentModule ?? createGelatoFulfillmentModule()
       }
 
       if (key === Modules.ORDER) {
@@ -270,6 +347,20 @@ function createContainer(input: {
 }
 
 describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox", () => {
+  const originalSupportEmail = process.env.SUPPORT_EMAIL
+
+  beforeEach(() => {
+    process.env.SUPPORT_EMAIL = "support@pedido.test"
+  })
+
+  afterEach(() => {
+    if (originalSupportEmail === undefined) {
+      delete process.env.SUPPORT_EMAIL
+    } else {
+      process.env.SUPPORT_EMAIL = originalSupportEmail
+    }
+  })
+
   it("grava purchase_completed localmente quando a Order nasce com sucesso", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule()
@@ -288,7 +379,17 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
         now: () => new Date("2026-07-01T12:00:00.000Z"),
         getCart: async () => buildCart(),
         persistCartSnapshots: jest.fn(async () => undefined),
-        runCompleteCart: jest.fn(async () => ({ id: "order_outbox_01" })),
+        runCompleteCart: jest.fn(async () => {
+          orderModule.store.push({
+            id: "order_outbox_01",
+            cart_id: "cart_outbox_01",
+            email: "cliente@compras.test",
+            display_id: 1001,
+            metadata: null,
+          })
+
+          return { id: "order_outbox_01" }
+        }),
       }
     )
 
@@ -399,6 +500,9 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
     const orderModule = createOrderModule([
       {
         id: "order_existing_01",
+        cart_id: "cart_outbox_01",
+        email: "cliente@compras.test",
+        display_id: 1001,
         metadata: null,
       },
     ])
@@ -422,6 +526,101 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
     expect(analyticsEventLogModule.store).toHaveLength(1)
   })
 
+  it("tolera alias legado ausente quando a key canonica analytics_event_log ja resolve", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule([
+      {
+        id: "chkcpl_outbox_alias",
+        idempotency_key: "pi_outbox_01",
+        cart_id: "cart_outbox_01",
+        payment_intent_id: "pi_outbox_01",
+        payment_attempt_id: "payatt_outbox_01",
+        order_id: "order_existing_01",
+        status: "completed",
+        metadata: null,
+      },
+    ])
+    const analyticsEventLogModule = createAnalyticsEventLogModule([
+      {
+        id: "anlevt_existing_alias",
+        event_name: "purchase_completed",
+        event_version: 1,
+        idempotency_key: "purchase_completed:stripe:pi_outbox_01",
+        order_id: "order_existing_01",
+        cart_id: "cart_outbox_01",
+        payment_attempt_id: "payatt_outbox_01",
+        checkout_completion_log_id: "chkcpl_outbox_alias",
+        payment_intent_id: "pi_outbox_01",
+        status: "recorded",
+        payload: {
+          order_id: "order_existing_01",
+        },
+        metadata: null,
+        attempt_count: 0,
+        recorded_at: "2026-07-01T12:00:00.000Z",
+        created_at: "2026-07-01T12:00:00.000Z",
+        updated_at: "2026-07-01T12:00:00.000Z",
+        deleted_at: null,
+      },
+    ])
+    const orderModule = createOrderModule([
+      {
+        id: "order_existing_01",
+        cart_id: "cart_outbox_01",
+        email: "cliente@compras.test",
+        display_id: 1003,
+        metadata: null,
+      },
+    ])
+
+    const container = {
+      resolve: jest.fn((key: string) => {
+        if (key === PAYMENT_ATTEMPT_MODULE) {
+          return paymentAttemptModule
+        }
+
+        if (key === CHECKOUT_COMPLETION_MODULE) {
+          return checkoutCompletionModule
+        }
+
+        if (key === "analytics_event_log") {
+          return analyticsEventLogModule
+        }
+
+        if (key === ANALYTICS_EVENT_LOG_MODULE) {
+          throw buildAwilixResolutionError(key)
+        }
+
+        if (key === EMAIL_DELIVERY_LOG_MODULE || key === "email_delivery_log") {
+          return createEmailDeliveryLogModule()
+        }
+
+        if (key === "gelato_fulfillment" || key === "gelato-fulfillment") {
+          return createGelatoFulfillmentModule()
+        }
+
+        if (key === Modules.ORDER) {
+          return orderModule
+        }
+
+        return undefined
+      }),
+    } as unknown as MedusaContainer
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      container,
+      buildInput({ stripe_event_id: "evt_outbox_alias" }),
+      {
+        now: () => new Date("2026-07-01T12:02:30.000Z"),
+        getCart: async () => buildCart(),
+      }
+    )
+
+    expect(result.status).toBe("reused_existing_order")
+    expect(container.resolve).toHaveBeenCalledWith("analytics_event_log")
+    expect(container.resolve).not.toHaveBeenCalledWith(ANALYTICS_EVENT_LOG_MODULE)
+  })
+
   it("recovery de Order existente cria purchase_completed ausente antes de retornar sucesso", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule([
@@ -441,6 +640,8 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
       {
         id: "order_recovered_01",
         cart_id: "cart_outbox_01",
+        email: "cliente@compras.test",
+        display_id: 1002,
         metadata: null,
       },
     ])
@@ -538,7 +739,8 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
     ).rejects.toMatchObject({
       name: "OrderCreationEntrypointError",
       code: "ORDER_ENTRYPOINT_ANALYTICS_EVENT_LOG_MODULE_UNAVAILABLE",
-      message: "Modulo de analytics_event_log nao configurado.",
+      message:
+        "Modulo de analytics_event_log nao configurado. Keys tentadas: analytics_event_log, analytics-event-log.",
     })
 
     expect(runCompleteCart).not.toHaveBeenCalled()

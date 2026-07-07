@@ -1,6 +1,8 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
-import { Modules } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
+import { ANALYTICS_EVENT_LOG_MODULE } from "../../../modules/analytics-event-log"
 import { CHECKOUT_COMPLETION_MODULE } from "../../../modules/checkout-completion"
+import { EMAIL_DELIVERY_LOG_MODULE } from "../../../modules/email-delivery-log"
 import { PAYMENT_ATTEMPT_MODULE } from "../../../modules/payment-attempt"
 import type { PaymentAttemptRecord } from "../../../modules/payment-attempt/types"
 import {
@@ -173,13 +175,7 @@ function createPaymentAttemptModule(attempt: PaymentAttemptRecord) {
 }
 
 function createOrderModule(records: Array<Record<string, unknown>> = []) {
-  const store: Array<Record<string, unknown>> = [
-    {
-      id: "order_01",
-      metadata: null,
-    },
-    ...records,
-  ]
+  const store: Array<Record<string, unknown>> = [...records]
 
   return {
     listOrders: jest.fn(async (selector?: Record<string, unknown>) => {
@@ -210,9 +206,102 @@ function createOrderModule(records: Array<Record<string, unknown>> = []) {
   }
 }
 
+function createAnalyticsEventLogModule(records: Array<Record<string, unknown>> = []) {
+  const store = [...records]
+
+  return {
+    listAnalyticsEventLogs: jest.fn(async (filters?: Record<string, unknown>) => {
+      return store.filter((record) => {
+        if (filters?.idempotency_key && record.idempotency_key !== filters.idempotency_key) {
+          return false
+        }
+
+        if (filters?.order_id && record.order_id !== filters.order_id) {
+          return false
+        }
+
+        return true
+      })
+    }),
+    createAnalyticsEventLogs: jest.fn(async (input) => {
+      const row = Array.isArray(input) ? input[0] : input
+      const created = {
+        ...row,
+        id: `anlevt_creation_${store.length + 1}`,
+      }
+      store.push(created)
+      return [created]
+    }),
+    store,
+  }
+}
+
+function createEmailDeliveryLogModule(records: Array<Record<string, unknown>> = []) {
+  const store = [...records]
+
+  return {
+    listEmailDeliveryLogs: jest.fn(async (filters?: Record<string, unknown>) => {
+      return store.filter((record) => {
+        if (filters?.idempotency_key && record.idempotency_key !== filters.idempotency_key) {
+          return false
+        }
+
+        if (filters?.order_id && record.order_id !== filters.order_id) {
+          return false
+        }
+
+        return true
+      })
+    }),
+    createEmailDeliveryLogs: jest.fn(async (input) => {
+      const row = Array.isArray(input) ? input[0] : input
+      const created = {
+        ...row,
+        id: `emlog_creation_${store.length + 1}`,
+      }
+      store.push(created)
+      return [created]
+    }),
+    store,
+  }
+}
+
+function createGelatoFulfillmentModule(records: Array<Record<string, unknown>> = []) {
+  const store = [...records]
+
+  return {
+    listGelatoFulfillments: jest.fn(async (filters?: Record<string, unknown>) => {
+      return store.filter((record) => {
+        if (filters?.idempotency_key && record.idempotency_key !== filters.idempotency_key) {
+          return false
+        }
+
+        if (filters?.order_id && record.order_id !== filters.order_id) {
+          return false
+        }
+
+        return true
+      })
+    }),
+    createGelatoFulfillments: jest.fn(async (input) => {
+      const row = Array.isArray(input) ? input[0] : input
+      const created = {
+        ...row,
+        id: `gelful_creation_${store.length + 1}`,
+      }
+      store.push(created)
+      return [created]
+    }),
+    store,
+  }
+}
+
 function createContainer(input: {
   paymentAttemptModule: ReturnType<typeof createPaymentAttemptModule>
   checkoutCompletionModule: ReturnType<typeof createCheckoutCompletionModule>
+  analyticsEventLogModule?: ReturnType<typeof createAnalyticsEventLogModule>
+  emailDeliveryLogModule?: ReturnType<typeof createEmailDeliveryLogModule>
+  gelatoFulfillmentModule?: ReturnType<typeof createGelatoFulfillmentModule>
   orderModule?: ReturnType<typeof createOrderModule>
 }) {
   return {
@@ -223,6 +312,32 @@ function createContainer(input: {
 
       if (key === CHECKOUT_COMPLETION_MODULE) {
         return input.checkoutCompletionModule
+      }
+
+      if (key === ANALYTICS_EVENT_LOG_MODULE || key === "analytics_event_log") {
+        return input.analyticsEventLogModule ?? createAnalyticsEventLogModule()
+      }
+
+      if (key === EMAIL_DELIVERY_LOG_MODULE || key === "email_delivery_log") {
+        return input.emailDeliveryLogModule ?? createEmailDeliveryLogModule()
+      }
+
+      if (key === "gelato_fulfillment" || key === "gelato-fulfillment") {
+        return input.gelatoFulfillmentModule ?? createGelatoFulfillmentModule()
+      }
+
+      if (key === ContainerRegistrationKeys.QUERY) {
+        return {
+          graph: jest.fn(async () => ({
+            data: [buildCart()],
+          })),
+        }
+      }
+
+      if (key === Modules.CART) {
+        return {
+          updateLineItems: jest.fn(async (rows) => rows),
+        }
       }
 
       if (key === Modules.ORDER) {
@@ -245,12 +360,36 @@ describe("validateCreateOrderFromConfirmedPaymentAttemptInput", () => {
 })
 
 describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
+  const originalSupportEmail = process.env.SUPPORT_EMAIL
+
+  beforeEach(() => {
+    process.env.SUPPORT_EMAIL = "support@pedido.test"
+  })
+
+  afterEach(() => {
+    if (originalSupportEmail === undefined) {
+      delete process.env.SUPPORT_EMAIL
+    } else {
+      process.env.SUPPORT_EMAIL = originalSupportEmail
+    }
+  })
+
   it("cria uma Order, completa CheckoutCompletionLog e correlaciona PaymentAttempt.order_id", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule()
     const orderModule = createOrderModule()
     const persistCartSnapshots = jest.fn(async () => undefined)
-    const runCompleteCart = jest.fn(async () => ({ id: "order_01" }))
+    const runCompleteCart = jest.fn(async () => {
+      orderModule.store.push({
+        id: "order_01",
+        cart_id: "cart_01",
+        email: "cliente@pedido.test",
+        display_id: 1001,
+        metadata: null,
+      })
+
+      return { id: "order_01" }
+    })
 
     const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       createContainer({
@@ -321,7 +460,15 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
         metadata: null,
       },
     ])
-    const orderModule = createOrderModule()
+    const orderModule = createOrderModule([
+      {
+        id: "order_existing",
+        cart_id: "cart_01",
+        email: "cliente@pedido.test",
+        display_id: 1002,
+        metadata: null,
+      },
+    ])
     const runCompleteCart = jest.fn()
 
     const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
@@ -424,6 +571,8 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
       orderModule.store.push({
         id: "order_partial_01",
         cart_id: "cart_01",
+        email: "cliente@pedido.test",
+        display_id: 1002,
         metadata: null,
       })
 
@@ -478,9 +627,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
       buildInput({ stripe_event_id: "evt_retry" }),
       {
         now: () => new Date("2026-06-30T16:01:00.000Z"),
-        getCart: jest.fn(async () => {
-          throw new Error("cart completed_at should not block recovery")
-        }),
+        getCart: async () => buildCart(),
         runCompleteCart,
         persistOrderState,
       }
