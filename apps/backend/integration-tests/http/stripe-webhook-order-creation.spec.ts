@@ -680,11 +680,12 @@ function createOrderModule() {
 
   return {
     listOrders: jest.fn(async (selector?: Record<string, unknown>) => {
+      if (selector?.cart_id) {
+        throw new Error("Order.cart_id must not be queried")
+      }
+
       return store.filter((order) => {
         if (selector?.id && order.id !== selector.id) {
-          return false
-        }
-        if (selector?.cart_id && order.cart_id !== selector.cart_id) {
           return false
         }
 
@@ -922,6 +923,178 @@ describe("stripe webhook order creation integration", () => {
     for (const forbidden of FORBIDDEN_STRINGS) {
       expect(proof).not.toContain(forbidden)
     }
+  })
+
+  it("payment_intent.succeeded confirmavel cria Order sem consultar Order.cart_id e persiste correlacoes", async () => {
+    const cart = buildOrderCart()
+    const webhookService = createStatefulWebhookService()
+    const paymentAttemptModule = createPaymentAttemptModule([buildAttempt()])
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const cartModule = createCartModule(cart)
+    const orderModule = createOrderModule()
+    const queryGraph = createQueryGraph(cart)
+    const runCompleteCart = jest.fn(async (_container, cartId: string) => {
+      const order = {
+        id: "order_http_confirmable_01",
+        cart_id: cartId,
+        email: ORDER_EMAIL,
+        display_id: 2003,
+        metadata: null,
+      }
+      orderModule.store.push(order)
+
+      return { id: order.id }
+    })
+    const handler = createHandler(
+      {
+        id: "evt_order_confirmable_create",
+        type: "payment_intent.succeeded",
+        livemode: false,
+        data: {
+          object: {
+            id: "pi_order_http_123",
+            object: "payment_intent",
+            amount: 9900,
+            amount_received: 9900,
+            currency: "brl",
+            metadata: {
+              cart_id: "cart_order_http_01",
+            },
+            payment_method_types: ["card"],
+          },
+        },
+      },
+      (scope, input) =>
+        runCreateOrderFromConfirmedPaymentAttemptEntrypoint(scope as never, input, {
+          now: () => new Date("2026-06-30T12:00:00.000Z"),
+          runCompleteCart,
+        })
+    )
+    const res = createResponse()
+
+    await handler(
+      createRequest(
+        createScopeResolve({
+          webhookService,
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          cartModule,
+          orderModule,
+          queryGraph,
+        }),
+        {
+          rawBody: Buffer.from(
+            '{"id":"evt_order_confirmable_create","type":"payment_intent.succeeded"}'
+          ),
+        }
+      ),
+      res
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "processed",
+      })
+    )
+    expect(runCompleteCart).toHaveBeenCalledTimes(1)
+    expect(runCompleteCart).toHaveBeenCalledWith(
+      expect.anything(),
+      "cart_order_http_01"
+    )
+    expect(orderModule.store).toHaveLength(1)
+    expect(orderModule.listOrders).not.toHaveBeenCalledWith(
+      expect.objectContaining({ cart_id: "cart_order_http_01" })
+    )
+    expect(paymentAttemptModule.attempts[0]).toEqual(
+      expect.objectContaining({
+        status: "payment_confirmed_by_webhook",
+        order_id: "order_http_confirmable_01",
+      })
+    )
+    expect(checkoutCompletionModule.store).toHaveLength(1)
+    expect(checkoutCompletionModule.store[0]).toEqual(
+      expect.objectContaining({
+        cart_id: "cart_order_http_01",
+        payment_attempt_id: "payatt_order_http_01",
+        payment_intent_id: "pi_order_http_123",
+        order_id: "order_http_confirmable_01",
+        status: "completed",
+      })
+    )
+  })
+
+  it("payment_intent.succeeded com PaymentAttempt.order_id existente nao cria Order duplicada", async () => {
+    const cart = buildOrderCart({ completed_at: "2026-07-01T11:59:00.000Z" })
+    const webhookService = createStatefulWebhookService()
+    const paymentAttemptModule = createPaymentAttemptModule([
+      buildAttempt({
+        status: "payment_confirmed_by_webhook",
+        order_id: "order_http_existing_attempt_01",
+      }),
+    ])
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const orderModule = createOrderModule()
+    orderModule.store.push({
+      id: "order_http_existing_attempt_01",
+      email: ORDER_EMAIL,
+      display_id: 2004,
+      metadata: null,
+    })
+    const queryGraph = createQueryGraph(cart)
+    const runCompleteCart = jest.fn()
+    const handler = createHandler(
+      {
+        id: "evt_order_attempt_reuse",
+        type: "payment_intent.succeeded",
+        livemode: false,
+        data: {
+          object: {
+            id: "pi_order_http_123",
+            object: "payment_intent",
+            amount: 9900,
+            amount_received: 9900,
+            currency: "brl",
+            metadata: {
+              cart_id: "cart_order_http_01",
+            },
+            payment_method_types: ["card"],
+          },
+        },
+      },
+      (scope, input) =>
+        runCreateOrderFromConfirmedPaymentAttemptEntrypoint(scope as never, input, {
+          now: () => new Date("2026-06-30T12:00:00.000Z"),
+          runCompleteCart,
+        })
+    )
+    const res = createResponse()
+
+    await handler(
+      createRequest(
+        createScopeResolve({
+          webhookService,
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          orderModule,
+          queryGraph,
+        }),
+        {
+          rawBody: Buffer.from(
+            '{"id":"evt_order_attempt_reuse","type":"payment_intent.succeeded"}'
+          ),
+        }
+      ),
+      res
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(runCompleteCart).not.toHaveBeenCalled()
+    expect(orderModule.store).toHaveLength(1)
+    expect(paymentAttemptModule.attempts[0]?.order_id).toBe(
+      "order_http_existing_attempt_01"
+    )
+    expect(checkoutCompletionModule.store).toHaveLength(0)
   })
 
   it("duplicate received com attempt confirmada respeita replay idempotente", async () => {
@@ -1421,7 +1594,7 @@ describe("stripe webhook order creation integration", () => {
     expect(serialized).not.toContain("gelato_snapshot")
   })
 
-  it("analytics outbox recovery cria purchase_completed ausente para Order existente", async () => {
+  it("analytics outbox recovery cria purchase_completed ausente para Order em CheckoutCompletionLog", async () => {
     const cart = buildOrderCart({
       completed_at: "2026-07-01T11:59:00.000Z",
     })
@@ -1437,8 +1610,8 @@ describe("stripe webhook order creation integration", () => {
         cart_id: "cart_order_http_01",
         payment_intent_id: "pi_order_http_123",
         payment_attempt_id: "payatt_order_http_01",
-        order_id: null,
-        status: "processing",
+        order_id: "order_http_recovered_01",
+        status: "completed",
         metadata: null,
       },
     ])
@@ -1716,7 +1889,7 @@ describe("stripe webhook order creation integration", () => {
     expect(serialized).not.toContain(["Res", "end"].join(""))
   })
 
-  it("email recovery cria EmailDeliveryLog ausente para Order e purchase_completed existentes", async () => {
+  it("email recovery cria EmailDeliveryLog ausente para Order em CheckoutCompletionLog e purchase_completed existente", async () => {
     const cart = buildOrderCart({
       completed_at: "2026-07-01T11:59:00.000Z",
     })
@@ -1732,8 +1905,8 @@ describe("stripe webhook order creation integration", () => {
         cart_id: "cart_order_http_01",
         payment_intent_id: "pi_order_http_123",
         payment_attempt_id: "payatt_order_http_01",
-        order_id: null,
-        status: "processing",
+        order_id: "order_http_email_recovery_01",
+        status: "completed",
         metadata: null,
       },
     ])

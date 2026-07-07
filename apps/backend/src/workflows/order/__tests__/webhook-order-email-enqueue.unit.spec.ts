@@ -287,12 +287,12 @@ function createOrderModule(records: Array<Record<string, unknown>> = []) {
 
   return {
     listOrders: jest.fn(async (selector?: Record<string, unknown>) => {
+      if (selector?.cart_id) {
+        throw new Error("Order.cart_id must not be queried")
+      }
+
       return store.filter((order) => {
         if (selector?.id && order.id !== selector.id) {
-          return false
-        }
-
-        if (selector?.cart_id && order.cart_id !== selector.cart_id) {
           return false
         }
 
@@ -881,7 +881,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
     expect(emailDeliveryLogModule.store).toHaveLength(1)
   })
 
-  it("recovery de Order existente cria EmailDeliveryLog ausente depois de purchase_completed", async () => {
+  it("recovery por CheckoutCompletionLog cria EmailDeliveryLog ausente depois de purchase_completed", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule([
       {
@@ -890,8 +890,8 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
         cart_id: "cart_email_01",
         payment_intent_id: "pi_email_01",
         payment_attempt_id: "payatt_email_01",
-        order_id: null,
-        status: "processing",
+        order_id: "order_recovered_01",
+        status: "completed",
         metadata: null,
       },
     ])

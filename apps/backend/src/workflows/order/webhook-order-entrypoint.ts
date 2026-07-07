@@ -593,12 +593,30 @@ async function claimCheckoutCompletionLog(
   }
 
   const readExisting = async () => {
-    const records =
+    const byIdempotency =
       (await module.listCheckoutCompletionLogs?.({
         idempotency_key: idempotencyKey,
       })) ?? []
+    const existingByIdempotency = byIdempotency[0] ?? null
 
-    return records[0] ?? null
+    if (existingByIdempotency) {
+      return existingByIdempotency
+    }
+
+    const byAttempt =
+      (await module.listCheckoutCompletionLogs?.({
+        cart_id: attempt.cart_id,
+        payment_attempt_id: attempt.id,
+      })) ?? []
+
+    return (
+      byAttempt.find((record) => {
+        return (
+          record.cart_id === attempt.cart_id &&
+          record.payment_attempt_id === attempt.id
+        )
+      }) ?? null
+    )
   }
 
   const existing = await readExisting()
@@ -1360,26 +1378,6 @@ async function finalizePostOrderLocalRecords(input: {
   })
 }
 
-async function findExistingOrderForCart(
-  container: MedusaContainer,
-  cartId: string
-): Promise<string | null> {
-  const orderModule = resolveOrderModule(container)
-  const orders = (await orderModule.listOrders?.({ cart_id: cartId })) ?? []
-  const orderIds = orders
-    .map((order) => extractOrderId(order))
-    .filter((id): id is string => Boolean(id))
-
-  if (orderIds.length > 1) {
-    throw new OrderCreationEntrypointError(
-      "ORDER_ENTRYPOINT_EXISTING_ORDER_CONFLICT",
-      "Mais de uma Order encontrada para o carrinho confirmado."
-    )
-  }
-
-  return orderIds[0] ?? null
-}
-
 async function completeCheckoutCompletionLog(
   container: MedusaContainer,
   logId: string,
@@ -1443,7 +1441,6 @@ async function completeRecoveredOrderCorrelation(input: {
     orderId: string
   ) => Promise<void>
 }): Promise<void> {
-  await input.persistOrderState(input.container, input.orderId)
   await completeCheckoutCompletionLog(
     input.container,
     input.logId,
@@ -1456,6 +1453,7 @@ async function completeRecoveredOrderCorrelation(input: {
     input.orderId,
     input.now
   )
+  await input.persistOrderState(input.container, input.orderId)
 }
 
 function buildResult(input: {
@@ -1477,6 +1475,14 @@ function buildResult(input: {
     order_status: orderState.order_status,
     payment_status: orderState.payment_status,
   }
+}
+
+function normalizeExistingPaymentAttemptOrderId(
+  attempt: PaymentAttemptRecord
+): string | null {
+  const orderId = attempt.order_id?.trim()
+
+  return orderId && orderId.length > 0 ? orderId : null
 }
 
 export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
@@ -1539,42 +1545,48 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
   const persistOrderState = overrides.persistOrderState ?? persistConfirmedOrderState
   const loadCart =
     overrides.getCart ?? loadCartForOrderCreation
+  const existingAttemptOrderId = normalizeExistingPaymentAttemptOrderId(attempt)
 
-  if (claim.status === "processing") {
-    const existingOrderId = await findExistingOrderForCart(container, attempt.cart_id)
-
-    if (existingOrderId) {
-      await completeRecoveredOrderCorrelation({
-        container,
-        attempt,
-        logId: claim.log.id,
-        orderId: existingOrderId,
-        now,
-        persistOrderState,
-      })
-      await finalizePostOrderLocalRecords({
-        container,
-        attempt,
-        checkoutCompletionLogId: claim.log.id,
-        paymentIntentId: validated.payment_intent_id,
-        orderId: existingOrderId,
-        cart: await loadCart(container, attempt.cart_id),
-        now,
-        correlationId: validated.correlation_id ?? null,
-        recoveryOrigin: "existing_order_processing_recovery",
-      })
-
-      return buildResult({
-        status: "reused_existing_order",
-        payment_attempt_id: attempt.id,
-        payment_intent_id: validated.payment_intent_id,
-        stripe_event_id: validated.stripe_event_id ?? null,
-        correlation_id: validated.correlation_id ?? null,
-        order_id: existingOrderId,
-        checkout_completion_status: "completed",
-      })
+  if (existingAttemptOrderId) {
+    if (claim.order_id && claim.order_id !== existingAttemptOrderId) {
+      throw new OrderCreationEntrypointError(
+        "ORDER_ENTRYPOINT_ORDER_ID_CONFLICT",
+        "PaymentAttempt e CheckoutCompletionLog apontam para Orders diferentes."
+      )
     }
 
+    await completeRecoveredOrderCorrelation({
+      container,
+      attempt,
+      logId: claim.log.id,
+      orderId: existingAttemptOrderId,
+      now,
+      persistOrderState,
+    })
+    await finalizePostOrderLocalRecords({
+      container,
+      attempt,
+      checkoutCompletionLogId: claim.log.id,
+      paymentIntentId: validated.payment_intent_id,
+      orderId: existingAttemptOrderId,
+      cart: await loadCart(container, attempt.cart_id),
+      now,
+      correlationId: validated.correlation_id ?? null,
+      recoveryOrigin: "payment_attempt_order_id_reuse",
+    })
+
+    return buildResult({
+      status: "reused_existing_order",
+      payment_attempt_id: attempt.id,
+      payment_intent_id: validated.payment_intent_id,
+      stripe_event_id: validated.stripe_event_id ?? null,
+      correlation_id: validated.correlation_id ?? null,
+      order_id: existingAttemptOrderId,
+      checkout_completion_status: "completed",
+    })
+  }
+
+  if (claim.status === "processing") {
     return buildResult({
       status: "already_processing",
       payment_attempt_id: attempt.id,
@@ -1608,40 +1620,6 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       stripe_event_id: validated.stripe_event_id ?? null,
       correlation_id: validated.correlation_id ?? null,
       order_id: claim.order_id,
-      checkout_completion_status: "completed",
-    })
-  }
-
-  const existingOrderId = await findExistingOrderForCart(container, attempt.cart_id)
-
-  if (existingOrderId) {
-    await completeRecoveredOrderCorrelation({
-      container,
-      attempt,
-      logId: claim.log.id,
-      orderId: existingOrderId,
-      now,
-      persistOrderState,
-    })
-    await finalizePostOrderLocalRecords({
-      container,
-      attempt,
-      checkoutCompletionLogId: claim.log.id,
-      paymentIntentId: validated.payment_intent_id,
-      orderId: existingOrderId,
-      cart: await loadCart(container, attempt.cart_id),
-      now,
-      correlationId: validated.correlation_id ?? null,
-      recoveryOrigin: "existing_order_recovery",
-    })
-
-    return buildResult({
-      status: "reused_existing_order",
-      payment_attempt_id: attempt.id,
-      payment_intent_id: validated.payment_intent_id,
-      stripe_event_id: validated.stripe_event_id ?? null,
-      correlation_id: validated.correlation_id ?? null,
-      order_id: existingOrderId,
       checkout_completion_status: "completed",
     })
   }

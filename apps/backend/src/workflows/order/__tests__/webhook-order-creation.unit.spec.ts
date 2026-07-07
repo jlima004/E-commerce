@@ -105,6 +105,17 @@ function createCheckoutCompletionModule(records: Array<Record<string, unknown>> 
           return false
         }
 
+        if (filters?.cart_id && record.cart_id !== filters.cart_id) {
+          return false
+        }
+
+        if (
+          filters?.payment_attempt_id &&
+          record.payment_attempt_id !== filters.payment_attempt_id
+        ) {
+          return false
+        }
+
         return true
       })
     }),
@@ -179,12 +190,12 @@ function createOrderModule(records: Array<Record<string, unknown>> = []) {
 
   return {
     listOrders: jest.fn(async (selector?: Record<string, unknown>) => {
+      if (selector?.cart_id) {
+        throw new Error("Order.cart_id must not be queried")
+      }
+
       return store.filter((order) => {
         if (selector?.id && order.id !== selector.id) {
-          return false
-        }
-
-        if (selector?.cart_id && order.cart_id !== selector.cart_id) {
           return false
         }
 
@@ -533,6 +544,103 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
     expect(runCompleteCart).not.toHaveBeenCalled()
   })
 
+  it("reusa PaymentAttempt.order_id como primeira fonte de idempotencia", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(
+      buildAttempt({ order_id: "order_from_attempt" })
+    )
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const orderModule = createOrderModule([
+      {
+        id: "order_from_attempt",
+        email: "cliente@pedido.test",
+        display_id: 1003,
+        metadata: null,
+      },
+    ])
+    const runCompleteCart = jest.fn()
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        orderModule,
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-06-30T16:00:00.000Z"),
+        runCompleteCart,
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "reused_existing_order",
+        order_id: "order_from_attempt",
+        checkout_completion_status: "completed",
+      })
+    )
+    expect(runCompleteCart).not.toHaveBeenCalled()
+    expect(checkoutCompletionModule.store[0]).toEqual(
+      expect.objectContaining({
+        cart_id: "cart_01",
+        payment_attempt_id: "payatt_01",
+        order_id: "order_from_attempt",
+        status: "completed",
+      })
+    )
+  })
+
+  it("reusa CheckoutCompletionLog por cart_id e payment_attempt_id sem consultar Order.cart_id", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule([
+      {
+        id: "chkcpl_by_attempt",
+        idempotency_key: "legacy-key",
+        cart_id: "cart_01",
+        payment_intent_id: "pi_01",
+        payment_attempt_id: "payatt_01",
+        order_id: "order_from_log",
+        status: "completed",
+        metadata: null,
+      },
+    ])
+    const orderModule = createOrderModule([
+      {
+        id: "order_from_log",
+        email: "cliente@pedido.test",
+        display_id: 1004,
+        metadata: null,
+      },
+    ])
+    const runCompleteCart = jest.fn()
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        orderModule,
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-06-30T16:00:00.000Z"),
+        runCompleteCart,
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "reused_existing_order",
+        order_id: "order_from_log",
+        checkout_completion_status: "completed",
+      })
+    )
+    expect(runCompleteCart).not.toHaveBeenCalled()
+    expect(paymentAttemptModule.store[0]?.order_id).toBe("order_from_log")
+    expect(orderModule.listOrders).not.toHaveBeenCalledWith(
+      expect.objectContaining({ cart_id: "cart_01" })
+    )
+  })
+
   it("marca CheckoutCompletionLog como failed quando falha antes de completar a Order", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule()
@@ -615,12 +723,11 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
 
     expect(checkoutCompletionModule.store[0]).toEqual(
       expect.objectContaining({
-        status: "processing",
-        order_id: null,
-        failed_at: null,
+        status: "completed",
+        order_id: "order_partial_01",
       })
     )
-    expect(paymentAttemptModule.store[0]?.order_id).toBeNull()
+    expect(paymentAttemptModule.store[0]?.order_id).toBe("order_partial_01")
 
     const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       container,
