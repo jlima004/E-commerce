@@ -70,6 +70,7 @@ function buildCart() {
       {
         id: "line_item_entry_01",
         quantity: 1,
+        unit_price: 9900,
         metadata: {
           preserve_me: true,
         },
@@ -138,7 +139,15 @@ function createCheckoutCompletionModule(
 
   return {
     listCheckoutCompletionLogs: jest.fn(async () => store),
-    createCheckoutCompletionLogs: jest.fn(),
+    createCheckoutCompletionLogs: jest.fn(async (input) => {
+      const row = Array.isArray(input) ? input[0] : input
+      const created = {
+        ...row,
+        id: row.id ?? `chkcpl_entry_${store.length + 1}`,
+      }
+      store.push(created)
+      return [created]
+    }),
     updateCheckoutCompletionLogs: jest.fn(async (input: Record<string, unknown> | Array<Record<string, unknown>>) => {
       const row = Array.isArray(input) ? input[0] : input
       store[0] = {
@@ -241,6 +250,7 @@ function createContainer(input: {
   emailDeliveryLogModule?: ReturnType<typeof createEmailDeliveryLogModule>
   gelatoFulfillmentModule?: ReturnType<typeof createGelatoFulfillmentModule>
   orderModule?: ReturnType<typeof createOrderModule>
+  cart?: Record<string, unknown>
 }) {
   return {
     resolve: jest.fn((key: string) => {
@@ -267,7 +277,7 @@ function createContainer(input: {
       if (key === ContainerRegistrationKeys.QUERY) {
         return {
           graph: jest.fn(async () => ({
-            data: [buildCart()],
+            data: [input.cart ?? buildCart()],
           })),
         }
       }
@@ -443,6 +453,36 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
         id: "chkcpl_stale_processing",
         status: "processing",
         error_code: null,
+      })
+    )
+    expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
+  })
+
+  it("valida PaymentAttempt.amount pelo total dos line items quando cart.total nao vem carregado", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule([])
+    const orderModule = createOrderModule()
+    const { total: _missingTotal, ...cartWithoutTotal } = buildCart()
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        orderModule,
+        cart: cartWithoutTotal,
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-07-07T13:00:00.000Z"),
+        runCompleteCart: async () => ({ id: "order_entry_existing" }),
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "created",
+        order_id: "order_entry_existing",
+        checkout_completion_status: "completed",
       })
     )
     expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")

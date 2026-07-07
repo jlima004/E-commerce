@@ -14,13 +14,14 @@ type CartVariantRecord = {
 type CartLineItemRecord = {
   id: string
   quantity: number
+  unit_price?: unknown
   metadata?: Record<string, unknown> | null
   variant?: CartVariantRecord | null
 }
 
 export type ConfirmedAttemptCartRecord = {
   id: string
-  total: number
+  total?: unknown
   currency_code: string
   completed_at?: string | Date | null
   items: CartLineItemRecord[]
@@ -46,7 +47,21 @@ export function assertConfirmedAttemptCartMatchesPaymentAttempt(
     throw new Error("ORDER_ENTRYPOINT_CART_ALREADY_COMPLETED")
   }
 
-  if (!(cart.total > 0) || cart.total !== attempt.amount) {
+  if (!Array.isArray(cart.items) || cart.items.length === 0) {
+    throw new Error("ORDER_ENTRYPOINT_CART_ITEMS_REQUIRED")
+  }
+
+  const calculatedCartTotal = calculateCartLineItemsTotalCents(
+    cart.items,
+    cart.currency_code
+  )
+  const attemptAmount = resolvePositiveIntegerBigInt(attempt.amount)
+
+  if (
+    calculatedCartTotal === null ||
+    attemptAmount === null ||
+    calculatedCartTotal !== attemptAmount
+  ) {
     throw new Error("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
   }
 
@@ -54,9 +69,103 @@ export function assertConfirmedAttemptCartMatchesPaymentAttempt(
     throw new Error("ORDER_ENTRYPOINT_CART_CURRENCY_MISMATCH")
   }
 
-  if (!Array.isArray(cart.items) || cart.items.length === 0) {
-    throw new Error("ORDER_ENTRYPOINT_CART_ITEMS_REQUIRED")
+}
+
+function resolveIntegerBigInt(value: unknown): bigint | null {
+  if (typeof value === "bigint") {
+    return value
   }
+
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) ? BigInt(value) : null
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    return /^-?\d+$/.test(trimmed) ? BigInt(trimmed) : null
+  }
+
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const rawAmount = (value as { rawAmount?: unknown }).rawAmount
+  if (rawAmount !== undefined) {
+    return resolveIntegerBigInt(rawAmount)
+  }
+
+  const numeric = (value as { numeric?: unknown }).numeric
+  if (numeric !== undefined) {
+    return resolveIntegerBigInt(numeric)
+  }
+
+  const valueOf = (value as { valueOf?: () => unknown }).valueOf
+  if (typeof valueOf === "function") {
+    const resolved = valueOf.call(value)
+    if (resolved !== value) {
+      return resolveIntegerBigInt(resolved)
+    }
+  }
+
+  const toString = (value as { toString?: () => string }).toString
+  if (typeof toString === "function") {
+    const resolved = toString.call(value)
+    if (resolved && resolved !== "[object Object]") {
+      return resolveIntegerBigInt(resolved)
+    }
+  }
+
+  return null
+}
+
+function resolvePositiveIntegerBigInt(value: unknown): bigint | null {
+  const cents = resolveIntegerBigInt(value)
+  return cents !== null && cents > 0n ? cents : null
+}
+
+function resolveNonNegativeIntegerBigInt(value: unknown): bigint | null {
+  const cents = resolveIntegerBigInt(value)
+  return cents !== null && cents >= 0n ? cents : null
+}
+
+function resolveLineItemUnitPriceCents(
+  item: CartLineItemRecord,
+  currencyCode: string
+): bigint | null {
+  if (item.unit_price !== undefined && item.unit_price !== null) {
+    return resolveNonNegativeIntegerBigInt(item.unit_price)
+  }
+
+  const matchingVariantPrice = item.variant?.prices?.find((price) => {
+    return price.currency_code?.toLowerCase() === currencyCode.toLowerCase()
+  })
+
+  return resolveNonNegativeIntegerBigInt(matchingVariantPrice?.amount)
+}
+
+function calculateCartLineItemsTotalCents(
+  items: CartLineItemRecord[] | null | undefined,
+  currencyCode: string
+): bigint | null {
+  const lineItems = items ?? []
+  if (lineItems.length === 0) {
+    return null
+  }
+
+  let total = 0n
+
+  for (const item of lineItems) {
+    const quantity = resolvePositiveIntegerBigInt(item.quantity)
+    const unitPrice = resolveLineItemUnitPriceCents(item, currencyCode)
+
+    if (quantity === null || unitPrice === null) {
+      return null
+    }
+
+    total += quantity * unitPrice
+  }
+
+  return total > 0n ? total : null
 }
 
 export function linkConfirmedPaymentAttemptToOrder(

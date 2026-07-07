@@ -208,11 +208,11 @@ type WorkflowRuntimeOverrides = {
 
 const ORDER_CART_FIELDS = [
   "id",
-  "total",
   "currency_code",
   "completed_at",
   "items.id",
   "items.quantity",
+  "items.unit_price",
   "items.variant_id",
   "items.metadata",
   "items.variant.id",
@@ -821,20 +821,92 @@ function normalizeLineItemUnitPrice(input: {
   item: ConfirmedAttemptCartRecord["items"][number]
   currencyCode: string
 }): number {
-  const matchingPrice = input.item.variant?.prices?.find((price) => {
-    return price.currency_code?.toLowerCase() === input.currencyCode.toLowerCase()
-  })
+  if (input.item.unit_price !== undefined && input.item.unit_price !== null) {
+    const lineItemUnitPrice = resolvePositiveIntegerCents(input.item.unit_price)
+    if (lineItemUnitPrice !== null) {
+      return lineItemUnitPrice
+    }
 
-  const amount = matchingPrice?.amount
-
-  if (typeof amount !== "number" || !Number.isInteger(amount) || amount <= 0) {
     throw new OrderCreationEntrypointError(
       "ORDER_ENTRYPOINT_ANALYTICS_UNIT_PRICE_INVALID",
       "Unit price invalido para o payload local de analytics."
     )
   }
 
-  return amount
+  const matchingPrice = input.item.variant?.prices?.find((price) => {
+    return price.currency_code?.toLowerCase() === input.currencyCode.toLowerCase()
+  })
+
+  const amount = resolvePositiveIntegerCents(matchingPrice?.amount)
+
+  if (amount !== null) {
+    return amount
+  }
+
+  throw new OrderCreationEntrypointError(
+    "ORDER_ENTRYPOINT_ANALYTICS_UNIT_PRICE_INVALID",
+    "Unit price invalido para o payload local de analytics."
+  )
+}
+
+function resolveIntegerCents(value: unknown): number | null {
+  if (typeof value === "bigint") {
+    return value <= BigInt(Number.MAX_SAFE_INTEGER) &&
+      value >= BigInt(Number.MIN_SAFE_INTEGER)
+      ? Number(value)
+      : null
+  }
+
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) ? value : null
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (!/^-?\d+$/.test(trimmed)) {
+      return null
+    }
+
+    const parsed = Number(trimmed)
+    return Number.isSafeInteger(parsed) ? parsed : null
+  }
+
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const rawAmount = (value as { rawAmount?: unknown }).rawAmount
+  if (rawAmount !== undefined) {
+    return resolveIntegerCents(rawAmount)
+  }
+
+  const numeric = (value as { numeric?: unknown }).numeric
+  if (numeric !== undefined) {
+    return resolveIntegerCents(numeric)
+  }
+
+  const valueOf = (value as { valueOf?: () => unknown }).valueOf
+  if (typeof valueOf === "function") {
+    const resolved = valueOf.call(value)
+    if (resolved !== value) {
+      return resolveIntegerCents(resolved)
+    }
+  }
+
+  const toString = (value as { toString?: () => string }).toString
+  if (typeof toString === "function") {
+    const resolved = toString.call(value)
+    if (resolved && resolved !== "[object Object]") {
+      return resolveIntegerCents(resolved)
+    }
+  }
+
+  return null
+}
+
+function resolvePositiveIntegerCents(value: unknown): number | null {
+  const cents = resolveIntegerCents(value)
+  return cents !== null && cents > 0 ? cents : null
 }
 
 function buildPurchaseCompletedPayloadItems(

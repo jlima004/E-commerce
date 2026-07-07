@@ -502,7 +502,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
     expect(paymentAttemptModule.store[0]?.order_id).toBe("order_existing")
   })
 
-  it("concurrency respeita log processing e nao deixa segundo vencedor", async () => {
+  it("recupera log processing sem order_id como tentativa retryable", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule([
       {
@@ -516,12 +516,24 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
         metadata: null,
       },
     ])
-    const runCompleteCart = jest.fn()
+    const orderModule = createOrderModule()
+    const runCompleteCart = jest.fn(async () => {
+      orderModule.store.push({
+        id: "order_01",
+        cart_id: "cart_01",
+        email: "cliente@pedido.test",
+        display_id: 1001,
+        metadata: null,
+      })
+
+      return { id: "order_01" }
+    })
 
     const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       createContainer({
         paymentAttemptModule,
         checkoutCompletionModule,
+        orderModule,
       }),
       buildInput(),
       {
@@ -531,17 +543,17 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
     )
 
     expect(result).toEqual({
-      status: "already_processing",
+      status: "created",
       payment_attempt_id: "payatt_01",
       payment_intent_id: "pi_01",
-      order_id: null,
+      order_id: "order_01",
       stripe_event_id: "evt_01",
       correlation_id: "corr_01",
-      checkout_completion_status: "processing",
-      order_status: null,
-      payment_status: null,
+      checkout_completion_status: "completed",
+      order_status: "confirmed",
+      payment_status: "captured",
     })
-    expect(runCompleteCart).not.toHaveBeenCalled()
+    expect(runCompleteCart).toHaveBeenCalledTimes(1)
   })
 
   it("reusa PaymentAttempt.order_id como primeira fonte de idempotencia", async () => {
@@ -656,7 +668,12 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
           now: () => new Date("2026-06-30T16:00:00.000Z"),
           getCart: async () => ({
             ...buildCart(),
-            total: 0,
+            items: [
+              {
+                ...buildCart().items[0],
+                unit_price: 9800,
+              },
+            ],
           }),
         }
       )
