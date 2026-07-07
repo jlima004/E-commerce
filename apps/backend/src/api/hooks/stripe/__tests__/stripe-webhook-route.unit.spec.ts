@@ -1,4 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { PAYMENT_ATTEMPT_MODULE } from "../../../../modules/payment-attempt"
+import { WEBHOOKS_MODULE } from "../../../../modules/webhooks"
 import { createStripeWebhookPostHandler } from "../route"
 
 type RequestWithRawBody = MedusaRequest & {
@@ -13,6 +15,8 @@ type WebhookRecord = {
   deduplication_key: string
   event_type: string
   status: string
+  error_code?: string | null
+  error_message?: string | null
 }
 
 const WEBHOOK_SECRET_PLACEHOLDER = ["webhook", "secret", "placeholder"].join("_")
@@ -73,6 +77,73 @@ function createWebhookService(records: WebhookRecord[] = []) {
 
       return index >= 0 ? [records[index]] : []
     }),
+  }
+}
+
+function createPaymentAttemptService(orderId: string | null = null) {
+  const records = [
+    {
+      id: "payatt_route_01",
+      cart_id: "cart_route_01",
+      payment_collection_id: "paycol_route_01",
+      payment_session_id: "payses_route_01",
+      provider: "stripe",
+      provider_payment_intent_id: "pi_route_123",
+      provider_payment_session_id: "ps_route_123",
+      payment_method_type: "card",
+      status: orderId
+        ? "payment_confirmed_by_webhook"
+        : "awaiting_webhook_confirmation",
+      amount: 9900,
+      currency_code: "brl",
+      expires_at: null,
+      order_id: orderId,
+      metadata: null,
+      client_confirmed_at: null,
+      instructions_displayed_at: null,
+      awaiting_webhook_since: "2026-07-07T10:00:00.000Z",
+      superseded_at: null,
+      invalidated_at: null,
+      canceled_at: null,
+      failed_at: null,
+      expired_at: null,
+      created_at: "2026-07-07T09:00:00.000Z",
+      updated_at: "2026-07-07T09:00:00.000Z",
+    },
+  ]
+
+  return {
+    listPaymentAttempts: jest.fn(async () => records),
+    updatePaymentAttempts: jest.fn(async (input) => {
+      const row = Array.isArray(input) ? input[0] : input
+      records[0] = {
+        ...records[0],
+        ...row,
+      }
+      return [records[0]]
+    }),
+    records,
+  }
+}
+
+function createSucceededPaymentIntentEvent() {
+  return {
+    id: "evt_route_123",
+    type: "payment_intent.succeeded",
+    livemode: false,
+    data: {
+      object: {
+        id: "pi_route_123",
+        object: "payment_intent",
+        amount: 9900,
+        amount_received: 9900,
+        currency: "brl",
+        metadata: {
+          cart_id: "cart_route_01",
+        },
+        payment_method_types: ["card"],
+      },
+    },
   }
 }
 
@@ -285,7 +356,7 @@ describe("stripe webhook route", () => {
 
   it("marca evento nao suportado como ignored", async () => {
     const service = createWebhookService()
-    const unsupportedEventType = ["charge", ["ref", "unded"].join("")].join(".")
+    const unsupportedEventType = "customer.created"
     const req = createRequest({
       headers: {
         "stripe-signature": "t=1,v1=signature",
@@ -328,6 +399,123 @@ describe("stripe webhook route", () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "ignored",
+      })
+    )
+  })
+
+  it("nao marca payment_intent.succeeded como processed quando entrypoint nao retorna order_id", async () => {
+    const webhooks = createWebhookService()
+    const paymentAttempts = createPaymentAttemptService()
+    const req = createRequest({
+      headers: {
+        "stripe-signature": "t=1,v1=signature",
+      },
+    })
+    req.scope.resolve = jest.fn((key: string) => {
+      if (key === WEBHOOKS_MODULE) {
+        return webhooks
+      }
+
+      if (key === PAYMENT_ATTEMPT_MODULE) {
+        return paymentAttempts
+      }
+
+      return undefined
+    })
+    const runOrderEntrypoint = jest.fn(async () => ({
+      status: "already_processing" as const,
+      payment_attempt_id: "payatt_route_01",
+      payment_intent_id: "pi_route_123",
+      order_id: null,
+      stripe_event_id: "evt_route_123",
+      correlation_id: null,
+      checkout_completion_status: "processing" as const,
+      order_status: null,
+      payment_status: null,
+    }))
+
+    const handler = createStripeWebhookPostHandler({
+      appEnv: {
+        STRIPE_WEBHOOK_INGESTION_ENABLED: true,
+        STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET_PLACEHOLDER,
+      } as never,
+      stripe: {
+        webhooks: {
+          constructEvent: jest.fn(() => createSucceededPaymentIntentEvent()),
+        },
+      },
+      now: () => new Date("2026-07-07T12:00:00.000Z"),
+      runOrderEntrypoint,
+    })
+
+    const res = createResponse()
+    await handler(req, res)
+
+    expect(runOrderEntrypoint).toHaveBeenCalledTimes(1)
+    expect(webhooks.updateWebhookEventLogs).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: "failed",
+        processed_at: null,
+        error_code: "CHECKOUT_COMPLETION_NOT_TERMINAL",
+      })
+    )
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ok: true,
+        status: "failed",
+      })
+    )
+  })
+
+  it("reusa PaymentAttempt.order_id existente sem invocar entrypoint nem criar Order duplicada", async () => {
+    const webhooks = createWebhookService()
+    const paymentAttempts = createPaymentAttemptService("order_route_existing")
+    const req = createRequest({
+      headers: {
+        "stripe-signature": "t=1,v1=signature",
+      },
+    })
+    req.scope.resolve = jest.fn((key: string) => {
+      if (key === WEBHOOKS_MODULE) {
+        return webhooks
+      }
+
+      if (key === PAYMENT_ATTEMPT_MODULE) {
+        return paymentAttempts
+      }
+
+      return undefined
+    })
+    const runOrderEntrypoint = jest.fn()
+
+    const handler = createStripeWebhookPostHandler({
+      appEnv: {
+        STRIPE_WEBHOOK_INGESTION_ENABLED: true,
+        STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET_PLACEHOLDER,
+      } as never,
+      stripe: {
+        webhooks: {
+          constructEvent: jest.fn(() => createSucceededPaymentIntentEvent()),
+        },
+      },
+      now: () => new Date("2026-07-07T12:00:00.000Z"),
+      runOrderEntrypoint,
+    })
+
+    const res = createResponse()
+    await handler(req, res)
+
+    expect(runOrderEntrypoint).not.toHaveBeenCalled()
+    expect(webhooks.updateWebhookEventLogs).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: "processed",
+        processed_at: "2026-07-07T12:00:00.000Z",
+      })
+    )
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ok: true,
+        status: "processed",
       })
     )
   })

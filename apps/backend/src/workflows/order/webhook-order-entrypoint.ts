@@ -665,6 +665,26 @@ async function claimCheckoutCompletionLog(
     }
   }
 
+  if (decision.type === "retry_processing_without_order") {
+    await module.updateCheckoutCompletionLogs?.({
+      id: decision.log.id,
+      ...decision.failedUpdate,
+    })
+
+    const updated = asArray(
+      await module.updateCheckoutCompletionLogs?.({
+        id: decision.log.id,
+        ...decision.retryUpdate,
+      })
+    )[0] as CheckoutCompletionLogRecord
+
+    return {
+      status: "claimed",
+      log: updated,
+      order_id: null,
+    }
+  }
+
   try {
     const created = asArray(
       await module.createCheckoutCompletionLogs?.(
@@ -719,6 +739,26 @@ async function claimCheckoutCompletionLog(
         status: "completed",
         log: afterConflict.log,
         order_id: afterConflict.order_id,
+      }
+    }
+
+    if (afterConflict.type === "retry_processing_without_order") {
+      await module.updateCheckoutCompletionLogs?.({
+        id: afterConflict.log.id,
+        ...afterConflict.failedUpdate,
+      })
+
+      const updated = asArray(
+        await module.updateCheckoutCompletionLogs?.({
+          id: afterConflict.log.id,
+          ...afterConflict.retryUpdate,
+        })
+      )[0] as CheckoutCompletionLogRecord
+
+      return {
+        status: "claimed",
+        log: updated,
+        order_id: null,
       }
     }
 

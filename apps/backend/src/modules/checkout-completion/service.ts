@@ -266,6 +266,12 @@ export type CheckoutCompletionClaimDecision =
       log: CheckoutCompletionLogRecord
     }
   | {
+      type: "retry_processing_without_order"
+      log: CheckoutCompletionLogRecord
+      failedUpdate: Partial<CheckoutCompletionLogRecord>
+      retryUpdate: Partial<CheckoutCompletionLogRecord>
+    }
+  | {
       type: "recover_created_order"
       log: CheckoutCompletionLogRecord
       order_id: string
@@ -330,6 +336,30 @@ export function resolveCheckoutCompletionClaimDecision(input: {
   }
 
   if (input.existing.status === CHECKOUT_COMPLETION_STATUS.PROCESSING) {
+    if (!input.existing.order_id) {
+      return {
+        type: "retry_processing_without_order",
+        log: input.existing,
+        failedUpdate: {
+          status: CHECKOUT_COMPLETION_STATUS.FAILED,
+          failed_at: at.toISOString(),
+          error_code: "CHECKOUT_COMPLETION_STALE_PROCESSING_WITHOUT_ORDER",
+          error_message:
+            "Processing checkout completion without order_id was marked retryable before a new attempt.",
+          updated_at: at.toISOString(),
+        },
+        retryUpdate: {
+          status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+          locked_at: at.toISOString(),
+          completed_at: null,
+          failed_at: null,
+          error_code: null,
+          error_message: null,
+          updated_at: at.toISOString(),
+        },
+      }
+    }
+
     return {
       type: "already_processing",
       log: input.existing,

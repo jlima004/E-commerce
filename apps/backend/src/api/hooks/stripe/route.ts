@@ -314,6 +314,21 @@ function buildProcessedMetadata(input: {
   }
 }
 
+function assertTerminalOrderEntrypointResult(
+  result: CreateOrderFromConfirmedPaymentAttemptResult
+): void {
+  const orderId = result.order_id?.trim()
+  const terminalStatus =
+    result.status === "created" || result.status === "reused_existing_order"
+
+  if (!terminalStatus || !orderId) {
+    throw new PaymentAttemptWebhookError(
+      "CHECKOUT_COMPLETION_NOT_TERMINAL",
+      "CheckoutCompletionLog nao terminou com order_id; webhook Stripe nao pode ser marcado como processed."
+    )
+  }
+}
+
 function buildErroredMetadata(input: {
   record: WebhookEventLogRecord
   paymentIntentId: string | null
@@ -465,12 +480,19 @@ async function processStripePaymentIntentEvent(input: {
     updatedAttempt.order_id == null
 
   if (shouldInvokeOrderEntrypoint && input.runOrderEntrypoint) {
-    await input.runOrderEntrypoint(input.req.scope, {
+    const orderEntrypointResult = await input.runOrderEntrypoint(input.req.scope, {
       payment_attempt_id: updatedAttempt.id,
       payment_intent_id: paymentIntent.id,
       stripe_event_id: input.event.id,
       correlation_id: input.req.correlationId,
     })
+
+    assertTerminalOrderEntrypointResult(orderEntrypointResult)
+  } else if (shouldInvokeOrderEntrypoint) {
+    throw new PaymentAttemptWebhookError(
+      "CHECKOUT_COMPLETION_ENTRYPOINT_UNAVAILABLE",
+      "Entrypoint de criacao de Order indisponivel para webhook Stripe confirmado."
+    )
   }
 
   await updateWebhookRecord(input.webhooksModule, {

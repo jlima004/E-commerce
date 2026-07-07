@@ -6,6 +6,7 @@ import {
   assertValidCheckoutCompletionStatus,
   buildCheckoutCompletionIdempotencyKey,
   buildCheckoutCompletionLogRecord,
+  resolveCheckoutCompletionClaimDecision,
   sanitizeCheckoutCompletionMetadata,
 } from "../service"
 import {
@@ -224,5 +225,50 @@ describe("CheckoutCompletionLog schema slice side effects", () => {
       expect(migration).not.toContain(fragment)
       expect(serviceSource).not.toContain(fragment)
     }
+  })
+})
+
+describe("CheckoutCompletionLog retry/idempotency decisions", () => {
+  it("trata processing sem order_id como retryable antes de nova tentativa", () => {
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: "2026-07-06T10:00:00.000Z",
+      },
+      "chkcpl_123",
+      new Date("2026-07-06T10:00:00.000Z")
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-07T12:00:00.000Z"),
+    })
+
+    expect(decision.type).toBe("retry_processing_without_order")
+    if (decision.type !== "retry_processing_without_order") {
+      return
+    }
+
+    expect(decision.failedUpdate).toEqual(
+      expect.objectContaining({
+        status: CHECKOUT_COMPLETION_STATUS.FAILED,
+        error_code: "CHECKOUT_COMPLETION_STALE_PROCESSING_WITHOUT_ORDER",
+      })
+    )
+    expect(decision.retryUpdate).toEqual(
+      expect.objectContaining({
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        error_code: null,
+        error_message: null,
+      })
+    )
   })
 })

@@ -120,8 +120,8 @@ function createPaymentAttemptModule(attempt: PaymentAttemptRecord) {
   }
 }
 
-function createCheckoutCompletionModule() {
-  const store: Array<Record<string, unknown>> = [
+function createCheckoutCompletionModule(
+  records: Array<Record<string, unknown>> = [
     {
       id: "chkcpl_entry_01",
       idempotency_key: "pi_entry_123",
@@ -133,6 +133,8 @@ function createCheckoutCompletionModule() {
       metadata: null,
     },
   ]
+) {
+  const store: Array<Record<string, unknown>> = [...records]
 
   return {
     listCheckoutCompletionLogs: jest.fn(async () => store),
@@ -388,5 +390,61 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
       })
     )
     expect(paymentAttemptModule.store[0]?.order_id).toBeNull()
+  })
+
+  it("marca processing antigo sem order_id como retryable e cria Order na nova tentativa", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule([
+      {
+        id: "chkcpl_stale_processing",
+        idempotency_key: "pi_entry_123",
+        cart_id: "cart_01",
+        payment_intent_id: "pi_entry_123",
+        payment_attempt_id: "payatt_entry_01",
+        order_id: null,
+        status: "processing",
+        metadata: null,
+        locked_at: "2026-07-06T10:00:00.000Z",
+      },
+    ])
+    const orderModule = createOrderModule()
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        orderModule,
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-07-07T12:00:00.000Z"),
+        runCompleteCart: async () => ({ id: "order_entry_existing" }),
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "created",
+        order_id: "order_entry_existing",
+        checkout_completion_status: "completed",
+      })
+    )
+    expect(checkoutCompletionModule.updateCheckoutCompletionLogs).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        id: "chkcpl_stale_processing",
+        status: "failed",
+        error_code: "CHECKOUT_COMPLETION_STALE_PROCESSING_WITHOUT_ORDER",
+      })
+    )
+    expect(checkoutCompletionModule.updateCheckoutCompletionLogs).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        id: "chkcpl_stale_processing",
+        status: "processing",
+        error_code: null,
+      })
+    )
+    expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
   })
 })
