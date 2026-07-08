@@ -101,12 +101,26 @@ describe("CheckoutCompletionLog metadata allowlist", () => {
         stripe_event_id: "evt_123",
         payment_method_type: "pix",
         correlation_id: "req_123",
+        order_creation_error_name: "Error",
+        order_creation_error_code: "ORDER_ENTRYPOINT_FAILED",
+        order_creation_error_message: "completeCart failed",
+        order_creation_error_step: "create-order-from-confirmed-attempt",
+        cart_id: "cart_123",
+        payment_attempt_id: "payatt_123",
+        payment_intent_id: "pi_123",
         ignored_field: "drop-me",
       })
     ).toEqual({
       stripe_event_id: "evt_123",
       payment_method_type: "pix",
       correlation_id: "req_123",
+      order_creation_error_name: "Error",
+      order_creation_error_code: "ORDER_ENTRYPOINT_FAILED",
+      order_creation_error_message: "completeCart failed",
+      order_creation_error_step: "create-order-from-confirmed-attempt",
+      cart_id: "cart_123",
+      payment_attempt_id: "payatt_123",
+      payment_intent_id: "pi_123",
     })
   })
 

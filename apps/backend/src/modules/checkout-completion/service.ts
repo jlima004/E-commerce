@@ -13,6 +13,16 @@ import {
 } from "./types"
 
 const ALLOWED_METADATA_KEYS = new Set([
+  "cart_id",
+  "order_creation_error_cause_message",
+  "order_creation_error_code",
+  "order_creation_error_message",
+  "order_creation_error_name",
+  "order_creation_error_step",
+  "order_creation_error_string",
+  "order_creation_error_type",
+  "payment_attempt_id",
+  "payment_intent_id",
   "correlation_id",
   "payment_method_type",
   "stripe_event_id",
@@ -194,6 +204,15 @@ export function sanitizeCheckoutCompletionMetadata(
 
   for (const [key, value] of Object.entries(metadata)) {
     if (!ALLOWED_METADATA_KEYS.has(key)) {
+      continue
+    }
+
+    if (
+      key === "payment_intent_id" &&
+      typeof value === "string" &&
+      /^pi_[A-Za-z0-9]+$/.test(value)
+    ) {
+      output[key] = value
       continue
     }
 
@@ -411,11 +430,12 @@ export function buildCheckoutCompletionFailedUpdate(input: {
   id: string
   error_code: string
   error_message: string
+  metadata?: Record<string, unknown> | null
   at?: Date
 }): Partial<CheckoutCompletionLogRecord> {
   const at = input.at ?? new Date()
 
-  return {
+  const update: Partial<CheckoutCompletionLogRecord> = {
     id: input.id,
     status: CHECKOUT_COMPLETION_STATUS.FAILED,
     failed_at: at.toISOString(),
@@ -423,4 +443,10 @@ export function buildCheckoutCompletionFailedUpdate(input: {
     error_message: sanitizeString(input.error_message).slice(0, 500),
     updated_at: at.toISOString(),
   }
+
+  if (input.metadata !== undefined) {
+    update.metadata = sanitizeCheckoutCompletionMetadata(input.metadata)
+  }
+
+  return update
 }

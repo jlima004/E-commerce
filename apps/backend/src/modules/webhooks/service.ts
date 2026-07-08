@@ -27,6 +27,15 @@ const ALLOWED_METADATA_KEYS = new Set([
   "order_reference_id",
   "fulfillment_id",
   "provider_status",
+  "cart_id",
+  "checkout_completion_log_id",
+  "order_creation_error_cause_message",
+  "order_creation_error_code",
+  "order_creation_error_message",
+  "order_creation_error_name",
+  "order_creation_error_step",
+  "order_creation_error_string",
+  "order_creation_error_type",
 ])
 
 function joinKey(...parts: string[]): string {
@@ -244,10 +253,50 @@ export function sanitizeWebhookError(error: unknown): {
   error_code: string | null
   error_message: string | null
 } {
+  const readProperty = (property: "name" | "message" | "code" | "cause") => {
+    if (!error || typeof error !== "object") {
+      return null
+    }
+
+    return (error as Record<string, unknown>)[property]
+  }
+
+  const sanitizeOptional = (value: unknown, maxLength: number) => {
+    if (typeof value === "string") {
+      return sanitizeString(value).slice(0, maxLength) || null
+    }
+
+    if (
+      typeof value === "number" ||
+      typeof value === "boolean" ||
+      typeof value === "bigint"
+    ) {
+      return sanitizeString(String(value)).slice(0, maxLength) || null
+    }
+
+    return null
+  }
+
+  const code =
+    sanitizeOptional(readProperty("code"), 120) ??
+    sanitizeOptional(readProperty("name"), 120)
+  const cause = readProperty("cause")
+  const causeMessage =
+    cause instanceof Error
+      ? sanitizeOptional(cause.message, 500)
+      : sanitizeOptional(
+          cause && typeof cause === "object"
+            ? (cause as Record<string, unknown>).message
+            : cause,
+          500
+        )
+
   if (error instanceof Error) {
+    const message = sanitizeOptional(error.message, 500) ?? causeMessage
+
     return {
-      error_code: error.name || "Error",
-      error_message: sanitizeString(error.message).slice(0, 500) || null,
+      error_code: code ?? "Error",
+      error_message: message,
     }
   }
 
@@ -258,9 +307,23 @@ export function sanitizeWebhookError(error: unknown): {
     }
   }
 
+  if (error && typeof error === "object") {
+    const message = sanitizeOptional(readProperty("message"), 500)
+    const stringified = String(error)
+    const fallback =
+      stringified && stringified !== "[object Object]"
+        ? sanitizeString(stringified).slice(0, 500) || null
+        : null
+
+    return {
+      error_code: code ?? "Error",
+      error_message: message ?? causeMessage ?? fallback,
+    }
+  }
+
   return {
     error_code: "Error",
-    error_message: null,
+    error_message: sanitizeOptional(error, 500),
   }
 }
 

@@ -6,9 +6,9 @@ current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
 status: phase-11-closed-phase-12-blocked
 stopped_at: Phase 11 closed; Phase 12 not started; next phase blocked until explicit approval
-last_updated: "2026-07-03T13:38:00-03:00"
-last_activity: 2026-07-03
-last_activity_desc: Phase 11 closed at manual gate; Phase 12 blocked until explicit approval
+last_updated: "2026-07-08T19:05:00-03:00"
+last_activity: 2026-07-08
+last_activity_desc: Completed quick task 260708-q76: propagated real Order creation errors in the Stripe webhook flow
 progress:
   total_phases: 12
   completed_phases: 11
@@ -54,7 +54,7 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 Phase: 12 (Ops, Audit & Critical Tests) — not planned; not started; blocked
 Plan: 50/50 complete (milestone plans)
 Status: phase-11-closed-phase-12-blocked
-Last activity: 2026-07-03 - Phase 11 closed at manual gate
+Last activity: 2026-07-08 - Completed quick task 260708-q76: propagated real Order creation errors in the Stripe webhook flow
 
 Progress: [██████████] 100% (50/50 plans complete); Phase 11 closed; Phase 12 blocked
 
@@ -218,4 +218,5 @@ Next permitted step: Human review of Phase 11 closure only. No Phase 12 planning
 | 2026-07-02 | phase-10-planning | Planned Phase 10 into 3 manual-review-gated slices plus context, research and validation artifacts; no runtime, tests, build, migration, deploy, real Gelato, real webhook smoke, refund, exchange, admin ops or Phase 11 work started. |
 | 2026-07-02 | phase-10-closure | Closed Phase 10 documentally after accepted `10-01`..`10-03` evidence; `TRK-01` and `TRK-02` complete; Phase 11 blocked until explicit approval. |
 | 2026-07-02 | phase-11-planning | Planned Phase 11 into 4 manual-review-gated slices plus context, research and validation artifacts; no runtime, tests, build, migration, deploy, real Stripe, real Gelato, Correios API, Stripe CLI smoke, broad Phase 12 alert/audit module, or Phase 12 work started. |
+| 2026-07-08 | 260708-q76-propagar-erro-real-da-cria-o-de-order-no | Propagated sanitized real Order creation errors through `CheckoutCompletionLog`, `WebhookEventLog` and structured Stripe webhook logs; no Phase 12, migrations, package changes, real Stripe/Gelato/Correios or manual Order work. |
 | 2026-07-03 | phase-11-closure | Closed Phase 11 documentally after accepted `11-01`..`11-04` evidence; `REF-01`..`REF-02`, `EXC-01`..`EXC-02` complete; Phase 12 blocked until explicit approval. |

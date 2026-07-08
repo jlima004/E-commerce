@@ -2,6 +2,7 @@ import Stripe from "stripe"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError } from "@medusajs/framework/utils"
 import { env, type AppEnv } from "../../../config/env"
+import { appLogger, logAllowlisted } from "../../../observability/logger"
 import { PAYMENT_ATTEMPT_MODULE } from "../../../modules/payment-attempt"
 import { WEBHOOKS_MODULE } from "../../../modules/webhooks"
 import {
@@ -24,9 +25,12 @@ import type {
   WebhookMetadata,
 } from "../../../modules/webhooks/types"
 import {
+  readOrderCreationEntrypointFailureDiagnostic,
   runCreateOrderFromConfirmedPaymentAttemptEntrypoint,
   type CreateOrderFromConfirmedPaymentAttemptResult,
+  type OrderCreationFailureContext,
 } from "../../../workflows/order/webhook-order-entrypoint"
+import type { OrderCreationFailureDetails } from "../../../workflows/order/steps/create-order-from-confirmed-attempt"
 import { RefundWebhookError } from "../../../modules/refund-request/stripe-refund-webhook"
 import {
   augmentRefundWebhookEventInput,
@@ -121,6 +125,7 @@ type RouteDeps = {
   appEnv?: AppEnv
   now?: () => Date
   stripe?: StripeLike
+  logOrderCreationFailure?: (context: StripeOrderCreationFailureLogContext) => void
   runOrderEntrypoint?: (
     scope: MedusaRequest["scope"],
     input: {
@@ -130,6 +135,19 @@ type RouteDeps = {
       correlation_id?: string | null
     }
   ) => Promise<CreateOrderFromConfirmedPaymentAttemptResult>
+}
+
+type StripeOrderCreationFailureLogContext = {
+  event_id: string
+  event_type: string
+  payment_intent_id: string
+  payment_attempt_id: string
+  cart_id: string
+  checkout_completion_log_id: string | null
+  error_name: string
+  error_code: string | null
+  error_message: string | null
+  error_chain?: unknown
 }
 
 const stripeClient = new Stripe("webhook_verifier_placeholder", {
@@ -333,6 +351,10 @@ function buildErroredMetadata(input: {
   record: WebhookEventLogRecord
   paymentIntentId: string | null
   status: "failed" | "ignored"
+  orderCreationFailure?: {
+    details: OrderCreationFailureDetails
+    context: OrderCreationFailureContext
+  } | null
 }): WebhookMetadata {
   const metadata: WebhookMetadata = {
     ...(input.record.metadata ?? {}),
@@ -343,7 +365,45 @@ function buildErroredMetadata(input: {
     metadata.payment_intent_id = input.paymentIntentId
   }
 
+  if (input.orderCreationFailure) {
+    const { details, context } = input.orderCreationFailure
+    metadata.order_creation_error_name = details.error_name
+    metadata.order_creation_error_code = details.error_code
+    metadata.order_creation_error_message = details.error_message
+    metadata.order_creation_error_cause_message = details.error_cause_message
+    metadata.order_creation_error_type = details.error_type
+    metadata.order_creation_error_string = details.error_string
+    metadata.order_creation_error_step = context.step
+    metadata.cart_id = context.cart_id
+    metadata.payment_attempt_id = context.payment_attempt_id
+    metadata.checkout_completion_log_id = context.checkout_completion_log_id
+  }
+
   return metadata
+}
+
+function defaultLogOrderCreationFailure(
+  context: StripeOrderCreationFailureLogContext
+): void {
+  logAllowlisted(
+    appLogger,
+    "error",
+    {
+      operation: "stripe.webhook.order_creation_failed",
+      integration: STRIPE_PROVIDER,
+      event_id: context.event_id,
+      event_type: context.event_type,
+      payment_intent_id: context.payment_intent_id,
+      payment_attempt_id: context.payment_attempt_id,
+      cart_id: context.cart_id,
+      checkout_completion_log_id: context.checkout_completion_log_id,
+      error_name: context.error_name,
+      error_code: context.error_code,
+      error_message: context.error_message,
+      error_chain: context.error_chain,
+    },
+    "stripe webhook order creation failed"
+  )
 }
 
 async function recordWebhookEvent(
@@ -450,6 +510,7 @@ async function processStripePaymentIntentEvent(input: {
   webhooksModule: WebhooksModuleLike
   now: Date
   runOrderEntrypoint: RouteDeps["runOrderEntrypoint"]
+  logOrderCreationFailure: RouteDeps["logOrderCreationFailure"]
 }): Promise<WebhookEventLogStatus> {
   if (!isPaymentIntentObject(input.event.data?.object)) {
     throw new PaymentAttemptWebhookError(
@@ -480,12 +541,35 @@ async function processStripePaymentIntentEvent(input: {
     updatedAttempt.order_id == null
 
   if (shouldInvokeOrderEntrypoint && input.runOrderEntrypoint) {
-    const orderEntrypointResult = await input.runOrderEntrypoint(input.req.scope, {
-      payment_attempt_id: updatedAttempt.id,
-      payment_intent_id: paymentIntent.id,
-      stripe_event_id: input.event.id,
-      correlation_id: input.req.correlationId,
-    })
+    let orderEntrypointResult: CreateOrderFromConfirmedPaymentAttemptResult
+
+    try {
+      orderEntrypointResult = await input.runOrderEntrypoint(input.req.scope, {
+        payment_attempt_id: updatedAttempt.id,
+        payment_intent_id: paymentIntent.id,
+        stripe_event_id: input.event.id,
+        correlation_id: input.req.correlationId,
+      })
+    } catch (error) {
+      const diagnostic = readOrderCreationEntrypointFailureDiagnostic(error)
+      const sanitized = sanitizeWebhookError(error)
+
+      input.logOrderCreationFailure?.({
+        event_id: input.event.id,
+        event_type: input.event.type,
+        payment_intent_id: paymentIntent.id,
+        payment_attempt_id: updatedAttempt.id,
+        cart_id: updatedAttempt.cart_id,
+        checkout_completion_log_id:
+          diagnostic?.context.checkout_completion_log_id ?? null,
+        error_name: diagnostic?.details.error_name ?? sanitized.error_code ?? "Error",
+        error_code: diagnostic?.details.error_code ?? sanitized.error_code,
+        error_message: diagnostic?.details.error_message ?? sanitized.error_message,
+        error_chain: error,
+      })
+
+      throw error
+    }
 
     assertTerminalOrderEntrypointResult(orderEntrypointResult)
   } else if (shouldInvokeOrderEntrypoint) {
@@ -528,6 +612,8 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
   const routeEnv = deps.appEnv ?? env
   const now = deps.now ?? (() => new Date())
   const stripe = deps.stripe ?? stripeClient
+  const logOrderCreationFailure =
+    deps.logOrderCreationFailure ?? defaultLogOrderCreationFailure
   const runOrderEntrypoint =
     deps.runOrderEntrypoint ?? runCreateOrderFromConfirmedPaymentAttemptEntrypoint
 
@@ -644,6 +730,7 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
           webhooksModule: service,
           now: now(),
           runOrderEntrypoint,
+          logOrderCreationFailure,
         })
       }
     } catch (error) {
@@ -655,6 +742,8 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
       const disposition: "failed" | "ignored" =
         rawDisposition === "ignored" ? "ignored" : "failed"
       const sanitized = sanitizeWebhookError(error)
+      const orderCreationFailure =
+        readOrderCreationEntrypointFailureDiagnostic(error)
 
       await updateWebhookRecord(service, {
         id: record.id,
@@ -674,6 +763,7 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
           record,
           paymentIntentId: erroredPaymentIntentId,
           status: disposition,
+          orderCreationFailure,
         }),
       })
 

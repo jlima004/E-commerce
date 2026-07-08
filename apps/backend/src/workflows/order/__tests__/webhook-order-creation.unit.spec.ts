@@ -683,7 +683,17 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
       expect.objectContaining({
         status: "failed",
         order_id: null,
-        error_code: "ORDER_ENTRYPOINT_FAILED",
+        error_code: "ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH",
+        error_message: "ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH",
+        metadata: expect.objectContaining({
+          order_creation_error_name: "Error",
+          order_creation_error_code: "ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH",
+          order_creation_error_message: "ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH",
+          order_creation_error_step: "create-order-from-confirmed-attempt",
+          cart_id: "cart_01",
+          payment_attempt_id: "payatt_01",
+          payment_intent_id: "pi_01",
+        }),
       })
     )
   })

@@ -32,6 +32,15 @@ export type ConfirmedAttemptOrderState = {
   payment_status: "captured"
 }
 
+export type OrderCreationFailureDetails = {
+  error_name: string
+  error_code: string
+  error_message: string
+  error_cause_message: string | null
+  error_type: string
+  error_string: string | null
+}
+
 export function assertConfirmedAttemptCartMatchesPaymentAttempt(
   attempt: Pick<
     PaymentAttemptRecord,
@@ -221,5 +230,131 @@ export function sanitizeOrderCreationFailure(input: {
   return {
     error_code: sanitizeString(input.code).slice(0, 120),
     error_message: sanitizeString(input.message).slice(0, 500),
+  }
+}
+
+function sanitizeOptionalString(value: unknown, maxLength: number): string | null {
+  if (typeof value === "string") {
+    return sanitizeString(value).slice(0, maxLength) || null
+  }
+
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return sanitizeString(String(value)).slice(0, maxLength) || null
+  }
+
+  return null
+}
+
+function readErrorProperty(
+  error: unknown,
+  property: "name" | "message" | "code" | "cause"
+): unknown {
+  if (!error || typeof error !== "object") {
+    return null
+  }
+
+  return (error as Record<string, unknown>)[property]
+}
+
+function resolveErrorName(error: unknown): string {
+  if (error instanceof Error && error.name.trim()) {
+    return sanitizeString(error.name).slice(0, 120)
+  }
+
+  const name = sanitizeOptionalString(readErrorProperty(error, "name"), 120)
+  if (name) {
+    return name
+  }
+
+  if (error && typeof error === "object") {
+    const constructorName = error.constructor?.name
+    if (constructorName && constructorName !== "Object") {
+      return sanitizeString(constructorName).slice(0, 120)
+    }
+  }
+
+  return typeof error === "string" ? "String" : typeof error
+}
+
+function resolveErrorCode(error: unknown, message: string | null): string {
+  const code = sanitizeOptionalString(readErrorProperty(error, "code"), 120)
+  if (code) {
+    return code
+  }
+
+  if (message && /^[A-Z0-9_]+$/.test(message)) {
+    return message.slice(0, 120)
+  }
+
+  return resolveErrorName(error).slice(0, 120) || "Error"
+}
+
+function resolveErrorMessage(error: unknown): string | null {
+  if (error instanceof Error) {
+    return sanitizeOptionalString(error.message, 500)
+  }
+
+  const message = sanitizeOptionalString(readErrorProperty(error, "message"), 500)
+  if (message) {
+    return message
+  }
+
+  if (
+    typeof error === "string" ||
+    typeof error === "number" ||
+    typeof error === "boolean" ||
+    typeof error === "bigint"
+  ) {
+    return sanitizeOptionalString(error, 500)
+  }
+
+  if (error && typeof error === "object") {
+    const stringified = String(error)
+    if (stringified && stringified !== "[object Object]") {
+      return sanitizeOptionalString(stringified, 500)
+    }
+  }
+
+  return null
+}
+
+function resolveCauseMessage(error: unknown): string | null {
+  const cause = readErrorProperty(error, "cause")
+
+  if (cause instanceof Error) {
+    return sanitizeOptionalString(cause.message, 500)
+  }
+
+  const causeMessage = sanitizeOptionalString(
+    readErrorProperty(cause, "message"),
+    500
+  )
+  if (causeMessage) {
+    return causeMessage
+  }
+
+  return sanitizeOptionalString(cause, 500)
+}
+
+export function describeOrderCreationFailure(
+  error: unknown
+): OrderCreationFailureDetails {
+  const errorMessage = resolveErrorMessage(error)
+  const causeMessage = resolveCauseMessage(error)
+  const errorName = resolveErrorName(error)
+  const fallbackMessage = errorMessage ?? causeMessage ?? errorName
+
+  return {
+    error_name: errorName,
+    error_code: resolveErrorCode(error, fallbackMessage),
+    error_message: fallbackMessage.slice(0, 500),
+    error_cause_message: causeMessage,
+    error_type: typeof error,
+    error_string:
+      errorMessage ?? causeMessage ? null : sanitizeOptionalString(error, 500),
   }
 }

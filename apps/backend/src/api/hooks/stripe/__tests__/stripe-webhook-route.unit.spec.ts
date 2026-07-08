@@ -2,6 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { PAYMENT_ATTEMPT_MODULE } from "../../../../modules/payment-attempt"
 import { WEBHOOKS_MODULE } from "../../../../modules/webhooks"
 import { createStripeWebhookPostHandler } from "../route"
+import { OrderCreationEntrypointError } from "../../../../workflows/order/webhook-order-entrypoint"
 
 type RequestWithRawBody = MedusaRequest & {
   rawBody?: Buffer | string
@@ -17,6 +18,7 @@ type WebhookRecord = {
   status: string
   error_code?: string | null
   error_message?: string | null
+  metadata?: Record<string, unknown> | null
 }
 
 const WEBHOOK_SECRET_PLACEHOLDER = ["webhook", "secret", "placeholder"].join("_")
@@ -457,6 +459,112 @@ describe("stripe webhook route", () => {
         status: "failed",
         processed_at: null,
         error_code: "CHECKOUT_COMPLETION_NOT_TERMINAL",
+      })
+    )
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ok: true,
+        status: "failed",
+      })
+    )
+  })
+
+  it("persiste e loga erro real quando a criacao de Order falha", async () => {
+    const webhooks = createWebhookService()
+    const paymentAttempts = createPaymentAttemptService()
+    const req = createRequest({
+      headers: {
+        "stripe-signature": "t=1,v1=signature",
+      },
+      correlationId: "corr_route_01",
+    })
+    req.scope.resolve = jest.fn((key: string) => {
+      if (key === WEBHOOKS_MODULE) {
+        return webhooks
+      }
+
+      if (key === PAYMENT_ATTEMPT_MODULE) {
+        return paymentAttempts
+      }
+
+      return undefined
+    })
+    const orderError = new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_COMPLETE_CART_FAILED",
+      "completeCart rejected missing shipping method",
+      {
+        cause: new Error("Medusa completeCart root cause"),
+        details: {
+          error_name: "Error",
+          error_code: "ORDER_ENTRYPOINT_COMPLETE_CART_FAILED",
+          error_message: "completeCart rejected missing shipping method",
+          error_cause_message: "Medusa completeCart root cause",
+          error_type: "object",
+          error_string: null,
+        },
+        context: {
+          step: "create-order-from-confirmed-attempt",
+          cart_id: "cart_route_01",
+          payment_attempt_id: "payatt_route_01",
+          payment_intent_id: "pi_route_123",
+          checkout_completion_log_id: "chkcpl_route_01",
+        },
+      }
+    )
+    const runOrderEntrypoint = jest.fn(async () => {
+      throw orderError
+    })
+    const logOrderCreationFailure = jest.fn()
+
+    const handler = createStripeWebhookPostHandler({
+      appEnv: {
+        STRIPE_WEBHOOK_INGESTION_ENABLED: true,
+        STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET_PLACEHOLDER,
+      } as never,
+      stripe: {
+        webhooks: {
+          constructEvent: jest.fn(() => createSucceededPaymentIntentEvent()),
+        },
+      },
+      now: () => new Date("2026-07-07T12:00:00.000Z"),
+      runOrderEntrypoint,
+      logOrderCreationFailure,
+    })
+
+    const res = createResponse()
+    await handler(req, res)
+
+    expect(webhooks.updateWebhookEventLogs).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: "failed",
+        processed_at: null,
+        error_code: "ORDER_ENTRYPOINT_COMPLETE_CART_FAILED",
+        error_message: "completeCart rejected missing shipping method",
+        metadata: expect.objectContaining({
+          payment_intent_id: "pi_route_123",
+          payment_attempt_id: "payatt_route_01",
+          cart_id: "cart_route_01",
+          checkout_completion_log_id: "chkcpl_route_01",
+          order_creation_error_name: "Error",
+          order_creation_error_code: "ORDER_ENTRYPOINT_COMPLETE_CART_FAILED",
+          order_creation_error_message:
+            "completeCart rejected missing shipping method",
+          order_creation_error_cause_message: "Medusa completeCart root cause",
+          order_creation_error_step: "create-order-from-confirmed-attempt",
+        }),
+      })
+    )
+    expect(logOrderCreationFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_id: "evt_route_123",
+        event_type: "payment_intent.succeeded",
+        payment_intent_id: "pi_route_123",
+        payment_attempt_id: "payatt_route_01",
+        cart_id: "cart_route_01",
+        checkout_completion_log_id: "chkcpl_route_01",
+        error_name: "Error",
+        error_code: "ORDER_ENTRYPOINT_COMPLETE_CART_FAILED",
+        error_message: "completeCart rejected missing shipping method",
       })
     )
     expect(res.json).toHaveBeenCalledWith(

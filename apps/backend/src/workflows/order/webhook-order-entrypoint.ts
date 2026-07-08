@@ -27,9 +27,11 @@ import type { PaymentAttemptRecord } from "../../modules/payment-attempt/types"
 import {
   assertConfirmedAttemptCartMatchesPaymentAttempt,
   buildConfirmedOrderStateMetadata,
+  describeOrderCreationFailure,
   getConfirmedOrderState,
   sanitizeOrderCreationFailure,
   type ConfirmedAttemptCartRecord,
+  type OrderCreationFailureDetails,
 } from "./steps/create-order-from-confirmed-attempt"
 import {
   buildOrderLineItemGelatoSnapshots,
@@ -86,11 +88,55 @@ export type CreateOrderFromConfirmedPaymentAttemptResult = {
 
 export class OrderCreationEntrypointError extends Error {
   readonly code: string
+  readonly order_creation_error_details?: OrderCreationFailureDetails
+  readonly order_creation_error_context?: OrderCreationFailureContext
 
-  constructor(code: string, message: string) {
+  constructor(
+    code: string,
+    message: string,
+    options?: {
+      cause?: unknown
+      details?: OrderCreationFailureDetails
+      context?: OrderCreationFailureContext
+    }
+  ) {
     super(message)
     this.name = "OrderCreationEntrypointError"
     this.code = code
+    this.order_creation_error_details = options?.details
+    this.order_creation_error_context = options?.context
+
+    if (options?.cause !== undefined) {
+      ;(this as Error & { cause?: unknown }).cause = options.cause
+    }
+  }
+}
+
+export type OrderCreationFailureContext = {
+  step: string
+  cart_id: string
+  payment_attempt_id: string
+  payment_intent_id: string
+  checkout_completion_log_id: string
+}
+
+export function readOrderCreationEntrypointFailureDiagnostic(
+  error: unknown
+): {
+  details: OrderCreationFailureDetails
+  context: OrderCreationFailureContext
+} | null {
+  if (!(error instanceof OrderCreationEntrypointError)) {
+    return null
+  }
+
+  if (!error.order_creation_error_details || !error.order_creation_error_context) {
+    return null
+  }
+
+  return {
+    details: error.order_creation_error_details,
+    context: error.order_creation_error_context,
   }
 }
 
@@ -277,12 +323,6 @@ function isUniqueConstraintError(error: unknown): boolean {
     error instanceof Error &&
     /duplicate key value|unique constraint/i.test(error.message)
   )
-}
-
-function getErrorCode(error: Error): string | null {
-  const code = (error as { code?: unknown }).code
-
-  return typeof code === "string" ? code : null
 }
 
 function isAwilixResolutionError(error: unknown): boolean {
@@ -1509,25 +1549,50 @@ async function completeCheckoutCompletionLog(
 
 async function markCheckoutCompletionLogFailed(
   container: MedusaContainer,
-  logId: string,
-  error: unknown,
+  log: CheckoutCompletionLogRecord,
+  details: OrderCreationFailureDetails,
+  context: OrderCreationFailureContext,
   now: Date
 ): Promise<void> {
   const module = resolveCheckoutCompletionModule(container)
-  const errorCode = error instanceof Error ? getErrorCode(error) : null
   const sanitized = sanitizeOrderCreationFailure({
-    code: errorCode ?? "ORDER_ENTRYPOINT_FAILED",
-    message: error instanceof Error ? error.message : "Falha ao criar order.",
+    code: details.error_code,
+    message: details.error_message,
   })
 
   await module.updateCheckoutCompletionLogs?.(
     buildCheckoutCompletionFailedUpdate({
-      id: logId,
+      id: log.id,
       error_code: sanitized.error_code,
       error_message: sanitized.error_message,
+      metadata: {
+        ...(log.metadata ?? {}),
+        order_creation_error_name: details.error_name,
+        order_creation_error_code: sanitized.error_code,
+        order_creation_error_message: sanitized.error_message,
+        order_creation_error_cause_message: details.error_cause_message,
+        order_creation_error_type: details.error_type,
+        order_creation_error_string: details.error_string,
+        order_creation_error_step: context.step,
+        cart_id: context.cart_id,
+        payment_attempt_id: context.payment_attempt_id,
+        payment_intent_id: context.payment_intent_id,
+      },
       at: now,
     })
   )
+}
+
+function buildOrderCreationFailureError(
+  error: unknown,
+  details: OrderCreationFailureDetails,
+  context: OrderCreationFailureContext
+): OrderCreationEntrypointError {
+  return new OrderCreationEntrypointError(details.error_code, details.error_message, {
+    cause: error,
+    details,
+    context,
+  })
 }
 
 async function correlatePaymentAttemptToOrder(
@@ -1798,8 +1863,24 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       throw error
     }
 
-    await markCheckoutCompletionLogFailed(container, claim.log.id, error, now)
-    throw error
+    const details = describeOrderCreationFailure(error)
+    const context: OrderCreationFailureContext = {
+      step: "create-order-from-confirmed-attempt",
+      cart_id: attempt.cart_id,
+      payment_attempt_id: attempt.id,
+      payment_intent_id: validated.payment_intent_id,
+      checkout_completion_log_id: claim.log.id,
+    }
+    const failure = buildOrderCreationFailureError(error, details, context)
+
+    await markCheckoutCompletionLogFailed(
+      container,
+      claim.log,
+      details,
+      context,
+      now
+    )
+    throw failure
   }
 }
 

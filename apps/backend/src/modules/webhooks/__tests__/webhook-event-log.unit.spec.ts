@@ -84,6 +84,12 @@ describe("WebhookEventLog helpers", () => {
         order_reference_id: "order_123",
         fulfillment_id: "gelful_123",
         provider_status: "shipped",
+        cart_id: "cart_123",
+        checkout_completion_log_id: "chkcpl_123",
+        order_creation_error_name: "Error",
+        order_creation_error_code: "ORDER_ENTRYPOINT_FAILED",
+        order_creation_error_message: "completeCart failed",
+        order_creation_error_step: "create-order-from-confirmed-attempt",
         ignored_field: "drop-me",
       })
     ).toEqual({
@@ -94,6 +100,12 @@ describe("WebhookEventLog helpers", () => {
       order_reference_id: "order_123",
       fulfillment_id: "gelful_123",
       provider_status: "shipped",
+      cart_id: "cart_123",
+      checkout_completion_log_id: "chkcpl_123",
+      order_creation_error_name: "Error",
+      order_creation_error_code: "ORDER_ENTRYPOINT_FAILED",
+      order_creation_error_message: "completeCart failed",
+      order_creation_error_step: "create-order-from-confirmed-attempt",
     })
   })
 

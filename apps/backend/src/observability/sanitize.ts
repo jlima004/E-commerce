@@ -35,10 +35,16 @@ export const ALLOWLISTED_CONTEXT_KEYS = new Set([
   "cart_id",
   "payment_intent_id",
   "payment_attempt_id",
+  "checkout_completion_log_id",
+  "event_id",
+  "event_type",
   "customer_id",
   "entity_id",
   "entity_type",
   "activity_id",
+  "error_name",
+  "error_code",
+  "error_message",
   "message",
   "error_chain",
 ])
@@ -165,6 +171,15 @@ export function sanitizeContext(
 
     if (key === "error_chain") {
       output[key] = sanitizeErrorLike(value)
+      continue
+    }
+
+    if (
+      key === "payment_intent_id" &&
+      typeof value === "string" &&
+      /^pi_[A-Za-z0-9]+$/.test(value)
+    ) {
+      output[key] = value
       continue
     }
 
