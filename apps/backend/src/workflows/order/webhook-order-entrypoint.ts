@@ -13,7 +13,6 @@ import {
   buildCheckoutCompletionCompletedUpdate,
   buildCheckoutCompletionFailedUpdate,
   buildCheckoutCompletionIdempotencyKey,
-  buildCheckoutCompletionLogRecord,
   resolveCheckoutCompletionClaimDecision,
   type CheckoutCompletionLogRecord,
 } from "../../modules/checkout-completion/service"
@@ -685,85 +684,86 @@ async function claimCheckoutCompletionLog(
     }
   }
 
-  try {
-    const created = asArray(
-      await module.createCheckoutCompletionLogs?.(
-        buildCheckoutCompletionLogRecord(
-          nextInput,
-          "chkcpl_order_entrypoint_pending",
-          now
-        )
-      )
-    )[0] as CheckoutCompletionLogRecord
-
-    return {
-      status: "claimed",
-      log: created,
-      order_id: null,
-    }
-  } catch (error) {
-    if (!isUniqueConstraintError(error)) {
-      throw error
-    }
-
-    const conflicted = await readExisting()
-
-    if (!conflicted) {
-      throw error
-    }
-
-    const afterConflict = resolveCheckoutCompletionClaimDecision({
-      existing: conflicted,
-      next: nextInput,
-      at: now,
-    })
-
-    if (afterConflict.type === "reuse_completed") {
-      return {
-        status: "completed",
-        log: afterConflict.log,
-        order_id: afterConflict.order_id,
-      }
-    }
-
-    if (afterConflict.type === "already_processing") {
-      return {
-        status: "processing",
-        log: afterConflict.log,
-        order_id: null,
-      }
-    }
-
-    if (afterConflict.type === "recover_created_order") {
-      return {
-        status: "completed",
-        log: afterConflict.log,
-        order_id: afterConflict.order_id,
-      }
-    }
-
-    if (afterConflict.type === "retry_processing_without_order") {
-      await module.updateCheckoutCompletionLogs?.({
-        id: afterConflict.log.id,
-        ...afterConflict.failedUpdate,
-      })
-
-      const updated = asArray(
-        await module.updateCheckoutCompletionLogs?.({
-          id: afterConflict.log.id,
-          ...afterConflict.retryUpdate,
-        })
+  if (decision.type === "create") {
+    try {
+      const created = asArray(
+        await module.createCheckoutCompletionLogs?.(decision.record)
       )[0] as CheckoutCompletionLogRecord
 
       return {
         status: "claimed",
-        log: updated,
+        log: created,
         order_id: null,
       }
-    }
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error
+      }
 
-    throw error
+      const conflicted = await readExisting()
+
+      if (!conflicted) {
+        throw error
+      }
+
+      const afterConflict = resolveCheckoutCompletionClaimDecision({
+        existing: conflicted,
+        next: nextInput,
+        at: now,
+      })
+
+      if (afterConflict.type === "reuse_completed") {
+        return {
+          status: "completed",
+          log: afterConflict.log,
+          order_id: afterConflict.order_id,
+        }
+      }
+
+      if (afterConflict.type === "already_processing") {
+        return {
+          status: "processing",
+          log: afterConflict.log,
+          order_id: null,
+        }
+      }
+
+      if (afterConflict.type === "recover_created_order") {
+        return {
+          status: "completed",
+          log: afterConflict.log,
+          order_id: afterConflict.order_id,
+        }
+      }
+
+      if (afterConflict.type === "retry_processing_without_order") {
+        await module.updateCheckoutCompletionLogs?.({
+          id: afterConflict.log.id,
+          ...afterConflict.failedUpdate,
+        })
+
+        const updated = asArray(
+          await module.updateCheckoutCompletionLogs?.({
+            id: afterConflict.log.id,
+            ...afterConflict.retryUpdate,
+          })
+        )[0] as CheckoutCompletionLogRecord
+
+        return {
+          status: "claimed",
+          log: updated,
+          order_id: null,
+        }
+      }
+
+      throw error
+    }
   }
+
+  throw new OrderCreationEntrypointError(
+    "ORDER_ENTRYPOINT_CHECKOUT_COMPLETION_CLAIM_INVALID",
+    "Estado de reivindicacao de checkout completion invalido."
+  )
 }
 
 async function persistCartSnapshots(

@@ -229,6 +229,70 @@ describe("CheckoutCompletionLog schema slice side effects", () => {
 })
 
 describe("CheckoutCompletionLog retry/idempotency decisions", () => {
+  it("prepara criacao sem id e usa payment_intent_id como idempotency_key", () => {
+    const first = resolveCheckoutCompletionClaimDecision({
+      existing: null,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T12:00:00.000Z"),
+    })
+    const second = resolveCheckoutCompletionClaimDecision({
+      existing: null,
+      next: {
+        cart_id: "cart_456",
+        payment_intent_id: "pi_456",
+        payment_attempt_id: "payatt_456",
+      },
+      at: new Date("2026-07-08T12:01:00.000Z"),
+    })
+
+    expect(first.type).toBe("create")
+    expect(second.type).toBe("create")
+    if (first.type !== "create" || second.type !== "create") {
+      return
+    }
+
+    expect(first.record).not.toHaveProperty("id")
+    expect(second.record).not.toHaveProperty("id")
+    expect(first.record.idempotency_key).toBe("pi_123")
+    expect(second.record.idempotency_key).toBe("pi_456")
+    expect(first.record.idempotency_key).not.toBe(second.record.idempotency_key)
+  })
+
+  it("reusa completed com order_id como resultado terminal idempotente", () => {
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        order_id: "order_123",
+        status: CHECKOUT_COMPLETION_STATUS.COMPLETED,
+        completed_at: "2026-07-08T12:00:00.000Z",
+      },
+      "chkcpl_123",
+      new Date("2026-07-08T12:00:00.000Z")
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T12:05:00.000Z"),
+    })
+
+    expect(decision).toEqual({
+      type: "reuse_completed",
+      log: existing,
+      order_id: "order_123",
+    })
+  })
+
   it("trata processing sem order_id como retryable antes de nova tentativa", () => {
     const existing = buildCheckoutCompletionLogRecord(
       {
@@ -266,6 +330,48 @@ describe("CheckoutCompletionLog retry/idempotency decisions", () => {
     expect(decision.retryUpdate).toEqual(
       expect.objectContaining({
         status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        error_code: null,
+        error_message: null,
+      })
+    )
+  })
+
+  it("permite retry controlado de failed sem order_id", () => {
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.FAILED,
+        error_code: "ORDER_ENTRYPOINT_FAILED",
+        error_message: "Falha anterior.",
+        failed_at: "2026-07-08T11:00:00.000Z",
+      },
+      "chkcpl_123",
+      new Date("2026-07-08T11:00:00.000Z")
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T12:00:00.000Z"),
+    })
+
+    expect(decision.type).toBe("retry_failed")
+    if (decision.type !== "retry_failed") {
+      return
+    }
+
+    expect(decision.update).toEqual(
+      expect.objectContaining({
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: "2026-07-08T12:00:00.000Z",
+        completed_at: null,
+        failed_at: null,
         error_code: null,
         error_message: null,
       })

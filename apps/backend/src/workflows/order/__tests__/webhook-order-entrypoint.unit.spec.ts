@@ -1,3 +1,5 @@
+import fs from "fs"
+import path from "path"
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { ANALYTICS_EVENT_LOG_MODULE } from "../../../modules/analytics-event-log"
@@ -10,6 +12,8 @@ import {
   runCreateOrderFromConfirmedPaymentAttemptEntrypoint,
   validateCreateOrderFromConfirmedPaymentAttemptInput,
 } from "../webhook-order-entrypoint"
+
+const entrypointPath = path.join(__dirname, "../webhook-order-entrypoint.ts")
 
 function buildEligibleAttempt(
   overrides: Partial<PaymentAttemptRecord> = {}
@@ -136,32 +140,59 @@ function createCheckoutCompletionModule(
   ]
 ) {
   const store: Array<Record<string, unknown>> = [...records]
+  const matchesFilters = (
+    record: Record<string, unknown>,
+    filters: Record<string, unknown> = {}
+  ) => {
+    return Object.entries(filters).every(([key, value]) => {
+      return value === undefined || record[key] === value
+    })
+  }
 
   return {
-    listCheckoutCompletionLogs: jest.fn(async () => store),
+    listCheckoutCompletionLogs: jest.fn(
+      async (filters?: Record<string, unknown>) => {
+        return store.filter((record) => matchesFilters(record, filters))
+      }
+    ),
     createCheckoutCompletionLogs: jest.fn(async (input) => {
       const row = Array.isArray(input) ? input[0] : input
       const created = {
         ...row,
         id: row.id ?? `chkcpl_entry_${store.length + 1}`,
       }
+      if (
+        store.some(
+          (record) =>
+            record.id === created.id ||
+            record.idempotency_key === created.idempotency_key
+        )
+      ) {
+        throw new Error("duplicate key value violates unique constraint")
+      }
       store.push(created)
       return [created]
     }),
     updateCheckoutCompletionLogs: jest.fn(async (input: Record<string, unknown> | Array<Record<string, unknown>>) => {
       const row = Array.isArray(input) ? input[0] : input
-      store[0] = {
-        ...store[0],
+      const index = store.findIndex((record) => record.id === row.id)
+
+      if (index < 0) {
+        return []
+      }
+
+      store[index] = {
+        ...store[index],
         ...row,
       }
-      return [store[0]]
+      return [store[index]]
     }),
     store,
   }
 }
 
-function createOrderModule() {
-  const store: Array<Record<string, unknown>> = [
+function createOrderModule(
+  records: Array<Record<string, unknown>> = [
     {
       id: "order_entry_existing",
       cart_id: "cart_01",
@@ -170,6 +201,8 @@ function createOrderModule() {
       metadata: null,
     },
   ]
+) {
+  const store: Array<Record<string, unknown>> = [...records]
 
   return {
     listOrders: jest.fn(async (selector?: Record<string, unknown>) => {
@@ -328,10 +361,18 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
     }
   })
 
+  it("nao contem o id fixo historico no runtime do entrypoint", () => {
+    const source = fs.readFileSync(entrypointPath, "utf8")
+    const fixedId = ["chkcpl", "order", "entrypoint", "pending"].join("_")
+
+    expect(source).not.toContain(fixedId)
+  })
+
   it("reusa CheckoutCompletionLog completo e cura PaymentAttempt.order_id", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule()
     const orderModule = createOrderModule()
+    const runCompleteCart = jest.fn()
 
     const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       createContainer({
@@ -342,6 +383,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
       buildInput(),
       {
         now: () => new Date("2026-06-30T16:00:00.000Z"),
+        runCompleteCart,
       }
     )
 
@@ -359,6 +401,8 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
       order_status: "confirmed",
       payment_status: "captured",
     })
+    expect(checkoutCompletionModule.createCheckoutCompletionLogs).not.toHaveBeenCalled()
+    expect(runCompleteCart).not.toHaveBeenCalled()
   })
 
   it("propaga inelegibilidade antes de tocar em CheckoutCompletionLog", async () => {
@@ -453,6 +497,190 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
         id: "chkcpl_stale_processing",
         status: "processing",
         error_code: null,
+      })
+    )
+    expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
+  })
+
+  it("cria CheckoutCompletionLog sem id explicito e deixa o modulo gerar a chave primaria", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule([])
+    const orderModule = createOrderModule()
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        orderModule,
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-07-08T12:00:00.000Z"),
+        runCompleteCart: async () => ({ id: "order_entry_existing" }),
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "created",
+        order_id: "order_entry_existing",
+        checkout_completion_status: "completed",
+      })
+    )
+    expect(checkoutCompletionModule.createCheckoutCompletionLogs).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        id: expect.anything(),
+      })
+    )
+    expect(checkoutCompletionModule.store).toHaveLength(1)
+    expect(checkoutCompletionModule.store[0]).toEqual(
+      expect.objectContaining({
+        id: "chkcpl_entry_1",
+        idempotency_key: "pi_entry_123",
+        payment_intent_id: "pi_entry_123",
+        payment_attempt_id: "payatt_entry_01",
+        order_id: "order_entry_existing",
+        status: "completed",
+      })
+    )
+    expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
+  })
+
+  it("dois payment_intents diferentes criam CheckoutCompletionLogs distintos sem colisao de primary key", async () => {
+    const checkoutCompletionModule = createCheckoutCompletionModule([])
+    const firstAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
+    const secondAttemptModule = createPaymentAttemptModule(
+      buildEligibleAttempt({
+        id: "payatt_entry_02",
+        cart_id: "cart_02",
+        provider_payment_intent_id: "pi_entry_456",
+      })
+    )
+
+    await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule: firstAttemptModule,
+        checkoutCompletionModule,
+        orderModule: createOrderModule([
+          {
+            id: "order_entry_01",
+            cart_id: "cart_01",
+            email: "primeiro@pedido.test",
+            display_id: 1001,
+            metadata: null,
+          },
+        ]),
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-07-08T12:05:00.000Z"),
+        runCompleteCart: async () => ({ id: "order_entry_01" }),
+      }
+    )
+
+    await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule: secondAttemptModule,
+        checkoutCompletionModule,
+        orderModule: createOrderModule([
+          {
+            id: "order_entry_02",
+            cart_id: "cart_02",
+            email: "segundo@pedido.test",
+            display_id: 1002,
+            metadata: null,
+          },
+        ]),
+        cart: {
+          ...buildCart(),
+          id: "cart_02",
+        },
+      }),
+      buildInput({
+        payment_attempt_id: "payatt_entry_02",
+        payment_intent_id: "pi_entry_456",
+        stripe_event_id: "evt_entry_02",
+        correlation_id: "corr_entry_02",
+      }),
+      {
+        now: () => new Date("2026-07-08T12:06:00.000Z"),
+        runCompleteCart: async () => ({ id: "order_entry_02" }),
+      }
+    )
+
+    expect(checkoutCompletionModule.store).toEqual([
+      expect.objectContaining({
+        id: "chkcpl_entry_1",
+        idempotency_key: "pi_entry_123",
+        payment_intent_id: "pi_entry_123",
+        payment_attempt_id: "payatt_entry_01",
+        order_id: "order_entry_01",
+      }),
+      expect.objectContaining({
+        id: "chkcpl_entry_2",
+        idempotency_key: "pi_entry_456",
+        payment_intent_id: "pi_entry_456",
+        payment_attempt_id: "payatt_entry_02",
+        order_id: "order_entry_02",
+      }),
+    ])
+    expect(new Set(checkoutCompletionModule.store.map((row) => row.id)).size).toBe(2)
+    expect(firstAttemptModule.store[0]?.order_id).toBe("order_entry_01")
+    expect(secondAttemptModule.store[0]?.order_id).toBe("order_entry_02")
+  })
+
+  it("reprocessa CheckoutCompletionLog failed sem order_id por idempotency_key e cria Order", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule([
+      {
+        id: "chkcpl_failed_retry",
+        idempotency_key: "pi_entry_123",
+        cart_id: "cart_01",
+        payment_intent_id: "pi_entry_123",
+        payment_attempt_id: "payatt_entry_01",
+        order_id: null,
+        status: "failed",
+        error_code: "ORDER_ENTRYPOINT_FAILED",
+        error_message: "Falha anterior.",
+        metadata: null,
+      },
+    ])
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        orderModule: createOrderModule(),
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-07-08T12:10:00.000Z"),
+        runCompleteCart: async () => ({ id: "order_entry_existing" }),
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "created",
+        order_id: "order_entry_existing",
+        checkout_completion_status: "completed",
+      })
+    )
+    expect(checkoutCompletionModule.createCheckoutCompletionLogs).not.toHaveBeenCalled()
+    expect(checkoutCompletionModule.updateCheckoutCompletionLogs).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        id: "chkcpl_failed_retry",
+        status: "processing",
+        error_code: null,
+        error_message: null,
+      })
+    )
+    expect(checkoutCompletionModule.store[0]).toEqual(
+      expect.objectContaining({
+        id: "chkcpl_failed_retry",
+        order_id: "order_entry_existing",
+        status: "completed",
       })
     )
     expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
