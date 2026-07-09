@@ -63,10 +63,12 @@ function buildMetadata(
   method: "card" | "pix"
 ): Stripe.MetadataParam {
   const digest = correlationDigest(`${method}:${request.idempotency_key}`)
+  const paymentSessionId =
+    "payment_session_id" in request ? request.payment_session_id : undefined
 
   return {
     cart_id: request.cart_id,
-    session_id: `payses_${method}_${digest}`,
+    session_id: paymentSessionId ?? `payses_${method}_${digest}`,
     correlation_id: digest,
   }
 }

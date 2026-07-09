@@ -1,7 +1,10 @@
 import {
   ContainerRegistrationKeys,
   MedusaError,
+  Modules,
+  PaymentSessionStatus,
 } from "@medusajs/framework/utils"
+import { createPaymentCollectionForCartWorkflowId } from "@medusajs/core-flows"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import defaultMiddlewares from "../../src/api/middlewares"
 import {
@@ -158,6 +161,27 @@ function buildCompleteGuestCart(
   }
 }
 
+type MedusaPaymentSessionMock = {
+  id: string
+  status: string
+  amount?: number
+  currency_code?: string
+  data?: Record<string, unknown>
+}
+
+type MedusaPaymentCollectionMock = {
+  id: string
+  payment_sessions: MedusaPaymentSessionMock[]
+}
+
+function createMedusaPaymentState() {
+  return {
+    collectionSequence: 1,
+    sessionSequence: 1,
+    cartPaymentCollections: {} as Record<string, MedusaPaymentCollectionMock>,
+  }
+}
+
 type SessionCapableRequest = MedusaRequest & {
   auth_context?: {
     actor_id?: string
@@ -234,10 +258,13 @@ function readRemoteQueryTarget(queryObject: RemoteQueryShape): {
 
 function createRemoteQueryResolver(input: {
   carts?: Record<string, StoreCartPreOrderRecord & { total?: number | null }>
+  medusaPaymentState?: ReturnType<typeof createMedusaPaymentState>
 }) {
   const carts = input.carts ?? {}
+  const medusaPaymentState =
+    input.medusaPaymentState ?? createMedusaPaymentState()
 
-  return jest.fn(async (queryObject: RemoteQueryShape) => {
+  const resolver = jest.fn(async (queryObject: RemoteQueryShape) => {
     const { entryPoint, filters } = readRemoteQueryTarget(queryObject)
 
     if (entryPoint === "cart" && filters.id) {
@@ -245,8 +272,124 @@ function createRemoteQueryResolver(input: {
       return cart ? [cart] : []
     }
 
+    if (entryPoint === "cart_payment_collection" && filters.cart_id) {
+      const paymentCollection =
+        medusaPaymentState.cartPaymentCollections[String(filters.cart_id)]
+
+      return paymentCollection
+        ? [
+            {
+              payment_collection: paymentCollection,
+            },
+          ]
+        : []
+    }
+
     return []
   })
+
+  ;(resolver as typeof resolver & {
+    medusaPaymentState: ReturnType<typeof createMedusaPaymentState>
+  }).medusaPaymentState = medusaPaymentState
+
+  return resolver
+}
+
+function createWorkflowEngineMock(
+  medusaPaymentState: ReturnType<typeof createMedusaPaymentState>
+) {
+  return {
+    run: jest.fn(async (workflowId: string, options: { input?: { cart_id?: string } }) => {
+      if (workflowId !== createPaymentCollectionForCartWorkflowId) {
+        throw new Error(`unexpected workflow ${workflowId}`)
+      }
+
+      const cartId = options.input?.cart_id
+      if (!cartId) {
+        throw new Error("cart_id required")
+      }
+
+      medusaPaymentState.cartPaymentCollections[cartId] ??= {
+        id: `pay_col_http_${String(
+          medusaPaymentState.collectionSequence++
+        ).padStart(2, "0")}`,
+        payment_sessions: [],
+      }
+    }),
+  }
+}
+
+function createMedusaPaymentModuleMock(
+  medusaPaymentState: ReturnType<typeof createMedusaPaymentState>
+) {
+  function findCollectionById(collectionId: string) {
+    return Object.values(medusaPaymentState.cartPaymentCollections).find(
+      (collection) => collection.id === collectionId
+    )
+  }
+
+  function updateSession(
+    patch: { id: string; status?: string; data?: Record<string, unknown> }
+  ) {
+    for (const collection of Object.values(
+      medusaPaymentState.cartPaymentCollections
+    )) {
+      const session = collection.payment_sessions.find(
+        (item) => item.id === patch.id
+      )
+
+      if (session) {
+        if (patch.status) {
+          session.status = patch.status
+        }
+
+        if (patch.data) {
+          session.data = patch.data
+        }
+
+        return session
+      }
+    }
+
+    return null
+  }
+
+  return {
+    createPaymentSession_: jest.fn(
+      async (
+        paymentCollectionId: string,
+        data: {
+          provider_id: string
+          amount: number
+          currency_code: string
+          data?: Record<string, unknown>
+        }
+      ) => {
+        const collection = findCollectionById(paymentCollectionId)
+        if (!collection) {
+          throw new Error("payment collection not found")
+        }
+
+        const session = {
+          id: `payses_http_${String(
+            medusaPaymentState.sessionSequence++
+          ).padStart(2, "0")}`,
+          status: PaymentSessionStatus.PENDING,
+          amount: data.amount,
+          currency_code: data.currency_code,
+          data: data.data ?? {},
+        }
+        collection.payment_sessions.push(session)
+
+        return session
+      }
+    ),
+    updatePaymentSessions: jest.fn(async (data) => {
+      const rows = Array.isArray(data) ? data : [data]
+
+      return rows.map((row) => updateSession(row)).filter(Boolean)
+    }),
+  }
 }
 
 function createPaymentAttemptModuleMock(
@@ -288,7 +431,7 @@ function createStripeCardInitiationLayerMock(
       client_secret: "pi_http_card_mock_secret_test",
       metadata: {
         cart_id: request.cart_id,
-        session_id: "payses_http_card_mock",
+        session_id: request.payment_session_id ?? "payses_http_card_mock",
       },
       ...overrides,
     })),
@@ -329,14 +472,32 @@ function wireScope(
   options: {
     remoteQuery?: ReturnType<typeof createRemoteQueryResolver>
     paymentAttemptModule?: unknown
+    medusaPaymentModule?: unknown
+    workflowEngine?: unknown
     paymentAttemptModuleResolveError?: Error
     stripeCardInitiationLayer?: StripeCardInitiationLayer | null
     stripePixInitiationLayer?: StripePixInitiationLayer | null
   } = {}
 ) {
-  const remoteQuery = options.remoteQuery ?? createRemoteQueryResolver({})
+  const defaultMedusaPaymentState = createMedusaPaymentState()
+  const remoteQuery =
+    options.remoteQuery ??
+    createRemoteQueryResolver({
+      medusaPaymentState: defaultMedusaPaymentState,
+    })
+  const medusaPaymentState =
+    (
+      remoteQuery as typeof remoteQuery & {
+        medusaPaymentState?: ReturnType<typeof createMedusaPaymentState>
+      }
+    ).medusaPaymentState ?? defaultMedusaPaymentState
   const paymentAttemptModule =
     options.paymentAttemptModule ?? createPaymentAttemptModuleMock()
+  const medusaPaymentModule =
+    options.medusaPaymentModule ??
+    createMedusaPaymentModuleMock(medusaPaymentState)
+  const workflowEngine =
+    options.workflowEngine ?? createWorkflowEngineMock(medusaPaymentState)
   const stripeCardInitiationLayer =
     options.stripeCardInitiationLayer === undefined
       ? createStripeCardInitiationLayerMock()
@@ -359,6 +520,14 @@ function wireScope(
       return paymentAttemptModule
     }
 
+    if (key === Modules.PAYMENT) {
+      return medusaPaymentModule
+    }
+
+    if (key === Modules.WORKFLOW_ENGINE) {
+      return workflowEngine
+    }
+
     if (key === STRIPE_CARD_INITIATION_LAYER) {
       return stripeCardInitiationLayer
     }
@@ -370,7 +539,7 @@ function wireScope(
     return undefined
   }) as SessionCapableRequest["scope"]["resolve"]
 
-  return { remoteQuery, paymentAttemptModule }
+  return { remoteQuery, paymentAttemptModule, medusaPaymentModule, workflowEngine }
 }
 
 function assertCardPaymentResponseBody(body: unknown) {
@@ -477,7 +646,8 @@ describe("payment attempt store card contract", () => {
           active_cart_id: cart.id,
         },
       })
-      wireScope(req, { remoteQuery })
+      const { paymentAttemptModule, medusaPaymentModule, workflowEngine } =
+        wireScope(req, { remoteQuery })
 
       const res = await invokeCardPaymentRoute(req)
 
@@ -487,6 +657,41 @@ describe("payment attempt store card contract", () => {
       expect(body.payment_attempt.amount).toBe(9900)
       expect(body.payment_attempt.currency_code).toBe("BRL")
       expect(body.payment_attempt.status).toBe("card_client_secret_created")
+      expect(workflowEngine.run).toHaveBeenCalledWith(
+        createPaymentCollectionForCartWorkflowId,
+        {
+          input: { cart_id: cart.id },
+        }
+      )
+      expect(medusaPaymentModule.createPaymentSession_).toHaveBeenCalledWith(
+        "pay_col_http_01",
+        expect.objectContaining({
+          provider_id: "pp_stripe_stripe",
+          amount: 9900,
+          currency_code: "brl",
+          data: {},
+        })
+      )
+      expect(medusaPaymentModule.updatePaymentSessions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "payses_http_01",
+          status: PaymentSessionStatus.PENDING,
+          data: expect.objectContaining({
+            id: "pi_http_card_mock",
+            provider_payment_intent_id: "pi_http_card_mock",
+            provider_payment_session_id: "payses_http_01",
+          }),
+        })
+      )
+      expect(paymentAttemptModule.createPaymentAttempts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payment_collection_id: "pay_col_http_01",
+          payment_session_id: "payses_http_01",
+          provider_payment_intent_id: "pi_http_card_mock",
+          provider_payment_session_id: "payses_http_01",
+        })
+      )
+      expect(body.payment_attempt.client_secret).toContain("pi_http_card_mock")
     })
 
     it("falha fechada quando camada Stripe card nao esta configurada", async () => {

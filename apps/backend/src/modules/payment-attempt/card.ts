@@ -39,6 +39,7 @@ export type StripeCardInitiationRequest = {
   currency_code: string
   cart_id: string
   idempotency_key: string
+  payment_session_id?: string | null
 }
 
 export type StripeCardInitiationLayer = {
@@ -54,7 +55,10 @@ export type StartCardPaymentAttemptInput = {
   existingAttempts: PaymentAttemptRecord[]
   stripeLayer: StripeCardInitiationLayer
   generateId: () => string
-  generatePaymentCollectionId: () => string
+  paymentSession: {
+    payment_collection_id: string
+    payment_session_id: string
+  }
   at?: Date
 }
 
@@ -159,6 +163,7 @@ export async function startCardPaymentAttempt(
       currency_code: eligibility.currency_code.toLowerCase(),
       cart_id: input.cart.id,
       idempotency_key: idempotencyKey,
+      payment_session_id: input.paymentSession.payment_session_id,
     })
   } catch (error) {
     wrapStripeInitiationError(error)
@@ -169,15 +174,14 @@ export async function startCardPaymentAttempt(
 
   assertStripeCardPaymentIntentMatchesEligibility(persistable, eligibility)
 
-  const paymentCollectionId = input.generatePaymentCollectionId()
   const newAttemptId = input.generateId()
 
   const { supersededAttempts, newAttempt } = createPaymentAttemptReplacingActive(
     attemptsAfterInvalidation,
     {
       cart_id: input.cart.id,
-      payment_collection_id: paymentCollectionId,
-      payment_session_id: persistable.provider_payment_session_id,
+      payment_collection_id: input.paymentSession.payment_collection_id,
+      payment_session_id: input.paymentSession.payment_session_id,
       provider: STRIPE_CANONICAL_PROVIDER,
       provider_payment_intent_id: persistable.provider_payment_intent_id,
       provider_payment_session_id: persistable.provider_payment_session_id,

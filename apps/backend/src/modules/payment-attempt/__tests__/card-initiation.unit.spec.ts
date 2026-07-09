@@ -33,7 +33,13 @@ function createStripeLayer(
   rawIntent: Record<string, unknown> = mockRawStripeCardPaymentIntent()
 ): StripeCardInitiationLayer {
   return {
-    createCardPaymentIntent: jest.fn(async () => rawIntent),
+    createCardPaymentIntent: jest.fn(async (request) => ({
+      ...rawIntent,
+      metadata: {
+        ...((rawIntent.metadata as Record<string, unknown> | undefined) ?? {}),
+        session_id: request.payment_session_id,
+      },
+    })),
   }
 }
 
@@ -51,7 +57,7 @@ function createSyntheticStripeCardLayer(): StripeCardInitiationLayer {
         client_secret: `pi_synthetic_${suffix}_secret_synthetic`,
         metadata: {
           cart_id: request.cart_id,
-          session_id: `payses_synthetic_${suffix}`,
+          session_id: request.payment_session_id ?? `payses_synthetic_${suffix}`,
         },
       }
     },
@@ -107,6 +113,11 @@ function assertResponseHasClientSecretOnlyInImmediate(
   )
 }
 
+const MEDUSA_PAYMENT_SESSION = {
+  payment_collection_id: "paycol_real_01",
+  payment_session_id: "payses_real_01",
+}
+
 describe("04-04 startCardPaymentAttempt", () => {
   const completeCart = buildCompleteGuestCart({
     id: "cart_guest_01",
@@ -122,7 +133,7 @@ describe("04-04 startCardPaymentAttempt", () => {
       existingAttempts: [],
       stripeLayer,
       generateId: () => "payatt_new_01",
-      generatePaymentCollectionId: () => "paycol_new_01",
+      paymentSession: MEDUSA_PAYMENT_SESSION,
       at: new Date("2026-06-29T12:00:00.000Z"),
     })
 
@@ -148,7 +159,7 @@ describe("04-04 startCardPaymentAttempt", () => {
       existingAttempts: [],
       stripeLayer,
       generateId: () => "payatt_new_01",
-      generatePaymentCollectionId: () => "paycol_new_01",
+      paymentSession: MEDUSA_PAYMENT_SESSION,
     })
 
     expect(result.attempt.order_id).toBeNull()
@@ -157,6 +168,9 @@ describe("04-04 startCardPaymentAttempt", () => {
       "stripe_safe_layer"
     )
     expect(result.attempt.provider_payment_intent_id).toBe("pi_card_init_mock")
+    expect(result.attempt.payment_collection_id).toBe("paycol_real_01")
+    expect(result.attempt.payment_session_id).toBe("payses_real_01")
+    expect(result.attempt.provider_payment_session_id).toBe("payses_real_01")
     expect(result.attempt.amount).toBe(9900)
     expect(result.attempt.currency_code).toBe("brl")
     expect(result.attempt).not.toHaveProperty("client_secret")
@@ -172,7 +186,7 @@ describe("04-04 startCardPaymentAttempt", () => {
       existingAttempts: [],
       stripeLayer,
       generateId: () => "payatt_new_01",
-      generatePaymentCollectionId: () => "paycol_new_01",
+      paymentSession: MEDUSA_PAYMENT_SESSION,
     })
 
     expect(result.paymentSessionData).not.toHaveProperty("client_secret")
@@ -196,7 +210,7 @@ describe("04-04 startCardPaymentAttempt", () => {
       existingAttempts: [existingActiveAttempt()],
       stripeLayer,
       generateId: () => "payatt_new_01",
-      generatePaymentCollectionId: () => "paycol_new_01",
+      paymentSession: MEDUSA_PAYMENT_SESSION,
     })
 
     expect(result.supersededAttempts).toHaveLength(1)
@@ -219,7 +233,7 @@ describe("04-04 startCardPaymentAttempt", () => {
         existingAttempts: [],
         stripeLayer: createStripeLayer(),
         generateId: () => "payatt_new_01",
-        generatePaymentCollectionId: () => "paycol_new_01",
+        paymentSession: MEDUSA_PAYMENT_SESSION,
       })
     ).rejects.toThrow(MedusaError)
   })
@@ -243,7 +257,7 @@ describe("04-04 startCardPaymentAttempt", () => {
         existingAttempts: [],
         stripeLayer,
         generateId: () => "payatt_new_01",
-        generatePaymentCollectionId: () => "paycol_new_01",
+        paymentSession: MEDUSA_PAYMENT_SESSION,
       })
     } catch (error) {
       caught = error
@@ -269,7 +283,7 @@ describe("04-04 startCardPaymentAttempt", () => {
         existingAttempts: [],
         stripeLayer,
         generateId: () => "payatt_new_01",
-        generatePaymentCollectionId: () => "paycol_new_01",
+        paymentSession: MEDUSA_PAYMENT_SESSION,
       })
     ).rejects.toThrow("Stripe retornou dados de pagamento divergentes do carrinho.")
   })
@@ -287,7 +301,7 @@ describe("04-04 startCardPaymentAttempt", () => {
         existingAttempts: [],
         stripeLayer,
         generateId: () => "payatt_new_01",
-        generatePaymentCollectionId: () => "paycol_new_01",
+        paymentSession: MEDUSA_PAYMENT_SESSION,
       })
     ).rejects.toThrow("Stripe retornou dados de pagamento divergentes do carrinho.")
   })

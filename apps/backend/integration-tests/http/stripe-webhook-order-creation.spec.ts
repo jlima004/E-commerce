@@ -378,7 +378,7 @@ function buildOrderCart(
           },
           prices: [
             {
-              amount: 9900,
+              amount: 4900,
               currency_code: "brl",
             },
           ],
@@ -404,7 +404,7 @@ function buildOrderCart(
           },
           prices: [
             {
-              amount: 9900,
+              amount: 5000,
               currency_code: "brl",
             },
           ],
@@ -1368,6 +1368,12 @@ describe("stripe webhook order creation integration", () => {
               },
               template_mode: "fixed",
             },
+            prices: [
+              {
+                amount: 9900,
+                currency_code: "brl",
+              },
+            ],
           },
         },
       ],

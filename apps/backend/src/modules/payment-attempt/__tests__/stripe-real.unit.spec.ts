@@ -64,7 +64,10 @@ describe("04A RealStripeCardInitiationLayer", () => {
       existingAttempts: [],
       stripeLayer,
       generateId: () => "payatt_real_card_01",
-      generatePaymentCollectionId: () => "paycol_real_card_01",
+      paymentSession: {
+        payment_collection_id: "paycol_real_card_01",
+        payment_session_id: "payses_real_card_01",
+      },
       at: new Date("2026-06-29T18:00:00.000Z"),
     })
 
@@ -80,6 +83,9 @@ describe("04A RealStripeCardInitiationLayer", () => {
       })
     )
     expect(result.attempt.provider_payment_intent_id).toBe("pi_real_card_mock")
+    expect(result.attempt.payment_collection_id).toBe("paycol_real_card_01")
+    expect(result.attempt.payment_session_id).toBe("payses_real_card_01")
+    expect(result.attempt.provider_payment_session_id).toBe("payses_real_card_01")
     expect(result.attempt.order_id).toBeNull()
     expect(result.response.client_secret).toBe("pi_real_card_mock_secret_test")
     expect(result.attempt).not.toHaveProperty("client_secret")

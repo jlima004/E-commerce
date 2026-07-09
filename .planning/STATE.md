@@ -186,10 +186,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-03T13:38:00-03:00
-Stopped at: Phase 11 closed; Phase 12 not started; next phase blocked until explicit approval
-Resume file: `.planning/phases/11-refunds-exchanges-admin/11-CLOSURE.md`
-Next permitted step: Human review of Phase 11 closure only. No Phase 12 planning, execution, runtime, tests, build, migration, deploy, real Stripe, Stripe CLI smoke, real Gelato, Correios API, broad OperationalAlert, broad AdminActionLog, or migration application without separate explicit approval.
+Last session: 2026-07-09T12:58:17-03:00
+Stopped at: Session resumed for the narrow PaymentCollection initiation hotfix; proceeding from the operational handoff.
+Resume file: `.planning/ops/payment-collection-initiation-hotfix-2026-07-09-HANDOFF.md`
+Next permitted step: Continue only the Store API card PaymentCollection/PaymentSession hotfix from the handoff. No Phase 12 planning or execution, refund smoke, Stripe refund, live secret usage, real Gelato, Correios API, manual Order/PaymentCollection/PaymentSession SQL inserts, new migration without explicit approval, package/lockfile changes, deploy, or masking of `completeCartWorkflow` errors.
 
 ## Quick Tasks Completed
 

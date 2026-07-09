@@ -10,6 +10,27 @@ import { medusaLogger } from "./src/observability/medusa-logger"
 
 const projectRedisUrl = resolveProjectRedisUrl(env)
 const projectRedisOptions = redisOptionsForUrl(projectRedisUrl)
+const stripePaymentModule =
+  env.STRIPE_REAL_INITIATION_ENABLED && env.STRIPE_SECRET_KEY
+    ? [
+        {
+          resolve: "@medusajs/medusa/payment",
+          options: {
+            providers: [
+              {
+                resolve: "@medusajs/medusa/payment-stripe",
+                id: "stripe",
+                options: {
+                  apiKey: env.STRIPE_SECRET_KEY,
+                  webhookSecret: env.STRIPE_WEBHOOK_SECRET,
+                  capture: true,
+                },
+              },
+            ],
+          },
+        },
+      ]
+    : []
 
 module.exports = defineConfig({
   logger: medusaLogger,
@@ -32,6 +53,7 @@ module.exports = defineConfig({
     },
   },
   modules: [
+    ...stripePaymentModule,
     ...buildRedisModules(env),
     ...buildStorageModule(env),
     {
