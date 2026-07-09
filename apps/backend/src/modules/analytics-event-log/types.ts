@@ -73,7 +73,7 @@ export type PurchaseCompletedPayloadInput = {
   checkout_completion_log_id: string
   payment_intent_id: string
   payment_method_type: "card" | "pix"
-  amount: number
+  amount: number | string | bigint
   currency_code: string
   order_status: string
   payment_status: string

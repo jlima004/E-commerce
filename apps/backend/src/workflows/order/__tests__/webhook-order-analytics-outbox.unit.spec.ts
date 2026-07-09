@@ -428,6 +428,75 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
     )
   })
 
+  it("normaliza PaymentAttempt.amount antes de gravar purchase_completed depois da Order criada", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(
+      buildAttempt({
+        amount: "9900" as unknown as number,
+        currency_code: "BRL",
+      })
+    )
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const analyticsEventLogModule = createAnalyticsEventLogModule()
+    const emailDeliveryLogModule = createEmailDeliveryLogModule([
+      {
+        id: "emlog_outbox_amount_existing_01",
+        idempotency_key: "order-confirmation/order_outbox_amount_01",
+        order_id: "order_outbox_amount_01",
+        status: "recorded",
+      },
+    ])
+    const orderModule = createOrderModule()
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        analyticsEventLogModule,
+        emailDeliveryLogModule,
+        orderModule,
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-07-01T12:00:00.000Z"),
+        getCart: async () => buildCart(),
+        persistCartSnapshots: jest.fn(async () => undefined),
+        runCompleteCart: jest.fn(async () => {
+          orderModule.store.push({
+            id: "order_outbox_amount_01",
+            cart_id: "cart_outbox_01",
+            email: "cliente@compras.test",
+            display_id: 1002,
+            metadata: null,
+          })
+
+          return { id: "order_outbox_amount_01" }
+        }),
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "created",
+        order_id: "order_outbox_amount_01",
+        checkout_completion_status: "completed",
+      })
+    )
+    expect(paymentAttemptModule.store[0]?.order_id).toBe("order_outbox_amount_01")
+    expect(checkoutCompletionModule.store[0]).toEqual(
+      expect.objectContaining({
+        status: "completed",
+        order_id: "order_outbox_amount_01",
+      })
+    )
+    expect(analyticsEventLogModule.store).toHaveLength(1)
+    expect(analyticsEventLogModule.store[0]?.payload).toEqual(
+      expect.objectContaining({
+        amount: 9900,
+        currency_code: "brl",
+      })
+    )
+  })
+
   it("replay reutiliza purchase_completed existente sem duplicar evento", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(
       buildAttempt()

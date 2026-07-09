@@ -949,6 +949,36 @@ function resolvePositiveIntegerCents(value: unknown): number | null {
   return cents !== null && cents > 0 ? cents : null
 }
 
+function normalizePurchaseCompletedAmountFromAttempt(
+  attempt: Pick<PaymentAttemptRecord, "amount">
+): number {
+  const amount = resolvePositiveIntegerCents(attempt.amount)
+
+  if (amount === null) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_ANALYTICS_AMOUNT_INVALID",
+      "Amount do PaymentAttempt invalido para o payload local de analytics."
+    )
+  }
+
+  return amount
+}
+
+function normalizePurchaseCompletedCurrencyCodeFromAttempt(
+  attempt: Pick<PaymentAttemptRecord, "currency_code">
+): "brl" {
+  const currencyCode = attempt.currency_code?.trim().toLowerCase()
+
+  if (currencyCode !== "brl") {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_ANALYTICS_CURRENCY_CODE_INVALID",
+      "Currency code do PaymentAttempt invalido para o payload local de analytics."
+    )
+  }
+
+  return "brl"
+}
+
 function buildPurchaseCompletedPayloadItems(
   cart: ConfirmedAttemptCartRecord
 ): AnalyticsEventLogRecord["payload"]["items"] {
@@ -1030,6 +1060,10 @@ async function ensurePurchaseCompletedRecorded(input: {
 
   const module = resolveAnalyticsEventLogModule(input.container)
   const payloadItems = buildPurchaseCompletedPayloadItems(input.cart)
+  const amount = normalizePurchaseCompletedAmountFromAttempt(input.attempt)
+  const currencyCode = normalizePurchaseCompletedCurrencyCodeFromAttempt(
+    input.attempt
+  )
   const event = buildAnalyticsEventLogRecord(
     {
       idempotency_key: idempotencyKey,
@@ -1047,8 +1081,8 @@ async function ensurePurchaseCompletedRecorded(input: {
         checkout_completion_log_id: input.checkoutCompletionLogId,
         payment_intent_id: input.paymentIntentId,
         payment_method_type: input.attempt.payment_method_type,
-        amount: input.attempt.amount,
-        currency_code: input.attempt.currency_code,
+        amount,
+        currency_code: currencyCode,
         order_status: "confirmed",
         payment_status: "captured",
         item_count: payloadItems.length,

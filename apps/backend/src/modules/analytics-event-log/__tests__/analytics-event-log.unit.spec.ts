@@ -184,6 +184,17 @@ describe("AnalyticsEventLog payload contract", () => {
     expect(payload).not.toHaveProperty("ignored_field")
   })
 
+  it("normalizes purchase amount from supported minor-unit runtime formats", () => {
+    for (const amount of [9900, "9900", 9900n]) {
+      expect(
+        buildPurchaseCompletedPayload({
+          ...buildPayload(),
+          amount,
+        }).amount
+      ).toBe(9900)
+    }
+  })
+
   it("rejects forbidden payload input", () => {
     expect(() =>
       buildPurchaseCompletedPayload({

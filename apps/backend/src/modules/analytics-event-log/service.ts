@@ -160,15 +160,30 @@ function normalizeNonNegativeInteger(value: number, errorCode: string): number {
   return value
 }
 
-function normalizeStrictPositiveInteger(
-  value: number,
-  errorCode: string
-): number {
-  if (!Number.isInteger(value) || value <= 0) {
+function normalizeStrictPositiveInteger(value: unknown, errorCode: string): number {
+  let normalized: number | null = null
+
+  if (typeof value === "bigint") {
+    normalized =
+      value <= BigInt(Number.MAX_SAFE_INTEGER) && value > 0n
+        ? Number(value)
+        : null
+  } else if (typeof value === "number") {
+    normalized = Number.isSafeInteger(value) ? value : null
+  } else if (typeof value === "string") {
+    const trimmed = value.trim()
+
+    if (/^\d+$/.test(trimmed)) {
+      const parsed = Number(trimmed)
+      normalized = Number.isSafeInteger(parsed) ? parsed : null
+    }
+  }
+
+  if (normalized === null || normalized <= 0) {
     throw new Error(errorCode)
   }
 
-  return value
+  return normalized
 }
 
 function normalizeIsoDate(
