@@ -348,9 +348,15 @@ describe("validateCreateOrderFromConfirmedPaymentAttemptInput", () => {
 
 describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
   const originalSupportEmail = process.env.SUPPORT_EMAIL
+  const originalResendEnabled = process.env.RESEND_ORDER_CONFIRMATION_ENABLED
+  const originalResendApiKey = process.env.RESEND_API_KEY
+  const originalResendFromEmail = process.env.RESEND_FROM_EMAIL
 
   beforeEach(() => {
     process.env.SUPPORT_EMAIL = "support@pedido.test"
+    process.env.RESEND_ORDER_CONFIRMATION_ENABLED = "true"
+    process.env.RESEND_API_KEY = "re_test_order_entrypoint"
+    process.env.RESEND_FROM_EMAIL = "pedidos@pedido.test"
   })
 
   afterEach(() => {
@@ -358,6 +364,24 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
       delete process.env.SUPPORT_EMAIL
     } else {
       process.env.SUPPORT_EMAIL = originalSupportEmail
+    }
+
+    if (originalResendEnabled === undefined) {
+      delete process.env.RESEND_ORDER_CONFIRMATION_ENABLED
+    } else {
+      process.env.RESEND_ORDER_CONFIRMATION_ENABLED = originalResendEnabled
+    }
+
+    if (originalResendApiKey === undefined) {
+      delete process.env.RESEND_API_KEY
+    } else {
+      process.env.RESEND_API_KEY = originalResendApiKey
+    }
+
+    if (originalResendFromEmail === undefined) {
+      delete process.env.RESEND_FROM_EMAIL
+    } else {
+      process.env.RESEND_FROM_EMAIL = originalResendFromEmail
     }
   })
 

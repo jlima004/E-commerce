@@ -6,9 +6,9 @@ current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
 status: phase-11-closed-phase-12-blocked
 stopped_at: Phase 11 closed; Phase 12 not started; next phase blocked until explicit approval
-last_updated: "2026-07-09T16:22:00-03:00"
+last_updated: "2026-07-09T19:33:00-03:00"
 last_activity: 2026-07-09
-last_activity_desc: Completed quick task 260709-mkp: corrected purchase_completed analytics amount normalization from PaymentAttempt.amount
+last_activity_desc: Completed quick task 260709-r41: removed the fixed AnalyticsEventLog preview ID from persistence
 progress:
   total_phases: 12
   completed_phases: 11
@@ -54,7 +54,7 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 Phase: 12 (Ops, Audit & Critical Tests) — not planned; not started; blocked
 Plan: 50/50 complete (milestone plans)
 Status: phase-11-closed-phase-12-blocked
-Last activity: 2026-07-08 - Completed quick task 260708-q76: propagated real Order creation errors in the Stripe webhook flow
+Last activity: 2026-07-09 - Completed quick task 260709-r41: removed the fixed AnalyticsEventLog preview ID from persistence
 
 Progress: [██████████] 100% (50/50 plans complete); Phase 11 closed; Phase 12 blocked
 
@@ -220,4 +220,6 @@ Next permitted step: Continue only the Store API card PaymentCollection/PaymentS
 | 2026-07-02 | phase-11-planning | Planned Phase 11 into 4 manual-review-gated slices plus context, research and validation artifacts; no runtime, tests, build, migration, deploy, real Stripe, real Gelato, Correios API, Stripe CLI smoke, broad Phase 12 alert/audit module, or Phase 12 work started. |
 | 2026-07-08 | 260708-q76-propagar-erro-real-da-cria-o-de-order-no | Propagated sanitized real Order creation errors through `CheckoutCompletionLog`, `WebhookEventLog` and structured Stripe webhook logs; no Phase 12, migrations, package changes, real Stripe/Gelato/Correios or manual Order work. |
 | 2026-07-09 | 260709-mkp-gate-tecnico-corrigir-amount-do-purchase | Corrected `purchase_completed` analytics amount normalization from `PaymentAttempt.amount`, preserving Order/PaymentAttempt creation and validating with focused unit tests plus build; no Phase 12, migrations, refund smoke, Stripe refund, `sk_live`, or real Stripe/Supabase/Gelato/Correios calls. |
+| 2026-07-09 | 260709-qtj-gate-tecnico-corrigir-email-delivery-sup | Gated confirmation-email enqueue on complete Resend config, so an incomplete smoke provider preserves terminal Order and local analytics without resolving EmailDeliveryLog or calling Resend; no migration, package/config secret, real provider, or Phase 12 work. |
+| 2026-07-09 | 260709-r41-gate-tecnico-substituir-id-fixo-anlevt-o | Removed the fixed AnalyticsEventLog preview ID before persistence, preserving PaymentIntent idempotency while letting the module generate unique IDs for distinct checkouts; no migration, package/config change, real provider, or Phase 12 work. |
 | 2026-07-03 | phase-11-closure | Closed Phase 11 documentally after accepted `11-01`..`11-04` evidence; `REF-01`..`REF-02`, `EXC-01`..`EXC-02` complete; Phase 12 blocked until explicit approval. |

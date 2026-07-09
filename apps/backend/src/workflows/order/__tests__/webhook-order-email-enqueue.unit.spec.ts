@@ -371,9 +371,15 @@ function createContainer(input: {
 
 describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", () => {
   const originalSupportEmail = process.env.SUPPORT_EMAIL
+  const originalResendEnabled = process.env.RESEND_ORDER_CONFIRMATION_ENABLED
+  const originalResendApiKey = process.env.RESEND_API_KEY
+  const originalResendFromEmail = process.env.RESEND_FROM_EMAIL
 
   beforeEach(() => {
     process.env.SUPPORT_EMAIL = SUPPORT_EMAIL
+    process.env.RESEND_ORDER_CONFIRMATION_ENABLED = "true"
+    process.env.RESEND_API_KEY = "re_test_email_enqueue"
+    process.env.RESEND_FROM_EMAIL = "pedidos@lojinha.test"
   })
 
   afterEach(() => {
@@ -381,6 +387,24 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
       delete process.env.SUPPORT_EMAIL
     } else {
       process.env.SUPPORT_EMAIL = originalSupportEmail
+    }
+
+    if (originalResendEnabled === undefined) {
+      delete process.env.RESEND_ORDER_CONFIRMATION_ENABLED
+    } else {
+      process.env.RESEND_ORDER_CONFIRMATION_ENABLED = originalResendEnabled
+    }
+
+    if (originalResendApiKey === undefined) {
+      delete process.env.RESEND_API_KEY
+    } else {
+      process.env.RESEND_API_KEY = originalResendApiKey
+    }
+
+    if (originalResendFromEmail === undefined) {
+      delete process.env.RESEND_FROM_EMAIL
+    } else {
+      process.env.RESEND_FROM_EMAIL = originalResendFromEmail
     }
   })
 
@@ -465,6 +489,48 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
       })
     )
     expect(JSON.stringify(emailDeliveryLogModule.store[0])).not.toContain(ORDER_EMAIL)
+  })
+
+  it("ignora e-mail com provider incompleto e preserva Order e analytics", async () => {
+    delete process.env.SUPPORT_EMAIL
+    process.env.RESEND_ORDER_CONFIRMATION_ENABLED = "true"
+    delete process.env.RESEND_API_KEY
+    delete process.env.RESEND_FROM_EMAIL
+
+    const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const analyticsEventLogModule = createAnalyticsEventLogModule()
+    const orderModule = createOrderModule()
+
+    const container = createContainer({
+      paymentAttemptModule,
+      checkoutCompletionModule,
+      analyticsEventLogModule,
+      orderModule,
+    })
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      container,
+      buildInput(),
+      {
+        now: () => new Date("2026-07-01T12:00:00.000Z"),
+        getCart: async () => buildCart(),
+        persistCartSnapshots: jest.fn(async () => undefined),
+        runCompleteCart: jest.fn(async () => {
+          orderModule.store.push(buildOrder())
+          return { id: "order_email_01" }
+        }),
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "created",
+        order_id: "order_email_01",
+      })
+    )
+    expect(analyticsEventLogModule.store).toHaveLength(1)
+    expect(container.resolve).not.toHaveBeenCalledWith("email_delivery_log")
+    expect(container.resolve).not.toHaveBeenCalledWith(EMAIL_DELIVERY_LOG_MODULE)
   })
 
   it("dois Orders distintos criam EmailDeliveryLogs com ids gerados distintos", async () => {

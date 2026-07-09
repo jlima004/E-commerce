@@ -348,9 +348,15 @@ function createContainer(input: {
 
 describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox", () => {
   const originalSupportEmail = process.env.SUPPORT_EMAIL
+  const originalResendEnabled = process.env.RESEND_ORDER_CONFIRMATION_ENABLED
+  const originalResendApiKey = process.env.RESEND_API_KEY
+  const originalResendFromEmail = process.env.RESEND_FROM_EMAIL
 
   beforeEach(() => {
     process.env.SUPPORT_EMAIL = "support@pedido.test"
+    process.env.RESEND_ORDER_CONFIRMATION_ENABLED = "true"
+    process.env.RESEND_API_KEY = "re_test_analytics_outbox"
+    process.env.RESEND_FROM_EMAIL = "pedidos@pedido.test"
   })
 
   afterEach(() => {
@@ -358,6 +364,24 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
       delete process.env.SUPPORT_EMAIL
     } else {
       process.env.SUPPORT_EMAIL = originalSupportEmail
+    }
+
+    if (originalResendEnabled === undefined) {
+      delete process.env.RESEND_ORDER_CONFIRMATION_ENABLED
+    } else {
+      process.env.RESEND_ORDER_CONFIRMATION_ENABLED = originalResendEnabled
+    }
+
+    if (originalResendApiKey === undefined) {
+      delete process.env.RESEND_API_KEY
+    } else {
+      process.env.RESEND_API_KEY = originalResendApiKey
+    }
+
+    if (originalResendFromEmail === undefined) {
+      delete process.env.RESEND_FROM_EMAIL
+    } else {
+      process.env.RESEND_FROM_EMAIL = originalResendFromEmail
     }
   })
 
@@ -410,6 +434,15 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
         payment_attempt_id: "payatt_outbox_01",
         checkout_completion_log_id: "chkcpl_outbox_1",
       })
+    )
+    const createInput = analyticsEventLogModule.createAnalyticsEventLogs.mock
+      .calls[0]?.[0] as Record<string, unknown>
+    expect(createInput).not.toHaveProperty("id")
+    expect(createInput).not.toHaveProperty("created_at")
+    expect(createInput).not.toHaveProperty("updated_at")
+    expect(createInput).not.toHaveProperty("deleted_at")
+    expect(JSON.stringify(createInput)).not.toContain(
+      joinKey("anlevt", "_order_entrypoint", "_pending")
     )
     expect(analyticsEventLogModule.store[0]?.payload).toEqual(
       expect.objectContaining({

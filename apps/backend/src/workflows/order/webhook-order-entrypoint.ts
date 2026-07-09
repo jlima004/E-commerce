@@ -48,6 +48,7 @@ import {
   buildEmailDeliveryLogRecord,
   buildOrderConfirmationEmailIdempotencyKey,
   buildOrderConfirmationEmailPayload,
+  isOrderConfirmationEmailDeliveryConfigured,
   isOrderConfirmationEmailLocallyRecorded,
   resolveOrderConfirmationSupportEmail,
 } from "../../modules/email-delivery-log/service"
@@ -1094,12 +1095,17 @@ async function ensurePurchaseCompletedRecorded(input: {
         recovery_origin: input.recoveryOrigin,
       },
     },
-    "anlevt_order_entrypoint_pending",
+    `anlevt_order_entrypoint_${input.paymentIntentId}`,
     input.now
   )
+  const createInput: Record<string, unknown> = { ...event }
+  delete createInput.id
+  delete createInput.created_at
+  delete createInput.updated_at
+  delete createInput.deleted_at
 
   try {
-    return asArray(await module.createAnalyticsEventLogs?.(event))[0] ?? null
+    return asArray(await module.createAnalyticsEventLogs?.(createInput))[0] ?? null
   } catch (error) {
     if (!isUniqueConstraintError(error)) {
       throw error
@@ -1305,6 +1311,10 @@ async function ensureOrderConfirmationEmailRecorded(input: {
     !input.purchaseCompletedEvent ||
     !isPurchaseCompletedLocallyRecorded(input.purchaseCompletedEvent)
   ) {
+    return null
+  }
+
+  if (!isOrderConfirmationEmailDeliveryConfigured()) {
     return null
   }
 
@@ -1728,7 +1738,9 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
     assertPaymentAttemptReplayCompatibility(attempt)
   }
   resolveAnalyticsEventLogModule(container)
-  resolveEmailDeliveryLogModule(container)
+  if (isOrderConfirmationEmailDeliveryConfigured()) {
+    resolveEmailDeliveryLogModule(container)
+  }
 
   let claim: Awaited<ReturnType<typeof claimCheckoutCompletionLog>>
 

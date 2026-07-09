@@ -237,6 +237,19 @@ export function isOrderConfirmationEmailLocallyRecorded(
   return EMAIL_DELIVERY_LOG_STATUSES.includes(status as EmailDeliveryStatus)
 }
 
+export function isOrderConfirmationEmailDeliveryConfigured(
+  env: Record<string, string | undefined> = process.env as Record<
+    string,
+    string | undefined
+  >
+): boolean {
+  return (
+    env.RESEND_ORDER_CONFIRMATION_ENABLED?.trim() === "true" &&
+    Boolean(env.RESEND_API_KEY?.trim()) &&
+    Boolean(env.RESEND_FROM_EMAIL?.trim())
+  )
+}
+
 export function resolveOrderConfirmationSupportEmail(
   env: Record<string, string | undefined> = process.env as Record<
     string,
