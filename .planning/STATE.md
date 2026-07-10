@@ -6,9 +6,9 @@ current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
 status: phase-11-closed-phase-12-blocked
 stopped_at: Quick gate 260710-dz0 stopped before refund; schema differs and local RefundRequest is missing
-last_updated: "2026-07-10T10:03:37-03:00"
+last_updated: "2026-07-10T13:44:11-03:00"
 last_activity: 2026-07-10
-last_activity_desc: Opened refund smoke gate 260710-dz0; preflight stopped before mutation and adjusted the gate to the real schema
+last_activity_desc: Completed local hotfix 260710-iyt for RefundRequest service context; remote refund smoke remains manually gated
 progress:
   total_phases: 12
   completed_phases: 11
@@ -54,7 +54,7 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 Phase: 12 (Ops, Audit & Critical Tests) — not planned; not started; blocked
 Plan: 50/50 complete (milestone plans)
 Status: phase-11-closed-phase-12-blocked
-Last activity: 2026-07-10 - Opened refund smoke gate 260710-dz0; preflight stopped before mutation and adjusted the gate to the real schema
+Last activity: 2026-07-10 - Completed local hotfix 260710-iyt for RefundRequest service context; remote refund smoke remains manually gated
 
 Progress: [██████████] 100% (50/50 plans complete); Phase 11 closed; Phase 12 blocked
 
@@ -224,4 +224,5 @@ Next permitted step: After explicit approval of the adjusted gate, create the lo
 | 2026-07-09 | 260709-qtj-gate-tecnico-corrigir-email-delivery-sup | Gated confirmation-email enqueue on complete Resend config, so an incomplete smoke provider preserves terminal Order and local analytics without resolving EmailDeliveryLog or calling Resend; no migration, package/config secret, real provider, or Phase 12 work. |
 | 2026-07-09 | 260709-r41-gate-tecnico-substituir-id-fixo-anlevt-o | Removed the fixed AnalyticsEventLog preview ID before persistence, preserving PaymentIntent idempotency while letting the module generate unique IDs for distinct checkouts; no migration, package/config change, real provider, or Phase 12 work. |
 | 2026-07-10 | 260710-dz0-gate-t-cnico-stripe-refund-smoke-test-mo | Completed the read-only refund preflight, stopped before mutation on the real-schema mismatch and missing RefundRequest, and recorded the adjusted two-step gate; no Stripe refund or DB mutation occurred. |
+| 2026-07-10 | 260710-iyt-corrigir-perda-de-contexto-this-do-refun | Preserved RefundRequest MedusaService method context in the Admin refund endpoint; context-dependent regression, 201/200 replay, related tests and build pass; remote Stripe smoke remains manually gated. |
 | 2026-07-03 | phase-11-closure | Closed Phase 11 documentally after accepted `11-01`..`11-04` evidence; `REF-01`..`REF-02`, `EXC-01`..`EXC-02` complete; Phase 12 blocked until explicit approval. |
