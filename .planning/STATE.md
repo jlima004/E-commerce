@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
 status: phase-11-closed-phase-12-blocked
-stopped_at: Phase 11 closed; Phase 12 not started; next phase blocked until explicit approval
-last_updated: "2026-07-09T19:33:00-03:00"
-last_activity: 2026-07-09
-last_activity_desc: Completed quick task 260709-r41: removed the fixed AnalyticsEventLog preview ID from persistence
+stopped_at: Quick gate 260710-dz0 stopped before refund; schema differs and local RefundRequest is missing
+last_updated: "2026-07-10T10:03:37-03:00"
+last_activity: 2026-07-10
+last_activity_desc: Opened refund smoke gate 260710-dz0; preflight stopped before mutation and adjusted the gate to the real schema
 progress:
   total_phases: 12
   completed_phases: 11
@@ -54,7 +54,7 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 Phase: 12 (Ops, Audit & Critical Tests) — not planned; not started; blocked
 Plan: 50/50 complete (milestone plans)
 Status: phase-11-closed-phase-12-blocked
-Last activity: 2026-07-09 - Completed quick task 260709-r41: removed the fixed AnalyticsEventLog preview ID from persistence
+Last activity: 2026-07-10 - Opened refund smoke gate 260710-dz0; preflight stopped before mutation and adjusted the gate to the real schema
 
 Progress: [██████████] 100% (50/50 plans complete); Phase 11 closed; Phase 12 blocked
 
@@ -173,6 +173,7 @@ None yet.
 - [Phase 9]: Gelato has no official Medusa provider/SDK confirmed in the consulted official docs; REST direct remains planned. Gelato webhook auth resolved documentally and implemented (`09-04`): HTTP Header fail-closed. Phase 09 closed at manual gate (`09-CLOSURE.md`). Migration real not applied. Production Gelato dispatch/webhook smoke not executed — separate deployment gates remain.
 - [Phase 10]: Public guest tracking implemented as token-only, hash-only, sanitized, rate-limited, fail-closed surface on branch `gsd/phase-10-secure-guest-tracking`. Phase 10 closed at manual gate (`10-CLOSURE.md`). Migration real not applied. Process-local rate limit documented; global Redis/DB-backed limiter deferred.
 - [Phase 11]: Refund/exchange/admin scope is complete and closed on branch `gsd/phase-11-refunds-exchanges-admin` (`11-CLOSURE.md`). Refund financial truth finalized only by Stripe refund object webhook confirmation; `charge.refunded` does not double-count; refund does not auto-cancel `order_status`; exchanges remain operational without automatic refunds; Correios remains manual/semi-automatic with no API integration; broad `OperationalAlert` / `AdminActionLog` stays Phase 12. Migration real, cross-dyno refund lock, and Stripe refund production smoke remain separate gates.
+- [Quick 260710-dz0]: Stripe refund smoke preflight stopped before mutation because core `refund` has no `order_id`/`status`/`currency_code` and no local `refund_request` exists for the target Order. A direct Stripe refund would be ignored as `REFUND_WEBHOOK_REQUEST_NOT_FOUND`. The adjusted gate requires authenticated `POST /admin/refunds/request` before the Stripe test-mode refund. It also records that current runtime updates `refund_request` + Order metadata, not core `refund`/`payment_collection.refunded_amount`, and has no refund-email flow.
 - [Phase 12]: Ops, Audit & Critical Tests is **not planned**, **not started**, and **blocked until explicit human approval**. Do not plan or execute Phase 12 without separate approval.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
@@ -186,10 +187,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-09T12:58:17-03:00
-Stopped at: Session resumed for the narrow PaymentCollection initiation hotfix; proceeding from the operational handoff.
-Resume file: `.planning/ops/payment-collection-initiation-hotfix-2026-07-09-HANDOFF.md`
-Next permitted step: Continue only the Store API card PaymentCollection/PaymentSession hotfix from the handoff. No Phase 12 planning or execution, refund smoke, Stripe refund, live secret usage, real Gelato, Correios API, manual Order/PaymentCollection/PaymentSession SQL inserts, new migration without explicit approval, package/lockfile changes, deploy, or masking of `completeCartWorkflow` errors.
+Last session: 2026-07-10T10:03:37-03:00
+Stopped at: Refund smoke preflight stopped before Stripe mutation after the real refund schema and missing local RefundRequest were identified.
+Resume file: `.planning/quick/260710-dz0-gate-t-cnico-stripe-refund-smoke-test-mo/260710-dz0-PLAN.md`
+Next permitted step: After explicit approval of the adjusted gate, create the local RefundRequest through the authenticated Admin endpoint, then execute only the 100-cent Stripe test-mode refund and post-snapshot. No direct DB insert, checkout adjustment, Phase 12, live Stripe, real Gelato, migration, deploy, config, package or lockfile change.
 
 ## Quick Tasks Completed
 
@@ -222,4 +223,5 @@ Next permitted step: Continue only the Store API card PaymentCollection/PaymentS
 | 2026-07-09 | 260709-mkp-gate-tecnico-corrigir-amount-do-purchase | Corrected `purchase_completed` analytics amount normalization from `PaymentAttempt.amount`, preserving Order/PaymentAttempt creation and validating with focused unit tests plus build; no Phase 12, migrations, refund smoke, Stripe refund, `sk_live`, or real Stripe/Supabase/Gelato/Correios calls. |
 | 2026-07-09 | 260709-qtj-gate-tecnico-corrigir-email-delivery-sup | Gated confirmation-email enqueue on complete Resend config, so an incomplete smoke provider preserves terminal Order and local analytics without resolving EmailDeliveryLog or calling Resend; no migration, package/config secret, real provider, or Phase 12 work. |
 | 2026-07-09 | 260709-r41-gate-tecnico-substituir-id-fixo-anlevt-o | Removed the fixed AnalyticsEventLog preview ID before persistence, preserving PaymentIntent idempotency while letting the module generate unique IDs for distinct checkouts; no migration, package/config change, real provider, or Phase 12 work. |
+| 2026-07-10 | 260710-dz0-gate-t-cnico-stripe-refund-smoke-test-mo | Completed the read-only refund preflight, stopped before mutation on the real-schema mismatch and missing RefundRequest, and recorded the adjusted two-step gate; no Stripe refund or DB mutation occurred. |
 | 2026-07-03 | phase-11-closure | Closed Phase 11 documentally after accepted `11-01`..`11-04` evidence; `REF-01`..`REF-02`, `EXC-01`..`EXC-02` complete; Phase 12 blocked until explicit approval. |
