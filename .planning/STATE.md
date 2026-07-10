@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
 status: phase-11-closed-phase-12-blocked
-stopped_at: Quick gate 260710-dz0 stopped before refund; schema differs and local RefundRequest is missing
-last_updated: "2026-07-10T13:44:11-03:00"
+stopped_at: RC1 stabilization gate BLOCKED after accidental Heroku config vars exposure; no values reproduced
+last_updated: "2026-07-10T16:42:01-03:00"
 last_activity: 2026-07-10
-last_activity_desc: Completed local hotfix 260710-iyt for RefundRequest service context; remote refund smoke remains manually gated
+last_activity_desc: RC1 stabilization gate stopped on critical credential-exposure blocker; Phase 12 remains not started
 progress:
   total_phases: 12
   completed_phases: 11
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 11 is complete and closed at the manual gate (`11-CLOSURE.md`). Plans `11-01`..`11-04` were executed and accepted; REF-01, REF-02, EXC-01, and EXC-02 are complete. This closure cycle updated planning documents only — no runtime, tests, build, migration, deploy, real Stripe, Stripe CLI smoke, real Gelato, Correios API, broad OperationalAlert, broad AdminActionLog, or Phase 12 work. Phase 12 is not planned, not started, and blocked until explicit human approval.
+**Current gate:** Backend RC1 stabilization is **BLOCKED** after a read-only Heroku release-detail query materialized config vars in the operational transcript. Values are not reproduced in planning artifacts. Verification stopped without rotation or correction; a separate human-approved credential incident gate is required before RC1 can be rerun. Phase 12 remains not planned, not started, and blocked until explicit human approval.
 
 **Branch policy:**
 
@@ -54,7 +54,7 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 Phase: 12 (Ops, Audit & Critical Tests) — not planned; not started; blocked
 Plan: 50/50 complete (milestone plans)
 Status: phase-11-closed-phase-12-blocked
-Last activity: 2026-07-10 - Completed local hotfix 260710-iyt for RefundRequest service context; remote refund smoke remains manually gated
+Last activity: 2026-07-10 - RC1 stabilization stopped on a critical credential-exposure blocker; no mutable remediation was attempted
 
 Progress: [██████████] 100% (50/50 plans complete); Phase 11 closed; Phase 12 blocked
 
@@ -174,6 +174,7 @@ None yet.
 - [Phase 10]: Public guest tracking implemented as token-only, hash-only, sanitized, rate-limited, fail-closed surface on branch `gsd/phase-10-secure-guest-tracking`. Phase 10 closed at manual gate (`10-CLOSURE.md`). Migration real not applied. Process-local rate limit documented; global Redis/DB-backed limiter deferred.
 - [Phase 11]: Refund/exchange/admin scope is complete and closed on branch `gsd/phase-11-refunds-exchanges-admin` (`11-CLOSURE.md`). Refund financial truth finalized only by Stripe refund object webhook confirmation; `charge.refunded` does not double-count; refund does not auto-cancel `order_status`; exchanges remain operational without automatic refunds; Correios remains manual/semi-automatic with no API integration; broad `OperationalAlert` / `AdminActionLog` stays Phase 12. Migration real, cross-dyno refund lock, and Stripe refund production smoke remain separate gates.
 - [Quick 260710-dz0]: Stripe refund smoke preflight stopped before mutation because core `refund` has no `order_id`/`status`/`currency_code` and no local `refund_request` exists for the target Order. A direct Stripe refund would be ignored as `REFUND_WEBHOOK_REQUEST_NOT_FOUND`. The adjusted gate requires authenticated `POST /admin/refunds/request` before the Stripe test-mode refund. It also records that current runtime updates `refund_request` + Order metadata, not core `refund`/`payment_collection.refunded_amount`, and has no refund-email flow.
+- [Quick 260710-rc1]: Release stabilization is BLOCKED because a Heroku release-detail query materialized config vars in the operational transcript. No values are reproduced here, no remediation was attempted, and the full RC1 verification must be repeated only after a separate human-approved incident gate. Phase 12 remains not planned, not started, and blocked.
 - [Phase 12]: Ops, Audit & Critical Tests is **not planned**, **not started**, and **blocked until explicit human approval**. Do not plan or execute Phase 12 without separate approval.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
@@ -187,10 +188,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-10T10:03:37-03:00
-Stopped at: Refund smoke preflight stopped before Stripe mutation after the real refund schema and missing local RefundRequest were identified.
-Resume file: `.planning/quick/260710-dz0-gate-t-cnico-stripe-refund-smoke-test-mo/260710-dz0-PLAN.md`
-Next permitted step: After explicit approval of the adjusted gate, create the local RefundRequest through the authenticated Admin endpoint, then execute only the 100-cent Stripe test-mode refund and post-snapshot. No direct DB insert, checkout adjustment, Phase 12, live Stripe, real Gelato, migration, deploy, config, package or lockfile change.
+Last session: 2026-07-10
+Stopped at: RC1 stabilization gate stopped immediately after accidental config-var materialization by a read-only Heroku release-detail query.
+Resume file: `.planning/quick/260710-rc1-estabilizacao-release-backend/PLAN.md`
+Next permitted step: With explicit human approval, open a separate credential-incident gate for containment and coordinated rotation/revocation. Only after resolution may the RC1 stabilization gate be rerun. Phase 12, migrations, deploy, rollback and tag remain blocked.
 
 ## Quick Tasks Completed
 
