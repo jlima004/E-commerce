@@ -3,43 +3,42 @@ status: blocked
 classification: BLOCKED
 completed_at: 2026-07-10
 phase_12_status: not-planned-not-started-blocked
+scope_revision: heroku-excluded
 ---
 
 # Resumo — Gate de estabilização Backend RC1
 
 ## Resultado
 
-**BLOCKED.** O CLI Heroku materializou config vars completas durante uma consulta read-only de detalhes de release. Nenhum valor é reproduzido nos artefatos. O gate foi interrompido sem correção, rotação ou alteração de configuração.
+**BLOCKED.** A rotação informada permitiu retomar o gate, mas o lint encerrou com código 1 porque `eslint` não está instalado. Pela regra de parada, nenhuma correção foi aplicada e o build não foi executado. As integrações também permanecem bloqueadas por falta de prova de banco isolado/descartável.
 
-## Evidência concluída antes da parada
+## Resultados técnicos
 
-- `main`, `HEAD` e `origin/main`: `ff81307f3e534b0a805c80159b41abad1f71cc0a`.
-- Heroku runtime: `a729e653210347359d62bf3116b4792cf33ba2e0`; diferença para HEAD somente documental, sem runtime não implantado.
-- Health live/ready HTTP 200; Postgres e Redis `up`; web e worker `up`.
-- Release atual `v68`; deploy imediatamente anterior `v67` no runtime `a729e653`.
-- Package e lockfiles sem alteração; nenhuma tag RC encontrada.
+- Git local/origin alinhado em `5fe53e1`, sem diff de runtime, package ou lockfile.
+- Unit: PASS — 43/43 suites, 673/673 testes.
+- Integrações HTTP/modules: BLOCKED / NOT RUN por isolamento de banco não comprovado.
+- Lint: BLOCKER, exit 1; análise pulada por ausência de `eslint`.
+- Build: NOT RUN após o blocker.
+- Varredura rastreada: apenas canários/test fixtures e categorias públicas/test-mode revisadas; nenhum segredo real confirmado.
+- Supabase: todas as invariantes canônicas passaram por leitura sanitizada.
+- Migrations: nove arquivos locais correspondem a migrations aplicadas; nenhuma pendente. Os quatro nomes `TBD-*` estão aplicados, não diferidos.
+- Stripe PaymentIntent: `succeeded`, BRL 9900. `livemode` e `amount_received` não comprovados; Refund não consultado após a parada.
 
-## Evidência não concluída
+## Escopo cancelado
 
-- Resultado conclusivo da suíte unitária, integrações, lint e build.
-- Varredura completa de segredos rastreados.
-- Smoke canônico Supabase e consultas Stripe test mode.
-- Confronto de migrations com o banco.
-- Análise de logs e compatibilidade de rollback.
+Heroku ficou integralmente fora da retomada. Produção Heroku, logs do release e runbook de rollback foram cancelados por decisão humana e não contam como falha do RC.
 
-## Arquivos documentais
+## Arquivos documentais finais
 
 - `.planning/quick/260710-rc1-estabilizacao-release-backend/PLAN.md`
 - `.planning/quick/260710-rc1-estabilizacao-release-backend/VERIFICATION.md`
-- `.planning/quick/260710-rc1-estabilizacao-release-backend/RELEASE-RUNBOOK.md`
-- `.planning/quick/260710-rc1-estabilizacao-release-backend/KNOWN-DEBTS.md`
 - `.planning/quick/260710-rc1-estabilizacao-release-backend/SUMMARY.md`
 - `.planning/STATE.md`
 
 ## Não ações confirmadas
 
-Nenhuma tag, migration, `db:migrate:safe`, mutação no Supabase, PaymentIntent, refund, webhook replay, chamada Gelato/Resend/PostHog, deploy, rollback ou alteração de config foi executada. Nenhum arquivo de runtime, package ou lockfile foi alterado.
+Nenhuma tag, migration, `db:migrate:safe`, DDL, escrita/mutação no Supabase, criação de PaymentIntent, refund, webhook replay, chamada Gelato/Resend/PostHog, acesso Heroku, deploy, rollback, alteração de config, instalação de dependência ou mudança em runtime/package/lockfile foi executada.
 
-## Próximo gate
+## Próximo gate permitido
 
-Abrir somente mediante aprovação humana um gate separado de incidente de credenciais. Depois da contenção, repetir integralmente a estabilização RC1. A Phase 12 continua não planejada, não iniciada e bloqueada.
+Corrigir lint e estabelecer banco de integração isolado em trabalho separado. Depois, repetir as verificações bloqueadas. A Phase 12 continua não planejada, não iniciada e bloqueada.

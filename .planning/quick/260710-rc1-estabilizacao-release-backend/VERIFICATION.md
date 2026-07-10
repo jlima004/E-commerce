@@ -2,66 +2,95 @@
 status: blocked
 classification: BLOCKED
 verified_at: 2026-07-10
+scope_revision: heroku-excluded
 ---
 
 # Verificação — Backend RC1
 
-## Blocker crítico
+## Escopo efetivo
 
-Uma consulta read-only de detalhes de releases fez o CLI Heroku incluir valores completos de config vars no transcript. Os valores não são reproduzidos aqui. O gate foi interrompido imediatamente; não houve rotação, alteração de config ou outra correção.
+O usuário confirmou a rotação das variáveis e retomou o gate sem Heroku. Produção Heroku, logs do release e runbook de rollback foram cancelados por decisão humana e não são critérios desta classificação. Nenhuma consulta Heroku foi realizada na retomada.
 
 ## Baseline Git
 
 | Campo | Resultado |
 |---|---|
 | Branch | `main` |
-| LOCAL_SHA | `ff81307f3e534b0a805c80159b41abad1f71cc0a` |
-| ORIGIN_MAIN_SHA | `ff81307f3e534b0a805c80159b41abad1f71cc0a` |
-| HEROKU_MAIN_SHA / runtime SHA | `a729e653210347359d62bf3116b4792cf33ba2e0` |
-| APP_VERSION observado em health | `a729e65` |
-| runtime_diff_count | `0` |
-| documentation_only_diff | `true` — três arquivos de planejamento entre Heroku e HEAD |
+| LOCAL_SHA antes dos documentos da retomada | `5fe53e1c3cf9a86ade505836915a768226e96c7f` |
+| ORIGIN_MAIN_SHA | `5fe53e1c3cf9a86ade505836915a768226e96c7f` |
+| Divergência local/origin | `0/0` |
+| Diff local/origin | vazio |
 | Package/lockfiles alterados | não |
 | Tag `v1.0-backend-rc*` existente | não encontrada |
 
-As refs `origin` e `heroku` foram atualizadas por `git fetch` antes da comparação. `git diff --check` não apresentou erro.
+`git diff --check` não apresentou erro antes da atualização documental. O worktree passou a conter somente as alterações documentais desta retomada.
 
 ## Suítes locais
 
-| Verificação | Resultado | Observação |
-|---|---|---|
-| `test:unit` | INCONCLUSIVO | Uma execução foi iniciada, mas não houve captura conclusiva de exit code/resumo antes da ordem de parada. Não classificada como PASS. |
-| `test:integration:http` | BLOCKED / NOT RUN | Não existe `.env.test`; o banco local em `127.0.0.1:5432` não está comprovado como isolado e descartável. |
-| `test:integration:modules` | BLOCKED / NOT RUN | Mesmo bloqueio de isolamento do banco. |
-| `lint` | NOT RUN | Interrompido pelo blocker crítico. |
-| `build` | NOT RUN | Interrompido pelo blocker crítico. |
+| Verificação | Exit | Resultado | Duração | Evidência |
+|---|---:|---|---:|---|
+| `TMPDIR=/tmp npm run test:unit -w @dtc/backend` | 0 | PASS | Jest 84,194 s; wall 89,01 s | 43/43 suites e 673/673 testes passaram; 0 snapshots. |
+| `test:integration:http` | — | BLOCKED / NOT RUN | — | Não há `.env.test`; o Postgres local não está comprovado como banco isolado e descartável. |
+| `test:integration:modules` | — | BLOCKED / NOT RUN | — | Mesmo bloqueio de isolamento. |
+| `HOME=/tmp XDG_CONFIG_HOME=/tmp TMPDIR=/tmp ADMIN_DISABLED=true npm run lint -w @dtc/backend` | 1 | **BLOCKER** | wall 4,33 s | `medusa lint` pulou a análise porque `eslint` não está instalado; lifecycle encerrou com código 1. Aviso AJV `missingRefs` também observado. |
+| `build` | — | NOT RUN | — | Gate interrompido após o blocker do lint, sem correção. |
 
-## Produção read-only obtida antes da parada
+Nenhuma dependência foi instalada e `package.json`/lockfiles não foram alterados.
 
-- `/health/live`: HTTP 200, `status=live`, versão `a729e65`.
-- `/health/ready`: HTTP 200, `status=ready`, Postgres `up`, Redis `up`, versão `a729e65`.
-- `web.1`: `up`.
-- `worker.1`: `up`.
-- Release atual: `v68`, atualização de `APP_VERSION`.
-- Release de deploy imediatamente anterior: `v67`, runtime `a729e653`.
-- Deploy anterior identificado: `v65`, runtime `290bff33`; `v66` foi release de configuração.
-- O output do release phase indicou migrations concluídas, módulos atualizados, links sincronizados e scripts finalizados. Também exibiu avisos de providers locais/em memória durante a release phase, registrados como risco pendente de correlação.
+## Verificação estática e classificação de valores
 
-Configuração sanitizada: variáveis essenciais de app, banco, Redis e Stripe estavam presentes; iniciação real Stripe e bypass temporário de cache Redis estavam habilitados. Variáveis de refund-admin, Resend, suporte, PostHog e Gelato consultadas estavam ausentes. Nenhum valor é registrado.
+- Nenhum segredo rastreado real foi confirmado.
+- Ocorrências de `sk_live_*`, `sk_test_*`, `whsec_*`, `pi_*_secret_*` e `Bearer` foram revisadas sem imprimir valores e classificadas como canários deliberados/test fixtures curtos ou lógica de sanitização.
+- DSN-like e PostHog ingestion-key-like apareceram somente em template/testes e não foram classificados automaticamente como segredo crítico.
+- Nenhum `connect.sid` com valor, `pk_test_*` ou `sb_publishable_*` foi detectado.
+- Chaves públicas, publishable keys, DSNs e identificadores/objetos Stripe test-mode foram classificados por finalidade antes da severidade. Nenhuma chave pessoal/administrativa foi identificada nesta trilha.
 
-## Verificações interrompidas
+## Supabase read-only — smoke canônico
 
-- Varredura conclusiva de segredos rastreados: não concluída.
-- Smoke canônico no Supabase: não executado.
-- PaymentIntent e refund no Stripe test mode: não consultados.
-- Estado de migrations no banco: não consultado.
-- Logs recentes do release atual: não capturados/analisados.
-- Compatibilidade de schema para rollback: não comprovada.
+Projeto único confirmado como `ecommerce`, estado `ACTIVE_HEALTHY`. Somente `SELECT`/ferramentas de leitura foram usados; email, metadata e payload brutos não foram exibidos.
 
-## Migrations — inventário local
+| Invariante | Resultado |
+|---|---|
+| PaymentAttempt | `payment_confirmed_by_webhook`, Stripe, BRL 9900, Order e PaymentIntent corretos |
+| CheckoutCompletionLog | `completed`, correlações corretas, sem erro terminal |
+| Order | pagamento `partially_refunded`, order status `confirmed`, não cancelada |
+| `purchase_completed_count` | `1` |
+| Analytics | exatamente um evento `recorded`, correlações corretas |
+| RefundRequest | `confirmed`, BRL 100, correlações corretas, sem falha |
+| `email_delivery_count` | `0` |
+| `gelato_fulfillment_count` | `0` |
+| `refund_request_count` | `1` |
 
-Arquivos nomeados foram encontrados para analytics, checkout completion, email delivery, payment attempt e webhooks. Arquivos deliberadamente marcados `TBD` foram encontrados para exchange request, Gelato fulfillment, refund request e tracking access token. Sem confronto read-only com o banco, não é possível afirmar que não há migration aplicável esquecida.
+Todas as invariantes de banco mantidas no escopo passaram.
 
-## Classificação
+## Stripe test mode read-only
 
-**BLOCKED.** Além do incidente crítico, faltam evidências obrigatórias de suíte completa, lint, build, logs, invariantes, Stripe e migrations. Nenhuma dessas lacunas foi mascarada como PASS.
+- PaymentIntent canônico: `status=succeeded`, `amount=9900`, `currency=brl`.
+- O conector seguro não expôs `livemode` nem `amount_received`; esses dois campos não foram comprovados.
+- Refund ID foi obtido do banco, mas o objeto Refund não foi consultado porque o gate já havia parado no blocker do lint.
+- Nenhuma criação, refund, replay ou outra chamada mutável foi executada.
+
+## Auditoria de migrations
+
+- Nove arquivos locais inventariados.
+- A fonte efetiva da aplicação é `public.mikro_orm_migrations`, com 181 entradas aplicadas.
+- Todos os nove arquivos locais têm entrada correspondente aplicada.
+- Não foi encontrada migration local pendente.
+- Os quatro arquivos com nome `TBD-*` não são drafts pendentes: estão aplicados desde 2026-07-03. A nomenclatura é uma observação documental, não uma migration esquecida.
+- Nenhum DDL ou comando de migration foi executado.
+
+## Etapas canceladas
+
+- Etapa 4 — Produção somente leitura Heroku: cancelada/fora do escopo.
+- Etapa 8 — Logs do release atual: cancelada/fora do escopo.
+- Etapa 9 — Runbook de rollback: cancelada/fora do escopo.
+
+## Classificação final
+
+**BLOCKED.** Motivos técnicos:
+
+1. lint não executável e exit 1 pela ausência de `eslint`;
+2. integrações HTTP/modules sem banco isolado e descartável comprovado;
+3. build não executado após a regra de parada.
+
+Não corrigir estes blockers neste gate. A tag `v1.0-backend-rc1` não está autorizada.

@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
 status: phase-11-closed-phase-12-blocked
-stopped_at: RC1 stabilization gate BLOCKED after accidental Heroku config vars exposure; no values reproduced
-last_updated: "2026-07-10T16:42:01-03:00"
+stopped_at: RC1 stabilization BLOCKED on lint unavailable and integration database isolation not proven
+last_updated: "2026-07-10T17:41:12-03:00"
 last_activity: 2026-07-10
-last_activity_desc: RC1 stabilization gate stopped on critical credential-exposure blocker; Phase 12 remains not started
+last_activity_desc: RC1 stabilization resumed without Heroku and stopped on lint/integration-test blockers
 progress:
   total_phases: 12
   completed_phases: 11
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Backend RC1 stabilization is **BLOCKED** after a read-only Heroku release-detail query materialized config vars in the operational transcript. Values are not reproduced in planning artifacts. Verification stopped without rotation or correction; a separate human-approved credential incident gate is required before RC1 can be rerun. Phase 12 remains not planned, not started, and blocked until explicit human approval.
+**Current gate:** Backend RC1 stabilization is **BLOCKED** after the user-confirmed credential rotation and a Heroku-free rerun. Unit passed (43 suites / 673 tests), Supabase invariants and migration inventory passed, but lint exited 1 because `eslint` is not installed; integrations lack a proven isolated/disposable database and build was not run after the blocker. Phase 12 remains not planned, not started, and blocked until explicit human approval.
 
 **Branch policy:**
 
@@ -54,7 +54,7 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 Phase: 12 (Ops, Audit & Critical Tests) — not planned; not started; blocked
 Plan: 50/50 complete (milestone plans)
 Status: phase-11-closed-phase-12-blocked
-Last activity: 2026-07-10 - RC1 stabilization stopped on a critical credential-exposure blocker; no mutable remediation was attempted
+Last activity: 2026-07-10 - RC1 stabilization resumed without Heroku and stopped without correction on lint/integration-test blockers
 
 Progress: [██████████] 100% (50/50 plans complete); Phase 11 closed; Phase 12 blocked
 
@@ -169,12 +169,12 @@ None yet.
 [Issues that affect future work]
 
 - [Roadmap]: REQUIREMENTS.md summary previously stated "44 total"; the v1 list actually contains 45 distinct REQ-IDs. Count corrected to 45 during roadmap creation.
-- [Phase 4/5]: Medusa bundled Stripe native-first is **not** accepted for Phase 04 card/Pix because unsafe provider payloads can persist through `PaymentSession.data`. Phase 04 uses safe layers; production activation still needs migration approval plus real Stripe card/Pix setup before Phase 05/production use.
-- [Phase 9]: Gelato has no official Medusa provider/SDK confirmed in the consulted official docs; REST direct remains planned. Gelato webhook auth resolved documentally and implemented (`09-04`): HTTP Header fail-closed. Phase 09 closed at manual gate (`09-CLOSURE.md`). Migration real not applied. Production Gelato dispatch/webhook smoke not executed — separate deployment gates remain.
-- [Phase 10]: Public guest tracking implemented as token-only, hash-only, sanitized, rate-limited, fail-closed surface on branch `gsd/phase-10-secure-guest-tracking`. Phase 10 closed at manual gate (`10-CLOSURE.md`). Migration real not applied. Process-local rate limit documented; global Redis/DB-backed limiter deferred.
-- [Phase 11]: Refund/exchange/admin scope is complete and closed on branch `gsd/phase-11-refunds-exchanges-admin` (`11-CLOSURE.md`). Refund financial truth finalized only by Stripe refund object webhook confirmation; `charge.refunded` does not double-count; refund does not auto-cancel `order_status`; exchanges remain operational without automatic refunds; Correios remains manual/semi-automatic with no API integration; broad `OperationalAlert` / `AdminActionLog` stays Phase 12. Migration real, cross-dyno refund lock, and Stripe refund production smoke remain separate gates.
+- [Phase 4/5]: Medusa bundled Stripe native-first is **not** accepted for Phase 04 card/Pix because unsafe provider payloads can persist through `PaymentSession.data`. Phase 04 uses safe layers. The earlier closure-time migration blocker is historical: the RC1 read-only audit confirmed the PaymentAttempt and webhook migrations applied; real Stripe card/Pix setup remains a separate activation concern.
+- [Phase 9]: Gelato has no official Medusa provider/SDK confirmed in the consulted official docs; REST direct remains planned. Gelato webhook auth resolved documentally and implemented (`09-04`): HTTP Header fail-closed. Phase 09 closed at manual gate (`09-CLOSURE.md`). The closure-time migration blocker is historical: the RC1 read-only audit confirmed the Gelato migration applied. Production Gelato dispatch/webhook smoke remains a separate gate.
+- [Phase 10]: Public guest tracking implemented as token-only, hash-only, sanitized, rate-limited, fail-closed surface on branch `gsd/phase-10-secure-guest-tracking`. Phase 10 closed at manual gate (`10-CLOSURE.md`). The closure-time migration blocker is historical: the RC1 read-only audit confirmed the tracking migration applied. Process-local rate limit documented; global Redis/DB-backed limiter deferred.
+- [Phase 11]: Refund/exchange/admin scope is complete and closed on branch `gsd/phase-11-refunds-exchanges-admin` (`11-CLOSURE.md`). Refund financial truth finalized only by Stripe refund object webhook confirmation; `charge.refunded` does not double-count; refund does not auto-cancel `order_status`; exchanges remain operational without automatic refunds; Correios remains manual/semi-automatic with no API integration; broad `OperationalAlert` / `AdminActionLog` stays Phase 12. The closure-time migration blocker is historical: the RC1 read-only audit confirmed refund/exchange migrations applied. Cross-dyno refund lock and any future Stripe smoke remain separate gates.
 - [Quick 260710-dz0]: Stripe refund smoke preflight stopped before mutation because core `refund` has no `order_id`/`status`/`currency_code` and no local `refund_request` exists for the target Order. A direct Stripe refund would be ignored as `REFUND_WEBHOOK_REQUEST_NOT_FOUND`. The adjusted gate requires authenticated `POST /admin/refunds/request` before the Stripe test-mode refund. It also records that current runtime updates `refund_request` + Order metadata, not core `refund`/`payment_collection.refunded_amount`, and has no refund-email flow.
-- [Quick 260710-rc1]: Release stabilization is BLOCKED because a Heroku release-detail query materialized config vars in the operational transcript. No values are reproduced here, no remediation was attempted, and the full RC1 verification must be repeated only after a separate human-approved incident gate. Phase 12 remains not planned, not started, and blocked.
+- [Quick 260710-rc1]: Release stabilization resumed after user-confirmed credential rotation with Heroku, release logs and rollback runbook explicitly removed from scope. Unit passed (43/43 suites, 673/673 tests), canonical Supabase invariants passed, and all nine local migrations map to applied entries. The gate is BLOCKED because lint cannot run without `eslint`, integrations lack a proven isolated/disposable database, and build was not run after the blocker. No correction was attempted; Phase 12 remains not planned, not started, and blocked.
 - [Phase 12]: Ops, Audit & Critical Tests is **not planned**, **not started**, and **blocked until explicit human approval**. Do not plan or execute Phase 12 without separate approval.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
@@ -189,9 +189,9 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-10
-Stopped at: RC1 stabilization gate stopped immediately after accidental config-var materialization by a read-only Heroku release-detail query.
+Stopped at: RC1 stabilization rerun stopped after lint exit 1; integration database isolation remains unproven and build was not run.
 Resume file: `.planning/quick/260710-rc1-estabilizacao-release-backend/PLAN.md`
-Next permitted step: With explicit human approval, open a separate credential-incident gate for containment and coordinated rotation/revocation. Only after resolution may the RC1 stabilization gate be rerun. Phase 12, migrations, deploy, rollback and tag remain blocked.
+Next permitted step: In a separate approved gate, restore a runnable lint toolchain and provide an isolated/disposable integration database, then rerun lint, integrations and build. Heroku remains out of scope; Phase 12, migrations, deploy, rollback and tag remain blocked.
 
 ## Quick Tasks Completed
 
