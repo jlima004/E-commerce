@@ -293,6 +293,76 @@ describe("admin refunds request route", () => {
     expect(body.reused_idempotency).toBe(true)
   })
 
+  it("preserves RefundRequest service method context across creation and replay", async () => {
+    const harness = createInMemoryAdminRefundHarness()
+    const idempotencyKey = "admin-refund/order_admin_refund_01/service-context"
+    const refundRequestModule = {
+      baseRepository_: { marker: true },
+      async listRefundRequests(
+        this: { baseRepository_: { marker: boolean } },
+        filters?: {
+          order_id?: string
+          idempotency_key?: string
+        }
+      ) {
+        expect(this.baseRepository_.marker).toBe(true)
+
+        return harness.refundRequests.filter((request) => {
+          if (
+            filters?.idempotency_key &&
+            request.idempotency_key !== filters.idempotency_key
+          ) {
+            return false
+          }
+
+          if (filters?.order_id && request.order_id !== filters.order_id) {
+            return false
+          }
+
+          return true
+        })
+      },
+      async createRefundRequests(
+        this: { baseRepository_: { marker: boolean } },
+        records: RefundRequestRecord[]
+      ) {
+        expect(this.baseRepository_.marker).toBe(true)
+        harness.refundRequests.push(...records)
+        return records
+      },
+    }
+    const deps = {
+      resolveOrderModule: () => ({
+        retrieveOrder: async (id: string) => harness.orders.get(id) ?? null,
+      }),
+      resolvePaymentAttemptModule: () => ({
+        listPaymentAttempts: async () => [buildPaymentAttempt()],
+      }),
+      resolveRefundRequestModule: () => refundRequestModule,
+      generateId: harness.nextIdRef,
+    }
+    const bodyInput = {
+      order_id: ORDER_ID,
+      amount: 2500,
+      currency_code: "brl",
+      idempotency_key: idempotencyKey,
+    }
+    const firstResponse = createResponse()
+    const replayResponse = createResponse()
+
+    harness.req.body = bodyInput
+    await handleAdminCreateRefundRequest(harness.req, firstResponse, deps)
+
+    harness.req.body = bodyInput
+    await handleAdminCreateRefundRequest(harness.req, replayResponse, deps)
+
+    expect(firstResponse.statusCode).toBe(201)
+    expect(firstResponse.json.mock.calls[0]?.[0].reused_idempotency).toBe(false)
+    expect(replayResponse.statusCode).toBe(200)
+    expect(replayResponse.json.mock.calls[0]?.[0].reused_idempotency).toBe(true)
+    expect(harness.refundRequests).toHaveLength(1)
+  })
+
   it("rejects concurrent over-captured reservations with different idempotency keys", async () => {
     const harness = createInMemoryAdminRefundHarness()
 

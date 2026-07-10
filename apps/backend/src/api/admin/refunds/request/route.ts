@@ -257,9 +257,6 @@ export async function handleAdminCreateRefundRequest(
     )
   }
 
-  const listRefundRequests = refundRequestModule.listRefundRequests
-  const createRefundRequests = refundRequestModule.createRefundRequests
-
   let requestInput: CreateRefundRequestInput
 
   try {
@@ -292,10 +289,10 @@ export async function handleAdminCreateRefundRequest(
   try {
     await claim(order.id, async () => {
       const [existingByIdempotency, existingForOrder] = await Promise.all([
-        listRefundRequests({
+        refundRequestModule.listRefundRequests!({
           idempotency_key: requestInput.idempotency_key,
         }),
-        listRefundRequests({
+        refundRequestModule.listRefundRequests!({
           order_id: order.id,
         }),
       ])
@@ -314,7 +311,7 @@ export async function handleAdminCreateRefundRequest(
       let persisted = result.refund_request
 
       if (!result.reused_idempotency) {
-        const created = await createRefundRequests([
+        const created = await refundRequestModule.createRefundRequests!([
           result.refund_request,
         ])
         persisted = created[0] ?? result.refund_request
