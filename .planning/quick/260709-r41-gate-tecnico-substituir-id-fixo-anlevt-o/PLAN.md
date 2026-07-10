@@ -1,7 +1,7 @@
 ---
 id: 260709-r41
 slug: gate-tecnico-substituir-id-fixo-anlevt-o
-status: in_progress
+status: complete
 ---
 
 # Gate técnico: remover ID fixo do AnalyticsEventLog

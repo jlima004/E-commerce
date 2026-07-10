@@ -1,7 +1,7 @@
 ---
 id: 260709-qtj
 slug: gate-tecnico-corrigir-email-delivery-sup
-status: in_progress
+status: complete
 ---
 
 # Gate técnico: email não configurado no webhook Stripe

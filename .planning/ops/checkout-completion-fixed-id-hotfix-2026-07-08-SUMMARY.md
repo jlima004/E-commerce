@@ -1,8 +1,10 @@
 # CheckoutCompletionLog Fixed ID Hotfix — 2026-07-08
 
+Data de validação: 2026-07-09
+
 ## Resultado
 
-PASS local / aguardando deploy.
+Hotfix concluído e validado em testes/build e deploy.
 
 ## Problema
 
@@ -55,3 +57,15 @@ PASS local / aguardando deploy.
 - Sem delecao de logs processados.
 - Sem chamadas reais via conector Stripe.
 - Sem alteracao Supabase/schema/RLS/Data API.
+
+## Registro de smoke final
+Final clean smoke:
+PI_ID=pi_3TrR4yQy1Qutz95t1baN4nbv
+PAYMENT_ATTEMPT_ID=payatt_de07f78b4e094f77
+CART_ID=cart_01KX4J50P2NKRF8KTRY5Z127P1
+ORDER_ID=order_01KX4JDNE9NTXV4YA11Q5MENX9
+WebhookEventLog.status=processed
+CheckoutCompletionLog.status=completed
+Stripe.status=succeeded
+amount=9900
+currency=brl

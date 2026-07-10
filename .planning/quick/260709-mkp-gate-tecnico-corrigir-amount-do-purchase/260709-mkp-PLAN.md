@@ -1,7 +1,7 @@
 ---
 quick_id: 260709-mkp
 slug: gate-tecnico-corrigir-amount-do-purchase
-status: planned
+status: complete
 created_at: "2026-07-09T19:15:15.603Z"
 scope: technical-gate
 ---

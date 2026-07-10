@@ -8,7 +8,7 @@ Corrigir somente o fluxo Store API `POST /store/carts/:id/payment-attempts/card`
 
 ## Resultado
 
-Hotfix local concluído e validado em testes/build, sem deploy.
+Hotfix concluído e validado em testes/build e deploy.
 
 - A rota card consulta `cart_payment_collection` e cria a collection via `createPaymentCollectionForCartWorkflowId` quando necessário.
 - A rota cria uma `PaymentSession` real no Payment Module com provider `pp_stripe_stripe`.
@@ -96,11 +96,6 @@ Observação: a primeira tentativa desse HTTP revelou fixtures antigas em `strip
 
 - O hotfix ainda cobre somente card; Pix permanece fora deste gate.
 - A rota usa `createPaymentSession_`, método interno do Payment Module. A escolha foi mantida para evitar `createPaymentSessionsWorkflow`, que chamaria o provider Stripe e poderia criar um segundo PaymentIntent e persistir payload mais amplo em `PaymentSession.data`.
-- A ativação real continua dependente de configuração segura de Stripe test/prod e de validação manual em ambiente controlado.
-
-## Gate
-
-Parar aqui para revisão manual. Próximo passo operacional, se aprovado separadamente, é smoke controlado de novo checkout card em ambiente seguro, sem deploy automático a partir deste summary.
 
 ## Registro de smoke final
 Final clean smoke:
