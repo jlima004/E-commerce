@@ -2,6 +2,7 @@
 status: blocked
 classification: BLOCKED
 verified_at: 2026-07-10
+rc1_a_verified_at: 2026-07-10
 scope_revision: heroku-excluded
 ---
 
@@ -10,6 +11,8 @@ scope_revision: heroku-excluded
 ## Escopo efetivo
 
 O usuário confirmou a rotação das variáveis e retomou o gate sem Heroku. Produção Heroku, logs do release e runbook de rollback foram cancelados por decisão humana e não são critérios desta classificação. Nenhuma consulta Heroku foi realizada na retomada.
+
+O RC1-A restringiu-se à recuperação do ambiente local: remover/reconstruir `node_modules` com o lockfile e executar as validações em ordem. Não autorizou ajustes de dependência, código, configuração, banco remoto ou produção. O lint bloqueou antes de build e antes da criação do Postgres Docker descartável.
 
 ## Baseline Git
 
@@ -35,7 +38,20 @@ O usuário confirmou a rotação das variáveis e retomou o gate sem Heroku. Pro
 | `HOME=/tmp XDG_CONFIG_HOME=/tmp TMPDIR=/tmp ADMIN_DISABLED=true npm run lint -w @dtc/backend` | 1 | **BLOCKER** | wall 4,33 s | `medusa lint` pulou a análise porque `eslint` não está instalado; lifecycle encerrou com código 1. Aviso AJV `missingRefs` também observado. |
 | `build` | — | NOT RUN | — | Gate interrompido após o blocker do lint, sem correção. |
 
-Nenhuma dependência foi instalada e `package.json`/lockfiles não foram alterados.
+### RC1-A — reconstrução e repetição controlada
+
+| Verificação | Exit | Resultado | Evidência |
+|---|---:|---|---|
+| `rm -rf node_modules` + `npm ci --include=dev` | 0 | PASS | Instalação concluída a partir do lockfile. |
+| `npm ls eslint @medusajs/eslint-plugin --depth=0` | 0 | PASS | `eslint@9.39.4`; `@medusajs/eslint-plugin@2.16.0`. |
+| `node_modules/.bin/eslint --version` | 2 | **BLOCKER** | Binário existe, mas falha no carregamento com AJV `missingRefs` e `TypeError ... defaultMeta`. |
+| lint do workspace | 1 | **BLOCKER** | `medusa lint` ainda informa ESLint indisponível; nenhuma regra foi executada. |
+| build | — | NOT RUN | Regra de parada após lint. |
+| HTTP/modules | — | NOT RUN | Docker/Postgres, guard localhost e migrations descartáveis não foram iniciados após lint. |
+
+O `package.json` raiz mantém o override `ajv: ^8.0.0`; o grafo efetivo instalou `ajv@8.20.0` para `@eslint/eslintrc@3.3.5`, enquanto o lockfile registra `eslint@9.39.4` com dependência `ajv@^6.14.0`. A incompatibilidade foi apenas registrada; não foi corrigida.
+
+Nenhuma dependência foi adicionada ou alterada em manifests/lockfiles; `npm ci --include=dev` somente reconstruiu `node_modules` a partir do lockfile.
 
 ## Verificação estática e classificação de valores
 
@@ -89,8 +105,8 @@ Todas as invariantes de banco mantidas no escopo passaram.
 
 **BLOCKED.** Motivos técnicos:
 
-1. lint não executável e exit 1 pela ausência de `eslint`;
-2. integrações HTTP/modules sem banco isolado e descartável comprovado;
-3. build não executado após a regra de parada.
+1. `npm ci` concluiu, mas ESLint permaneceu não carregável devido à incompatibilidade AJV e o lint encerrou em 1;
+2. integrações HTTP/modules não foram iniciadas porque o lint bloqueou antes da etapa do banco isolado e descartável;
+3. build não foi executado pela regra de parada.
 
 Não corrigir estes blockers neste gate. A tag `v1.0-backend-rc1` não está autorizada.

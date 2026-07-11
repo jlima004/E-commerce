@@ -4,7 +4,7 @@ slug: estabilizacao-release-backend
 status: blocked
 scope: release-stabilization-gate-only
 classification: BLOCKED
-blocker: lint-unavailable-and-integration-db-not-isolated
+blocker: eslint-ajv-toolchain-incompatibility-and-integration-db-not-run
 phase_12_status: not-planned-not-started-blocked
 ---
 
@@ -42,3 +42,9 @@ O usuário confirmou que as variáveis foram rotacionadas e reabriu o gate com e
 ## Regra de encerramento
 
 A classificação final considera apenas as etapas mantidas no escopo. A tag `v1.0-backend-rc1` permanece apenas proposta e depende de resultado técnico elegível mais aprovação humana separada.
+
+## Gate RC1-A — restauração da validação local
+
+Escopo aprovado: reconstruir exclusivamente `node_modules` pelo lockfile e, somente se o lint passasse, executar build e integrações contra um Postgres Docker local e descartável. Não editar runtime, manifests, lockfiles ou variáveis de configuração; não corrigir qualquer defeito revelado.
+
+Ordem obrigatória: baseline Git limpo → `rm -rf node_modules` → `npm ci --include=dev` → provar o binário do ESLint → lint → build → banco descartável e integrações. Uma falha de lint encerra o gate antes de build, Docker e integrações.
