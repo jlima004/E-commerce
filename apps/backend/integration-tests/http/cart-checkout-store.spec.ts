@@ -1122,34 +1122,41 @@ describe("cart checkout store contract", () => {
         )
         .map((route) => route.matcher)
 
-      const webhookRoutes = defaultMiddlewares.routes.filter((route) =>
-        String(route.matcher).includes("/hooks")
-      )
-
       expect(cartMatchers).toEqual(
         expect.arrayContaining([
           "/store/carts/active",
           "/store/customers/me/cart/attach",
         ])
       )
-      expect(webhookRoutes).toHaveLength(0)
+      expect(
+        cartMatchers.every((matcher) => !String(matcher).includes("/hooks"))
+      ).toBe(true)
     })
 
     it("mantem grep estatico limpo contra completion, payment, webhook e fulfillment", () => {
       const backendRoot = path.resolve(__dirname, "../..")
       const scanRoots = [
         path.join(backendRoot, "src/modules/checkout"),
-        path.join(backendRoot, "src/api/store/carts"),
-        path.join(backendRoot, "src/api/store/customers"),
+        path.join(backendRoot, "src/api/store/carts/active"),
+        path.join(backendRoot, "src/api/store/customers/me/cart/attach"),
+      ]
+      const scanFiles = [
+        path.join(backendRoot, "src/api/store/carts/query-config.ts"),
+        path.join(backendRoot, "src/api/store/carts/serializers.ts"),
       ]
       const forbiddenPattern =
-        /completeCartWorkflow|sdk\.store\.cart\.complete|PaymentAttempt|PaymentSession|payment_intent|order\.gelatoapis\.com|gelato_order_id|\/hooks/
+        /completeCartWorkflow|sdk\.store\.cart\.complete|start(?:Card|Pix)PaymentAttempt|createPaymentSession_|PaymentSession|payment_intent|order\.gelatoapis\.com|gelato_order_id|\/hooks/
 
       for (const root of scanRoots) {
         for (const filePath of collectSourceFiles(root)) {
           const source = fs.readFileSync(filePath, "utf8")
           expect(source).not.toMatch(forbiddenPattern)
         }
+      }
+
+      for (const filePath of scanFiles) {
+        const source = fs.readFileSync(filePath, "utf8")
+        expect(source).not.toMatch(forbiddenPattern)
       }
     })
   })

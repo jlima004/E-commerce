@@ -212,6 +212,17 @@ function createHandler(event: Record<string, unknown>) {
       },
     },
     now: () => new Date("2026-06-30T12:00:00.000Z"),
+    runOrderEntrypoint: jest.fn(async (_scope, input) => ({
+      status: "created",
+      payment_attempt_id: input.payment_attempt_id,
+      payment_intent_id: input.payment_intent_id,
+      order_id: "order_http_01",
+      stripe_event_id: input.stripe_event_id ?? null,
+      correlation_id: input.correlation_id ?? null,
+      checkout_completion_status: "completed",
+      order_status: "confirmed",
+      payment_status: "captured",
+    })),
   })
 }
 
@@ -683,7 +694,7 @@ describe("stripe webhook http contract", () => {
     const webhookService = createStatefulWebhookService()
     const handler = createHandler({
       id: "evt_ignored_http",
-      type: "charge.refunded",
+      type: "customer.created",
       livemode: false,
       data: {
         object: {
@@ -697,13 +708,13 @@ describe("stripe webhook http contract", () => {
     })
 
     const firstReq = createRequest(scopeResolve, {
-      rawBody: Buffer.from('{"id":"evt_ignored_http","type":"charge.refunded"}'),
+      rawBody: Buffer.from('{"id":"evt_ignored_http","type":"customer.created"}'),
     })
     const firstRes = createResponse()
     await handler(firstReq, firstRes)
 
     const secondReq = createRequest(scopeResolve, {
-      rawBody: Buffer.from('{"id":"evt_ignored_http","type":"charge.refunded"}'),
+      rawBody: Buffer.from('{"id":"evt_ignored_http","type":"customer.created"}'),
     })
     const secondRes = createResponse()
     await handler(secondReq, secondRes)

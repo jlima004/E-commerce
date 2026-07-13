@@ -204,6 +204,14 @@ function joinKey(...parts: string[]): string {
 
 const SUPPORT_EMAIL = joinKey("support", "@", "lojinha", ".", "test")
 const ORDER_EMAIL = joinKey("comprador", "@", "loja", ".", "test")
+const RESEND_FROM_EMAIL = joinKey("pedidos", "@", "lojinha", ".", "test")
+const RESEND_TEST_API_KEY = joinKey("re", "_", "test", "_", "local")
+
+function enableOrderConfirmationEmailDeliveryForTest(): void {
+  process.env.RESEND_ORDER_CONFIRMATION_ENABLED = "true"
+  process.env.RESEND_API_KEY = RESEND_TEST_API_KEY
+  process.env.RESEND_FROM_EMAIL = RESEND_FROM_EMAIL
+}
 
 function buildAttempt(
   overrides: Partial<PaymentAttemptRecord> = {}
@@ -831,6 +839,10 @@ function serializeProof(payload: unknown) {
 
 describe("stripe webhook order creation integration", () => {
   const originalSupportEmail = process.env.SUPPORT_EMAIL
+  const originalResendOrderConfirmationEnabled =
+    process.env.RESEND_ORDER_CONFIRMATION_ENABLED
+  const originalResendApiKey = process.env.RESEND_API_KEY
+  const originalResendFromEmail = process.env.RESEND_FROM_EMAIL
 
   beforeEach(() => {
     process.env.SUPPORT_EMAIL = SUPPORT_EMAIL
@@ -841,6 +853,25 @@ describe("stripe webhook order creation integration", () => {
       delete process.env.SUPPORT_EMAIL
     } else {
       process.env.SUPPORT_EMAIL = originalSupportEmail
+    }
+
+    if (originalResendOrderConfirmationEnabled === undefined) {
+      delete process.env.RESEND_ORDER_CONFIRMATION_ENABLED
+    } else {
+      process.env.RESEND_ORDER_CONFIRMATION_ENABLED =
+        originalResendOrderConfirmationEnabled
+    }
+
+    if (originalResendApiKey === undefined) {
+      delete process.env.RESEND_API_KEY
+    } else {
+      process.env.RESEND_API_KEY = originalResendApiKey
+    }
+
+    if (originalResendFromEmail === undefined) {
+      delete process.env.RESEND_FROM_EMAIL
+    } else {
+      process.env.RESEND_FROM_EMAIL = originalResendFromEmail
     }
   })
 
@@ -1774,6 +1805,8 @@ describe("stripe webhook order creation integration", () => {
   )
 
   it("EmailDeliveryLog local e gravado depois de purchase_completed sem chamar Resend", async () => {
+    enableOrderConfirmationEmailDeliveryForTest()
+
     const cart = buildOrderCart({
       items: [
         {
@@ -1896,6 +1929,8 @@ describe("stripe webhook order creation integration", () => {
   })
 
   it("email recovery cria EmailDeliveryLog ausente para Order em CheckoutCompletionLog e purchase_completed existente", async () => {
+    enableOrderConfirmationEmailDeliveryForTest()
+
     const cart = buildOrderCart({
       completed_at: "2026-07-01T11:59:00.000Z",
     })
@@ -2005,6 +2040,8 @@ describe("stripe webhook order creation integration", () => {
       " "
     ),
     async () => {
+      enableOrderConfirmationEmailDeliveryForTest()
+
       const cart = buildOrderCart()
       const paymentAttemptModule = createPaymentAttemptModule([
         buildAttempt({
@@ -2260,6 +2297,8 @@ describe("stripe webhook order creation integration", () => {
   })
 
   it("accepted Order path cria Order e logs locais, mas Gelato fica bloqueado ate EmailDeliveryLog sent", async () => {
+    enableOrderConfirmationEmailDeliveryForTest()
+
     const cart = buildOrderCart()
     const paymentAttemptModule = createPaymentAttemptModule([
       buildAttempt({
@@ -2330,6 +2369,8 @@ describe("stripe webhook order creation integration", () => {
   })
 
   it("quando EmailDeliveryLog sent existe em recovery/replay, cria exatamente um GelatoFulfillment local", async () => {
+    enableOrderConfirmationEmailDeliveryForTest()
+
     const cart = buildOrderCart({
       completed_at: "2026-07-01T11:59:00.000Z",
     })

@@ -486,9 +486,13 @@ describe("error handler", () => {
 
 describe("middleware wiring", () => {
   it("mantem o middleware de correlacao e adiciona errorHandler Sentry sem sobrescrever rotas", () => {
-    expect(defaultMiddlewares.routes).toHaveLength(1)
-    expect(defaultMiddlewares.routes?.[0]?.middlewares).toHaveLength(1)
-    expect(typeof defaultMiddlewares.routes?.[0]?.middlewares?.[0]).toBe("function")
+    const correlationRoute = defaultMiddlewares.routes.find(
+      (route) => String(route.matcher) === "/.*/"
+    )
+
+    expect(defaultMiddlewares.routes.length).toBeGreaterThan(1)
+    expect(correlationRoute?.middlewares).toHaveLength(1)
+    expect(typeof correlationRoute?.middlewares?.[0]).toBe("function")
     expect(typeof defaultMiddlewares.errorHandler).toBe("function")
   })
 
