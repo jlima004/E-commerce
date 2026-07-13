@@ -9,8 +9,9 @@ import {
 import {
   createFakeStripeRefundCreationLayer,
   isStripeRefundCreationLayer,
+  type StripeRefundCreationLayer,
 } from "../stripe-refund-boundary"
-import {
+import RefundRequestModuleService, {
   assertNoSensitiveRefundRequestMetadata,
   assertRefundAmountWithinAvailability,
   assertValidRefundRequestStatus,
@@ -488,6 +489,19 @@ describe("RefundRequest sanitizers", () => {
 })
 
 describe("RefundRequest injectable Stripe boundary", () => {
+  it("returns the injected layer asynchronously with service context preserved", async () => {
+    const stripeLayer: StripeRefundCreationLayer =
+      createFakeStripeRefundCreationLayer()
+    const service = Object.create(RefundRequestModuleService.prototype)
+    Object.defineProperty(service, "dependencies_", {
+      value: { stripeRefundCreationLayer: stripeLayer },
+    })
+
+    await expect(service.resolveStripeRefundCreationLayer()).resolves.toBe(
+      stripeLayer
+    )
+  })
+
   it("uses fake stripe refund layer without real Stripe", async () => {
     const layer = createFakeStripeRefundCreationLayer()
     expect(isStripeRefundCreationLayer(layer)).toBe(true)

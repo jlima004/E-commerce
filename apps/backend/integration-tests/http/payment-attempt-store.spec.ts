@@ -393,7 +393,11 @@ function createMedusaPaymentModuleMock(
 }
 
 function createPaymentAttemptModuleMock(
-  existingAttempts: PaymentAttemptRecord[] = []
+  existingAttempts: PaymentAttemptRecord[] = [],
+  layers: {
+    card?: StripeCardInitiationLayer | null
+    pix?: StripePixInitiationLayer | null
+  } = {}
 ) {
   const attempts = [...existingAttempts]
 
@@ -414,6 +418,8 @@ function createPaymentAttemptModuleMock(
       }
       return rows
     }),
+    resolveStripeCardInitiationLayer: jest.fn(async () => layers.card ?? null),
+    resolveStripePixInitiationLayer: jest.fn(async () => layers.pix ?? null),
     attempts,
   }
 }
@@ -475,6 +481,8 @@ function wireScope(
     medusaPaymentModule?: unknown
     workflowEngine?: unknown
     paymentAttemptModuleResolveError?: Error
+    stripeCardInitiationLayerResolveError?: Error
+    stripePixInitiationLayerResolveError?: Error
     stripeCardInitiationLayer?: StripeCardInitiationLayer | null
     stripePixInitiationLayer?: StripePixInitiationLayer | null
   } = {}
@@ -529,10 +537,18 @@ function wireScope(
     }
 
     if (key === STRIPE_CARD_INITIATION_LAYER) {
+      if (options.stripeCardInitiationLayerResolveError) {
+        throw options.stripeCardInitiationLayerResolveError
+      }
+
       return stripeCardInitiationLayer
     }
 
     if (key === STRIPE_PIX_INITIATION_LAYER) {
+      if (options.stripePixInitiationLayerResolveError) {
+        throw options.stripePixInitiationLayerResolveError
+      }
+
       return stripePixInitiationLayer
     }
 
@@ -646,8 +662,14 @@ describe("payment attempt store card contract", () => {
           active_cart_id: cart.id,
         },
       })
-      const { paymentAttemptModule, medusaPaymentModule, workflowEngine } =
-        wireScope(req, { remoteQuery })
+      const fallbackLayer = createStripeCardInitiationLayerMock()
+      const paymentAttemptModule = createPaymentAttemptModuleMock([], {
+        card: fallbackLayer,
+      })
+      const { medusaPaymentModule, workflowEngine } = wireScope(req, {
+        remoteQuery,
+        paymentAttemptModule,
+      })
 
       const res = await invokeCardPaymentRoute(req)
 
@@ -692,6 +714,70 @@ describe("payment attempt store card contract", () => {
         })
       )
       expect(body.payment_attempt.client_secret).toContain("pi_http_card_mock")
+      expect(
+        paymentAttemptModule.resolveStripeCardInitiationLayer
+      ).not.toHaveBeenCalled()
+      expect(fallbackLayer.createCardPaymentIntent).not.toHaveBeenCalled()
+    })
+
+    it("usa uma unica vez o fallback assincrono do servico para cartao", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const fallbackLayer = createStripeCardInitiationLayerMock()
+      const paymentAttemptModule = createPaymentAttemptModuleMock([], {
+        card: fallbackLayer,
+      })
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_01",
+          active_cart_id: cart.id,
+        },
+      })
+      wireScope(req, {
+        remoteQuery,
+        paymentAttemptModule,
+        stripeCardInitiationLayerResolveError: new Error("direct token missing"),
+      })
+
+      const res = await invokeCardPaymentRoute(req)
+
+      expect(res.statusCode).toBe(201)
+      expect(
+        paymentAttemptModule.resolveStripeCardInitiationLayer
+      ).toHaveBeenCalledTimes(1)
+      expect(fallbackLayer.createCardPaymentIntent).toHaveBeenCalledTimes(1)
+    })
+
+    it("converte rejeicao do resolver de cartao em camada ausente", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const paymentAttemptModule = createPaymentAttemptModuleMock()
+      paymentAttemptModule.resolveStripeCardInitiationLayer.mockRejectedValueOnce(
+        new Error("resolver failed")
+      )
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_01",
+          active_cart_id: cart.id,
+        },
+      })
+      const res = createResponse()
+      wireScope(req, {
+        remoteQuery,
+        paymentAttemptModule,
+        stripeCardInitiationLayerResolveError: new Error("direct token missing"),
+      })
+      applyStoreCartPreOrderQueryConfig(req as never)
+
+      await expect(startCardPaymentAttemptRoute(req, res)).rejects.toThrow(
+        "Camada Stripe para cartao nao configurada."
+      )
+      expect(
+        paymentAttemptModule.resolveStripeCardInitiationLayer
+      ).toHaveBeenCalledTimes(1)
+      expect(paymentAttemptModule.createPaymentAttempts).not.toHaveBeenCalled()
     })
 
     it("falha fechada quando camada Stripe card nao esta configurada", async () => {
@@ -940,7 +1026,11 @@ describe("payment attempt store card contract", () => {
           active_cart_id: cart.id,
         },
       })
-      wireScope(req, { remoteQuery })
+      const fallbackLayer = createStripePixInitiationLayerMock()
+      const paymentAttemptModule = createPaymentAttemptModuleMock([], {
+        pix: fallbackLayer,
+      })
+      wireScope(req, { remoteQuery, paymentAttemptModule })
 
       const res = await invokePixPaymentRoute(req)
 
@@ -953,6 +1043,70 @@ describe("payment attempt store card contract", () => {
       expect(body.payment_attempt.expires_at).toBe(
         new Date(1782863999 * 1000).toISOString()
       )
+      expect(
+        paymentAttemptModule.resolveStripePixInitiationLayer
+      ).not.toHaveBeenCalled()
+      expect(fallbackLayer.createPixPaymentIntent).not.toHaveBeenCalled()
+    })
+
+    it("usa uma unica vez o fallback assincrono do servico para Pix", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const fallbackLayer = createStripePixInitiationLayerMock()
+      const paymentAttemptModule = createPaymentAttemptModuleMock([], {
+        pix: fallbackLayer,
+      })
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_01",
+          active_cart_id: cart.id,
+        },
+      })
+      wireScope(req, {
+        remoteQuery,
+        paymentAttemptModule,
+        stripePixInitiationLayerResolveError: new Error("direct token missing"),
+      })
+
+      const res = await invokePixPaymentRoute(req)
+
+      expect(res.statusCode).toBe(201)
+      expect(
+        paymentAttemptModule.resolveStripePixInitiationLayer
+      ).toHaveBeenCalledTimes(1)
+      expect(fallbackLayer.createPixPaymentIntent).toHaveBeenCalledTimes(1)
+    })
+
+    it("converte rejeicao do resolver Pix em camada ausente", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const paymentAttemptModule = createPaymentAttemptModuleMock()
+      paymentAttemptModule.resolveStripePixInitiationLayer.mockRejectedValueOnce(
+        new Error("resolver failed")
+      )
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_01",
+          active_cart_id: cart.id,
+        },
+      })
+      const res = createResponse()
+      wireScope(req, {
+        remoteQuery,
+        paymentAttemptModule,
+        stripePixInitiationLayerResolveError: new Error("direct token missing"),
+      })
+      applyStoreCartPreOrderQueryConfig(req as never)
+
+      await expect(startPixPaymentAttemptRoute(req, res)).rejects.toThrow(
+        "Camada Stripe para Pix nao configurada."
+      )
+      expect(
+        paymentAttemptModule.resolveStripePixInitiationLayer
+      ).toHaveBeenCalledTimes(1)
+      expect(paymentAttemptModule.createPaymentAttempts).not.toHaveBeenCalled()
     })
 
     it("falha fechada quando camada Stripe Pix nao esta configurada", async () => {

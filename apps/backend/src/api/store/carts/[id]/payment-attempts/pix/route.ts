@@ -40,7 +40,8 @@ type PaymentAttemptModuleLike = {
   updatePaymentAttempts?: (
     data: PaymentAttemptRecord | PaymentAttemptRecord[]
   ) => Promise<PaymentAttemptRecord[]>
-  resolveStripePixInitiationLayer?: () => StripePixInitiationLayer | null
+  resolveStripePixInitiationLayer?: () =>
+    Promise<StripePixInitiationLayer | null>
 }
 
 const PAYMENT_ATTEMPT_LIST_ERROR_MESSAGE =
@@ -56,9 +57,9 @@ function isStripePixInitiationLayer(
   )
 }
 
-function resolveStripePixInitiationLayer(
+async function resolveStripePixInitiationLayer(
   req: SessionCapableRequest
-): StripePixInitiationLayer {
+): Promise<StripePixInitiationLayer> {
   let layer: unknown
 
   try {
@@ -68,7 +69,7 @@ function resolveStripePixInitiationLayer(
       const service = req.scope.resolve(
         PAYMENT_ATTEMPT_MODULE
       ) as PaymentAttemptModuleLike
-      layer = service.resolveStripePixInitiationLayer?.()
+      layer = await service.resolveStripePixInitiationLayer?.()
     } catch {
       layer = null
     }
@@ -239,7 +240,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const cart = await fetchCartById(request, cartId)
   const actor = resolvePaymentStartActor(request)
   const existingAttempts = await listExistingAttemptsForCart(request, cartId)
-  const stripeLayer = resolveStripePixInitiationLayer(request)
+  const stripeLayer = await resolveStripePixInitiationLayer(request)
 
   const result = await startPixPaymentAttempt({
     cart,

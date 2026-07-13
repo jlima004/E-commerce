@@ -65,7 +65,7 @@ class PaymentAttemptModuleService extends MedusaService({
     this.dependencies_ = dependencies
   }
 
-  resolveStripeCardInitiationLayer(): StripeCardInitiationLayer | null {
+  async resolveStripeCardInitiationLayer(): Promise<StripeCardInitiationLayer | null> {
     return resolveInjectedLayer(
       this.dependencies_,
       STRIPE_CARD_INITIATION_LAYER_TOKEN,
@@ -73,7 +73,7 @@ class PaymentAttemptModuleService extends MedusaService({
     )
   }
 
-  resolveStripePixInitiationLayer(): StripePixInitiationLayer | null {
+  async resolveStripePixInitiationLayer(): Promise<StripePixInitiationLayer | null> {
     return resolveInjectedLayer(
       this.dependencies_,
       STRIPE_PIX_INITIATION_LAYER_TOKEN,

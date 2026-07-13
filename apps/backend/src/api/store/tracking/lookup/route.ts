@@ -164,7 +164,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
 
   const trackingModule = req.scope.resolve(
     TRACKING_ACCESS_TOKEN_MODULE
-  ) as TrackingAccessTokenModuleLike
+  ) as unknown as TrackingAccessTokenModuleLike
 
   let tokenRecord: TrackingAccessTokenRecord
 
@@ -200,7 +200,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse): Promise<voi
 
   const gelatoModule = req.scope.resolve(
     GELATO_FULFILLMENT_MODULE
-  ) as GelatoFulfillmentModuleLike
+  ) as unknown as GelatoFulfillmentModuleLike
   const remoteQuery = req.scope.resolve(ContainerRegistrationKeys.REMOTE_QUERY)
 
   const [order, fulfillment] = await Promise.all([

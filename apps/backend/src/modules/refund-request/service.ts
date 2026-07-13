@@ -5,6 +5,7 @@ import RefundRequest from "./models/refund-request"
 import {
   resolveStripeRefundCreationLayer,
   STRIPE_REFUND_CREATION_LAYER_TOKEN,
+  type StripeRefundCreationLayer,
 } from "./stripe-refund-boundary"
 import {
   REFUND_REQUEST_CONFIRMED_STATUSES,
@@ -516,7 +517,7 @@ class RefundRequestModuleService extends MedusaService({
     this.dependencies_ = dependencies
   }
 
-  resolveStripeRefundCreationLayer() {
+  async resolveStripeRefundCreationLayer(): Promise<StripeRefundCreationLayer | null> {
     return resolveStripeRefundCreationLayer(this.dependencies_)
   }
 }

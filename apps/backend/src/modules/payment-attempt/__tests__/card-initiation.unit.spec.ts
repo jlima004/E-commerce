@@ -6,6 +6,7 @@ import {
   type CardPaymentAttemptResponse,
   type StripeCardInitiationLayer,
 } from "../card"
+import PaymentAttemptModuleService from "../service"
 import type { PaymentAttemptRecord } from "../types"
 import { buildCompleteGuestCart } from "./fixtures/payment-start-cart"
 
@@ -117,6 +118,20 @@ const MEDUSA_PAYMENT_SESSION = {
   payment_collection_id: "paycol_real_01",
   payment_session_id: "payses_real_01",
 }
+
+describe("PaymentAttempt Stripe card resolver", () => {
+  it("returns the injected layer asynchronously with service context preserved", async () => {
+    const stripeLayer = createStripeLayer()
+    const service = Object.create(PaymentAttemptModuleService.prototype)
+    Object.defineProperty(service, "dependencies_", {
+      value: { stripeCardInitiationLayer: stripeLayer },
+    })
+
+    await expect(
+      service.resolveStripeCardInitiationLayer()
+    ).resolves.toBe(stripeLayer)
+  })
+})
 
 describe("04-04 startCardPaymentAttempt", () => {
   const completeCart = buildCompleteGuestCart({

@@ -630,7 +630,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
     ).toEqual([undefined, undefined])
   })
 
-  it("tolera alias legado ausente quando a key canonica email_delivery_log ja resolve", async () => {
+  it("resolve email pela constante canonica em snake_case", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule([
       {
@@ -721,10 +721,6 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
           return emailDeliveryLogModule
         }
 
-        if (key === EMAIL_DELIVERY_LOG_MODULE) {
-          throw buildAwilixResolutionError(key)
-        }
-
         if (key === Modules.ORDER) {
           return orderModule
         }
@@ -754,7 +750,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
 
     expect(result.status).toBe("reused_existing_order")
     expect(container.resolve).toHaveBeenCalledWith("email_delivery_log")
-    expect(container.resolve).not.toHaveBeenCalledWith(EMAIL_DELIVERY_LOG_MODULE)
+    expect(container.resolve).toHaveBeenCalledWith(EMAIL_DELIVERY_LOG_MODULE)
   })
 
   it("unique violation sem registro reutilizavel nao vira sucesso silencioso", async () => {
@@ -1104,7 +1100,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
       name: "OrderCreationEntrypointError",
       code: "ORDER_ENTRYPOINT_EMAIL_DELIVERY_LOG_MODULE_UNAVAILABLE",
       message:
-        "Modulo de email_delivery_log nao configurado. Keys tentadas: email_delivery_log, email-delivery-log.",
+        "Modulo de email_delivery_log nao configurado. Keys tentadas: email_delivery_log, email_delivery_log.",
     })
 
     expect(runCompleteCart).not.toHaveBeenCalled()

@@ -8,6 +8,7 @@ import {
   type PixPaymentAttemptResponse,
   type StripePixInitiationLayer,
 } from "../pix"
+import PaymentAttemptModuleService from "../service"
 import type { PaymentAttemptRecord } from "../types"
 import { buildCompleteGuestCart } from "./fixtures/payment-start-cart"
 
@@ -133,6 +134,20 @@ function assertResponseHasPixInstructionsOnlyInImmediate(
     expect(allowedKeys).toContain(key)
   }
 }
+
+describe("PaymentAttempt Stripe Pix resolver", () => {
+  it("returns the injected layer asynchronously with service context preserved", async () => {
+    const stripeLayer = createStripePixLayer()
+    const service = Object.create(PaymentAttemptModuleService.prototype)
+    Object.defineProperty(service, "dependencies_", {
+      value: { stripePixInitiationLayer: stripeLayer },
+    })
+
+    await expect(service.resolveStripePixInitiationLayer()).resolves.toBe(
+      stripeLayer
+    )
+  })
+})
 
 describe("04-05 startPixPaymentAttempt", () => {
   const completeCart = buildCompleteGuestCart({

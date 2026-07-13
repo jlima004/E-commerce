@@ -44,7 +44,8 @@ type PaymentAttemptModuleLike = {
   updatePaymentAttempts?: (
     data: PaymentAttemptRecord | PaymentAttemptRecord[]
   ) => Promise<PaymentAttemptRecord[]>
-  resolveStripeCardInitiationLayer?: () => StripeCardInitiationLayer | null
+  resolveStripeCardInitiationLayer?: () =>
+    Promise<StripeCardInitiationLayer | null>
 }
 
 type MedusaPaymentSessionRecord = {
@@ -107,9 +108,9 @@ function isStripeCardInitiationLayer(
   )
 }
 
-function resolveStripeCardInitiationLayer(
+async function resolveStripeCardInitiationLayer(
   req: SessionCapableRequest
-): StripeCardInitiationLayer {
+): Promise<StripeCardInitiationLayer> {
   let layer: unknown
 
   try {
@@ -119,7 +120,7 @@ function resolveStripeCardInitiationLayer(
       const service = req.scope.resolve(
         PAYMENT_ATTEMPT_MODULE
       ) as PaymentAttemptModuleLike
-      layer = service.resolveStripeCardInitiationLayer?.()
+      layer = await service.resolveStripeCardInitiationLayer?.()
     } catch {
       layer = null
     }
@@ -520,7 +521,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     sessionActiveCartId: request.session?.active_cart_id,
   })
   const existingAttempts = await listExistingAttemptsForCart(request, cartId)
-  const stripeLayer = resolveStripeCardInitiationLayer(request)
+  const stripeLayer = await resolveStripeCardInitiationLayer(request)
   const paymentCollection = await ensurePaymentCollectionForCart(request, cartId)
   const paymentSession = await createMedusaCardPaymentSession({
     req: request,

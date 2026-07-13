@@ -628,7 +628,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
     expect(analyticsEventLogModule.store).toHaveLength(1)
   })
 
-  it("tolera alias legado ausente quando a key canonica analytics_event_log ja resolve", async () => {
+  it("resolve analytics pela constante canonica em snake_case", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule([
       {
@@ -689,10 +689,6 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
           return analyticsEventLogModule
         }
 
-        if (key === ANALYTICS_EVENT_LOG_MODULE) {
-          throw buildAwilixResolutionError(key)
-        }
-
         if (key === EMAIL_DELIVERY_LOG_MODULE || key === "email_delivery_log") {
           return createEmailDeliveryLogModule()
         }
@@ -720,7 +716,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
 
     expect(result.status).toBe("reused_existing_order")
     expect(container.resolve).toHaveBeenCalledWith("analytics_event_log")
-    expect(container.resolve).not.toHaveBeenCalledWith(ANALYTICS_EVENT_LOG_MODULE)
+    expect(container.resolve).toHaveBeenCalledWith(ANALYTICS_EVENT_LOG_MODULE)
   })
 
   it("recovery por CheckoutCompletionLog cria purchase_completed ausente antes de retornar sucesso", async () => {
@@ -842,7 +838,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
       name: "OrderCreationEntrypointError",
       code: "ORDER_ENTRYPOINT_ANALYTICS_EVENT_LOG_MODULE_UNAVAILABLE",
       message:
-        "Modulo de analytics_event_log nao configurado. Keys tentadas: analytics_event_log, analytics-event-log.",
+        "Modulo de analytics_event_log nao configurado. Keys tentadas: analytics_event_log, analytics_event_log.",
     })
 
     expect(runCompleteCart).not.toHaveBeenCalled()
