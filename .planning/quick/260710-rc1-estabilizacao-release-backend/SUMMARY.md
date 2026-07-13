@@ -7,6 +7,8 @@ rc1_b_checked_at: 2026-07-12
 rc1_c_checked_at: 2026-07-13
 rc1_e_checked_at: 2026-07-13
 rc1_f_completed_at: 2026-07-13
+rc1_g_checked_at: 2026-07-13
+rc1_h_completed_at: 2026-07-13
 phase_12_status: not-planned-not-started-blocked
 scope_revision: heroku-excluded
 ---
@@ -15,7 +17,9 @@ scope_revision: heroku-excluded
 
 ## Resultado
 
-**PASS.** O RC1-F recuperou os contratos exigidos pelo lint do Medusa, preservou os 208 warnings e comprovou lint, testes, build e toolchain reproduzíveis sem models ou migrations. Os blockers anteriores permanecem registrados abaixo como histórico da sequência RC1-A/B/C/E.
+**PASS.** O RC1-H recuperou as suítes de integração sem alterar runtime. O Jest deixou de coletar uma fixture, as 12 falhas HTTP foram reproduzidas e classificadas sem `UNKNOWN`, as correções ficaram restritas a quatro specs e `jest.config.js`, e todos os gates locais passaram. Não há `PASS WITH KNOWN DEBTS`.
+
+O RC1-H usou seis bancos PostgreSQL 16 independentes em localhost, sem Supabase ou banco remoto. Modules passou 28/28 e 454/454; HTTP passou 14/14 e 170/170; unitários passaram 43/43 e 676/676; lint passou com 0 erros/208 warnings; build passou. Nenhum model, migration, manifest ou lockfile mudou. O container, os bancos e os temporários foram removidos. Commit de testes/configuração: `e45adf9`; não houve commit de runtime.
 
 O Gate RC1-A reconstruiu `node_modules` exclusivamente com `npm ci --include=dev` (exit 0), sem alterar arquivos versionados. `eslint@9.39.4` e `@medusajs/eslint-plugin@2.16.0` foram resolvidos, porém o carregamento do ESLint continuou falhando por incompatibilidade de toolchain AJV; `medusa lint` reportou `eslint` como indisponível e encerrou com código 1. Pela regra de parada, build, Docker/Postgres e ambas as integrações não foram executados.
 
@@ -26,6 +30,41 @@ O RC1-C adicionou somente o override específico de Rushstack solicitado. O npm 
 O RC1-E alterou somente o override específico para AJV 8.20.0. Após um primeiro `npm ci` inconclusivo e descartado, o fallback autorizado manteve o lock RC1-B sem alteração adicional e a repetição limpa instalou 1.503 pacotes. Rushstack resolveu AJV 8.20.0 como `overridden`; ESLint e eslintrc resolveram 6.15.0; as árvores completa e produtiva saíram em 0; houve 6 adições semânticas e zero mudança de versão runtime. Os audits registraram 8 high/0 critical em produção, sem regressão de pacote runtime. O lint executou regras reais, mas falhou com 7 erros e 208 avisos; o gate parou sem unitários, build, reprodutibilidade ou commit.
 
 O RC1-F mudou somente os quatro valores de identificadores, os três métodos públicos assíncronos, os dois consumidores card/Pix e testes diretamente afetados. A geração de tipos tornou dois casts no lookup de tracking necessários por referência direta às constants; o ajuste foi type-only. Lint completo passou com 0 erros e 208 warnings, 43/43 suites e 676/676 testes passaram, o build passou, e a repetição completa após `npm ci` reproduziu os mesmos resultados e a árvore AJV válida.
+
+O RC1-G criou `rc1g_http`, `rc1g_modules` e `rc1g_upgrade` no mesmo Postgres 16 local em `127.0.0.1:55432`. HTTP terminou com 10/14 suítes e 158/170 testes passando; modules terminou com 28/29 suítes passando e 454/454 testes executados verdes, mas um fixture sem testes foi coletado como suíte. Como nenhuma falha era ausência de schema, os dois bancos de integração não receberam migrations. O runtime `a729e65` criou 152 tabelas no banco de upgrade; o runtime atual aceitou o schema sem nova migration, conflito ou duplicação, preservando 23/175/5 registros nas três tabelas de migration. O backend atual iniciou na porta 9011 e reconheceu os quatro módulos renomeados; Redis era somente localhost e não houve chamada externa.
+
+## Gate RC1-H — evidência nova
+
+| Item | Resultado |
+|---|---|
+| Baseline | `main`, HEAD/origin observado `47c41f0`; somente quatro documentos RC1 modificados; código/testes/Jest/manifests limpos; `git diff --check` PASS. |
+| Coleta modules | 29 antes, 28 depois; saiu apenas `fixtures/payment-start-cart.ts`; 28 specs legítimas preservadas. |
+| Diagnóstico HTTP | 12 falhas: 5 `ENVIRONMENT_ISOLATION`, 3 `STALE_MOCK_OR_CONTAINER_KEY`, 4 `STALE_TEST_EXPECTATION`; zero `UNKNOWN` e zero defeito real de runtime. |
+| Testes corrigidos | Configuração Resend fake/local explicitamente isolada; provas Phase 03 limitadas às superfícies pre-Order; entrypoint terminal injetado no mock Phase 05; evento realmente não suportado; Sentry sem contagem global congelada. |
+| Dirigidas | Order 17/17; cart 24/24; Stripe store 10/10; Sentry 12/12. |
+| Modules completa | 28/28 suítes, 454/454 testes, exit 0. |
+| HTTP completa | 14/14 suítes, 170/170 testes, exit 0. |
+| Unitários | 43/43 suítes, 676/676 testes, exit 0. |
+| Lint/build | Lint exit 0, 0 erros/208 warnings; build exit 0. |
+| Imutabilidade | Sem diff em runtime, models, migrations, `package.json` ou `package-lock.json`; nenhuma migration gerada/aplicada. |
+| Isolamento/limpeza | Seis bancos exclusivamente em `127.0.0.1:55433`; container e `/tmp/rc1-h*` removidos; nenhuma senha/URL completa documentada. |
+| Commits | `e45adf9` testes/configuração; nenhum commit de runtime; documentação em commit separado. |
+
+## Gate RC1-G — evidência nova
+
+| Item | Resultado |
+|---|---|
+| Baseline | `main`, HEAD `47c41f00648ff9d6bc0649e1c07a37ae03130858`, `origin/main` no mesmo SHA (0 à frente/0 atrás), worktree limpo e nenhum diff em runtime/testes/manifests; nenhum fetch ou push foi executado. |
+| HTTP | **BLOCKER**: exit 1 em 86 s; 14 suítes/170 testes, 10 suítes e 158 testes PASS, 4 suítes e 12 testes FAIL; migration não necessária. |
+| Modules | **BLOCKER**: exit 1 em 37 s; 29 suítes/454 testes, 28 suítes e 454 testes PASS; um fixture sem testes coletado como suíte; migration não necessária. |
+| Isolamento | Guardas confirmaram `rc1g_http`, `rc1g_modules` e `rc1g_upgrade` em localhost; nenhuma URL/senha registrada e nenhum banco remoto usado. |
+| Runtime anterior | `a729e65`; `npm ci` exit 0/232 s; migration exit 0/64 s; 152 tabelas. |
+| Migrations antes | `link_module_migrations=23`, `mikro_orm_migrations=175`, `script_migrations=5`. |
+| Runtime atual | Migration exit 0/40 s; schema atualizado, sem conflito de tabela, migration de projeto ou DDL inesperado. |
+| Migrations depois | 152 tabelas e contadores 23/175/5 inalterados; zero duplicatas nas três tabelas. |
+| Bootstrap | Backend pronto na porta 9011; `analytics_event_log`, `email_delivery_log`, `gelato_fulfillment` e `tracking_access_token` resolvidos sem erro. |
+| Toolchain final | AJV exit 0; ESLint v9.39.4; lint exit 0 com 0 erros/208 warnings; build exit 0. |
+| Limpeza | Container e worktree temporário ausentes; somente checkout principal listado; `git diff --check` limpo antes da documentação. |
 
 ## Gate RC1-F — evidência nova
 
@@ -99,11 +138,13 @@ A árvore reconstruída mostra o override raiz `"ajv": "^8.0.0"`. O grafo efetiv
 
 ## Resultados técnicos
 
-- Git local/origin alinhado em `5fe53e1` no gate anterior; o baseline do RC1-A foi `f4bf7f1`, sem diff de runtime, package ou lockfile.
+- Git no RC1-G: `main` e `origin/main` em `47c41f0` (0 à frente/0 atrás), sem diff de runtime, package ou lockfile. O contexto inicial informava três commits à frente, mas o ref local observado já estava alinhado; nenhum fetch ou push foi executado.
 - Unit: PASS — 43/43 suites, 676/676 testes.
-- Contrato HTTP diretamente afetado: PASS — 33 testes totalmente mockados, sem banco.
+- Integração HTTP completa: PASS — 14/14 suítes e 170/170 testes.
+- Integração modules completa: PASS — 28/28 suítes e 454/454 testes; fixture não coletada.
+- Upgrade local: PASS — runtime anterior e atual aceitaram o mesmo schema, sem duplicação de migration.
 - Lint: PASS — 0 erros e 208 warnings antes e depois do `npm ci`.
-- Build: PASS antes e depois do `npm ci`.
+- Build final: PASS.
 - Varredura rastreada: apenas canários/test fixtures e categorias públicas/test-mode revisadas; nenhum segredo real confirmado.
 - Supabase: todas as invariantes canônicas passaram por leitura sanitizada.
 - Migrations: nove arquivos locais correspondem a migrations aplicadas; nenhuma pendente. Os quatro nomes `TBD-*` estão aplicados, não diferidos.
@@ -122,8 +163,8 @@ Heroku ficou integralmente fora da retomada. Produção Heroku, logs do release 
 
 ## Não ações confirmadas
 
-Nenhuma tag, migration, `db:migrate:safe`, DDL, escrita/mutação no Supabase, criação de PaymentIntent, refund, webhook replay, chamada Gelato/Resend/PostHog, acesso Heroku, deploy, rollback, alteração de config, Docker/Postgres ou chamada a banco remoto foi executada. Não houve autofix, alteração de regra ESLint, correção dos 208 warnings, push ou início da Phase 12.
+No RC1-H nenhuma migration foi gerada ou aplicada; os seis bancos foram locais e descartáveis. Nenhuma tag, acesso ou mutação no Supabase, criação real de PaymentIntent, refund, webhook replay externo, chamada real Stripe/Gelato/Resend/PostHog, acesso Heroku, deploy, rollback, alteração de config, autofix, push ou início da Phase 12 ocorreu. Nenhum arquivo de runtime, model, migration, package ou lockfile foi alterado.
 
 ## Próximo gate permitido
 
-Submeter os três commits locais do RC1-F ao manual gate. Qualquer tag, push, produção ou abertura da Phase 12 exige autorização humana separada.
+Revisão humana do RC1-H concluído. Qualquer tag, push, produção, provider real ou abertura da Phase 12 exige autorização humana separada.

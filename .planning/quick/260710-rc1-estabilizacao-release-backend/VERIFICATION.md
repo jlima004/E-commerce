@@ -7,6 +7,8 @@ rc1_b_checked_at: 2026-07-12
 rc1_c_checked_at: 2026-07-13
 rc1_e_checked_at: 2026-07-13
 rc1_f_verified_at: 2026-07-13
+rc1_g_checked_at: 2026-07-13
+rc1_h_verified_at: 2026-07-13
 scope_revision: heroku-excluded
 ---
 
@@ -131,6 +133,81 @@ Erros reais de lint registrados, sem correção neste gate:
 | AJV/ESLint | 0 | PASS | Rushstack AJV 8.20.0 `overridden`; ESLint e eslintrc AJV 6.15.0; `npm ls ajv --all` exit 0; ESLint v9.39.4. |
 | Models/migrations | 0 | PASS | Ambos os `git diff --name-only` direcionados sem saída; nenhuma geração ou aplicação de migration. |
 
+### RC1-G — integrações isoladas e compatibilidade de upgrade
+
+| Verificação | Exit | Resultado | Duração | Evidência |
+|---|---:|---|---:|---|
+| Baseline Git | 0 | PASS | — | `main`, HEAD `47c41f00648ff9d6bc0649e1c07a37ae03130858`, `origin/main` no mesmo SHA (0 à frente/0 atrás), worktree e `git diff --check` limpos; nenhum diff em runtime, integrações, manifests ou lockfile. O contexto inicial dizia três commits à frente, mas o ref local observado no início e no fim já estava alinhado; nenhum fetch ou push foi executado. |
+| Banco HTTP | 0 | PASS | — | Guard confirmou `rc1g_http` em `127.0.0.1:55432`, sem `supabase`, `amazonaws`, `heroku` ou `pooler`. |
+| Integração HTTP | 1 | **BLOCKER** | 86 s; Jest 74,826 s | 14 suítes / 170 testes: 10 suítes e 158 testes passaram; 4 suítes e 12 testes falharam. Falhas: 5 em `stripe-webhook-order-creation`, 2 em `cart-checkout-store`, 4 em `stripe-webhook-store` e 1 em `sentry`. |
+| Migration HTTP | — | NOT RUN | — | As falhas eram de contrato/mocks, não ausência de schema; nenhuma migration e nenhuma repetição foram executadas. |
+| Banco modules | 0 | PASS | — | Guard confirmou `rc1g_modules` em `127.0.0.1:55432`; banco independente do HTTP. |
+| Integração modules | 1 | **BLOCKER** | 37 s; Jest 34,551 s | 29 suítes / 454 testes: 28 suítes e todos os 454 testes passaram; `fixtures/payment-start-cart.ts` foi coletado como suíte e falhou por não conter testes. |
+| Migration modules | — | NOT RUN | — | A falha era descoberta indevida de fixture, não ausência de schema; nenhuma migration e nenhuma repetição foram executadas. |
+| Runtime anterior | 0 | PASS | `npm ci` 232 s; migration 64 s | Worktree detached em `a729e65`; 1.497 pacotes instalados; migrations aplicadas somente em `rc1g_upgrade`. Schema resultante: 152 tabelas. |
+| Snapshot anterior | 0 | PASS | — | `link_module_migrations=23`, `mikro_orm_migrations=175`, `script_migrations=5`. |
+| Runtime atual no schema anterior | 0 | PASS | 40 s | Todos os módulos reportaram banco atualizado; `analytics_event_log`, `email_delivery_log`, `gelato_fulfillment` e `tracking_access_token` foram reconhecidos sem reaplicar migrations. Nenhum conflito de tabela ou DDL de projeto foi observado. |
+| Snapshot posterior | 0 | PASS | — | 152 tabelas; contadores 23/175/5 inalterados; zero duplicatas por `table_name`, `name` e `script_name`. |
+| Bootstrap atual | — | PASS | 128 s até encerramento | `Server is ready on port: 9011`; nenhum erro de módulo, registro duplicado ou migration. O `.env` carregou Redis somente em localhost; Stripe real permaneceu desabilitado e não havia PostHog, Resend ou Gelato configurados. Processo encerrado manualmente após a prova. |
+| AJV/ESLint | 0 | PASS | AJV 5 s | Rushstack AJV 8.20.0 `overridden`; ESLint/eslintrc AJV 6.15.0; ESLint v9.39.4. |
+| Lint | 0 | PASS | 4 s | 0 erros e 208 warnings. |
+| Build | 0 | PASS | 26 s | Backend build concluído com sucesso. |
+| Limpeza | 0 | PASS | — | O trap de segurança removeu worktree/container ao encerrar o smoke; a limpeza final confirmou container ausente, somente o worktree principal listado, checkout limpo e `git diff --check` exit 0 antes dos documentos. |
+
+As migrations foram aplicadas exclusivamente em `rc1g_upgrade`. Os bancos `rc1g_http` e `rc1g_modules` permaneceram sem migration porque suas falhas não eram de schema. Nenhuma URL ou senha foi registrada.
+
+### RC1-H — recuperação das suítes de integração
+
+Baseline: `main` em `47c41f00648ff9d6bc0649e1c07a37ae03130858`, igual ao `origin/main` observado, `git diff --check` limpo e somente os quatro documentos RC1 previamente modificados. Não havia diff em runtime, integrações, Jest, manifests ou lockfile antes das correções.
+
+#### Descoberta modules antes/depois
+
+| Verificação | Antes | Depois | Resultado |
+|---|---:|---:|---|
+| Arquivos em `src/modules/**/__tests__/**` | 29 | 29 | 28 specs legítimas e 1 fixture. |
+| Jest `--listTests` | 29 | 28 | Somente `fixtures/payment-start-cart.ts` saiu. |
+| Specs legítimas | 28 | 28 | Nenhuma suíte real desapareceu. |
+| Padrão | `**/*.[jt]s` | `**/*.spec.[jt]s` | Não foi necessário `testPathIgnorePatterns`. |
+
+O arquivo Sentry descoberto foi `integration-tests/http/sentry.spec.ts`.
+
+#### Diagnóstico das 12 falhas HTTP do RC1-G/primeira repetição RC1-H
+
+| # | Arquivo e teste | Erro / esperado / recebido sanitizado | Primeiro frame do projeto | Contrato e causa comprovada | Classificação |
+|---:|---|---|---|---|---|
+| 1 | `stripe-webhook-order-creation.spec.ts` — `EmailDeliveryLog local e gravado depois de purchase_completed sem chamar Resend` | assertion; comprimento 1; recebeu `[]` | spec:1873 | Phase 08 criou o enqueue; o hardening `864cb5d` passou a exigir três envs completos, mas o teste isolava apenas `SUPPORT_EMAIL`. | `ENVIRONMENT_ISOLATION` |
+| 2 | mesmo arquivo — `email recovery cria EmailDeliveryLog ausente...` | assertion; comprimento 1; recebeu `[]` | spec:1993 | Mesmo gate de configuração incompleto no cenário de recovery. | `ENVIRONMENT_ISOLATION` |
+| 3 | mesmo arquivo — `Resend indisponivel does not block Order...` | assertion; `recorded`; recebeu `undefined` | spec:2070 | O log local não foi criado porque o próprio teste deixou o provider incompleto; o client do teste já era injetado e não fazia rede. | `ENVIRONMENT_ISOLATION` |
+| 4 | mesmo arquivo — `accepted Order path cria Order e logs locais...` | assertion; `recorded`; recebeu `undefined` | spec:2328 | O gate Phase 09 depende do log local de email; a configuração do teste não satisfazia o contrato aprovado. | `ENVIRONMENT_ISOLATION` |
+| 5 | mesmo arquivo — `quando EmailDeliveryLog sent existe em recovery/replay...` | assertion; comprimento 1; recebeu `[]` | spec:2474 | Sem provider local habilitado, o entrypoint não reutilizava o email `sent` e o gate Gelato permanecia fechado. | `ENVIRONMENT_ISOLATION` |
+| 6 | `cart-checkout-store.spec.ts` — `nao registra handlers de webhook nas rotas... Phase 03` | assertion; 0 rotas; recebeu somente `/hooks/stripe` | spec:1135 | A assertion da Phase 03 passou a inspecionar todas as rotas; a Phase 05 adicionou legitimamente o hook global sem colocá-lo nas rotas de cart/checkout. | `STALE_TEST_EXPECTATION` |
+| 7 | mesmo arquivo — `mantem grep estatico limpo...` | assertion regex negativa; recebeu rota card/uso puro de fingerprint `PaymentAttempt` | spec:1151 | A varredura recursiva da Phase 03 passou a incluir iniciação Phase 04 e, depois do primeiro ajuste, o fingerprint puro de invalidação; nenhum fluxo criava Order no checkout. | `STALE_TEST_EXPECTATION` |
+| 8 | `stripe-webhook-store.spec.ts` — `payment_intent.succeeded confirma exatamente uma tentativa` | assertion; `processed`; recebeu `failed` | spec:271 | O mock Phase 05 não injetava o entrypoint terminal obrigatório desde Phase 06; o runtime tentou resolver `analytics_event_log`. | `STALE_MOCK_OR_CONTAINER_KEY` |
+| 9 | mesmo arquivo — `payment_intent deduplica replay sem duplicar mutacao` | assertion; `processed`; recebeu `failed` | spec:531 | Mesmo mock incompleto no replay. | `STALE_MOCK_OR_CONTAINER_KEY` |
+| 10 | mesmo arquivo — `payment_intent com WebhookEventLog recebido...` | assertion; `processed`; recebeu `failed` | spec:595 | Mesmo mock incompleto no registro `received`. | `STALE_MOCK_OR_CONTAINER_KEY` |
+| 11 | mesmo arquivo — `marca evento nao suportado como ignored...` | assertion; `ignored`; recebeu `processed` | spec:714 | `charge.refunded` deixou de ser não suportado quando a Phase 11 adicionou o fluxo informacional/idempotente de refund. | `STALE_TEST_EXPECTATION` |
+| 12 | `sentry.spec.ts` — `mantem o middleware de correlacao...` | assertion; 1 rota total; recebeu 13 | spec:489 | A assertion Phase 01 congelava a contagem global; fases posteriores adicionaram rotas sem remover o middleware de correlação nem o error handler. | `STALE_TEST_EXPECTATION` |
+
+As ocorrências dos quatro módulos foram comparadas com `analytics_event_log`, `email_delivery_log`, `gelato_fulfillment` e `tracking_access_token`. O teste de Order já importava as constants atuais; nenhuma substituição global ou alias de runtime foi aplicada. Nenhuma falha permaneceu `UNKNOWN` e nenhum `REAL_RUNTIME_DEFECT` foi comprovado.
+
+#### Correções e resultados
+
+| Verificação | Exit | Resultado |
+|---|---:|---|
+| Order dirigida | 0 | 17/17 testes PASS; env fake/local completo apenas nos cinco cenários Phase 08/09, restaurado após cada teste; zero client externo real. |
+| Cart dirigida | 0 | 24/24 PASS; provas negativas restritas às superfícies pre-Order e às operações realmente proibidas. |
+| Stripe store dirigida | 0 | 10/10 PASS; entrypoint terminal injetado no mock e evento não suportado trocado para `customer.created`. |
+| Sentry dirigida | 0 | 12/12 PASS; middleware global localizado por matcher, sem congelar a contagem total de rotas. |
+| Modules completa | 0 | 28/28 suítes e 454/454 testes PASS; fixture não coletada. |
+| HTTP completa | 0 | 14/14 suítes e 170/170 testes PASS. |
+| Unitários | 0 | 43/43 suítes e 676/676 testes PASS. |
+| Lint | 0 | 0 erros e 208 warnings; sem aumento material. |
+| Build | 0 | Backend build concluído com sucesso. |
+| Schema/packages | 0 | Nenhum diff em models, migrations, `package.json` ou `package-lock.json`. |
+| Limpeza | 0 | Container `ecommerce-rc1h-postgres` ausente; `/tmp/rc1-h*` removido; credenciais/URLs removidas do shell. |
+
+Os seis bancos usados foram exclusivamente locais e descartáveis em `127.0.0.1:55433`. Nenhuma URL completa ou senha foi registrada nos documentos. Como somente Jest e testes mudaram, a prova completa de upgrade/bootstrap do RC1-G não foi repetida. Commit de testes/configuração: `e45adf9`; nenhum commit de runtime.
+
 ## Verificação estática e classificação de valores
 
 - Nenhum segredo rastreado real foi confirmado.
@@ -181,4 +258,4 @@ Todas as invariantes de banco mantidas no escopo passaram.
 
 ## Classificação final
 
-**PASS.** O RC1-F corrigiu os sete erros reais sem alterar regras ESLint nem os 208 warnings. Lint, testes dirigidos, 43/43 suites unitárias, build e reprodução pós-`npm ci` passaram; a árvore AJV permaneceu válida e nenhum model/migration mudou. Docker, bancos, integrações reais, migrations, deploy, rollback, tag, push e Phase 12 não foram acionados. A tag `v1.0-backend-rc1` continua dependente de aprovação humana separada.
+**PASS.** O RC1-H removeu somente a coleta indevida da fixture, corrigiu contratos de teste comprovadamente obsoletos e recuperou todas as suítes: modules 28/28 e 454/454, HTTP 14/14 e 170/170, unitários 43/43 e 676/676, lint 0/208 e build PASS. Não houve mudança de runtime, schema, manifest ou lockfile; todos os recursos descartáveis foram removidos. Supabase, banco remoto, providers externos, Heroku, deploy, rollback, tag, push e Phase 12 não foram acionados.

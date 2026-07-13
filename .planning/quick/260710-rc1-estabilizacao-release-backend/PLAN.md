@@ -4,7 +4,7 @@ slug: estabilizacao-release-backend
 status: complete
 scope: release-stabilization-gate-only
 classification: PASS
-completed_gate: rc1-f-medusa-lint-contract-recovery
+completed_gate: rc1-h-integration-suite-recovery
 phase_12_status: not-planned-not-started-blocked
 ---
 
@@ -20,7 +20,7 @@ O usuário confirmou que as variáveis foram rotacionadas e reabriu o gate com e
 
 ## Limites preservados
 
-- Nenhum runtime, teste, dependência, package ou lockfile pode ser alterado.
+- Até o RC1-G, nenhum runtime ou teste podia ser alterado. O RC1-H autorizou somente `jest.config.js` e os testes comprovadamente afetados; runtime, dependências, package e lockfile permaneceram imutáveis.
 - Nenhuma migration, `db:migrate:safe`, mutação de banco, deploy, rollback, tag ou alteração de config pode ser executada.
 - Nenhuma chamada mutável a Stripe e nenhuma chamada a Gelato, Resend ou PostHog pode ser feita.
 - A Phase 12 permanece não planejada, não iniciada e bloqueada.
@@ -76,3 +76,19 @@ Escopo aprovado: corrigir somente quatro identificadores de módulo para snake_c
 Ordem aplicada: baseline sem diff em runtime/testes → auditoria manual de referências → mudanças mínimas → lint dirigido → lint completo → testes dirigidos unitários e contrato de rota totalmente mockado → suíte unitária completa → build → `rm -rf node_modules` e `npm ci --include=dev` → árvore AJV/ESLint → repetição de lint, unitários e build → provas negativas de models/migrations.
 
 Resultado: `PASS`. Lint dirigido e completo encerraram com zero erros; o completo preservou exatamente 208 warnings. Os testes dirigidos passaram (149 unitários e 33 do contrato mockado), a suíte completa passou com 43/43 suites e 676/676 testes, e o build passou antes e depois do `npm ci`. A árvore permaneceu válida com Rushstack AJV 8.20.0 `overridden`, ESLint/eslintrc AJV 6.15.0 e ESLint v9.39.4. Nenhum model ou migration mudou. Um ajuste adicional estritamente tipado em `tracking/lookup/route.ts` foi necessário porque as novas constants tornaram o container gerado mais específico; os dois casts `unknown` não alteram comportamento runtime.
+
+## Gate RC1-G — integrações isoladas e compatibilidade de upgrade
+
+Escopo aprovado: executar as suítes HTTP e modules contra bancos PostgreSQL 16 independentes em `127.0.0.1:55432`, criar um terceiro schema descartável com o runtime `a729e65`, aplicar o runtime atual sobre esse mesmo schema, comprovar o bootstrap dos quatro módulos renomeados e repetir AJV, ESLint, lint e build. Somente os três bancos locais poderiam receber migrations; runtime, testes, manifests, lockfile, providers externos, Supabase, Heroku, deploy, tag, push e Phase 12 permaneceram fora do escopo.
+
+Ordem aplicada: baseline limpo → container e três bancos descartáveis → guardas localhost → integração HTTP → integração modules → worktree do runtime anterior e `npm ci` → migrations anteriores → snapshot de tabelas/migrations → migrations atuais no mesmo banco → snapshot e prova de não duplicação → bootstrap atual → AJV/ESLint/lint/build → limpeza integral.
+
+Resultado: `BLOCKED`. A suíte HTTP terminou com 4/14 suítes e 12/170 testes falhando; a suíte modules terminou com 1/29 suíte falhando porque um fixture sem testes foi coletado, embora os 454 testes executados tenham passado. As falhas não eram ausência de schema, então os bancos HTTP/modules não receberam migrations nem repetição. A prova de upgrade passou: runtime anterior e atual saíram em 0, 152 tabelas e os contadores de migration 23/175/5 permaneceram idênticos, sem duplicatas. O bootstrap atual atingiu a porta 9011 sem erro dos quatro módulos; Redis carregado pelo `.env` era localhost e nenhum provider externo foi chamado. AJV, ESLint, lint 0/208 e build passaram. Container e worktree foram removidos, mas não há commit documental porque o commit foi autorizado somente após `PASS`.
+
+## Gate RC1-H — recuperação das suítes de integração
+
+Escopo aprovado: corrigir somente a coleta indevida da fixture, reproduzir e classificar as 12 falhas HTTP em quatro bancos PostgreSQL 16 independentes em `127.0.0.1:55433`, ajustar apenas expectativas, mocks e isolamento de ambiente comprovadamente obsoletos, repetir as quatro suítes dirigidas e então executar modules, HTTP, unitários, lint e build completos. Runtime, models, migrations, manifests, lockfile, Supabase, Heroku, providers reais, deploy, rollback, tag, push e Phase 12 permaneceram proibidos.
+
+Ordem aplicada: baseline preservando os quatro documentos RC1 → inventário e `--listTests` → correção mínima de `testMatch` → descoberta exata de `sentry.spec.ts` → Postgres descartável e ambiente sanitizado → reprodução das quatro suítes → diagnóstico sem `UNKNOWN` → correções restritas a quatro specs → repetição dirigida em bancos recriados → modules/HTTP completos → unitários/lint/build → provas negativas de schema/package → limpeza → commits atômicos.
+
+Resultado: `PASS`. A coleta modules caiu de 29 para 28 caminhos removendo exclusivamente `fixtures/payment-start-cart.ts`; 28/28 suítes e 454/454 testes passaram. As quatro suítes dirigidas passaram com 17/17, 24/24, 10/10 e 12/12 testes. HTTP completo passou 14/14 e 170/170; unitários passaram 43/43 e 676/676; lint encerrou com zero erros e 208 warnings; build passou. Nenhum arquivo de runtime, model, migration, manifest ou lockfile mudou. O container e os temporários foram removidos. O commit de testes/configuração é `e45adf9`; não houve commit de runtime.
