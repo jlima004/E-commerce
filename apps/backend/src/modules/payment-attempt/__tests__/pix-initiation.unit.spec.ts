@@ -57,7 +57,7 @@ function createSyntheticStripePixLayer(): StripePixInitiationLayer {
         id: `pi_pix_synthetic_${suffix}`,
         object: "payment_intent",
         status: "requires_action",
-        amount: request.amount,
+        amount: request.amount_minor,
         currency: request.currency_code,
         client_secret: `pi_pix_synthetic_${suffix}_secret_synthetic`,
         metadata: {
@@ -152,7 +152,7 @@ describe("PaymentAttempt Stripe Pix resolver", () => {
 describe("04-05 startPixPaymentAttempt", () => {
   const completeCart = buildCompleteGuestCart({
     id: "cart_guest_01",
-    total: 9900,
+    total: 99,
   })
 
   it("deriva amount/currency do cart e retorna instrucoes Pix somente na resposta", async () => {
@@ -174,7 +174,7 @@ describe("04-05 startPixPaymentAttempt", () => {
     expect(result.response.status).toBe("awaiting_pix_payment")
     expect(stripeLayer.createPixPaymentIntent).toHaveBeenCalledWith(
       expect.objectContaining({
-        amount: 9900,
+        amount_minor: 9900,
         currency_code: "brl",
         cart_id: completeCart.id,
       })
@@ -253,7 +253,7 @@ describe("04-05 startPixPaymentAttempt", () => {
     const incompleteCart = buildCompleteGuestCart({
       id: "cart_guest_01",
       email: null,
-      total: 9900,
+      total: 99,
     })
 
     await expect(
@@ -304,7 +304,7 @@ describe("04-05 startPixPaymentAttempt", () => {
 
   it("rejeita retorno Stripe-like com amount divergente do cart", async () => {
     const stripeLayer = createStripePixLayer(
-      mockRawStripePixPaymentIntent({ amount: 9800 })
+      mockRawStripePixPaymentIntent({ amount: 99 })
     )
 
     await expect(
@@ -323,7 +323,7 @@ describe("04-05 startPixPaymentAttempt", () => {
   it("createSyntheticStripePixLayer retorna PI mock sem config Stripe", async () => {
     const layer = createSyntheticStripePixLayer()
     const raw = await layer.createPixPaymentIntent({
-      amount: 5000,
+      amount_minor: 5000,
       currency_code: "brl",
       cart_id: "cart_synthetic",
       idempotency_key: "idem_pix_01",

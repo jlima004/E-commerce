@@ -32,7 +32,7 @@ function sellableVariant(
     id: "variant_01",
     sku: "TSH-M-BLK",
     metadata: { ...COMPLETE_GELATO_METADATA },
-    prices: [{ currency_code: "brl", amount: 9900 }],
+    prices: [{ currency_code: "brl", amount: 99 }],
     ...overrides,
   }
 }
@@ -50,12 +50,12 @@ function buildCompleteCart(
     updated_at: "2026-06-27T10:00:00.000Z",
     metadata: null,
     customer: null,
-    total: 9900,
+    total: 99,
     items: [
       {
         id: "item_01",
         quantity: 1,
-        unit_price: 9900,
+        unit_price: 99,
         variant_id: "variant_01",
         variant: sellableVariant(),
       },
@@ -107,9 +107,10 @@ function buildEligibleInput(
 }
 
 describe("derivePaymentAmountFromCart", () => {
-  it("deriva amount e currency_code=BRL a partir de cart.total", () => {
+  it("deriva major Medusa e minor provider a partir de cart.total", () => {
     expect(derivePaymentAmountFromCart(buildCompleteCart())).toEqual({
-      amount: 9900,
+      medusa_amount_major: 99,
+      provider_amount_minor: 9900,
       currency_code: "BRL",
     })
   })
@@ -118,11 +119,12 @@ describe("derivePaymentAmountFromCart", () => {
     expect(
       derivePaymentAmountFromCart(
         buildCompleteCart({
-          total: bigNumberLike(9900),
+          total: bigNumberLike(99),
         })
       )
     ).toEqual({
-      amount: 9900,
+      medusa_amount_major: 99,
+      provider_amount_minor: 9900,
       currency_code: "BRL",
     })
   })
@@ -136,7 +138,7 @@ describe("derivePaymentAmountFromCart", () => {
             {
               id: "item_01",
               quantity: 2,
-              unit_price: 5000,
+              unit_price: 50,
               variant_id: "variant_01",
               variant: sellableVariant(),
             },
@@ -144,7 +146,8 @@ describe("derivePaymentAmountFromCart", () => {
         })
       )
     ).toEqual({
-      amount: 10000,
+      medusa_amount_major: 100,
+      provider_amount_minor: 10000,
       currency_code: "BRL",
     })
   })
@@ -154,7 +157,7 @@ describe("derivePaymentAmountFromCart", () => {
       derivePaymentAmountFromCart(
         buildCompleteCart({
           total: null,
-          item_total: 9900,
+          item_total: 99,
           items: [
             {
               id: "item_01",
@@ -167,7 +170,8 @@ describe("derivePaymentAmountFromCart", () => {
         })
       )
     ).toEqual({
-      amount: 9900,
+      medusa_amount_major: 99,
+      provider_amount_minor: 9900,
       currency_code: "BRL",
     })
   })
@@ -177,13 +181,14 @@ describe("derivePaymentAmountFromCart", () => {
       derivePaymentAmountFromCart(
         buildCompleteCart({
           total: undefined,
-          shipping_total: 1500,
-          tax_total: 200,
-          discount_total: 700,
+          shipping_total: 15,
+          tax_total: 2,
+          discount_total: 7,
         })
       )
     ).toEqual({
-      amount: 10900,
+      medusa_amount_major: 109,
+      provider_amount_minor: 10900,
       currency_code: "BRL",
     })
   })
@@ -193,7 +198,7 @@ describe("derivePaymentAmountFromCart", () => {
       derivePaymentAmountFromCart(
         buildCompleteCart({
           currency_code: "usd",
-          total: 9900,
+          total: 99,
         })
       )
     ).toBeNull()
@@ -211,7 +216,7 @@ describe("derivePaymentAmountFromCart", () => {
     expect(
       derivePaymentAmountFromCart(
         buildCompleteCart({
-          total: -100,
+          total: -1,
         })
       )
     ).toBeNull()
@@ -237,7 +242,8 @@ describe("evaluatePaymentStartEligibility", () => {
       ).toEqual({
         eligible: true,
         checkout_data_complete: true,
-        amount: 9900,
+        medusa_amount_major: 99,
+        provider_amount_minor: 9900,
         currency_code: "BRL",
         cart_id: "cart_guest_01",
         payment_method_type: paymentMethod,
@@ -465,7 +471,8 @@ describe("assertPaymentStartEligible", () => {
     expect(assertPaymentStartEligible(buildEligibleInput())).toEqual({
       eligible: true,
       checkout_data_complete: true,
-      amount: 9900,
+      medusa_amount_major: 99,
+      provider_amount_minor: 9900,
       currency_code: "BRL",
       cart_id: "cart_guest_01",
       payment_method_type: "card",
@@ -549,7 +556,8 @@ describe("rejectClientMoneyFields / normalizePaymentStartRequestBody", () => {
     const eligibility = evaluatePaymentStartEligibility(buildEligibleInput())
     expect(eligibility).toMatchObject({
       eligible: true,
-      amount: 9900,
+      medusa_amount_major: 99,
+      provider_amount_minor: 9900,
       currency_code: "BRL",
     })
   })

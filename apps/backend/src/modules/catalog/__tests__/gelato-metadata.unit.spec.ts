@@ -23,7 +23,7 @@ function variant(
     id: "variant_01",
     sku: "TSH-M-BLK",
     metadata: { ...COMPLETE_GELATO_METADATA },
-    prices: [{ currency_code: "brl", amount: 9900 }],
+    prices: [{ currency_code: "brl", amount: 99 }],
     ...overrides,
   }
 }
@@ -122,7 +122,7 @@ describe("readGelatoMetadata", () => {
 })
 
 describe("isSellableVariant", () => {
-  it("sellable returns true only for complete metadata with valid BRL integer cents", () => {
+  it("sellable returns true only for complete metadata with valid BRL major units", () => {
     expect(isSellableVariant(variant())).toBe(true)
   })
 
@@ -164,32 +164,38 @@ describe("isSellableVariant", () => {
     ).toBe(false)
   })
 
-  describe("BRL price in integer cents", () => {
-    it("sellable requires a BRL price expressed as integer cents", () => {
-      expect(
-        isSellableVariant(
-          variant({
-            prices: [{ currency_code: "brl", amount: 9900 }],
-          })
-        )
-      ).toBe(true)
-    })
+  describe("BRL price in major units", () => {
+    it.each([99, 99.9, 0.01, 49.5, 9900])(
+      "sellable accepts positive BRL major amount %s with at most two decimals",
+      (amount) => {
+        expect(
+          isSellableVariant(
+            variant({
+              prices: [{ currency_code: "brl", amount }],
+            })
+          )
+        ).toBe(true)
+      }
+    )
 
-    it("sellable rejects fractional BRL amounts", () => {
-      expect(
-        isSellableVariant(
-          variant({
-            prices: [{ currency_code: "brl", amount: 99.5 }],
-          })
-        )
-      ).toBe(false)
-    })
+    it.each([0, -1, 99.999, Number.NaN, Number.POSITIVE_INFINITY])(
+      "sellable rejects invalid BRL major amount %s",
+      (amount) => {
+        expect(
+          isSellableVariant(
+            variant({
+              prices: [{ currency_code: "brl", amount }],
+            })
+          )
+        ).toBe(false)
+      }
+    )
 
     it("sellable rejects missing BRL price", () => {
       expect(
         isSellableVariant(
           variant({
-            prices: [{ currency_code: "usd", amount: 9900 }],
+            prices: [{ currency_code: "usd", amount: 99 }],
           })
         )
       ).toBe(false)
@@ -248,7 +254,7 @@ describe("assertSellableVariantMetadata typed errors", () => {
     try {
       assertSellableVariantMetadata(
         variant({
-          prices: [{ currency_code: "brl", amount: 12.34 }],
+          prices: [{ currency_code: "brl", amount: 99.999 }],
         })
       )
       throw new Error("Expected assertSellableVariantMetadata to throw")
@@ -258,7 +264,7 @@ describe("assertSellableVariantMetadata typed errors", () => {
       expect((error as GelatoMetadataError).toPayload()).toEqual({
         code: "GELATO_PRICE_INVALID",
         currency_code: "brl",
-        reason: "amount_must_be_integer_cents",
+        reason: "amount_must_be_positive_major_units_with_at_most_two_decimals",
       })
       expect((error as GelatoMetadataError).toPayload()).not.toHaveProperty("stack")
     }

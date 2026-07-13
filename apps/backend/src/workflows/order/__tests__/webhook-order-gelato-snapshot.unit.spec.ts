@@ -33,7 +33,7 @@ function buildItem(overrides: Record<string, unknown> = {}) {
       },
       prices: [
         {
-          amount: 9900,
+          amount: 99,
           currency_code: "brl",
         },
       ],
@@ -67,7 +67,7 @@ describe("buildOrderLineItemGelatoSnapshots", () => {
             },
             prices: [
               {
-                amount: 10900,
+                amount: 109,
                 currency_code: "brl",
               },
             ],
@@ -155,7 +155,7 @@ describe("buildOrderLineItemGelatoSnapshots", () => {
               },
               prices: [
                 {
-                  amount: 9900,
+                  amount: 99,
                   currency_code: "brl",
                 },
               ],
@@ -184,7 +184,7 @@ describe("buildOrderLineItemGelatoSnapshots", () => {
               },
               prices: [
                 {
-                  amount: 9900,
+                  amount: 99,
                   currency_code: "brl",
                 },
               ],
@@ -218,7 +218,7 @@ describe("buildOrderLineItemGelatoSnapshots", () => {
               },
               prices: [
                 {
-                  amount: 9900,
+                  amount: 99,
                   currency_code: "brl",
                 },
               ],

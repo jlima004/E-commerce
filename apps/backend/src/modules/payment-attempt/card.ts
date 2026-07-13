@@ -35,7 +35,7 @@ export type CardPaymentAttemptResponse = {
 }
 
 export type StripeCardInitiationRequest = {
-  amount: number
+  amount_minor: number
   currency_code: string
   cart_id: string
   idempotency_key: string
@@ -117,12 +117,12 @@ function assertStripeCardPaymentIntentMatchesEligibility(
     currency_code: string
   },
   eligibility: {
-    amount: number
+    provider_amount_minor: number
     currency_code: string
   }
 ): void {
   if (
-    persistable.amount !== eligibility.amount ||
+    persistable.amount !== eligibility.provider_amount_minor ||
     persistable.currency_code !== eligibility.currency_code.toLowerCase()
   ) {
     throw new MedusaError(
@@ -159,7 +159,7 @@ export async function startCardPaymentAttempt(
 
   try {
     rawIntent = await input.stripeLayer.createCardPaymentIntent({
-      amount: eligibility.amount,
+      amount_minor: eligibility.provider_amount_minor,
       currency_code: eligibility.currency_code.toLowerCase(),
       cart_id: input.cart.id,
       idempotency_key: idempotencyKey,

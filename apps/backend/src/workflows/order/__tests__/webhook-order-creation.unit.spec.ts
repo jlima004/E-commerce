@@ -10,6 +10,7 @@ import {
   validateCreateOrderFromConfirmedPaymentAttemptInput,
   type CreateOrderFromConfirmedPaymentAttemptInput,
 } from "../webhook-order-entrypoint"
+import { assertConfirmedAttemptCartMatchesPaymentAttempt } from "../steps/create-order-from-confirmed-attempt"
 
 function buildAttempt(
   overrides: Partial<PaymentAttemptRecord> = {}
@@ -58,7 +59,7 @@ function buildInput(
 function buildCart() {
   return {
     id: "cart_01",
-    total: 9900,
+    total: 99,
     currency_code: "brl",
     completed_at: null,
     items: [
@@ -82,7 +83,7 @@ function buildCart() {
           },
           prices: [
             {
-              amount: 9900,
+              amount: 99,
               currency_code: "brl",
             },
           ],
@@ -367,6 +368,55 @@ describe("validateCreateOrderFromConfirmedPaymentAttemptInput", () => {
         buildInput({ payment_attempt_id: " " })
       )
     ).toThrow("ORDER_ENTRYPOINT_PAYMENT_ATTEMPT_ID_REQUIRED")
+  })
+})
+
+describe("assertConfirmedAttemptCartMatchesPaymentAttempt monetary units", () => {
+  it("converte unit_price 99 major para 9900 minor antes de comparar", () => {
+    const cart = buildCart()
+
+    expect(() =>
+      assertConfirmedAttemptCartMatchesPaymentAttempt(buildAttempt(), {
+        ...cart,
+        items: [{ ...cart.items[0], unit_price: 99 }],
+      })
+    ).not.toThrow()
+  })
+
+  it("converte 49.5 major antes de multiplicar por quantidade 2", () => {
+    const cart = buildCart()
+
+    expect(() =>
+      assertConfirmedAttemptCartMatchesPaymentAttempt(buildAttempt(), {
+        ...cart,
+        items: [{ ...cart.items[0], quantity: 2, unit_price: 49.5 }],
+      })
+    ).not.toThrow()
+  })
+
+  it("preserva mismatch quando PaymentAttempt.amount 99 nao esta em minor units", () => {
+    const cart = buildCart()
+
+    expect(() =>
+      assertConfirmedAttemptCartMatchesPaymentAttempt(
+        buildAttempt({ amount: 99 }),
+        {
+          ...cart,
+          items: [{ ...cart.items[0], unit_price: 99 }],
+        }
+      )
+    ).toThrow("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
+  })
+
+  it("falha fechado para unit_price major com mais de duas casas decimais", () => {
+    const cart = buildCart()
+
+    expect(() =>
+      assertConfirmedAttemptCartMatchesPaymentAttempt(buildAttempt(), {
+        ...cart,
+        items: [{ ...cart.items[0], unit_price: 99.999 }],
+      })
+    ).toThrow("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
   })
 })
 
@@ -695,7 +745,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
             items: [
               {
                 ...buildCart().items[0],
-                unit_price: 9800,
+                unit_price: 98,
               },
             ],
           }),

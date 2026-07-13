@@ -25,7 +25,7 @@ function variant(
     id: "variant_01",
     sku: "TSH-M-BLK",
     metadata: { ...COMPLETE_GELATO_METADATA },
-    prices: [{ currency_code: "brl", amount: 9900 }],
+    prices: [{ currency_code: "brl", amount: 99 }],
     ...overrides,
   }
 }

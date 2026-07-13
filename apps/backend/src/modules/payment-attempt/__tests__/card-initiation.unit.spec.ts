@@ -53,7 +53,7 @@ function createSyntheticStripeCardLayer(): StripeCardInitiationLayer {
         id: `pi_synthetic_${suffix}`,
         object: "payment_intent",
         status: "requires_payment_method",
-        amount: request.amount,
+        amount: request.amount_minor,
         currency: request.currency_code,
         client_secret: `pi_synthetic_${suffix}_secret_synthetic`,
         metadata: {
@@ -136,7 +136,7 @@ describe("PaymentAttempt Stripe card resolver", () => {
 describe("04-04 startCardPaymentAttempt", () => {
   const completeCart = buildCompleteGuestCart({
     id: "cart_guest_01",
-    total: 9900,
+    total: 99,
   })
 
   it("deriva amount/currency do cart e retorna client_secret somente na resposta", async () => {
@@ -158,7 +158,7 @@ describe("04-04 startCardPaymentAttempt", () => {
     expect(result.response.status).toBe("card_client_secret_created")
     expect(stripeLayer.createCardPaymentIntent).toHaveBeenCalledWith(
       expect.objectContaining({
-        amount: 9900,
+        amount_minor: 9900,
         currency_code: "brl",
         cart_id: completeCart.id,
       })
@@ -237,7 +237,7 @@ describe("04-04 startCardPaymentAttempt", () => {
     const incompleteCart = buildCompleteGuestCart({
       id: "cart_guest_01",
       email: null,
-      total: 9900,
+      total: 99,
     })
 
     await expect(
@@ -287,7 +287,7 @@ describe("04-04 startCardPaymentAttempt", () => {
 
   it("rejeita retorno Stripe-like com amount divergente do cart", async () => {
     const stripeLayer = createStripeLayer(
-      mockRawStripeCardPaymentIntent({ amount: 9800 })
+      mockRawStripeCardPaymentIntent({ amount: 99 })
     )
 
     await expect(
@@ -324,7 +324,7 @@ describe("04-04 startCardPaymentAttempt", () => {
   it("createSyntheticStripeCardLayer retorna PI mock sem config Stripe", async () => {
     const layer = createSyntheticStripeCardLayer()
     const raw = await layer.createCardPaymentIntent({
-      amount: 5000,
+      amount_minor: 5000,
       currency_code: "brl",
       cart_id: "cart_synthetic",
       idempotency_key: "idem_01",

@@ -67,14 +67,14 @@ function buildInput(
 function buildCart() {
   return {
     id: "cart_01",
-    total: 9900,
+    total: 99,
     currency_code: "brl",
     completed_at: null,
     items: [
       {
         id: "line_item_entry_01",
         quantity: 1,
-        unit_price: 9900,
+        unit_price: 99,
         metadata: {
           preserve_me: true,
         },
@@ -92,7 +92,7 @@ function buildCart() {
           },
           prices: [
             {
-              amount: 9900,
+              amount: 99,
               currency_code: "brl",
             },
           ],

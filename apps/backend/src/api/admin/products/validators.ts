@@ -53,7 +53,7 @@ export function formatGelatoMetadataAdminMessage(
       )
     case "GELATO_PRICE_INVALID":
       return assertSafeOperatorMessage(
-        "Variant cannot be published or sold: BRL price must be integer cents."
+        "Variant cannot be published or sold: BRL price must be positive major units with at most two decimal places."
       )
     default:
       return assertSafeOperatorMessage(

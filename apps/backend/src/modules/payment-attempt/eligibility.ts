@@ -10,6 +10,12 @@ import {
   type StoreCartPreOrderRecord,
 } from "../../api/store/carts/serializers"
 import type { PaymentMethodType } from "./types"
+import {
+  assertNonNegativeBrlMinorAmount,
+  assertPositiveBrlMinorAmount,
+  brlMajorToMinor,
+  normalizeBrlMajorAmount,
+} from "../../utils/money-units"
 
 export type PaymentStartActorContext = {
   actorType: "guest" | "customer"
@@ -54,7 +60,8 @@ export type PaymentStartIneligibilityCode =
 export type PaymentStartEligibilitySuccess = {
   eligible: true
   checkout_data_complete: true
-  amount: number
+  medusa_amount_major: number
+  provider_amount_minor: number
   currency_code: "BRL"
   cart_id: string
   payment_method_type: PaymentMethodType
@@ -101,65 +108,23 @@ function toLineItemSnapshots(
   }))
 }
 
-function resolveIntegerCents(value: unknown): number | null {
-  if (typeof value === "number") {
-    return Number.isSafeInteger(value) ? value : null
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim()
-    if (!/^-?\d+$/.test(trimmed)) {
-      return null
-    }
-
-    const parsed = Number(trimmed)
-    return Number.isSafeInteger(parsed) ? parsed : null
-  }
-
-  if (!value || typeof value !== "object") {
+function resolvePositiveBrlMajorToMinor(value: unknown): number | null {
+  try {
+    return assertPositiveBrlMinorAmount(brlMajorToMinor(value))
+  } catch {
     return null
   }
-
-  const rawAmount = (value as { rawAmount?: unknown }).rawAmount
-  if (rawAmount !== undefined) {
-    return resolveIntegerCents(rawAmount)
-  }
-
-  const numeric = (value as { numeric?: unknown }).numeric
-  if (numeric !== undefined) {
-    return resolveIntegerCents(numeric)
-  }
-
-  const valueOf = (value as { valueOf?: () => unknown }).valueOf
-  if (typeof valueOf === "function") {
-    const resolved = valueOf.call(value)
-    if (resolved !== value) {
-      return resolveIntegerCents(resolved)
-    }
-  }
-
-  const toString = (value as { toString?: () => string }).toString
-  if (typeof toString === "function") {
-    const resolved = toString.call(value)
-    if (resolved && resolved !== "[object Object]") {
-      return resolveIntegerCents(resolved)
-    }
-  }
-
-  return null
 }
 
-function resolvePositiveIntegerCents(value: unknown): number | null {
-  const cents = resolveIntegerCents(value)
-  return cents !== null && cents > 0 ? cents : null
+function resolveNonNegativeBrlMajorToMinor(value: unknown): number | null {
+  try {
+    return assertNonNegativeBrlMinorAmount(brlMajorToMinor(value))
+  } catch {
+    return null
+  }
 }
 
-function resolveNonNegativeIntegerCents(value: unknown): number | null {
-  const cents = resolveIntegerCents(value)
-  return cents !== null && cents >= 0 ? cents : null
-}
-
-function sumLineItemsTotalCents(
+function sumLineItemsTotalMinor(
   items: PaymentStartCartLineItem[] | null | undefined
 ): number | null {
   const lineItems = items ?? []
@@ -181,23 +146,30 @@ function sumLineItemsTotalCents(
       return null
     }
 
-    const normalizedUnitPrice = resolveNonNegativeIntegerCents(unitPrice)
-    if (normalizedUnitPrice === null) {
+    if (!Number.isSafeInteger(quantity)) {
       return null
     }
 
-    const lineTotal = normalizedUnitPrice * quantity
-    if (!Number.isInteger(lineTotal) || lineTotal <= 0) {
+    const unitPriceMinor = resolveNonNegativeBrlMajorToMinor(unitPrice)
+    if (unitPriceMinor === null) {
       return null
     }
 
-    total += lineTotal
+    const lineTotalMinor = unitPriceMinor * quantity
+    if (!Number.isSafeInteger(lineTotalMinor) || lineTotalMinor <= 0) {
+      return null
+    }
+
+    total += lineTotalMinor
+    if (!Number.isSafeInteger(total)) {
+      return null
+    }
   }
 
   return total > 0 ? total : null
 }
 
-function resolveCalculatedItemsTotalCents(
+function resolveCalculatedItemsTotalMinor(
   cart: PaymentStartCartSnapshot
 ): number | null {
   for (const value of [cart.item_total, cart.subtotal]) {
@@ -205,57 +177,96 @@ function resolveCalculatedItemsTotalCents(
       continue
     }
 
-    return resolvePositiveIntegerCents(value)
+    return resolvePositiveBrlMajorToMinor(value)
   }
 
-  return sumLineItemsTotalCents(cart.items)
+  return sumLineItemsTotalMinor(cart.items)
 }
 
-function resolveCartTotalCents(cart: PaymentStartCartSnapshot): number | null {
-  if (cart.total !== undefined && cart.total !== null) {
-    return resolvePositiveIntegerCents(cart.total)
+function resolveOptionalCartComponentMinor(value: unknown): number | null {
+  if (value === undefined || value === null) {
+    return 0
   }
 
-  const lineItemsTotal = resolveCalculatedItemsTotalCents(cart)
-  if (lineItemsTotal === null) {
+  return resolveNonNegativeBrlMajorToMinor(value)
+}
+
+function resolveCartAmounts(cart: PaymentStartCartSnapshot): {
+  medusa_amount_major: number
+  provider_amount_minor: number
+} | null {
+  if (cart.total !== undefined && cart.total !== null) {
+    try {
+      const medusaAmountMajor = normalizeBrlMajorAmount(cart.total)
+      const providerAmountMinor = assertPositiveBrlMinorAmount(
+        brlMajorToMinor(cart.total)
+      )
+
+      return {
+        medusa_amount_major: medusaAmountMajor,
+        provider_amount_minor: providerAmountMinor,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  const lineItemsTotalMinor = resolveCalculatedItemsTotalMinor(cart)
+  if (lineItemsTotalMinor === null) {
     return null
   }
 
-  let total = lineItemsTotal
+  const shippingTotalMinor = resolveOptionalCartComponentMinor(
+    cart.shipping_total
+  )
+  const taxTotalMinor = resolveOptionalCartComponentMinor(cart.tax_total)
+  const discountTotalMinor = resolveOptionalCartComponentMinor(
+    cart.discount_total
+  )
 
-  const shippingTotal = resolveNonNegativeIntegerCents(cart.shipping_total)
-  if (shippingTotal !== null) {
-    total += shippingTotal
+  if (
+    shippingTotalMinor === null ||
+    taxTotalMinor === null ||
+    discountTotalMinor === null
+  ) {
+    return null
   }
 
-  const taxTotal = resolveNonNegativeIntegerCents(cart.tax_total)
-  if (taxTotal !== null) {
-    total += taxTotal
+  const providerAmountMinor =
+    lineItemsTotalMinor +
+    shippingTotalMinor +
+    taxTotalMinor -
+    discountTotalMinor
+
+  if (!Number.isSafeInteger(providerAmountMinor) || providerAmountMinor <= 0) {
+    return null
   }
 
-  const discountTotal = resolveNonNegativeIntegerCents(cart.discount_total)
-  if (discountTotal !== null) {
-    total -= discountTotal
+  return {
+    medusa_amount_major: providerAmountMinor / 100,
+    provider_amount_minor: providerAmountMinor,
   }
-
-  return total > 0 && Number.isInteger(total) ? total : null
 }
 
 export function derivePaymentAmountFromCart(
   cart: PaymentStartCartSnapshot
-): { amount: number; currency_code: "BRL" } | null {
+): {
+  medusa_amount_major: number
+  provider_amount_minor: number
+  currency_code: "BRL"
+} | null {
   const currency = (cart.currency_code ?? "").toLowerCase()
   if (currency !== "brl") {
     return null
   }
 
-  const amount = resolveCartTotalCents(cart)
-  if (amount === null) {
+  const amounts = resolveCartAmounts(cart)
+  if (!amounts) {
     return null
   }
 
   return {
-    amount,
+    ...amounts,
     currency_code: "BRL",
   }
 }
@@ -363,7 +374,8 @@ export function evaluatePaymentStartEligibility(
   return {
     eligible: true,
     checkout_data_complete: true,
-    amount: derived.amount,
+    medusa_amount_major: derived.medusa_amount_major,
+    provider_amount_minor: derived.provider_amount_minor,
     currency_code: derived.currency_code,
     cart_id: input.cart.id,
     payment_method_type: input.paymentMethod,

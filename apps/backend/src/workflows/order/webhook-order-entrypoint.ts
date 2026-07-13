@@ -63,6 +63,10 @@ import {
   evaluateAutomaticGelatoFulfillmentEligibility,
 } from "../../modules/gelato-fulfillment/service"
 import type { GelatoFulfillmentRecord } from "../../modules/gelato-fulfillment/types"
+import {
+  assertPositiveBrlMinorAmount,
+  brlMajorToMinor,
+} from "../../utils/money-units"
 
 export type CreateOrderFromConfirmedPaymentAttemptInput = {
   payment_attempt_id: string
@@ -858,30 +862,24 @@ function extractOrderId(order: Record<string, unknown> | null | undefined): stri
   return typeof id === "string" && id.trim().length > 0 ? id.trim() : null
 }
 
-function normalizeLineItemUnitPrice(input: {
+function normalizeLineItemUnitPriceMinor(input: {
   item: ConfirmedAttemptCartRecord["items"][number]
   currencyCode: string
 }): number {
-  if (input.item.unit_price !== undefined && input.item.unit_price !== null) {
-    const lineItemUnitPrice = resolvePositiveIntegerCents(input.item.unit_price)
-    if (lineItemUnitPrice !== null) {
-      return lineItemUnitPrice
-    }
+  const amountMajor =
+    input.item.unit_price !== undefined && input.item.unit_price !== null
+      ? input.item.unit_price
+      : input.item.variant?.prices?.find((price) => {
+          return (
+            price.currency_code?.toLowerCase() ===
+            input.currencyCode.toLowerCase()
+          )
+        })?.amount
 
-    throw new OrderCreationEntrypointError(
-      "ORDER_ENTRYPOINT_ANALYTICS_UNIT_PRICE_INVALID",
-      "Unit price invalido para o payload local de analytics."
-    )
-  }
-
-  const matchingPrice = input.item.variant?.prices?.find((price) => {
-    return price.currency_code?.toLowerCase() === input.currencyCode.toLowerCase()
-  })
-
-  const amount = resolvePositiveIntegerCents(matchingPrice?.amount)
-
-  if (amount !== null) {
-    return amount
+  try {
+    return assertPositiveBrlMinorAmount(brlMajorToMinor(amountMajor))
+  } catch {
+    // Traduz a falha do contrato monetario para o erro estavel do entrypoint.
   }
 
   throw new OrderCreationEntrypointError(
@@ -890,7 +888,7 @@ function normalizeLineItemUnitPrice(input: {
   )
 }
 
-function resolveIntegerCents(value: unknown): number | null {
+function resolveIntegerMinorAmount(value: unknown): number | null {
   if (typeof value === "bigint") {
     return value <= BigInt(Number.MAX_SAFE_INTEGER) &&
       value >= BigInt(Number.MIN_SAFE_INTEGER)
@@ -918,19 +916,19 @@ function resolveIntegerCents(value: unknown): number | null {
 
   const rawAmount = (value as { rawAmount?: unknown }).rawAmount
   if (rawAmount !== undefined) {
-    return resolveIntegerCents(rawAmount)
+    return resolveIntegerMinorAmount(rawAmount)
   }
 
   const numeric = (value as { numeric?: unknown }).numeric
   if (numeric !== undefined) {
-    return resolveIntegerCents(numeric)
+    return resolveIntegerMinorAmount(numeric)
   }
 
   const valueOf = (value as { valueOf?: () => unknown }).valueOf
   if (typeof valueOf === "function") {
     const resolved = valueOf.call(value)
     if (resolved !== value) {
-      return resolveIntegerCents(resolved)
+      return resolveIntegerMinorAmount(resolved)
     }
   }
 
@@ -938,22 +936,22 @@ function resolveIntegerCents(value: unknown): number | null {
   if (typeof toString === "function") {
     const resolved = toString.call(value)
     if (resolved && resolved !== "[object Object]") {
-      return resolveIntegerCents(resolved)
+      return resolveIntegerMinorAmount(resolved)
     }
   }
 
   return null
 }
 
-function resolvePositiveIntegerCents(value: unknown): number | null {
-  const cents = resolveIntegerCents(value)
-  return cents !== null && cents > 0 ? cents : null
+function resolvePositiveMinorAmount(value: unknown): number | null {
+  const amountMinor = resolveIntegerMinorAmount(value)
+  return amountMinor !== null && amountMinor > 0 ? amountMinor : null
 }
 
 function normalizePurchaseCompletedAmountFromAttempt(
   attempt: Pick<PaymentAttemptRecord, "amount">
 ): number {
-  const amount = resolvePositiveIntegerCents(attempt.amount)
+  const amount = resolvePositiveMinorAmount(attempt.amount)
 
   if (amount === null) {
     throw new OrderCreationEntrypointError(
@@ -993,7 +991,7 @@ function buildPurchaseCompletedPayloadItems(
       )
     }
 
-    const unitPrice = normalizeLineItemUnitPrice({
+    const unitPrice = normalizeLineItemUnitPriceMinor({
       item,
       currencyCode: cart.currency_code,
     })
@@ -1125,7 +1123,7 @@ function buildOrderConfirmationEmailPayloadItems(
   return cart.items.map((item) => {
     const sku = resolveOrderConfirmationEmailItemSku(item)
 
-    const unitPrice = normalizeLineItemUnitPrice({
+    const unitPrice = normalizeLineItemUnitPriceMinor({
       item,
       currencyCode: cart.currency_code,
     })

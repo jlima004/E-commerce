@@ -76,7 +76,7 @@ function buildInput(
 function buildCart() {
   return {
     id: "cart_email_01",
-    total: 9900,
+    total: 99,
     currency_code: "brl",
     completed_at: null,
     items: [
@@ -100,7 +100,7 @@ function buildCart() {
           },
           prices: [
             {
-              amount: 9900,
+              amount: 99,
               currency_code: "brl",
             },
           ],
@@ -472,6 +472,12 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint email enqueue", ()
         ],
       })
     )
+    const persistedPayload = emailDeliveryLogModule.store[0]?.payload as {
+      amount?: number
+      items?: Array<{ unit_price?: number }>
+    }
+    expect(persistedPayload.amount).not.toBe(990000)
+    expect(persistedPayload.items?.[0]?.unit_price).not.toBe(990000)
     const createInput = emailDeliveryLogModule.createEmailDeliveryLogs.mock
       .calls[0]?.[0] as Record<string, unknown>
     expect(createInput).not.toHaveProperty("id")

@@ -54,7 +54,7 @@ describe("04A RealStripeCardInitiationLayer", () => {
     const stripeLayer = new RealStripeCardInitiationLayer({ paymentIntents })
     const cart = buildCompleteGuestCart({
       id: "cart_real_card_01",
-      total: 9900,
+      total: 99,
     })
 
     const result = await startCardPaymentAttempt({
@@ -108,7 +108,7 @@ describe("04A RealStripePixInitiationLayer", () => {
     })
     const cart = buildCompleteGuestCart({
       id: "cart_real_pix_01",
-      total: 9900,
+      total: 99,
     })
 
     const result = await startPixPaymentAttempt({
@@ -158,7 +158,7 @@ describe("04A RealStripePixInitiationLayer", () => {
 
     await expect(
       stripeLayer.createPixPaymentIntent({
-        amount: 9900,
+        amount_minor: 9900,
         currency_code: "usd",
         cart_id: "cart_wrong_currency",
         idempotency_key: "idem_wrong_currency",

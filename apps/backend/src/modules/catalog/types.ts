@@ -76,5 +76,5 @@ export type GelatoMetadataErrorPayload =
   | {
       code: "GELATO_PRICE_INVALID"
       currency_code: "brl"
-      reason: "amount_must_be_integer_cents"
+      reason: "amount_must_be_positive_major_units_with_at_most_two_decimals"
     }

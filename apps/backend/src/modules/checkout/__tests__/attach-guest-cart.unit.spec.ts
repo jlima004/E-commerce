@@ -16,7 +16,7 @@ const SELLABLE_VARIANT = {
     },
     template_mode: "fixed",
   },
-  prices: [{ currency_code: "brl", amount: 9900 }],
+  prices: [{ currency_code: "brl", amount: 99 }],
 }
 
 function buildCart(

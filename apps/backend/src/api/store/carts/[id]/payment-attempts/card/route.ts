@@ -298,7 +298,7 @@ async function cancelProcessablePaymentSessions(
 async function createMedusaCardPaymentSession(input: {
   req: SessionCapableRequest
   paymentCollection: MedusaPaymentCollectionRecord & { id: string }
-  amount: number
+  amountMajor: number
   currencyCode: "BRL"
 }): Promise<{ payment_collection_id: string; payment_session_id: string }> {
   const paymentModule = resolvePaymentModule(input.req)
@@ -316,7 +316,7 @@ async function createMedusaCardPaymentSession(input: {
     input.paymentCollection.id,
     {
       provider_id: MEDUSA_STRIPE_PROVIDER_ID,
-      amount: input.amount,
+      amount: input.amountMajor,
       currency_code: input.currencyCode.toLowerCase(),
       data: {},
     }
@@ -526,7 +526,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const paymentSession = await createMedusaCardPaymentSession({
     req: request,
     paymentCollection,
-    amount: eligibility.amount,
+    amountMajor: eligibility.medusa_amount_major,
     currencyCode: eligibility.currency_code,
   })
 

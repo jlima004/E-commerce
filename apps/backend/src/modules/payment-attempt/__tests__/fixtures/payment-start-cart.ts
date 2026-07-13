@@ -15,7 +15,7 @@ export function buildCompleteGuestCart(
     updated_at: "2026-06-27T10:00:00.000Z",
     metadata: null,
     customer: null,
-    total: 9900,
+    total: 99,
     items: [
       {
         id: "item_01",
@@ -23,7 +23,7 @@ export function buildCompleteGuestCart(
         title: "Camiseta Essential",
         variant_id: "variant_sellable",
         variant_title: "Preto / M",
-        unit_price: 9900,
+        unit_price: 99,
         variant: {
           id: "variant_sellable",
           sku: "TSHIRT-BLACK-M",
@@ -33,7 +33,7 @@ export function buildCompleteGuestCart(
             gelato_variant_options: { size: "M", color: "Preto" },
             template_mode: "fixed",
           },
-          prices: [{ currency_code: "brl", amount: 9900 }],
+          prices: [{ currency_code: "brl", amount: 99 }],
         },
       },
     ],

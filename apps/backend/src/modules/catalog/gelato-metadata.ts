@@ -8,6 +8,7 @@ import {
   GelatoVariantOptions,
   GELATO_TEMPLATE_MODE_FIXED,
 } from "./types"
+import { brlMajorToMinor } from "../../utils/money-units"
 
 export {
   CatalogVariantInput,
@@ -91,8 +92,16 @@ function getBrlPriceAmount(variant: CatalogVariantInput): number | undefined {
   return brlPrice?.amount
 }
 
-function isIntegerCents(amount: number): boolean {
-  return Number.isFinite(amount) && Number.isInteger(amount) && amount >= 0
+function isPositiveBrlMajorAmountWithAtMostTwoDecimals(amount: number): boolean {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return false
+  }
+
+  try {
+    return brlMajorToMinor(amount) > 0
+  } catch {
+    return false
+  }
 }
 
 export function readGelatoMetadata(
@@ -152,7 +161,10 @@ export function isSellableVariant(variant: CatalogVariantInput): boolean {
   }
 
   const brlAmount = getBrlPriceAmount(variant)
-  return brlAmount !== undefined && isIntegerCents(brlAmount)
+  return (
+    brlAmount !== undefined &&
+    isPositiveBrlMajorAmountWithAtMostTwoDecimals(brlAmount)
+  )
 }
 
 export function assertSellableVariantMetadata(
@@ -216,11 +228,11 @@ export function assertSellableVariantMetadata(
     })
   }
 
-  if (!isIntegerCents(brlAmount)) {
+  if (!isPositiveBrlMajorAmountWithAtMostTwoDecimals(brlAmount)) {
     throw new GelatoMetadataError({
       code: "GELATO_PRICE_INVALID",
       currency_code: "brl",
-      reason: "amount_must_be_integer_cents",
+      reason: "amount_must_be_positive_major_units_with_at_most_two_decimals",
     })
   }
 

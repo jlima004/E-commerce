@@ -70,13 +70,14 @@ function buildInput(
 function buildCart() {
   return {
     id: "cart_outbox_01",
-    total: 9900,
+    total: 99,
     currency_code: "brl",
     completed_at: null,
     items: [
       {
         id: "line_item_outbox_01",
         quantity: 1,
+        unit_price: 99,
         metadata: {
           preserve_me: true,
         },
@@ -94,7 +95,7 @@ function buildCart() {
           },
           prices: [
             {
-              amount: 9900,
+              amount: 99,
               currency_code: "brl",
             },
           ],
@@ -454,8 +455,18 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
         order_status: "confirmed",
         payment_status: "captured",
         item_count: 1,
+        items: [
+          expect.objectContaining({
+            unit_price: 9900,
+            subtotal: 9900,
+          }),
+        ],
       })
     )
+    const persistedPayload = analyticsEventLogModule.store[0]?.payload as {
+      amount?: number
+    }
+    expect(persistedPayload.amount).not.toBe(990000)
     expect(JSON.stringify(analyticsEventLogModule.store[0]?.payload)).not.toContain(
       SNAPSHOT_KEY
     )

@@ -48,7 +48,7 @@ function buildAttempt(
 function buildCart() {
   return {
     id: "cart_gelato_01",
-    total: 9900,
+    total: 99,
     currency_code: "brl",
     completed_at: null,
     items: [
@@ -72,7 +72,7 @@ function buildCart() {
           },
           prices: [
             {
-              amount: 9900,
+              amount: 99,
               currency_code: "brl",
             },
           ],

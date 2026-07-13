@@ -94,12 +94,12 @@ export class RealStripeCardInitiationLayer
   async createCardPaymentIntent(
     request: StripeCardInitiationRequest
   ): Promise<StripePaymentIntentLike> {
-    assertPositiveAmount(request.amount)
+    assertPositiveAmount(request.amount_minor)
     const currency = assertBrlCurrency(request.currency_code)
 
     return await this.paymentIntents.create(
       {
-        amount: request.amount,
+        amount: request.amount_minor,
         currency,
         payment_method_types: ["card"],
         capture_method: "automatic",
@@ -124,12 +124,12 @@ export class RealStripePixInitiationLayer implements StripePixInitiationLayer {
   async createPixPaymentIntent(
     request: StripePixInitiationRequest
   ): Promise<StripePaymentIntentLike> {
-    assertPositiveAmount(request.amount)
+    assertPositiveAmount(request.amount_minor)
     const currency = assertBrlCurrency(request.currency_code)
 
     return await this.paymentIntents.create(
       {
-        amount: request.amount,
+        amount: request.amount_minor,
         currency,
         payment_method_types: ["pix"],
         capture_method: "automatic",
