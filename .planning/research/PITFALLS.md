@@ -192,11 +192,11 @@ Migrations run against port 6543/pooler and intermittently fail; jobs enqueued b
 
 ---
 
-### Pitfall 11: Brazil/BRL/Pix-specific gotchas (IOF tax, BRL minor units, no manual capture, expiry windows, timezone)
+### Pitfall 11: Brazil/BRL/Pix-specific gotchas (IOF tax, monetary boundaries, no manual capture, expiry windows, timezone)
 
 **What goes wrong:**
 - **IOF tax on Pix:** Stripe marks the customer's amount up 3.5% by default (`amount_includes_iof: never`), so the amount the customer sees/pays in their bank app differs from your intent amount — reconciliation and refund-amount math break if unaccounted. (Verified: Stripe Pix docs.)
-- **Currency minor units:** BRL is charged in centavos (integer). Float reais or wrong scaling causes off-by-100 charges/refunds.
+- **Currency boundaries:** Medusa v2 models prices, carts, line items, Orders and PaymentSessions in BRL major units; Stripe and the custom payment/refund domain use integer minor units. Reusing one ambiguous amount across that boundary causes off-by-100 charges or inflated Medusa totals.
 - **No manual capture for Pix:** auth-then-capture flows assumed from cards don't exist for Pix; refund is the only reversal.
 - **Pix QR expiry:** short-lived; expiry must be handled as `payment_failed`, and late payments after expiry are an edge case to reconcile.
 - **Timezone/locale:** America/Sao_Paulo vs UTC mismatches corrupt expiry calculations, reporting, and "order placed at" displays.
@@ -205,7 +205,7 @@ Migrations run against port 6543/pooler and intermittently fail; jobs enqueued b
 Stripe tutorials are USD/card-centric; Brazilian payment tax and Pix semantics aren't on the default happy path.
 
 **How to avoid:**
-Decide and document IOF handling (`amount_includes_iof`) and reconcile against settled amount, not requested amount. Store money as integer minor units in BRL end-to-end; centralize formatting. Don't build manual-capture flows for Pix. Treat QR `expires_at` as authoritative and reconcile expired/late Pix. Store timestamps in UTC, render in America/Sao_Paulo.
+Decide and document IOF handling (`amount_includes_iof`) and reconcile against settled amount, not requested amount. Keep Medusa core in major units, convert exactly at the Stripe boundary, and keep the custom provider/refund domain in integer minor units. Don't build manual-capture flows for Pix. Treat QR `expires_at` as authoritative and reconcile expired/late Pix. Store timestamps in UTC, render in America/Sao_Paulo.
 
 **Warning signs:**
 Refund amounts mismatch settled amounts; amounts stored as decimals; capture logic applied to Pix; expiry math in server-local time; customers report being charged 3.5% more than expected.
@@ -326,7 +326,7 @@ Handlers throw on missing correlated rows; assumption of single attempt per cart
 | 8. Plaintext tokens/secrets/logs | Tracking & tokens + Observability | Only `token_hash` stored; log/Sentry redaction verified |
 | 9. Medusa module/workflow misuse | Foundation + payment/fulfillment phases | Steps have compensation + idempotency; Module Links used; locking present |
 | 10. Supabase/Redis transactional | Foundation + Fulfillment dispatch | Migrations on direct conn; outbox dispatch; TTL'd locks |
-| 11. BRL/Pix/IOF gotchas | Payments + Catalog & Pricing | Integer minor units; IOF reconciled; UTC storage |
+| 11. BRL/Pix/IOF gotchas | Payments + Catalog & Pricing | Medusa major and provider minor boundaries explicit; IOF reconciled; UTC storage |
 | 12. Out-of-order/partial webhooks | Webhooks + Refunds + Fulfillment | Reordered/early events don't crash; logged before processing |
 
 ## Sources

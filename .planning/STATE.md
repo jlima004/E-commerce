@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
 status: phase-11-closed-phase-12-blocked
-stopped_at: RC1-H PASS; integration suites recovered locally, committed, and cleaned; manual review required before any push, tag, production, or Phase 12 work
-last_updated: "2026-07-13T16:45:00-03:00"
+stopped_at: MNY-01 PASS; Medusa major and Stripe/custom minor units separated locally; manual review required before catalog correction, push, production, or Phase 12 work
+last_updated: "2026-07-13T20:40:00-03:00"
 last_activity: 2026-07-13
-last_activity_desc: RC1-H repaired fixture discovery and stale HTTP test contracts; modules, HTTP, unit, lint, build, integrity, and cleanup passed
+last_activity_desc: MNY-01 separated Medusa major units from Stripe/custom minor units; full local gates, integrity audit, and disposable DB cleanup passed
 progress:
   total_phases: 12
   completed_phases: 11
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Backend RC1-H está **PASS**. A coleta modules preserva 28 specs e exclui somente a fixture; modules passou 28/28 e 454/454, HTTP passou 14/14 e 170/170, unitários passaram 43/43 e 676/676, lint passou com 0 erros/208 warnings e build passou. As 12 falhas anteriores foram classificadas como isolamento de env, mocks ou expectativas obsoletas; nenhum defeito de runtime foi comprovado. Nenhum runtime, model, migration, manifest ou lockfile mudou; Postgres/container/temporários foram removidos. Testes/configuração foram registrados em `e45adf9`. Phase 12 permanece não planejada, não iniciada e bloqueada até aprovação humana explícita.
+**Current gate:** MNY-01 está **PASS**. Medusa core e PaymentSession usam BRL major units; Stripe, PaymentAttempt e contratos customizados preservam minor units. O hotfix prova PaymentSession `99`, Stripe/PaymentAttempt `9900` e Order `99`, com conversão decimal exata e guard financeiro ativo. Unit passou 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0 erros/208 warnings e build passou. Não houve model, migration, manifest, lockfile, APP_VERSION, infraestrutura, produção ou provider externo; bancos locais descartáveis foram removidos. A correção de catálogo em produção é um gate manual separado. Phase 12 permanece não planejada, não iniciada e bloqueada até aprovação humana explícita.
 
 **Branch policy:**
 
@@ -54,7 +54,7 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 Phase: 12 (Ops, Audit & Critical Tests) — not planned; not started; blocked
 Plan: 50/50 complete (milestone plans)
 Status: phase-11-closed-phase-12-blocked
-Last activity: 2026-07-13 - RC1-H recuperou as integrações isoladas; todos os gates locais e a limpeza passaram
+Last activity: 2026-07-13 - MNY-01 separou unidades Medusa major de Stripe/custom minor; todos os gates locais e a limpeza passaram
 
 Progress: [██████████] 100% (50/50 plans complete); Phase 11 closed; Phase 12 blocked
 
@@ -175,6 +175,7 @@ None yet.
 - [Phase 11]: Refund/exchange/admin scope is complete and closed on branch `gsd/phase-11-refunds-exchanges-admin` (`11-CLOSURE.md`). Refund financial truth finalized only by Stripe refund object webhook confirmation; `charge.refunded` does not double-count; refund does not auto-cancel `order_status`; exchanges remain operational without automatic refunds; Correios remains manual/semi-automatic with no API integration; broad `OperationalAlert` / `AdminActionLog` stays Phase 12. The closure-time migration blocker is historical: the RC1 read-only audit confirmed refund/exchange migrations applied. Cross-dyno refund lock and any future Stripe smoke remain separate gates.
 - [Quick 260710-dz0]: Stripe refund smoke preflight stopped before mutation because core `refund` has no `order_id`/`status`/`currency_code` and no local `refund_request` exists for the target Order. A direct Stripe refund would be ignored as `REFUND_WEBHOOK_REQUEST_NOT_FOUND`. The adjusted gate requires authenticated `POST /admin/refunds/request` before the Stripe test-mode refund. It also records that current runtime updates `refund_request` + Order metadata, not core `refund`/`payment_collection.refunded_amount`, and has no refund-email flow.
 - [Quick 260710-rc1 / RC1-A até RC1-H]: RC1-H está `PASS`: a fixture deixou de ser coletada sem remover suíte real; modules passou 28/28 e 454/454; HTTP passou 14/14 e 170/170; unitários 43/43 e 676/676; lint 0/208; build PASS. As 12 falhas RC1-G foram recuperadas somente em Jest/quatro specs, sem runtime, schema, manifest ou lockfile. Upgrade/bootstrap do RC1-G permaneceram válidos e não precisaram repetição. Nenhum Supabase, Heroku, provider externo, deploy, rollback, tag, push ou Phase 12 foi acionado.
+- [Quick 260713-mny01]: MNY-01 está `PASS`: Medusa core/PaymentSession agora usam major units, Stripe/PaymentAttempt/refund/downstream customizado preservam minor units, e o guard da Order converte componentes antes da soma. Unit 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0/208 e build PASS. Nenhum schema, package/lockfile, APP_VERSION, infraestrutura, produção, provider externo, push ou Phase 12 foi tocado. Preços existentes do catálogo permanecem para correção manual em gate separado.
 - [Phase 12]: Ops, Audit & Critical Tests is **not planned**, **not started**, and **blocked until explicit human approval**. Do not plan or execute Phase 12 without separate approval.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
@@ -189,9 +190,9 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-13
-Stopped at: RC1-H PASS; fixture discovery and all HTTP contracts recovered, full local gates green, cleanup and atomic test commit complete.
-Resume file: `.planning/quick/260710-rc1-estabilizacao-release-backend/PLAN.md`
-Next permitted step: Human review of RC1-H evidence. Supabase, external providers, Heroku, production, Phase 12, deploy, rollback, push and tag remain blocked.
+Stopped at: MNY-01 PASS; monetary boundary fixed, full local gates green, disposable databases removed, and local commits complete.
+Resume file: `.planning/quick/260713-mny01-major-minor-units/SUMMARY.md`
+Next permitted step: Human review of MNY-01 evidence. Catalog correction, Supabase, external providers, Heroku, production, Phase 12, deploy, rollback, push and tag remain blocked.
 
 ## Quick Tasks Completed
 
@@ -228,3 +229,4 @@ Next permitted step: Human review of RC1-H evidence. Supabase, external provider
 | 2026-07-10 | 260710-iyt-corrigir-perda-de-contexto-this-do-refun | Preserved RefundRequest MedusaService method context in the Admin refund endpoint; context-dependent regression, 201/200 replay, related tests and build pass; remote Stripe smoke remains manually gated. |
 | 2026-07-03 | phase-11-closure | Closed Phase 11 documentally after accepted `11-01`..`11-04` evidence; `REF-01`..`REF-02`, `EXC-01`..`EXC-02` complete; Phase 12 blocked until explicit approval. |
 | 2026-07-13 | 260710-rc1-estabilizacao-release-backend | RC1-H PASS: fixture discovery repaired; modules 28/28 and 454/454, HTTP 14/14 and 170/170, unit 43/43 and 676/676, lint 0/208, build/integrity/cleanup PASS; test commit `e45adf9`; no runtime, schema, provider, push or Phase 12 work. |
+| 2026-07-13 | 260713-mny01-major-minor-units | MNY-01 PASS: Medusa/PaymentSession major units separated from Stripe/PaymentAttempt/custom minor units; exact conversion and Order guard proved; unit 717/717, modules 462/462, HTTP 170/170, lint/build/integrity/cleanup PASS; no production, schema, package, infra, push or Phase 12. |

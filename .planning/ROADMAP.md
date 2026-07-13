@@ -96,7 +96,7 @@ Plans:
 **Scope note**: Phase 2 delivers only: (a) required Gelato metadata definition; (b) validation of sellable variants with mandatory `gelato_*` metadata; (c) Supabase Storage image references; (d) a stable catalog API contract; (e) a snapshot builder/helper/contract for future Order creation; (f) unit tests for the snapshot builder (if applicable). It does NOT require actual Order LineItem persistence — real persistence of `LineItem.metadata.gelato_snapshot` is verified in Phase 6.
 **Success Criteria** (what must be TRUE):
 
-  1. Operator can create a product with variants priced in BRL (integer centavos) via the Admin.
+  1. Operator can create a product with variants priced in BRL major units, positive and with at most two decimal places, via the Admin.
   2. A variant missing required `gelato_*` metadata is flagged/rejected at create/update time (validation of sellable variants).
   3. Product images upload to Supabase Storage and the API returns URL references (no binaries stored in the database).
   4. The Store catalog API returns products, variants, and BRL prices in a stable shape suitable for the future storefront.
