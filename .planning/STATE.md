@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
 status: phase-11-closed-phase-12-blocked
-stopped_at: RC1-A BLOCKED on ESLint/AJV toolchain incompatibility after clean npm ci; build and integrations not run
-last_updated: "2026-07-10T21:55:00-03:00"
-last_activity: 2026-07-10
-last_activity_desc: RC1-A rebuilt node_modules from lockfile and stopped on ESLint/AJV toolchain blocker before build/integrations
+stopped_at: RC1-F PASS with Medusa lint at 0 errors and 208 warnings, 43 suites and 676 unit tests passing, build and clean-install reproducibility passing
+last_updated: "2026-07-13T14:32:29-03:00"
+last_activity: 2026-07-13
+last_activity_desc: RC1-F corrected the seven real Medusa lint errors and reproduced lint, unit tests, build, and the valid AJV graph after npm ci
 progress:
   total_phases: 12
   completed_phases: 11
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Backend RC1-A is **BLOCKED**. Após `rm -rf node_modules` e `npm ci --include=dev` (exit 0), o lockfile resolveu `eslint@9.39.4` e `@medusajs/eslint-plugin@2.16.0`, mas o ESLint não carrega por incompatibilidade AJV (`missingRefs` / `defaultMeta`) e `medusa lint` encerra em 1 classificando-o como indisponível. Por regra de parada, build e integrações não foram executados e nenhum Docker/Postgres foi iniciado. Phase 12 permanece não planejada, não iniciada e bloqueada até aprovação humana explícita.
+**Current gate:** Backend RC1-F é **PASS**. Os sete erros reais revelados no RC1-E foram corrigidos sem alterar regras ESLint ou os 208 warnings. Rushstack permanece em AJV 8.20.0 `overridden`; ESLint/eslintrc em AJV 6.15.0; ESLint v9.39.4; árvore AJV válida. Lint completo passou com 0 erros/208 warnings, unitários com 43/43 suites e 676/676 testes, e build passou antes e depois de `npm ci --include=dev`. Nenhum model ou migration mudou. Phase 12 permanece não planejada, não iniciada e bloqueada até aprovação humana explícita.
 
 **Branch policy:**
 
@@ -54,7 +54,7 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 Phase: 12 (Ops, Audit & Critical Tests) — not planned; not started; blocked
 Plan: 50/50 complete (milestone plans)
 Status: phase-11-closed-phase-12-blocked
-Last activity: 2026-07-10 - RC1-A reconstruiu `node_modules` pelo lockfile e parou sem correção no blocker ESLint/AJV
+Last activity: 2026-07-13 - RC1-F corrigiu os sete erros reais e reproduziu lint, unitários, build e árvore AJV após instalação limpa
 
 Progress: [██████████] 100% (50/50 plans complete); Phase 11 closed; Phase 12 blocked
 
@@ -174,7 +174,7 @@ None yet.
 - [Phase 10]: Public guest tracking implemented as token-only, hash-only, sanitized, rate-limited, fail-closed surface on branch `gsd/phase-10-secure-guest-tracking`. Phase 10 closed at manual gate (`10-CLOSURE.md`). The closure-time migration blocker is historical: the RC1 read-only audit confirmed the tracking migration applied. Process-local rate limit documented; global Redis/DB-backed limiter deferred.
 - [Phase 11]: Refund/exchange/admin scope is complete and closed on branch `gsd/phase-11-refunds-exchanges-admin` (`11-CLOSURE.md`). Refund financial truth finalized only by Stripe refund object webhook confirmation; `charge.refunded` does not double-count; refund does not auto-cancel `order_status`; exchanges remain operational without automatic refunds; Correios remains manual/semi-automatic with no API integration; broad `OperationalAlert` / `AdminActionLog` stays Phase 12. The closure-time migration blocker is historical: the RC1 read-only audit confirmed refund/exchange migrations applied. Cross-dyno refund lock and any future Stripe smoke remain separate gates.
 - [Quick 260710-dz0]: Stripe refund smoke preflight stopped before mutation because core `refund` has no `order_id`/`status`/`currency_code` and no local `refund_request` exists for the target Order. A direct Stripe refund would be ignored as `REFUND_WEBHOOK_REQUEST_NOT_FOUND`. The adjusted gate requires authenticated `POST /admin/refunds/request` before the Stripe test-mode refund. It also records that current runtime updates `refund_request` + Order metadata, not core `refund`/`payment_collection.refunded_amount`, and has no refund-email flow.
-- [Quick 260710-rc1 / RC1-A]: A reconstrução permitida `rm -rf node_modules` + `npm ci --include=dev` terminou com exit 0 e sem mudar manifests/lockfiles; `eslint@9.39.4` e `@medusajs/eslint-plugin@2.16.0` existem, mas `eslint --version` falha com AJV `missingRefs` / `defaultMeta`. O `medusa lint` continua exit 1 e o classifica como indisponível. Por regra de parada, build, Docker/Postgres e integrações não rodaram; nenhum banco, migration, produção, deploy, tag ou Phase 12 foi acionado.
+- [Quick 260710-rc1 / RC1-A até RC1-F]: RC1-F corrigiu os sete erros reais do Medusa: quatro identifiers em snake_case e três methods async com consumidores/testes atualizados. Lint completo 0 erros/208 warnings; unitários 43/43 e 676/676; build PASS; `npm ci` reproduziu a árvore com Rushstack AJV 8.20.0 `overridden`, ESLint/eslintrc 6.15.0 e ESLint v9.39.4. Nenhum model/migration mudou; Docker, integrações reais, banco, deploy, tag, push e Phase 12 não foram acionados.
 - [Phase 12]: Ops, Audit & Critical Tests is **not planned**, **not started**, and **blocked until explicit human approval**. Do not plan or execute Phase 12 without separate approval.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
@@ -188,10 +188,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-10
-Stopped at: RC1-A clean `npm ci` completed, but ESLint/AJV incompatibility kept lint at exit 1; build and integrations were not run.
+Last session: 2026-07-13
+Stopped at: RC1-F passed with 0 lint errors and 208 warnings, 43/43 unit suites and 676/676 tests, build green, and clean-install AJV/toolchain reproducibility proven.
 Resume file: `.planning/quick/260710-rc1-estabilizacao-release-backend/PLAN.md`
-Next permitted step: In a separate approved gate, correct the ESLint/AJV toolchain. Then restart at lint; only after PASS create a localhost-only disposable Postgres container, apply any required migrations only there, and run build plus the two integration suites. Heroku, production, Phase 12, migrations remotas, deploy, rollback and tag remain blocked.
+Next permitted step: Manual review of the three local RC1-F commits. Docker, integrações reais, banco, migrations, Heroku, production, Phase 12, deploy, rollback, push and tag remain blocked.
 
 ## Quick Tasks Completed
 
@@ -227,3 +227,4 @@ Next permitted step: In a separate approved gate, correct the ESLint/AJV toolcha
 | 2026-07-10 | 260710-dz0-gate-t-cnico-stripe-refund-smoke-test-mo | Completed and smoke-refund validated, no DB mutation occurred. |
 | 2026-07-10 | 260710-iyt-corrigir-perda-de-contexto-this-do-refun | Preserved RefundRequest MedusaService method context in the Admin refund endpoint; context-dependent regression, 201/200 replay, related tests and build pass; remote Stripe smoke remains manually gated. |
 | 2026-07-03 | phase-11-closure | Closed Phase 11 documentally after accepted `11-01`..`11-04` evidence; `REF-01`..`REF-02`, `EXC-01`..`EXC-02` complete; Phase 12 blocked until explicit approval. |
+| 2026-07-13 | 260710-rc1-estabilizacao-release-backend | RC1-F corrected seven real Medusa lint errors; lint 0/208, 43/43 suites and 676/676 tests, build and clean-install AJV reproducibility pass; Phase 12 remains blocked. |
