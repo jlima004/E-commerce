@@ -74,7 +74,7 @@ function buildExistingAttemptForCart(
     provider_payment_session_id: "ps_existing",
     payment_method_type: "card",
     status: "card_client_secret_created",
-    amount: cart.total ?? 9900,
+    amount: 9900,
     currency_code: "brl",
     expires_at: null,
     order_id: null,
@@ -110,7 +110,7 @@ function sellableVariant() {
       gelato_variant_options: { size: "M", color: "Preto" },
       template_mode: "fixed",
     },
-    prices: [{ currency_code: "brl", amount: 9900 }],
+    prices: [{ currency_code: "brl", amount: 99 }],
   }
 }
 
@@ -127,7 +127,7 @@ function buildCompleteGuestCart(
     updated_at: "2026-06-27T10:00:00.000Z",
     metadata: null,
     customer: null,
-    total: 9900,
+    total: 99,
     items: [
       {
         id: "item_01",
@@ -135,7 +135,7 @@ function buildCompleteGuestCart(
         title: "Camiseta Essential",
         variant_id: "variant_sellable",
         variant_title: "Preto / M",
-        unit_price: 9900,
+        unit_price: 99,
         variant: sellableVariant(),
       },
     ],
@@ -432,7 +432,7 @@ function createStripeCardInitiationLayerMock(
       id: "pi_http_card_mock",
       object: "payment_intent",
       status: "requires_payment_method",
-      amount: request.amount,
+      amount: request.amount_minor,
       currency: request.currency_code,
       client_secret: "pi_http_card_mock_secret_test",
       metadata: {
@@ -452,7 +452,7 @@ function createStripePixInitiationLayerMock(
       id: "pi_http_pix_mock",
       object: "payment_intent",
       status: "requires_action",
-      amount: request.amount,
+      amount: request.amount_minor,
       currency: request.currency_code,
       client_secret: "pi_http_pix_mock_secret_test",
       metadata: {
@@ -555,7 +555,14 @@ function wireScope(
     return undefined
   }) as SessionCapableRequest["scope"]["resolve"]
 
-  return { remoteQuery, paymentAttemptModule, medusaPaymentModule, workflowEngine }
+  return {
+    remoteQuery,
+    paymentAttemptModule,
+    medusaPaymentModule,
+    workflowEngine,
+    stripeCardInitiationLayer,
+    stripePixInitiationLayer,
+  }
 }
 
 function assertCardPaymentResponseBody(body: unknown) {
@@ -653,7 +660,7 @@ async function invokePixPaymentRoute(req: SessionCapableRequest) {
 describe("payment attempt store card contract", () => {
   describe("card", () => {
     it("POST /store/carts/:id/payment-attempts/card inicia cartao em cart completo", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
         params: { id: cart.id },
@@ -666,10 +673,11 @@ describe("payment attempt store card contract", () => {
       const paymentAttemptModule = createPaymentAttemptModuleMock([], {
         card: fallbackLayer,
       })
-      const { medusaPaymentModule, workflowEngine } = wireScope(req, {
-        remoteQuery,
-        paymentAttemptModule,
-      })
+      const {
+        medusaPaymentModule,
+        workflowEngine,
+        stripeCardInitiationLayer,
+      } = wireScope(req, { remoteQuery, paymentAttemptModule })
 
       const res = await invokeCardPaymentRoute(req)
 
@@ -679,6 +687,15 @@ describe("payment attempt store card contract", () => {
       expect(body.payment_attempt.amount).toBe(9900)
       expect(body.payment_attempt.currency_code).toBe("BRL")
       expect(body.payment_attempt.status).toBe("card_client_secret_created")
+      expect(
+        stripeCardInitiationLayer?.createCardPaymentIntent
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount_minor: 9900,
+          currency_code: "brl",
+          cart_id: cart.id,
+        })
+      )
       expect(workflowEngine.run).toHaveBeenCalledWith(
         createPaymentCollectionForCartWorkflowId,
         {
@@ -689,7 +706,7 @@ describe("payment attempt store card contract", () => {
         "pay_col_http_01",
         expect.objectContaining({
           provider_id: "pp_stripe_stripe",
-          amount: 9900,
+          amount: 99,
           currency_code: "brl",
           data: {},
         })
@@ -721,7 +738,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("usa uma unica vez o fallback assincrono do servico para cartao", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const fallbackLayer = createStripeCardInitiationLayerMock()
       const paymentAttemptModule = createPaymentAttemptModuleMock([], {
@@ -750,7 +767,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("converte rejeicao do resolver de cartao em camada ausente", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const paymentAttemptModule = createPaymentAttemptModuleMock()
       paymentAttemptModule.resolveStripeCardInitiationLayer.mockRejectedValueOnce(
@@ -781,7 +798,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("falha fechada quando camada Stripe card nao esta configurada", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
         params: { id: cart.id },
@@ -805,7 +822,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("falha fechada quando PaymentAttempt nao esta disponivel antes de chamar Stripe", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const stripeCardInitiationLayer = createStripeCardInitiationLayerMock()
       const req = createRequest({
@@ -836,7 +853,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("falha fechada quando PaymentAttempt nao expoe listPaymentAttempts antes de chamar Stripe", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const stripeCardInitiationLayer = createStripeCardInitiationLayerMock()
       const req = createRequest({
@@ -868,7 +885,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("falha fechada quando listPaymentAttempts falha antes de chamar Stripe", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const paymentAttemptModule = createPaymentAttemptModuleMock()
       const stripeCardInitiationLayer = createStripeCardInitiationLayerMock()
@@ -905,7 +922,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("falha fechada quando PaymentAttempt nao pode ser persistido", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const paymentAttemptModule = createPaymentAttemptModuleMock()
       paymentAttemptModule.createPaymentAttempts.mockRejectedValueOnce(
@@ -919,7 +936,10 @@ describe("payment attempt store card contract", () => {
         },
       })
       const res = createResponse()
-      wireScope(req, { remoteQuery, paymentAttemptModule })
+      wireScope(req, {
+        remoteQuery,
+        paymentAttemptModule,
+      })
       applyStoreCartPreOrderQueryConfig(req as never)
 
       await expect(startCardPaymentAttemptRoute(req, res)).rejects.toThrow(
@@ -933,7 +953,7 @@ describe("payment attempt store card contract", () => {
       const cart = buildCompleteGuestCart({
         id: "cart_guest_01",
         email: null,
-        total: 9900,
+        total: 99,
       })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
@@ -949,7 +969,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("rejeita guest sem posse do cart via sessionActiveCartId", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
         params: { id: cart.id },
@@ -964,7 +984,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("rejeita body com campos monetarios", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
         params: { id: cart.id },
@@ -982,7 +1002,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("nao retorna Order nem PaymentSession.data bruto", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
         params: { id: cart.id },
@@ -1017,7 +1037,7 @@ describe("payment attempt store card contract", () => {
 
   describe("pix", () => {
     it("POST /store/carts/:id/payment-attempts/pix inicia Pix em cart completo", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
         params: { id: cart.id },
@@ -1030,7 +1050,10 @@ describe("payment attempt store card contract", () => {
       const paymentAttemptModule = createPaymentAttemptModuleMock([], {
         pix: fallbackLayer,
       })
-      wireScope(req, { remoteQuery, paymentAttemptModule })
+      const { stripePixInitiationLayer } = wireScope(req, {
+        remoteQuery,
+        paymentAttemptModule,
+      })
 
       const res = await invokePixPaymentRoute(req)
 
@@ -1040,6 +1063,13 @@ describe("payment attempt store card contract", () => {
       expect(body.payment_attempt.amount).toBe(9900)
       expect(body.payment_attempt.currency_code).toBe("BRL")
       expect(body.payment_attempt.status).toBe("awaiting_pix_payment")
+      expect(stripePixInitiationLayer?.createPixPaymentIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount_minor: 9900,
+          currency_code: "brl",
+          cart_id: cart.id,
+        })
+      )
       expect(body.payment_attempt.expires_at).toBe(
         new Date(1782863999 * 1000).toISOString()
       )
@@ -1050,7 +1080,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("usa uma unica vez o fallback assincrono do servico para Pix", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const fallbackLayer = createStripePixInitiationLayerMock()
       const paymentAttemptModule = createPaymentAttemptModuleMock([], {
@@ -1079,7 +1109,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("converte rejeicao do resolver Pix em camada ausente", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const paymentAttemptModule = createPaymentAttemptModuleMock()
       paymentAttemptModule.resolveStripePixInitiationLayer.mockRejectedValueOnce(
@@ -1110,7 +1140,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("falha fechada quando camada Stripe Pix nao esta configurada", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
         params: { id: cart.id },
@@ -1134,7 +1164,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("falha fechada quando PaymentAttempt nao esta disponivel antes de chamar Stripe Pix", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const stripePixInitiationLayer = createStripePixInitiationLayerMock()
       const req = createRequest({
@@ -1165,7 +1195,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("falha fechada quando PaymentAttempt nao pode ser persistido", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const paymentAttemptModule = createPaymentAttemptModuleMock()
       paymentAttemptModule.createPaymentAttempts.mockRejectedValueOnce(
@@ -1193,7 +1223,7 @@ describe("payment attempt store card contract", () => {
       const cart = buildCompleteGuestCart({
         id: "cart_guest_01",
         email: null,
-        total: 9900,
+        total: 99,
       })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
@@ -1209,7 +1239,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("rejeita body com campos monetarios", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
         params: { id: cart.id },
@@ -1227,7 +1257,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("nao retorna Order nem PaymentSession.data bruto", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
         params: { id: cart.id },
@@ -1263,7 +1293,7 @@ describe("payment attempt store card contract", () => {
 
   describe("retry supersede and invalidated_by_cart_change", () => {
     it("retry card->card supersede mantem uma tentativa ativa por cart", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const existing = buildExistingAttemptForCart(cart, {
         id: "payatt_card_old",
         payment_method_type: "card",
@@ -1296,7 +1326,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("retry pix->pix supersede mantem uma tentativa ativa por cart", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const existing = buildExistingAttemptForCart(cart, {
         id: "payatt_pix_old",
         payment_method_type: "pix",
@@ -1323,7 +1353,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("troca card->pix supersede tentativa ativa anterior", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const existing = buildExistingAttemptForCart(cart, {
         id: "payatt_card_old",
         payment_method_type: "card",
@@ -1351,7 +1381,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("troca pix->card supersede tentativa ativa anterior", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const existing = buildExistingAttemptForCart(cart, {
         id: "payatt_pix_old",
         payment_method_type: "pix",
@@ -1381,12 +1411,12 @@ describe("payment attempt store card contract", () => {
     it("mutacao de email invalida tentativa stale antes de nova iniciacao card", async () => {
       const originalCart = buildCompleteGuestCart({
         id: "cart_guest_01",
-        total: 9900,
+        total: 99,
         email: "original@exemplo.com",
       })
       const mutatedCart = buildCompleteGuestCart({
         id: "cart_guest_01",
-        total: 9900,
+        total: 99,
         email: "novo@exemplo.com",
       })
       const staleFingerprint =
@@ -1419,7 +1449,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("mutacao de quantidade invalida tentativa stale antes de nova iniciacao pix", async () => {
-      const originalCart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const originalCart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const mutatedCart = buildCompleteGuestCart({
         id: "cart_guest_01",
         total: 19800,
@@ -1459,10 +1489,10 @@ describe("payment attempt store card contract", () => {
     })
 
     it("mutacao de shipping address invalida tentativa stale", async () => {
-      const originalCart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const originalCart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const mutatedCart = buildCompleteGuestCart({
         id: "cart_guest_01",
-        total: 9900,
+        total: 99,
         shipping_address: {
           ...originalCart.shipping_address!,
           address_1: "Av Paulista, 1000",
@@ -1499,7 +1529,7 @@ describe("payment attempt store card contract", () => {
 
   describe("phase 04 final negative proofs", () => {
     it("respostas card/pix nao retornam Order, webhook, completion ou Gelato", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
         params: { id: cart.id },
@@ -1526,7 +1556,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("nao persiste client_secret, QR integral ou next_action na trilha PaymentAttempt", async () => {
-      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 9900 })
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const paymentAttemptModule = createPaymentAttemptModuleMock()
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
       const req = createRequest({
@@ -1558,7 +1588,7 @@ describe("payment attempt store card contract", () => {
       ] as const
 
       for (const status of terminalStatuses) {
-        const cart = buildCompleteGuestCart({ id: `cart_${status}`, total: 9900 })
+        const cart = buildCompleteGuestCart({ id: `cart_${status}`, total: 99 })
         const existing = buildExistingAttemptForCart(cart, {
           id: `payatt_${status}`,
           status,

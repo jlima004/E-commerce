@@ -362,7 +362,7 @@ function buildOrderCart(
 ): OrderCartRecord {
   return {
     id: "cart_order_http_01",
-    total: 9900,
+    total: 99,
     currency_code: "brl",
     completed_at: null,
     items: [
@@ -386,7 +386,7 @@ function buildOrderCart(
           },
           prices: [
             {
-              amount: 4900,
+              amount: 49,
               currency_code: "brl",
             },
           ],
@@ -412,7 +412,7 @@ function buildOrderCart(
           },
           prices: [
             {
-              amount: 5000,
+              amount: 50,
               currency_code: "brl",
             },
           ],
@@ -968,6 +968,7 @@ describe("stripe webhook order creation integration", () => {
       const order = {
         id: "order_http_confirmable_01",
         cart_id: cartId,
+        total: cart.total,
         email: ORDER_EMAIL,
         display_id: 2003,
         metadata: null,
@@ -1003,6 +1004,10 @@ describe("stripe webhook order creation integration", () => {
     )
     const res = createResponse()
 
+    expect(cart.total).toBe(99)
+    expect(paymentAttemptModule.attempts[0]?.amount).toBe(9900)
+    expect(orderModule.store).toHaveLength(0)
+
     await handler(
       createRequest(
         createScopeResolve({
@@ -1034,6 +1039,7 @@ describe("stripe webhook order creation integration", () => {
       "cart_order_http_01"
     )
     expect(orderModule.store).toHaveLength(1)
+    expect(orderModule.store[0]?.total).toBe(99)
     expect(orderModule.listOrders).not.toHaveBeenCalledWith(
       expect.objectContaining({ cart_id: "cart_order_http_01" })
     )
@@ -1401,7 +1407,7 @@ describe("stripe webhook order creation integration", () => {
             },
             prices: [
               {
-                amount: 9900,
+                amount: 99,
                 currency_code: "brl",
               },
             ],
@@ -1535,7 +1541,7 @@ describe("stripe webhook order creation integration", () => {
             },
             prices: [
               {
-                amount: 9900,
+                amount: 99,
                 currency_code: "brl",
               },
             ],
@@ -1829,7 +1835,7 @@ describe("stripe webhook order creation integration", () => {
             },
             prices: [
               {
-                amount: 9900,
+                amount: 99,
                 currency_code: "brl",
               },
             ],

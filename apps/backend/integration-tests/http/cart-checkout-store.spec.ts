@@ -73,7 +73,7 @@ function sellableVariant() {
     id: "variant_sellable",
     sku: "TSHIRT-BLACK-M",
     metadata: { ...COMPLETE_GELATO_METADATA },
-    prices: [{ currency_code: "brl", amount: 9900 }],
+    prices: [{ currency_code: "brl", amount: 99 }],
   }
 }
 
@@ -126,7 +126,7 @@ function buildCompleteGuestCart(
         title: "Camiseta Essential",
         variant_id: "variant_sellable",
         variant_title: "Preto / M",
-        unit_price: 9900,
+        unit_price: 99,
         variant: sellableVariant(),
       },
     ],
@@ -958,7 +958,7 @@ describe("cart checkout store contract", () => {
               metadata: {
                 gelato_product_uid: "prod_gelato_abc123",
               },
-              prices: [{ currency_code: "brl", amount: 9900 }],
+              prices: [{ currency_code: "brl", amount: 99 }],
             },
           },
         ],

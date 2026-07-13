@@ -39,7 +39,7 @@ function incompleteDraftVariant() {
   return {
     title: "Draft Tee",
     metadata: {},
-    prices: [{ currency_code: "brl", amount: 9900 }],
+    prices: [{ currency_code: "brl", amount: 99 }],
   }
 }
 
@@ -47,7 +47,7 @@ function sellableVariant() {
   return {
     title: "Sellable Tee",
     metadata: { ...COMPLETE_GELATO_METADATA },
-    prices: [{ currency_code: "brl", amount: 9900 }],
+    prices: [{ currency_code: "brl", amount: 99 }],
   }
 }
 
@@ -143,7 +143,7 @@ describe("catalog admin sellable gate", () => {
               {
                 id: "variant_01",
                 metadata: {},
-                prices: [{ currency_code: "brl", amount: 9900 }],
+                prices: [{ currency_code: "brl", amount: 99 }],
               },
               {
                 metadata: {
@@ -166,7 +166,7 @@ describe("catalog admin sellable gate", () => {
               {
                 id: "variant_01",
                 metadata: {},
-                prices: [{ currency_code: "brl", amount: 9900 }],
+                prices: [{ currency_code: "brl", amount: 99 }],
               },
             ],
           },
@@ -267,7 +267,7 @@ describe("catalog admin sellable gate", () => {
               {
                 id: "variant_01",
                 metadata: {},
-                prices: [{ currency_code: "brl", amount: 9900 }],
+                prices: [{ currency_code: "brl", amount: 99 }],
               },
             ],
           },

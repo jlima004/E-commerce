@@ -57,7 +57,7 @@ function createRawProduct() {
         title: "Preto / M",
         sku: "TSHIRT-BLACK-M",
         metadata: { ...COMPLETE_GELATO_METADATA },
-        prices: [{ currency_code: "brl", amount: 9900 }],
+        prices: [{ currency_code: "brl", amount: 99 }],
         options: [
           { id: "optval_size_m", value: "M" },
           { id: "optval_color_black", value: "Preto" },
@@ -70,7 +70,7 @@ function createRawProduct() {
         metadata: {
           gelato_product_uid: "prod_gelato_abc123",
         },
-        prices: [{ currency_code: "brl", amount: 10900 }],
+        prices: [{ currency_code: "brl", amount: 109 }],
         options: [
           { id: "optval_size_g", value: "G" },
           { id: "optval_color_black", value: "Preto" },
@@ -207,7 +207,7 @@ describe("catalog store contract", () => {
               is_sellable: true,
               price: {
                 currency_code: "brl",
-                amount: 9900,
+                amount: 99,
               },
               options: [
                 {
