@@ -67,5 +67,6 @@ Modules e HTTP usaram PostgreSQL 16 local em `127.0.0.1`, nos bancos descartáve
 
 - `47e76d5` — `fix(payments): separate Medusa major units from Stripe minor units`
 - `db89573` — `test(payments): prove major-to-minor monetary boundaries`
+- `b7cd48f` — `docs(payments): record monetary unit hotfix`
 
-O fechamento documental é criado no terceiro commit autorizado; seu hash e a divergência final são reportados no manual gate.
+O fechamento documental foi criado no terceiro commit autorizado `b7cd48f`. A divergência final é 0--0.

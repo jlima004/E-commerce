@@ -3,7 +3,7 @@ quick_task: 260713-mny01-major-minor-units
 status: complete
 date: 2026-07-13
 scope: hotfix-mny-01
-autonomous: true
+autonomous: false
 must_haves:
   truths:
     - "Medusa core e PaymentSession usam BRL em major units."
