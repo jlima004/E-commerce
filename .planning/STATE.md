@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
 status: phase-11-closed-phase-12-blocked
-stopped_at: MNY-01 PASS; Medusa major and Stripe/custom minor units separated locally; manual review required before catalog correction, push, production, or Phase 12 work
-last_updated: "2026-07-13T20:40:00-03:00"
-last_activity: 2026-07-13
-last_activity_desc: MNY-01 separated Medusa major units from Stripe/custom minor units; full local gates, integrity audit, and disposable DB cleanup passed
+stopped_at: REL-01 PASS; runtime version resolves Heroku build/slug metadata before APP_VERSION; manual metadata enablement, push, deploy, and Phase 12 remain blocked
+last_updated: "2026-07-15T19:37:30-03:00"
+last_activity: 2026-07-15
+last_activity_desc: REL-01 added automatic runtime version resolution with health, Sentry, PM2, full unit, lint, build, and integrity gates passing
 progress:
   total_phases: 12
   completed_phases: 11
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** MNY-01 está **PASS**. Medusa core e PaymentSession usam BRL major units; Stripe, PaymentAttempt e contratos customizados preservam minor units. O hotfix prova PaymentSession `99`, Stripe/PaymentAttempt `9900` e Order `99`, com conversão decimal exata e guard financeiro ativo. Unit passou 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0 erros/208 warnings e build passou. Não houve model, migration, manifest, lockfile, APP_VERSION, infraestrutura, produção ou provider externo; bancos locais descartáveis foram removidos. A correção de catálogo em produção é um gate manual separado. Phase 12 permanece não planejada, não iniciada e bloqueada até aprovação humana explícita.
+**Current gate:** REL-01 está **PASS**. A versão efetiva usa `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry convergem em `env.APP_VERSION`, enquanto PM2/VPS continua usando apenas `APP_VERSION`. Env passou 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit completo 44/44 e 730/730, lint 0 erros/208 warnings e build passou. Nenhum model, migration, manifest, lockfile, Procfile, Redis, Event Bus, locking, provider, contrato monetário ou produção foi tocado. A habilitação Heroku de `runtime-dyno-metadata` e `runtime-dyno-build-metadata` é manual e separada. Phase 12 permanece não planejada, não iniciada e bloqueada até aprovação humana explícita.
 
 **Branch policy:**
 
@@ -54,7 +54,7 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 Phase: 12 (Ops, Audit & Critical Tests) — not planned; not started; blocked
 Plan: 50/50 complete (milestone plans)
 Status: phase-11-closed-phase-12-blocked
-Last activity: 2026-07-13 - MNY-01 separou unidades Medusa major de Stripe/custom minor; todos os gates locais e a limpeza passaram
+Last activity: 2026-07-15 - REL-01 resolveu automaticamente a versão do runtime; health, Sentry, PM2 e todos os gates locais passaram
 
 Progress: [██████████] 100% (50/50 plans complete); Phase 11 closed; Phase 12 blocked
 
@@ -176,6 +176,7 @@ None yet.
 - [Quick 260710-dz0]: Stripe refund smoke preflight stopped before mutation because core `refund` has no `order_id`/`status`/`currency_code` and no local `refund_request` exists for the target Order. A direct Stripe refund would be ignored as `REFUND_WEBHOOK_REQUEST_NOT_FOUND`. The adjusted gate requires authenticated `POST /admin/refunds/request` before the Stripe test-mode refund. It also records that current runtime updates `refund_request` + Order metadata, not core `refund`/`payment_collection.refunded_amount`, and has no refund-email flow.
 - [Quick 260710-rc1 / RC1-A até RC1-H]: RC1-H está `PASS`: a fixture deixou de ser coletada sem remover suíte real; modules passou 28/28 e 454/454; HTTP passou 14/14 e 170/170; unitários 43/43 e 676/676; lint 0/208; build PASS. As 12 falhas RC1-G foram recuperadas somente em Jest/quatro specs, sem runtime, schema, manifest ou lockfile. Upgrade/bootstrap do RC1-G permaneceram válidos e não precisaram repetição. Nenhum Supabase, Heroku, provider externo, deploy, rollback, tag, push ou Phase 12 foi acionado.
 - [Quick 260713-mny01]: MNY-01 está `PASS`: Medusa core/PaymentSession agora usam major units, Stripe/PaymentAttempt/refund/downstream customizado preservam minor units, e o guard da Order converte componentes antes da soma. Unit 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0/208 e build PASS. Nenhum schema, package/lockfile, APP_VERSION, infraestrutura, produção, provider externo, push ou Phase 12 foi tocado. Preços existentes do catálogo permanecem para correção manual em gate separado.
+- [Quick 260715-rel01]: REL-01 está `PASS`: `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry usam a mesma versão resolvida e PM2/VPS preserva o fallback `APP_VERSION`. Env 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit 44/44 e 730/730, lint 0/208 e build PASS. Nenhum Heroku CLI/API/Labs, config var, deploy, push, provider, Redis, Event Bus, locking, migration, package/lockfile ou Phase 12 foi tocado. A habilitação de metadata Heroku permanece manual e separada.
 - [Phase 12]: Ops, Audit & Critical Tests is **not planned**, **not started**, and **blocked until explicit human approval**. Do not plan or execute Phase 12 without separate approval.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
@@ -189,10 +190,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-13
-Stopped at: MNY-01 PASS; monetary boundary fixed, full local gates green, disposable databases removed, and local commits complete.
-Resume file: `.planning/quick/260713-mny01-major-minor-units/SUMMARY.md`
-Next permitted step: Human review of MNY-01 evidence. Catalog correction, Supabase, external providers, Heroku, production, Phase 12, deploy, rollback, push and tag remain blocked.
+Last session: 2026-07-15
+Stopped at: REL-01 PASS; runtime version resolution, health/Sentry/PM2 proofs, full local gates and local commits complete.
+Resume file: `.planning/quick/260715-rel01-runtime-version/SUMMARY.md`
+Next permitted step: Human review of REL-01 evidence. Manual Heroku metadata enablement, config vars, external providers, production, Phase 12, deploy, rollback, push and tag remain blocked.
 
 ## Quick Tasks Completed
 
@@ -227,6 +228,7 @@ Next permitted step: Human review of MNY-01 evidence. Catalog correction, Supaba
 | 2026-07-09 | 260709-r41-gate-tecnico-substituir-id-fixo-anlevt-o | Removed the fixed AnalyticsEventLog preview ID before persistence, preserving PaymentIntent idempotency while letting the module generate unique IDs for distinct checkouts; no migration, package/config change, real provider, or Phase 12 work. |
 | 2026-07-10 | 260710-dz0-gate-t-cnico-stripe-refund-smoke-test-mo | Completed and smoke-refund validated, no DB mutation occurred. |
 | 2026-07-10 | 260710-iyt-corrigir-perda-de-contexto-this-do-refun | Preserved RefundRequest MedusaService method context in the Admin refund endpoint; context-dependent regression, 201/200 replay, related tests and build pass; remote Stripe smoke remains manually gated. |
+| 2026-07-15 | 260715-rel01-runtime-version | Resolved runtime version from Heroku build/slug metadata before APP_VERSION, preserved PM2/VPS fallback, and passed env, health, Sentry, PM2, full unit, lint, build, and integrity gates without external actions. |
 | 2026-07-03 | phase-11-closure | Closed Phase 11 documentally after accepted `11-01`..`11-04` evidence; `REF-01`..`REF-02`, `EXC-01`..`EXC-02` complete; Phase 12 blocked until explicit approval. |
 | 2026-07-13 | 260710-rc1-estabilizacao-release-backend | RC1-H PASS: fixture discovery repaired; modules 28/28 and 454/454, HTTP 14/14 and 170/170, unit 43/43 and 676/676, lint 0/208, build/integrity/cleanup PASS; test commit `e45adf9`; no runtime, schema, provider, push or Phase 12 work. |
 | 2026-07-13 | 260713-mny01-major-minor-units | MNY-01 PASS: Medusa/PaymentSession major units separated from Stripe/PaymentAttempt/custom minor units; exact conversion and Order guard proved; unit 717/717, modules 462/462, HTTP 170/170, lint/build/integrity/cleanup PASS; no production, schema, package, infra, push or Phase 12. |
