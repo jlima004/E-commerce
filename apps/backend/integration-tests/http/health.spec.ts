@@ -1,5 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import type { AppEnv } from "../../src/config/env"
+import { parseEnv, type AppEnv } from "../../src/config/env"
 import type {
   ProbeLogger,
   RedisProbeClient,
@@ -49,6 +49,7 @@ function createEnv(overrides: Partial<AppEnv> = {}): AppEnv {
     COOKIE_SECRET: "supersecret",
     SENTRY_DSN: undefined,
     APP_VERSION: "2026.06.25+health-test",
+    APP_VERSION_SOURCE: "app_version",
     WORKER_MODE: "server",
     ADMIN_DISABLED: false,
     ...overrides,
@@ -235,12 +236,13 @@ describe("health HTTP contracts", () => {
 
   async function importRouteWithMocks(
     route: "live" | "ready",
-    readiness?: { status: "ready" | "not_ready"; checks: { postgres: "up" | "down"; redis: "up" | "down" } }
+    readiness?: { status: "ready" | "not_ready"; checks: { postgres: "up" | "down"; redis: "up" | "down" } },
+    appVersion = "2026.06.25+route-test"
   ) {
     jest.resetModules()
     jest.doMock("../../src/config/env", () => ({
       env: {
-        APP_VERSION: "2026.06.25+route-test",
+        APP_VERSION: appVersion,
       },
     }))
     jest.doMock("../../src/infrastructure/health", () => ({
@@ -328,6 +330,50 @@ describe("health HTTP contracts", () => {
         postgres: "up",
         redis: "down",
       },
+    })
+  })
+
+  it("live and ready expose HEROKU_BUILD_COMMIT instead of stale APP_VERSION", async () => {
+    const herokuBuildCommit = "b7cd48f000000000000000000000000000000000"
+    const resolvedEnv = parseEnv({
+      NODE_ENV: "test",
+      APP_VERSION: "eceedd375374b45462384f091b0920bdd5f08005",
+      HEROKU_BUILD_COMMIT: herokuBuildCommit,
+    })
+
+    expect(resolvedEnv.APP_VERSION_SOURCE).toBe("heroku_build_commit")
+
+    const liveRoute = await importRouteWithMocks(
+      "live",
+      undefined,
+      resolvedEnv.APP_VERSION
+    )
+    const liveResponse = createResponse()
+    await liveRoute.GET({} as MedusaRequest, liveResponse)
+
+    expect((liveResponse.json as jest.Mock).mock.calls[0]?.[0]).toMatchObject({
+      version: herokuBuildCommit,
+    })
+
+    const readyRoute = await importRouteWithMocks(
+      "ready",
+      {
+        status: "ready",
+        checks: {
+          postgres: "up",
+          redis: "up",
+        },
+      },
+      resolvedEnv.APP_VERSION
+    )
+    const readyResponse = createResponse()
+    await readyRoute.GET(
+      { scope: { resolve: jest.fn() } } as unknown as MedusaRequest,
+      readyResponse
+    )
+
+    expect((readyResponse.json as jest.Mock).mock.calls[0]?.[0]).toMatchObject({
+      version: herokuBuildCommit,
     })
   })
 })

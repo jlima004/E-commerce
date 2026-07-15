@@ -18,6 +18,9 @@ const migrationDatabaseUrl =
   "postgresql://migrate-user:migrate-pass@db.example.com:5432/postgres"
 const poolerMigrationUrl =
   "postgresql://migrate-user:migrate-pass@db.example.com:6543/postgres"
+const staleAppVersion = "eceedd375374b45462384f091b0920bdd5f08005"
+const herokuBuildCommit = "b7cd48f000000000000000000000000000000000"
+const herokuSlugCommit = "a1b2c3d"
 
 function productionFixture(
   overrides: Record<string, string | undefined> = {}
@@ -180,6 +183,147 @@ describe("environment configuration", () => {
     })
   })
 
+  describe("runtime version resolution", () => {
+    it("prefers HEROKU_BUILD_COMMIT over a stale APP_VERSION", () => {
+      const env = parseEnv(
+        productionFixture({
+          APP_VERSION: staleAppVersion,
+          HEROKU_BUILD_COMMIT: herokuBuildCommit,
+        })
+      )
+
+      expect(env.APP_VERSION).toBe(herokuBuildCommit)
+      expect(env.APP_VERSION_SOURCE).toBe("heroku_build_commit")
+    })
+
+    it("prefers HEROKU_BUILD_COMMIT over HEROKU_SLUG_COMMIT", () => {
+      const env = parseEnv(
+        productionFixture({
+          APP_VERSION: staleAppVersion,
+          HEROKU_BUILD_COMMIT: herokuBuildCommit,
+          HEROKU_SLUG_COMMIT: herokuSlugCommit,
+        })
+      )
+
+      expect(env.APP_VERSION).toBe(herokuBuildCommit)
+      expect(env.APP_VERSION_SOURCE).toBe("heroku_build_commit")
+    })
+
+    it("prefers HEROKU_SLUG_COMMIT over APP_VERSION", () => {
+      const env = parseEnv(
+        productionFixture({
+          APP_VERSION: staleAppVersion,
+          HEROKU_SLUG_COMMIT: herokuSlugCommit,
+        })
+      )
+
+      expect(env.APP_VERSION).toBe(herokuSlugCommit)
+      expect(env.APP_VERSION_SOURCE).toBe("heroku_slug_commit")
+    })
+
+    it("uses APP_VERSION when Heroku metadata is absent", () => {
+      const env = parseEnv(
+        productionFixture({
+          APP_VERSION: "  2026.07.15+abc1234  ",
+        })
+      )
+
+      expect(env.APP_VERSION).toBe("2026.07.15+abc1234")
+      expect(env.APP_VERSION_SOURCE).toBe("app_version")
+    })
+
+    it("accepts each runtime version source independently", () => {
+      expect(
+        parseEnv(
+          productionFixture({
+            APP_VERSION: undefined,
+            HEROKU_BUILD_COMMIT: herokuBuildCommit,
+          })
+        )
+      ).toMatchObject({
+        APP_VERSION: herokuBuildCommit,
+        APP_VERSION_SOURCE: "heroku_build_commit",
+      })
+
+      expect(
+        parseEnv(
+          productionFixture({
+            APP_VERSION: undefined,
+            HEROKU_SLUG_COMMIT: herokuSlugCommit,
+          })
+        )
+      ).toMatchObject({
+        APP_VERSION: herokuSlugCommit,
+        APP_VERSION_SOURCE: "heroku_slug_commit",
+      })
+
+      expect(
+        parseEnv(
+          productionFixture({
+            APP_VERSION: "v1.0.0",
+          })
+        )
+      ).toMatchObject({
+        APP_VERSION: "v1.0.0",
+        APP_VERSION_SOURCE: "app_version",
+      })
+    })
+
+    it("falls through invalid Heroku metadata to the next valid source", () => {
+      const env = parseEnv(
+        productionFixture({
+          APP_VERSION: staleAppVersion,
+          HEROKU_BUILD_COMMIT: "not-a-valid-sha",
+          HEROKU_SLUG_COMMIT: herokuSlugCommit,
+        })
+      )
+
+      expect(env.APP_VERSION).toBe(herokuSlugCommit)
+      expect(env.APP_VERSION_SOURCE).toBe("heroku_slug_commit")
+    })
+
+    it.each(["", " ", "dev", "unknown", "null", "undefined"])(
+      "rejects invalid production APP_VERSION %p when no metadata is valid",
+      (invalidVersion) => {
+        const parse = () =>
+          parseEnv(
+            productionFixture({
+              APP_VERSION: invalidVersion,
+              HEROKU_BUILD_COMMIT: undefined,
+              HEROKU_SLUG_COMMIT: undefined,
+            })
+          )
+
+        expect(parse).toThrow(
+          "Missing required runtime version: HEROKU_BUILD_COMMIT, HEROKU_SLUG_COMMIT or APP_VERSION"
+        )
+
+        if (invalidVersion.trim()) {
+          expectErrorWithoutValues(parse, "HEROKU_BUILD_COMMIT", [invalidVersion])
+        }
+      }
+    )
+
+    it("does not leak rejected runtime version canaries in errors", () => {
+      const rejectedBuild = "build-sha-canary-not-hex"
+      const rejectedSlug = "slug-sha-canary-not-hex"
+      const rejectedAppVersion = "undefined"
+
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            productionFixture({
+              APP_VERSION: rejectedAppVersion,
+              HEROKU_BUILD_COMMIT: rejectedBuild,
+              HEROKU_SLUG_COMMIT: rejectedSlug,
+            })
+          ),
+        "HEROKU_BUILD_COMMIT",
+        [rejectedBuild, rejectedSlug, rejectedAppVersion]
+      )
+    })
+  })
+
   describe("storage / s3 / supabase public url contract", () => {
     it.each([
       "S3_ENDPOINT",
@@ -271,6 +415,7 @@ describe("environment configuration", () => {
       )
 
       expect(env.APP_VERSION).toBe("dev")
+      expect(env.APP_VERSION_SOURCE).toBe("development_default")
     })
   })
 

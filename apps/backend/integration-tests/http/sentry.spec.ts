@@ -13,7 +13,7 @@ import {
   applySentryInitialScope,
   createSentryInitOptions,
 } from "../../instrumentation"
-import type { AppEnv } from "../../src/config/env"
+import { parseEnv, type AppEnv } from "../../src/config/env"
 import { MedusaError } from "@medusajs/utils"
 
 const CANARIES = {
@@ -291,6 +291,7 @@ function createEnvFixture(
     COOKIE_SECRET: "supersecret",
     SENTRY_DSN: undefined,
     APP_VERSION: "dev",
+    APP_VERSION_SOURCE: "development_default",
     WORKER_MODE: "shared",
     ADMIN_DISABLED: false,
     ...overrides,
@@ -304,6 +305,7 @@ describe("instrumentation", () => {
         NODE_ENV: "production",
         SENTRY_DSN: "https://public@example.ingest.sentry.io/123",
         APP_VERSION: "2026.06.25+abc1234",
+        APP_VERSION_SOURCE: "app_version",
         WORKER_MODE: "worker",
       })
     )
@@ -365,6 +367,18 @@ describe("instrumentation", () => {
 
     expect(options.enabled).toBe(false)
     expect(options.dsn).toBeUndefined()
+  })
+
+  it("usa a versao resolvida de HEROKU_BUILD_COMMIT como release", () => {
+    const herokuBuildCommit = "b7cd48f000000000000000000000000000000000"
+    const resolvedEnv = parseEnv({
+      NODE_ENV: "test",
+      APP_VERSION: "eceedd375374b45462384f091b0920bdd5f08005",
+      HEROKU_BUILD_COMMIT: herokuBuildCommit,
+    })
+
+    expect(resolvedEnv.APP_VERSION_SOURCE).toBe("heroku_build_commit")
+    expect(createSentryInitOptions(resolvedEnv).release).toBe(herokuBuildCommit)
   })
 
   it("aplica apenas tags seguras no escopo inicial", () => {

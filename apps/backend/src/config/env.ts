@@ -1,5 +1,9 @@
 import { loadEnv } from "@medusajs/framework/utils"
 import { z } from "zod"
+import {
+  resolveRuntimeVersion,
+  type RuntimeVersionSource,
+} from "./runtime-version"
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
@@ -12,8 +16,6 @@ const FORBIDDEN_SECRETS = new Set([
   "secret",
   "password",
 ])
-
-const FORBIDDEN_APP_VERSIONS = new Set(["dev", "unknown"])
 
 const WORKER_MODES = ["shared", "server", "worker"] as const
 
@@ -35,6 +37,7 @@ export type AppEnv = {
   COOKIE_SECRET: string
   SENTRY_DSN: string | undefined
   APP_VERSION: string
+  APP_VERSION_SOURCE: RuntimeVersionSource
   WORKER_MODE: WorkerMode
   ADMIN_DISABLED: boolean
   S3_ENDPOINT: string | undefined
@@ -192,16 +195,6 @@ function assertProductionSecret(value: string | undefined, fieldName: string): s
   return secret
 }
 
-function assertProductionAppVersion(value: string | undefined): string {
-  const version = assertNonEmpty(value, "APP_VERSION")
-
-  if (FORBIDDEN_APP_VERSIONS.has(version.toLowerCase())) {
-    throw new Error(`Invalid APP_VERSION: placeholder values are not allowed`)
-  }
-
-  return version
-}
-
 function assertProductionUrl(value: string | undefined, fieldName: string): string {
   return assertNonEmpty(value, fieldName)
 }
@@ -252,10 +245,8 @@ export function parseEnv(
 ): AppEnv {
   const production = isProduction(input)
   const normalized = { ...input }
-
-  if (!production && !normalized.APP_VERSION) {
-    normalized.APP_VERSION = "dev"
-  }
+  const runtimeVersion = resolveRuntimeVersion(input, production)
+  normalized.APP_VERSION = runtimeVersion.value
 
   if (production) {
     assertProductionUrl(normalized.DATABASE_URL, "DATABASE_URL")
@@ -269,7 +260,6 @@ export function parseEnv(
     assertProductionUrl(normalized.EVENTS_REDIS_URL, "EVENTS_REDIS_URL")
     assertProductionUrl(normalized.WE_REDIS_URL, "WE_REDIS_URL")
     assertProductionUrl(normalized.SENTRY_DSN, "SENTRY_DSN")
-    assertProductionAppVersion(normalized.APP_VERSION)
     assertProductionSecret(normalized.JWT_SECRET, "JWT_SECRET")
     assertProductionSecret(normalized.COOKIE_SECRET, "COOKIE_SECRET")
     assertProductionUrl(normalized.S3_ENDPOINT, "S3_ENDPOINT")
@@ -359,7 +349,8 @@ export function parseEnv(
     JWT_SECRET: data.JWT_SECRET,
     COOKIE_SECRET: data.COOKIE_SECRET,
     SENTRY_DSN: data.SENTRY_DSN,
-    APP_VERSION: data.APP_VERSION,
+    APP_VERSION: runtimeVersion.value,
+    APP_VERSION_SOURCE: runtimeVersion.source,
     WORKER_MODE: parseWorkerMode(normalized.WORKER_MODE, "WORKER_MODE"),
     ADMIN_DISABLED: parseBoolean(normalized.ADMIN_DISABLED, "ADMIN_DISABLED"),
     S3_ENDPOINT: data.S3_ENDPOINT,
