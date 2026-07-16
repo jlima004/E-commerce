@@ -1,8 +1,10 @@
 import { parseEnv } from "../../config/env"
 import type { AppEnv } from "../../config/env"
 import type { MedusaModuleDescriptor } from "../redis-config"
+import { describeInfrastructureMode } from "../infrastructure-mode"
 import {
   assertNoInMemoryInfrastructure,
+  assertProductionRedisInfrastructure,
   buildCachingRedisProviderOptions,
   buildRedisModules,
   buildStandardRedisModuleOptions,
@@ -54,6 +56,8 @@ const originalRedisTlsRejectUnauthorized =
 const originalRedisCacheProviderDisabled =
   process.env.REDIS_CACHE_PROVIDER_DISABLED
 const originalReleaseMigrationMode = process.env.DTC_RELEASE_MIGRATION_MODE
+const originalReleaseMigrationChild =
+  process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS
 
 function productionFixture(
   overrides: Record<string, string | undefined> = {}
@@ -198,10 +202,21 @@ function restoreReleaseMigrationModeEnv() {
   process.env.DTC_RELEASE_MIGRATION_MODE = originalReleaseMigrationMode
 }
 
+function restoreReleaseMigrationChildEnv() {
+  if (originalReleaseMigrationChild === undefined) {
+    delete process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS
+    return
+  }
+
+  process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS =
+    originalReleaseMigrationChild
+}
+
 afterEach(() => {
   restoreRedisTlsEnv()
   restoreRedisCacheProviderDisabledEnv()
   restoreReleaseMigrationModeEnv()
+  restoreReleaseMigrationChildEnv()
 })
 
 describe("redisOptionsForUrl", () => {
@@ -347,36 +362,28 @@ describe("redis module wiring", () => {
     ).toBe(true)
   })
 
-  it("omits the Redis Caching Provider when disabled by environment flag", () => {
-    process.env.REDIS_CACHE_PROVIDER_DISABLED = "true"
+  it("rejects disabling the Redis Caching Provider in production", () => {
+    const env = {
+      ...parseProductionEnv(),
+      REDIS_CACHE_PROVIDER_DISABLED: "true",
+    }
 
-    expect(shouldWireRedisCachingProvider()).toBe(false)
+    expect(shouldWireRedisCachingProvider(env)).toBe(false)
 
-    const modules = buildRedisModules(parseProductionEnv())
-
-    expect(modules).toHaveLength(3)
-    expect(modules.map((module) => module.resolve)).toEqual([
-      "@medusajs/medusa/locking",
-      "@medusajs/medusa/event-bus-redis",
-      "@medusajs/medusa/workflow-engine-redis",
-    ])
-    expect(
-      modules.some((module) =>
-        JSON.stringify(module.options).includes("@medusajs/caching-redis")
-      )
-    ).toBe(false)
+    expect(() => buildRedisModules(env)).toThrow(
+      "Production Redis infrastructure is incomplete"
+    )
   })
 
-  it("keeps locking, event bus, and workflow Redis modules when caching is disabled", () => {
-    process.env.REDIS_CACHE_PROVIDER_DISABLED = "true"
+  it("does not accept a partial production module set when caching is disabled", () => {
+    const env = {
+      ...parseProductionEnv(),
+      REDIS_CACHE_PROVIDER_DISABLED: "true",
+    }
 
-    const modules = buildRedisModules(parseProductionEnv())
-    const options = getRedisModuleOptions(modules)
-
-    expect(options.cache).toBeUndefined()
-    expect(options.locking).toEqual({ redisUrl: sharedRedisUrl })
-    expect(options.events).toEqual({ redisUrl: sharedRedisUrl })
-    expect(options.workflow).toEqual({ redisUrl: sharedRedisUrl })
+    expect(() => buildRedisModules(env)).toThrow(
+      "Production Redis infrastructure is incomplete"
+    )
   })
 
   it("does not add redisOptions for redis:// URLs", () => {
@@ -518,25 +525,29 @@ describe("redis module wiring", () => {
     )
   })
 
-  it("keeps redisOptions for supported rediss:// Redis modules when caching is disabled", () => {
+  it("keeps complete local Redis wiring deterministic despite the production-only toggle", () => {
     process.env.REDIS_CACHE_PROVIDER_DISABLED = "true"
     process.env.REDIS_TLS_REJECT_UNAUTHORIZED = "false"
 
-    const env = parseProductionEnv({
+    const env = parseEnv(localFixture({
       REDIS_URL: sharedRedissUrl,
       CACHE_REDIS_URL: cacheRedissUrl,
       EVENTS_REDIS_URL: eventsRedissUrl,
       WE_REDIS_URL: workflowRedissUrl,
-    })
+    }))
     const modules = buildRedisModules(env)
     const options = getRedisModuleOptions(modules)
+    const tls = {
+      rejectUnauthorized: false,
+    }
     const redisOptions = {
-      tls: {
-        rejectUnauthorized: false,
-      },
+      tls,
     }
 
-    expect(options.cache).toBeUndefined()
+    expect(options.cache).toEqual({
+      redisUrl: cacheRedissUrl,
+      tls,
+    })
     expect(options.locking).toEqual({
       redisUrl: sharedRedissUrl,
       redisOptions,
@@ -628,9 +639,11 @@ describe("redis module wiring", () => {
   })
 
   it("skips Redis modules during Heroku release migration mode", () => {
-    process.env.DTC_RELEASE_MIGRATION_MODE = "true"
-
-    const env = parseProductionEnv()
+    const env = {
+      ...parseProductionEnv({ WORKER_MODE: "shared" }),
+      DTC_RELEASE_MIGRATION_MODE: "true",
+      DTC_RELEASE_MIGRATION_CHILD_PROCESS: "true",
+    }
 
     expect(shouldWireRedisModules(env)).toBe(false)
     expect(buildRedisModules(env)).toEqual([])
@@ -645,6 +658,77 @@ describe("redis module wiring", () => {
     expect(shouldWireRedisModules(env)).toBe(true)
     expect(buildRedisModules(env)).toHaveLength(4)
     expect(resolveProjectRedisUrl(env)).toBe(sharedRedisUrl)
+  })
+})
+
+describe("assertProductionRedisInfrastructure", () => {
+  it("accepts the complete final production wiring", () => {
+    const env = parseProductionEnv()
+    const modules = buildRedisModules(env)
+
+    expect(() =>
+      assertProductionRedisInfrastructure({
+        env,
+        mode: describeInfrastructureMode(env),
+        projectConfig: { redisUrl: sharedRedisUrl },
+        modules,
+      })
+    ).not.toThrow()
+  })
+
+  it("rejects missing contracts, fallback resolves, and missing providers safely", () => {
+    const canary = "rediss://username:password@host-canary.internal:6379"
+    const env = {
+      ...parseProductionEnv(),
+      CACHE_REDIS_URL: undefined,
+      REDIS_URL: canary,
+    }
+    const modules: MedusaModuleDescriptor[] = [
+      { resolve: "@medusajs/medusa/event-bus-local" },
+    ]
+
+    try {
+      assertProductionRedisInfrastructure({
+        env,
+        mode: describeInfrastructureMode(env),
+        projectConfig: {},
+        modules,
+      })
+      throw new Error("Expected assertion to throw")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      expect(message).toContain("Production Redis infrastructure is incomplete")
+      expect(message).toContain("CACHE_REDIS_URL")
+      expect(message).not.toContain("rediss://")
+      expect(message).not.toContain("username")
+      expect(message).not.toContain("password")
+      expect(message).not.toContain("host-canary")
+    }
+  })
+
+  it("rejects an additional nested local provider even with the Redis default present", () => {
+    const env = parseProductionEnv()
+    const modules = buildRedisModules(env)
+    const cachingModule = modules.find(
+      (module) => module.resolve === "@medusajs/medusa/caching"
+    )!
+    const providers = cachingModule.options?.providers as Array<
+      Record<string, unknown>
+    >
+    providers.push({
+      resolve: "@medusajs/medusa/cache-inmemory",
+      id: "fallback-local",
+      is_default: false,
+    })
+
+    expect(() =>
+      assertProductionRedisInfrastructure({
+        env,
+        mode: describeInfrastructureMode(env),
+        projectConfig: { redisUrl: sharedRedisUrl },
+        modules,
+      })
+    ).toThrow("Production Redis infrastructure is incomplete")
   })
 })
 

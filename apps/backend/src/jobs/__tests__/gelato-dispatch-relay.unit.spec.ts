@@ -13,6 +13,7 @@ import type {
   GelatoFulfillmentRecord,
 } from "../../modules/gelato-fulfillment/types"
 import {
+  default as gelatoDispatchRelayJob,
   createGelatoDispatchClient,
   isGelatoDispatchDisabled,
   resolveGelatoDispatchRelayConfig,
@@ -866,5 +867,30 @@ describe("createGelatoDispatchClient", () => {
     const client = createGelatoDispatchClient()
 
     expect(typeof client.createOrder).toBe("function")
+  })
+})
+
+describe("gelatoDispatchRelayJob migration mode", () => {
+  it("retorna antes de resolver dependencias ou emitir logs operacionais", async () => {
+    const originalMode = process.env.DTC_RELEASE_MIGRATION_MODE
+    const originalChild = process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS
+    process.env.DTC_RELEASE_MIGRATION_MODE = "true"
+    process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS = "true"
+    const container = { resolve: jest.fn() } as unknown as MedusaContainer
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined)
+
+    try {
+      await gelatoDispatchRelayJob(container)
+      expect(container.resolve).not.toHaveBeenCalled()
+      expect(log).not.toHaveBeenCalled()
+    } finally {
+      log.mockRestore()
+      originalMode === undefined
+        ? delete process.env.DTC_RELEASE_MIGRATION_MODE
+        : (process.env.DTC_RELEASE_MIGRATION_MODE = originalMode)
+      originalChild === undefined
+        ? delete process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS
+        : (process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS = originalChild)
+    }
   })
 })

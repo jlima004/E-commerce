@@ -12,6 +12,7 @@ import {
   isOrderConfirmationEmailLocallyRecorded,
 } from "../../modules/email-delivery-log/service"
 import {
+  default as emailResendRelayJob,
   createResendRelayClient,
   isResendRelayDisabled,
   resolveResendRelayConfig,
@@ -659,5 +660,30 @@ describe("recipient canonical source", () => {
     expect(emailModule.store[0]?.recipient_email_hash).toBe(
       createHash("sha256").update(ORDER_EMAIL).digest("hex")
     )
+  })
+})
+
+describe("emailResendRelayJob migration mode", () => {
+  it("retorna antes de resolver dependencias ou emitir logs operacionais", async () => {
+    const originalMode = process.env.DTC_RELEASE_MIGRATION_MODE
+    const originalChild = process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS
+    process.env.DTC_RELEASE_MIGRATION_MODE = "true"
+    process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS = "true"
+    const container = { resolve: jest.fn() } as unknown as MedusaContainer
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined)
+
+    try {
+      await emailResendRelayJob(container)
+      expect(container.resolve).not.toHaveBeenCalled()
+      expect(log).not.toHaveBeenCalled()
+    } finally {
+      log.mockRestore()
+      originalMode === undefined
+        ? delete process.env.DTC_RELEASE_MIGRATION_MODE
+        : (process.env.DTC_RELEASE_MIGRATION_MODE = originalMode)
+      originalChild === undefined
+        ? delete process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS
+        : (process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS = originalChild)
+    }
   })
 })

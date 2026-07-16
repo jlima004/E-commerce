@@ -1,8 +1,23 @@
 import type { AppEnv } from "../config/env"
-import { isReleaseMigrationMode } from "./release-migration-mode"
+import {
+  classifyRedisContracts,
+  describeInfrastructureMode,
+  type InfrastructureModeDescription,
+} from "./infrastructure-mode"
+
+export type RedisInfrastructureEnv = AppEnv & {
+  DTC_RELEASE_MIGRATION_MODE?: string
+  DTC_RELEASE_MIGRATION_CHILD_PROCESS?: string
+  REDIS_CACHE_PROVIDER_DISABLED?: string
+}
 
 export type MedusaModuleDescriptor = {
   resolve: string
+  options?: Record<string, unknown>
+}
+
+type InfrastructureModuleDescriptor = {
+  resolve?: string
   options?: Record<string, unknown>
 }
 
@@ -35,35 +50,55 @@ const IN_MEMORY_RESOLVES = [
   "@medusajs/medusa/cache-inmemory",
 ]
 
+type ProductionRedisAssertionInput = {
+  env: RedisInfrastructureEnv
+  mode: InfrastructureModeDescription
+  projectConfig: {
+    redisUrl?: unknown
+  }
+  modules: InfrastructureModuleDescriptor[]
+}
+
 function isNonEmptyUrl(value: string | undefined): value is string {
   return Boolean(value && value.trim().length > 0)
 }
 
-export function hasRedisModuleContracts(env: AppEnv): boolean {
-  return (
-    isNonEmptyUrl(env.CACHE_REDIS_URL) &&
-    isNonEmptyUrl(env.EVENTS_REDIS_URL) &&
-    isNonEmptyUrl(env.WE_REDIS_URL)
+function productionRedisError(issues: string[]): Error {
+  const details = [...new Set(issues)].join(", ")
+  return new Error(
+    details
+      ? `Production Redis infrastructure is incomplete: ${details}`
+      : "Production Redis infrastructure is incomplete"
   )
 }
 
-export function shouldWireRedisModules(env: AppEnv): boolean {
-  if (isReleaseMigrationMode()) {
-    return false
-  }
-
-  if (env.NODE_ENV === "production") {
-    return true
-  }
-
-  return hasRedisModuleContracts(env)
+export function hasRedisModuleContracts(env: AppEnv): boolean {
+  return classifyRedisContracts(env).state === "complete"
 }
 
-export function shouldWireRedisCachingProvider(): boolean {
-  return process.env.REDIS_CACHE_PROVIDER_DISABLED !== "true"
+export function shouldWireRedisModules(env: RedisInfrastructureEnv): boolean {
+  return describeInfrastructureMode(env).redis_runtime_modules === "enabled"
 }
 
-export function resolveProjectRedisUrl(env: AppEnv): string | undefined {
+export function shouldWireRedisCachingProvider(
+  env: Pick<
+    RedisInfrastructureEnv,
+    "NODE_ENV" | "REDIS_CACHE_PROVIDER_DISABLED"
+  > = {
+    NODE_ENV: process.env.NODE_ENV ?? "development",
+    REDIS_CACHE_PROVIDER_DISABLED:
+      process.env.REDIS_CACHE_PROVIDER_DISABLED,
+  }
+): boolean {
+  return (
+    env.NODE_ENV !== "production" ||
+    env.REDIS_CACHE_PROVIDER_DISABLED !== "true"
+  )
+}
+
+export function resolveProjectRedisUrl(
+  env: RedisInfrastructureEnv
+): string | undefined {
   if (!shouldWireRedisModules(env)) {
     return undefined
   }
@@ -143,17 +178,17 @@ export function buildRedisModules(env: AppEnv): MedusaModuleDescriptor[] {
     return []
   }
 
-  if (!hasRedisModuleContracts(env)) {
-    throw new Error(
-      "Missing required Redis module contracts: CACHE_REDIS_URL, EVENTS_REDIS_URL, WE_REDIS_URL"
-    )
+  if (env.NODE_ENV === "production") {
+    if (!shouldWireRedisCachingProvider(env)) {
+      throw productionRedisError(["REDIS_CACHE_PROVIDER_DISABLED"])
+    }
   }
 
   const lockingRedisUrl = resolveProjectRedisUrl(env)!
 
   const modules: MedusaModuleDescriptor[] = []
 
-  if (shouldWireRedisCachingProvider()) {
+  if (shouldWireRedisCachingProvider(env)) {
     modules.push({
       resolve: CACHING_MODULE,
       options: {
@@ -205,5 +240,110 @@ export function assertNoInMemoryInfrastructure(
     if (IN_MEMORY_RESOLVES.includes(module.resolve)) {
       throw new Error(`In-memory infrastructure module is not allowed: ${module.resolve}`)
     }
+  }
+}
+
+function hasExactDefaultProvider(
+  module: InfrastructureModuleDescriptor | undefined,
+  providerResolve: string
+): boolean {
+  const providers = module?.options?.providers
+
+  return (
+    Array.isArray(providers) &&
+    providers.length === 1 &&
+    typeof providers[0] === "object" &&
+    providers[0] !== null &&
+    "resolve" in providers[0] &&
+    providers[0].resolve === providerResolve &&
+    "is_default" in providers[0] &&
+    providers[0].is_default === true
+  )
+}
+
+function isLocalOrInMemoryResolve(resolve: string): boolean {
+  return (
+    IN_MEMORY_RESOLVES.includes(resolve) ||
+    resolve.includes("inmemory") ||
+    resolve.endsWith("-local")
+  )
+}
+
+export function assertProductionRedisInfrastructure({
+  env,
+  mode,
+  projectConfig,
+  modules,
+}: ProductionRedisAssertionInput): void {
+  if (mode.release_migration || mode.mode !== "production_redis") {
+    return
+  }
+
+  const issues = classifyRedisContracts(env).missing.map(
+    (contract) => `missing ${contract}`
+  )
+
+  if (!isNonEmptyUrl(projectConfig.redisUrl as string | undefined)) {
+    issues.push("missing projectConfig.redisUrl")
+  }
+
+  if (!shouldWireRedisCachingProvider(env)) {
+    issues.push("REDIS_CACHE_PROVIDER_DISABLED")
+  }
+
+  const requiredResolves = [
+    CACHING_MODULE,
+    LOCKING_MODULE,
+    EVENT_BUS_REDIS,
+    WORKFLOW_ENGINE_REDIS,
+  ]
+
+  for (const resolve of requiredResolves) {
+    if (modules.filter((module) => module.resolve === resolve).length !== 1) {
+      issues.push(`missing ${resolve}`)
+    }
+  }
+
+  const cachingModule = modules.find(
+    (module) => module.resolve === CACHING_MODULE
+  )
+  const lockingModule = modules.find(
+    (module) => module.resolve === LOCKING_MODULE
+  )
+
+  if (!hasExactDefaultProvider(cachingModule, CACHING_REDIS_PROVIDER)) {
+    issues.push(`missing ${CACHING_REDIS_PROVIDER}`)
+  }
+
+  if (!hasExactDefaultProvider(lockingModule, LOCKING_REDIS_PROVIDER)) {
+    issues.push(`missing ${LOCKING_REDIS_PROVIDER}`)
+  }
+
+  for (const module of modules) {
+    if (
+      module.resolve &&
+      isLocalOrInMemoryResolve(module.resolve)
+    ) {
+      issues.push(`forbidden ${module.resolve}`)
+    }
+
+    const providers = module.options?.providers
+    if (Array.isArray(providers)) {
+      for (const provider of providers) {
+        if (
+          typeof provider === "object" &&
+          provider !== null &&
+          "resolve" in provider &&
+          typeof provider.resolve === "string" &&
+          isLocalOrInMemoryResolve(provider.resolve)
+        ) {
+          issues.push(`forbidden ${provider.resolve}`)
+        }
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    throw productionRedisError(issues)
   }
 }

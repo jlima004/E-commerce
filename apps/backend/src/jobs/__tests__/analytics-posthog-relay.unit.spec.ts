@@ -12,6 +12,7 @@ import {
   isPurchaseCompletedLocallyRecorded,
 } from "../../modules/analytics-event-log/service"
 import {
+  default as analyticsPosthogRelayJob,
   createPostHogRelayClient,
   resolvePostHogRelayConfig,
   runAnalyticsPosthogRelay,
@@ -342,5 +343,30 @@ describe("createPostHogRelayClient", () => {
 
     expect(typeof client.capture).toBe("function")
     expect(typeof client.shutdown).toBe("function")
+  })
+})
+
+describe("analyticsPosthogRelayJob migration mode", () => {
+  it("retorna antes de resolver dependencias ou emitir logs operacionais", async () => {
+    const originalMode = process.env.DTC_RELEASE_MIGRATION_MODE
+    const originalChild = process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS
+    process.env.DTC_RELEASE_MIGRATION_MODE = "true"
+    process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS = "true"
+    const container = { resolve: jest.fn() } as unknown as MedusaContainer
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined)
+
+    try {
+      await analyticsPosthogRelayJob(container)
+      expect(container.resolve).not.toHaveBeenCalled()
+      expect(log).not.toHaveBeenCalled()
+    } finally {
+      log.mockRestore()
+      originalMode === undefined
+        ? delete process.env.DTC_RELEASE_MIGRATION_MODE
+        : (process.env.DTC_RELEASE_MIGRATION_MODE = originalMode)
+      originalChild === undefined
+        ? delete process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS
+        : (process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS = originalChild)
+    }
   })
 })

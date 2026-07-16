@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process"
+import { writeSync } from "node:fs"
 import { loadEnv } from "@medusajs/framework/utils"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 
-process.env.DTC_RELEASE_MIGRATION_MODE ??= "true"
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
+
+export const RELEASE_MIGRATION_INFRASTRUCTURE_MODE_LOG = Object.freeze({
+  operation: "release_migration.infrastructure_mode",
+  mode: "release_migration_db_only",
+  redis_runtime_modules: "intentionally_omitted",
+  operational_jobs: "disabled",
+})
 
 const backendRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -39,7 +46,9 @@ export function buildMigrationChildEnv(sourceEnv) {
 
   assertMigrationUrl(migrationUrl)
   childEnv.DATABASE_URL = migrationUrl
-  childEnv.DTC_RELEASE_MIGRATION_MODE ??= "true"
+  childEnv.DTC_RELEASE_MIGRATION_MODE = "true"
+  childEnv.DTC_RELEASE_MIGRATION_CHILD_PROCESS = "true"
+  delete childEnv.WORKER_MODE
 
   return childEnv
 }
@@ -49,12 +58,16 @@ export function runMigrations(options = {}) {
   assertMigrationUrl(migrationUrl)
 
   const childEnv = buildMigrationChildEnv(process.env)
+  const writeLine = options.writeLine ?? ((line) => writeSync(1, `${line}\n`))
+  const spawn = options.spawn ?? spawnSync
+
+  writeLine(JSON.stringify(RELEASE_MIGRATION_INFRASTRUCTURE_MODE_LOG))
 
   if (options.checkOnly) {
     return { status: 0, childEnv }
   }
 
-  const result = spawnSync("npx", ["medusa", "db:migrate"], {
+  const result = spawn("npx", ["medusa", "db:migrate"], {
     cwd: backendRoot,
     env: childEnv,
     stdio: "inherit",
