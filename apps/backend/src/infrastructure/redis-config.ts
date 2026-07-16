@@ -6,15 +6,20 @@ export type MedusaModuleDescriptor = {
   options?: Record<string, unknown>
 }
 
-type RedisModuleOptions = {
-  redisUrl: string
-  redisOptions?: RedisConnectionOptions
-}
-
-export type RedisConnectionOptions = {
+export type RedisTlsOptions = {
   tls: {
     rejectUnauthorized: boolean
   }
+}
+
+export type StandardRedisModuleOptions = {
+  redisUrl: string
+  redisOptions?: RedisTlsOptions
+}
+
+export type CachingRedisProviderOptions = {
+  redisUrl: string
+  tls?: RedisTlsOptions["tls"]
 }
 
 const CACHING_MODULE = "@medusajs/medusa/caching"
@@ -83,7 +88,7 @@ export function uniqueRedisUrls(env: AppEnv): string[] {
 
 export function redisOptionsForUrl(
   redisUrl: string | undefined
-): RedisConnectionOptions | undefined {
+): RedisTlsOptions | undefined {
   if (!isNonEmptyUrl(redisUrl)) {
     return undefined
   }
@@ -111,12 +116,25 @@ export function redisOptionsForUrl(
   }
 }
 
-function buildRedisModuleOptions(redisUrl: string): RedisModuleOptions {
+export function buildStandardRedisModuleOptions(
+  redisUrl: string
+): StandardRedisModuleOptions {
   const trimmedRedisUrl = redisUrl.trim()
   const redisOptions = redisOptionsForUrl(trimmedRedisUrl)
 
   return redisOptions
     ? { redisUrl: trimmedRedisUrl, redisOptions }
+    : { redisUrl: trimmedRedisUrl }
+}
+
+export function buildCachingRedisProviderOptions(
+  redisUrl: string
+): CachingRedisProviderOptions {
+  const trimmedRedisUrl = redisUrl.trim()
+  const redisOptions = redisOptionsForUrl(trimmedRedisUrl)
+
+  return redisOptions
+    ? { redisUrl: trimmedRedisUrl, ...redisOptions }
     : { redisUrl: trimmedRedisUrl }
 }
 
@@ -144,7 +162,7 @@ export function buildRedisModules(env: AppEnv): MedusaModuleDescriptor[] {
             resolve: CACHING_REDIS_PROVIDER,
             id: "caching-redis",
             is_default: true,
-            options: buildRedisModuleOptions(env.CACHE_REDIS_URL!),
+            options: buildCachingRedisProviderOptions(env.CACHE_REDIS_URL!),
           },
         ],
       },
@@ -160,19 +178,19 @@ export function buildRedisModules(env: AppEnv): MedusaModuleDescriptor[] {
             resolve: LOCKING_REDIS_PROVIDER,
             id: "locking-redis",
             is_default: true,
-            options: buildRedisModuleOptions(lockingRedisUrl),
+            options: buildStandardRedisModuleOptions(lockingRedisUrl),
           },
         ],
       },
     },
     {
       resolve: EVENT_BUS_REDIS,
-      options: buildRedisModuleOptions(env.EVENTS_REDIS_URL!),
+      options: buildStandardRedisModuleOptions(env.EVENTS_REDIS_URL!),
     },
     {
       resolve: WORKFLOW_ENGINE_REDIS,
       options: {
-        redis: buildRedisModuleOptions(env.WE_REDIS_URL!),
+        redis: buildStandardRedisModuleOptions(env.WE_REDIS_URL!),
       },
     },
   )

@@ -3,7 +3,9 @@ import type { AppEnv } from "../../config/env"
 import type { MedusaModuleDescriptor } from "../redis-config"
 import {
   assertNoInMemoryInfrastructure,
+  buildCachingRedisProviderOptions,
   buildRedisModules,
+  buildStandardRedisModuleOptions,
   hasRedisModuleContracts,
   redisOptionsForUrl,
   resolveProjectRedisUrl,
@@ -25,14 +27,26 @@ const sharedRedissUrl = "rediss://redis.example.com:6379"
 const cacheRedissUrl = "rediss://cache.example.com:6379"
 const eventsRedissUrl = "rediss://events.example.com:6379"
 const workflowRedissUrl = "rediss://workflow.example.com:6379"
+const canaryRedisUsername = "cache-contract-user"
+const canaryRedisPassword = "cache-contract-password"
+const canaryRedisHostname = "cache-contract.invalid"
+const credentialedCanaryRedissUrl =
+  `rediss://${canaryRedisUsername}:${canaryRedisPassword}@${canaryRedisHostname}:6379`
 
-type RedisModuleOptions = {
-  redisUrl: string
-  redisOptions?: {
-    tls: {
-      rejectUnauthorized: boolean
-    }
+type RedisTlsOptions = {
+  tls: {
+    rejectUnauthorized: boolean
   }
+}
+
+type StandardRedisModuleOptions = {
+  redisUrl: string
+  redisOptions?: RedisTlsOptions
+}
+
+type CachingRedisProviderOptions = {
+  redisUrl: string
+  tls?: RedisTlsOptions["tls"]
 }
 
 const originalRedisTlsRejectUnauthorized =
@@ -154,23 +168,23 @@ function getRedisModuleOptions(modules: MedusaModuleDescriptor[]) {
         resolve: string
         id: string
         is_default: boolean
-        options: RedisModuleOptions
+        options: CachingRedisProviderOptions
       }>
     | undefined
   const lockingProviders = lockingModule!.options?.providers as Array<{
     resolve: string
     id: string
     is_default: boolean
-    options: RedisModuleOptions
+    options: StandardRedisModuleOptions
   }>
   const workflowOptions = workflowModule!.options as {
-    redis: RedisModuleOptions
+    redis: StandardRedisModuleOptions
   }
 
   return {
     cache: cachingProviders?.[0]?.options,
     locking: lockingProviders[0].options,
-    events: eventsModule!.options as RedisModuleOptions,
+    events: eventsModule!.options as StandardRedisModuleOptions,
     workflow: workflowOptions.redis,
   }
 }
@@ -214,6 +228,60 @@ describe("redisOptionsForUrl", () => {
   })
 })
 
+describe("Redis option builders", () => {
+  it("builds a flat TLS contract for caching and a nested contract for standard modules", () => {
+    process.env.REDIS_TLS_REJECT_UNAUTHORIZED = "false"
+
+    expect(
+      buildCachingRedisProviderOptions(`  ${cacheRedissUrl}  `)
+    ).toEqual({
+      redisUrl: cacheRedissUrl,
+      tls: {
+        rejectUnauthorized: false,
+      },
+    })
+    expect(
+      buildStandardRedisModuleOptions(`  ${sharedRedissUrl}  `)
+    ).toEqual({
+      redisUrl: sharedRedissUrl,
+      redisOptions: {
+        tls: {
+          rejectUnauthorized: false,
+        },
+      },
+    })
+  })
+
+  it("keeps both contracts URL-only for redis:// even with the TLS opt-in", () => {
+    process.env.REDIS_TLS_REJECT_UNAUTHORIZED = "false"
+
+    expect(buildCachingRedisProviderOptions(sharedRedisUrl)).toEqual({
+      redisUrl: sharedRedisUrl,
+    })
+    expect(buildStandardRedisModuleOptions(sharedRedisUrl)).toEqual({
+      redisUrl: sharedRedisUrl,
+    })
+  })
+
+  it.each([undefined, "", "true", "FALSE", "0"])(
+    "keeps rediss:// contracts URL-only for non-opt-in value %p",
+    (tlsOverride) => {
+      if (tlsOverride === undefined) {
+        delete process.env.REDIS_TLS_REJECT_UNAUTHORIZED
+      } else {
+        process.env.REDIS_TLS_REJECT_UNAUTHORIZED = tlsOverride
+      }
+
+      expect(buildCachingRedisProviderOptions(cacheRedissUrl)).toEqual({
+        redisUrl: cacheRedissUrl,
+      })
+      expect(buildStandardRedisModuleOptions(sharedRedissUrl)).toEqual({
+        redisUrl: sharedRedissUrl,
+      })
+    }
+  )
+})
+
 describe("redis module wiring", () => {
   it("builds caching, locking, event bus, and workflow engine Redis modules", () => {
     const modules = buildRedisModules(parseProductionEnv())
@@ -231,7 +299,7 @@ describe("redis module wiring", () => {
       resolve: string
       id: string
       is_default: boolean
-      options: RedisModuleOptions
+      options: CachingRedisProviderOptions
     }>
 
     expect(cachingProviders).toHaveLength(1)
@@ -247,7 +315,7 @@ describe("redis module wiring", () => {
       resolve: string
       id: string
       is_default: boolean
-      options: RedisModuleOptions
+      options: StandardRedisModuleOptions
     }>
 
     expect(lockingProviders).toHaveLength(1)
@@ -352,16 +420,18 @@ describe("redis module wiring", () => {
     })
     const modules = buildRedisModules(env)
     const options = getRedisModuleOptions(modules)
+    const tls = {
+      rejectUnauthorized: false,
+    }
     const redisOptions = {
-      tls: {
-        rejectUnauthorized: false,
-      },
+      tls,
     }
 
     expect(options.cache).toEqual({
       redisUrl: cacheRedissUrl,
-      redisOptions,
+      tls,
     })
+    expect(options.cache).not.toHaveProperty("redisOptions")
     expect(options.locking).toEqual({
       redisUrl: sharedRedissUrl,
       redisOptions,
@@ -374,6 +444,78 @@ describe("redis module wiring", () => {
       redisUrl: workflowRedissUrl,
       redisOptions,
     })
+  })
+
+  it("matches the caching-redis 2.16 loader contract without opening a connection", () => {
+    process.env.REDIS_TLS_REJECT_UNAUTHORIZED = "false"
+
+    const env = parseProductionEnv({
+      CACHE_REDIS_URL: credentialedCanaryRedissUrl,
+    })
+    const modules = buildRedisModules(env)
+    const cacheOptions = getRedisModuleOptions(modules).cache!
+    const { redisUrl, ...ioredisOptions } = cacheOptions
+
+    expect(redisUrl).toEqual(expect.any(String))
+    expect(cacheOptions).toEqual({
+      redisUrl: expect.any(String),
+      tls: {
+        rejectUnauthorized: false,
+      },
+    })
+    expect(cacheOptions).not.toHaveProperty("redisOptions")
+    expect(ioredisOptions).toEqual({
+      tls: {
+        rejectUnauthorized: false,
+      },
+    })
+
+    const capturedEvidence = JSON.stringify(cacheOptions, (key, value) =>
+      key === "redisUrl" ? "<redacted>" : value
+    )
+
+    expect(JSON.parse(capturedEvidence)).toMatchInlineSnapshot(`
+      {
+        "redisUrl": "<redacted>",
+        "tls": {
+          "rejectUnauthorized": false,
+        },
+      }
+    `)
+
+    for (const forbiddenValue of [
+      "redis://",
+      "rediss://",
+      canaryRedisUsername,
+      canaryRedisPassword,
+      canaryRedisHostname,
+    ]) {
+      expect(capturedEvidence).not.toContain(forbiddenValue)
+    }
+  })
+
+  it("keeps Redis contract errors free of credentialed canary URL details", () => {
+    expectErrorWithoutValues(
+      () =>
+        buildRedisModules(
+          parseEnv(
+            localFixture({
+              REDIS_URL: undefined,
+              CACHE_REDIS_URL: credentialedCanaryRedissUrl,
+              EVENTS_REDIS_URL: credentialedCanaryRedissUrl,
+              WE_REDIS_URL: credentialedCanaryRedissUrl,
+            })
+          )
+        ),
+      "REDIS_URL",
+      [
+        "redis://",
+        "rediss://",
+        canaryRedisUsername,
+        canaryRedisPassword,
+        canaryRedisHostname,
+      ]
+    )
   })
 
   it("keeps redisOptions for supported rediss:// Redis modules when caching is disabled", () => {
@@ -419,10 +561,10 @@ describe("redis module wiring", () => {
 
     const modules = buildRedisModules(env)
     const cachingProviders = modules[0].options?.providers as Array<{
-      options: RedisModuleOptions
+      options: CachingRedisProviderOptions
     }>
     const lockingProviders = modules[1].options?.providers as Array<{
-      options: RedisModuleOptions
+      options: StandardRedisModuleOptions
     }>
 
     expect(cachingProviders[0].options.redisUrl).toBe(cacheRedisUrl)
