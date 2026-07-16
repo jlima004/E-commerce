@@ -192,20 +192,32 @@ function requireAdminActor(req: AuthenticatedMedusaRequest): {
 
 ## 4. Existing Admin mutation surface
 
-### Matrix (H12-03) — custom + native + automatic
+### Matrix (H12-03)
 
-| Surface | Kind | Mutates money/order/fulfillment? | Domain trail today | Captures Admin actor today | OPS-02 Phase 12 |
-|---------|------|----------------------------------|--------------------|----------------------------|-----------------|
-| `POST /admin/refunds/request` | Custom | Yes (RefundRequest reservation) | RefundRequest | **No** — optional body `requested_by_operator_id` (spoofable) | **Audit** `refund_order` |
-| `POST /admin/exchanges` | Custom | Yes (ExchangeRequest create) | ExchangeRequest | No | **Audit** `update_exchange` or create-as-update; map approve N/A at create |
-| `POST`/`PATCH /admin/exchanges/:id` | Custom | Yes (status + Correios reverse fields) | ExchangeRequest | No | **Audit** `update_exchange` / `reject_exchange` / `cancel_exchange` by status delta |
-| `GET /admin/custom` | Custom | No | n/a | n/a | Out |
-| Sellable-gate product/variant middleware | Custom middleware | Catalog only | Product metadata | n/a | Out (not money/order/fulfillment) |
-| Native Medusa Admin order cancel / payment refund / fulfillment APIs | Native | Potentially | Medusa core | Framework auth only | **Inventory only — do not intercept** in MVP |
-| Stripe webhook → Order / refund finalize | Automatic | Yes | WebhookEventLog, workflows | n/a | **Not** AdminActionLog |
-| Gelato dispatch relay / Gelato webhook | Automatic | Fulfillment | GelatoFulfillment | n/a | **Not** AdminActionLog |
-| Analytics/email relays, scheduled jobs | Automatic | Side effects | Outbox logs | n/a | **Not** AdminActionLog |
-| Catalog Admin product publish (native + sellable gate) | Native/custom | No (catalog) | Product | n/a | Out of OPS-02 MVP |
+| Ação | Rota/superfície | Nativa/custom | Ator disponível | Em OPS-02? | Justificativa |
+|------|-----------------|---------------|-----------------|------------|---------------|
+| `refund_order` | `POST /admin/refunds/request` | Custom | Framework auth yes; route **does not** read it today (body `requested_by_operator_id` spoofable) | **Sim** | Money reservation; D12-09 |
+| `update_exchange` (create) | `POST /admin/exchanges` | Custom | Auth present; not captured | **Sim** | ExchangeRequest create |
+| `update_exchange` / `reject_exchange` / `cancel_exchange` | `POST`/`PATCH /admin/exchanges/:id` | Custom | Auth present; not captured | **Sim** | Status + Correios reverse fields; map action by status delta (`rejected`/`canceled`/other) |
+| `approve_exchange` | *(nenhuma)* | — | — | **Não** (MVP) | Runtime statuses have no `approved`; use `update_exchange` for forward transitions |
+| `reprocess_fulfillment` | *(nenhuma)* | — | — | **Não** | No Admin route today; DATA-097 deferred |
+| Catalog sellable gate | Admin product/variant middleware | Custom | Auth present | **Não** | Not money/order/fulfillment |
+| `GET /admin/custom` | `GET /admin/custom` | Custom | Auth present | **Não** | Read-only noop |
+| Native Order cancel / payment refund / fulfillment | Medusa Admin core APIs | Native | Framework `user`/`api-key` | **Inventário only** | Project ops path is custom refund/exchange; no generic `/admin/*` intercept |
+| Stripe webhook Order/refund finalize | `/hooks/stripe` + workflows | Automatic | N/A | **Não** | Not Admin action |
+| Gelato dispatch/webhook | jobs + `/hooks/gelato` | Automatic | N/A | **Não** | Not Admin action |
+| Analytics/email relays | scheduled jobs | Automatic | N/A | **Não** | Not Admin action |
+
+### Recommended typed actor (not implemented here)
+
+```ts
+type AdminActor = {
+  admin_id: string           // req.auth_context.actor_id (user.id or apiKey.id)
+  admin_email?: string       // Query entity "user".email when actor_type === "user"
+}
+```
+
+Validate `actor_type ∈ {"user","api-key"}`; fail closed otherwise. Helper suggested location: `apps/backend/src/modules/admin-action-log/require-admin-actor.ts` (PLAN).
 
 ### Feature flags
 
@@ -360,13 +372,26 @@ Justification: Stripe-sourced `expires_at` only.
 - REL-02 broad reconciliation sweeper
 - Auto-refund / auto-cancel remediation
 
+### Fulfillment detection option choice
+
+| Option | Meaning | Decision |
+|--------|---------|----------|
+| **A** | Upsert OperationalAlert in the same Gelato transition that sets `dead_letter` / `requires_operator_attention` | **Primary** — same process as durable predicate write; no external calls; works in worker |
+| **B** | Scanner-only polling of persisted Gelato predicates | **Backstop only** — covers missed hook failures / restart gaps |
+
+**Recommend Option A + narrow scanner backstop.** Idempotency via unique `(type, entity_type, entity_id)` upsert; retries bump `occurrence_count`; partial failure of alert upsert must not roll back Gelato truth (alert is additive; scanner recovers). No Stripe/Gelato HTTP from the alert path.
+
+### Pix expiry transition gap
+
+`markPixExpired()` exists as a pure helper (`payment-attempt/pix.ts`) and is covered by unit tests, but **no scheduled job or webhook path calls it in runtime today**. Phase 12 stuck detection must therefore alert on the open-status + `expires_at < now` predicate without requiring a prior `pix_expired` transition. Do **not** invent a REL-02 Stripe reconciliation job; optional wiring of `markPixExpired` remains a separate PLAN question and is not required for OPS-01.
+
 ### Detection runtime shape
 
 | Mechanism | Role |
 |-----------|------|
-| **Transition hooks** | Best-effort upsert when Gelato marks dead_letter / operator attention; when checkout completion marks failed without order (if reachable without expanding REL-02) |
-| **Narrow scheduled job** `operational-alert-scanner` | Cron `*/5 * * * *` or `* * * * *` aligned with other relays; scans only the two predicate families; idempotent upsert | 
-| **Not** a new Pix/webhook sweeper that mutates PaymentAttempt | Scanner only writes OperationalAlert |
+| **Transition hooks (Option A)** | Upsert when Gelato marks dead_letter / operator attention; optional upsert when checkout completion marks `failed` without order |
+| **Narrow scheduled job** `operational-alert-scanner` | Cron `*/5 * * * *` (preferred) or `* * * * *`; scans only the two predicate families; idempotent upsert backstop |
+| **Not** a Pix/webhook sweeper that mutates PaymentAttempt as financial truth | Scanner writes OperationalAlert; optional `markPixExpired` is PLAN-gated and must stay local |
 
 Job must no-op in release-migration mode (same pattern as Gelato/email relays).
 
@@ -466,17 +491,29 @@ Plus module unit mirrors only when a gap cannot be expressed at HTTP/workflow bo
 apps/backend/src/modules/**/__tests__/invariants/*.unit.spec.ts  # optional thin
 ```
 
-### Hybrid reuse map
+### Final INV matrix (TEST-01)
 
-| INV | Existing proof to import/adapt | Named suite assertion |
-|-----|--------------------------------|------------------------|
-| INV-1 | `stripe-webhook-order-creation.spec.ts`, `webhook-order-entrypoint.unit.spec.ts`, `payment-attempt-order-eligibility.unit.spec.ts` | Order created only after confirmed PaymentAttempt; store complete never mints Order |
-| INV-2 | `payment-attempt-state.unit.spec.ts`, pix initiation + webhook rejection paths | `pix_expired` / unpaid Pix never calls Order creation |
-| INV-3 | `stripe-webhook-route.unit.spec.ts` (+ HTTP signature doubles) | Missing/invalid signature / missing raw body → 400 fail-closed |
-| INV-4 | `webhook-event-log.unit.spec.ts`, `checkout-completion-log.unit.spec.ts`, HTTP replay cases | Replay + claim uniqueness; concurrent claim behavior if locally testable |
-| INV-8 | `gelato-fulfillment.unit.spec.ts`, dispatch relay units, order-creation “exactly one GelatoFulfillment” | Double trigger/retry → one active fulfillment |
-| INV-9 | `refund-stripe-webhook.unit.spec.ts`, `stripe-refund-webhook.spec.ts` | Reservation ≠ financial truth; only refund-object terminal webhook finalizes |
-| INV-10 | `stripe-refund-webhook.spec.ts` | Total/partial refund never sets `order_status=canceled` |
+| INV | Existing test | Real DB? | HTTP? | Concurrency? | Gap | Recommended file |
+|-----|---------------|----------|-------|--------------|-----|------------------|
+| INV-1 | `payment-attempt-order-eligibility.unit.spec.ts`; `webhook-order-entrypoint.unit.spec.ts`; `stripe-webhook-order-creation.spec.ts` | HTTP yes (integration harness) | Yes | Partial (claim units) | Not named as INV-1 suite | `integration-tests/http/invariants/inv-01-02-order-birth.spec.ts` (+ keep unit eligibility) |
+| INV-2 | `payment-attempt-state.unit.spec.ts`; `pix-initiation.unit.spec.ts`; eligibility/webhook rejects; HTTP cancel/fail paths | Unit + HTTP partial | Partial | No | Named `pix_expired → zero Order` may be implicit | same `inv-01-02-*.spec.ts` + unit assert |
+| INV-3 | `stripe-webhook-route.unit.spec.ts`; HTTP webhook suites with signature doubles | Route unit + HTTP | Yes | No | Not labeled INV-3 | `integration-tests/http/invariants/inv-03-04-webhook-idempotency.spec.ts` |
+| INV-4 | `webhook-event-log.unit.spec.ts`; `checkout-completion-log.unit.spec.ts`; entrypoint replay units; HTTP duplicate/replay | Unit + HTTP | Yes | Process-local / PG unique claim units | True multi-worker cross-dyno unproven | same `inv-03-04-*.spec.ts` |
+| INV-8 | `gelato-fulfillment.unit.spec.ts` (single-active); dispatch relay units; HTTP “exactly one GelatoFulfillment” | Unit + HTTP filtered | Yes | Unique `order_id` constraint | Manual Admin reprocess path absent | `integration-tests/http/invariants/inv-08-gelato-single-active.spec.ts` |
+| INV-9 | `refund-stripe-webhook.unit.spec.ts`; `stripe-refund-webhook.spec.ts` | Unit + HTTP | Yes | Process-local refund claim | No real Stripe smoke (deferred) | `integration-tests/http/invariants/inv-09-10-refund-decoupling.spec.ts` |
+| INV-10 | `stripe-refund-webhook.spec.ts`; refund-request units (no auto-cancel) | Unit + HTTP | Yes | No | Exchange already avoids order_status mutation | same `inv-09-10-*.spec.ts` |
+
+### Concurrency levels (what tests can prove)
+
+| Concern | Process-local | Postgres transactional | Cross-dyno |
+|---------|---------------|------------------------|------------|
+| CheckoutCompletionLog unique claim | Covered in units/HTTP | Unique `payment_intent_id` | Unproven |
+| WebhookEventLog dedupe | Covered | Unique provider event key | Unproven |
+| Gelato single-active | Covered | Unique `order_id` / idempotency_key | Unproven |
+| AdminActionLog idempotency | Append-always (+ optional key metadata) | No unique required for MVP | Unproven |
+| OperationalAlert upsert | create+catch unique | Unique `(type, entity_type, entity_id)` | Unproven |
+
+TEST-01 must not claim cross-dyno proofs.
 
 ### Environment (D12-15)
 
@@ -588,18 +625,23 @@ Ignore client-supplied admin ids. API-key actors recorded as `admin_id=<api_key_
 
 ## 13. Documentary inconsistencies
 
-| Topic | Tension | Resolution for Phase 12 |
-|-------|---------|-------------------------|
-| PRD BE-EM-009 / BE-AN-005 Must-Have alert **email** | CONTEXT + H12-01 defer email | **Record PRD divergence:** OPS-01 = persisted OperationalAlert only; email remains open PRD debt outside MVP |
-| DATA-090 email dedupe | Email out of scope | Future when email ships; not OPS-01 blocker |
-| DATA-097 `reprocess_fulfillment` | No Admin route | Defer action + audit until product route exists |
-| DB_MODEL `approve_exchange` vs runtime statuses | No `approved` status | Map actions by actual status deltas; use `update_exchange` for non-reject/cancel transitions |
-| DB_MODEL entity `Fulfillment` vs runtime `gelato_fulfillment` | Naming | `entity_type=fulfillment`, id = GelatoFulfillment.id |
-| SRS older Order-before-payment wording | Superseded | PRD + DB_MODEL + Phases 05–06 govern |
-| ROADMAP “every Admin action on money/order/fulfillment” | Native Medusa actions exist | CONTEXT D12-09 narrows MVP to custom refund/exchange; native inventory documented, not intercepted |
-| Package legitimacy SUS on `@medusajs/*` | Seam too-new | Already adopted; no Phase 12 install |
+Do **not** fix these texts in this RESEARCH gate. Record only.
 
-None of these are unresolvable canonical contradictions that BLOCK research.
+| Obsolete / misleading text | Where | Superseding source | Risk to PLAN | Recommend fix |
+|----------------------------|-------|--------------------|--------------|---------------|
+| `REDIS_CACHE_PROVIDER_DISABLED=true` as current operational truth | `REQUIREMENTS.md` SETUP-02; `ROADMAP.md` Phase 01 closure; historical STATE notes | CACHE-01A/B + INFRA-01 + stabilization SUMMARY (`260716-p3o-…`); STATE already notes supersession | PLAN might re-open cache TLS debt | Doc hygiene before/during PLAN Wave 0 — mark historical |
+| “production activation blocked” on PAY-01..PAY-04 | `REQUIREMENTS.md` checklist + traceability; `ROADMAP.md` Phase 04 | Later gates (04A real layers; Phases 05–11 money path closed); production healthy per stabilization closure | PLAN might treat payments as still blocked | Clarify “historical Phase 04 gate language” vs current production |
+| ROADMAP Phase 12 “not started; blocked until explicit approval” | `ROADMAP.md` Phase 12 | This RESEARCH gate after human CONTEXT approval | Stale roadmap status after RESEARCH | Update ROADMAP status at PLAN start (not now) |
+| PRD BE-EM-009 / BE-AN-005 Must-Have alert **email** | `docs/PRD_Backend_v1.1.md` | CONTEXT + H12-01 | PLAN might add Resend alert | Keep deferred; cite PRD divergence in PLAN out-of-scope |
+| DATA-090 email dedupe | DB_MODEL | Email out of Phase 12 | Accidental email work | Future when email ships |
+| DATA-097 `reprocess_fulfillment` | DB_MODEL | No Admin route | Invent reprocess product | Defer |
+| DB_MODEL `approve_exchange` vs runtime statuses | DB_MODEL §4.14 vs `EXCHANGE_REQUEST_STATUSES` | Runtime has `rejected`/`canceled` but no `approved` | Mis-tagged audit actions | Map by status deltas in PLAN |
+| DB_MODEL `Fulfillment` vs runtime `gelato_fulfillment` | DB_MODEL / module | `entity_type=fulfillment` + GelatoFulfillment.id | Wrong entity_type | Follow §5 mapping |
+| SRS Order-before-payment wording | `docs/SRS_v1.5.md` | PRD + DB_MODEL + Phases 05–06 | Confusion on INV-1 | Already governed; no reopen |
+| ROADMAP “every Admin action on money/order/fulfillment” | Phase 12 success criteria | CONTEXT D12-09 custom refund/exchange only | Over-scope native intercept | Honor CONTEXT in PLAN |
+| Requirements still unchecked for closed phases (if any lingering) | Scan at PLAN | Phase closures 01–11 | False pending work | Hygiene pass before PLAN |
+
+None of these are unresolvable canonical contradictions that BLOCK research. Do not reopen closed MNY/REL/CACHE/INFRA debts.
 
 ---
 
@@ -777,6 +819,7 @@ Wave ordering: 12-01 → (12-02 ∥ 12-03) → 12-04 → 12-05 → 12-06.
 
 `.planning/phases/12-ops-audit-critical-tests/12-RESEARCH.md`
 
-### Ready for Planning
+### Human review gate
 
-Research complete. Planner can create PLAN.md files.
+**RESEARCH COMPLETE — stop for human review.**
+Do **not** start PLAN, VALIDATION, SPEC/SDD, implementation prompts, runtime code, migrations, or deploy until this `12-RESEARCH.md` is explicitly accepted.

@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-context-complete
-stopped_at: Phase 12 CONTEXT complete; awaiting human review of 12-CONTEXT.md
-last_updated: "2026-07-16T18:52:15-03:00"
+status: phase-12-research-complete
+stopped_at: Phase 12 RESEARCH complete; awaiting human review of 12-RESEARCH.md
+last_updated: "2026-07-16T20:25:00-03:00"
 last_activity: 2026-07-16
-last_activity_desc: Phase 12 CONTEXT captured (OPS-01/OPS-02/TEST-01); RESEARCH/PLAN/execution not started
+last_activity_desc: Phase 12 RESEARCH complete (OPS-01/OPS-02/TEST-01); PLAN/execution not started
 progress:
   total_phases: 12
   completed_phases: 11
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 — Ops, Audit & Critical Tests. CONTEXT complete and awaiting human review. RESEARCH not started. PLAN not started. Execution blocked.
+**Current focus:** Phase 12 — Ops, Audit & Critical Tests. RESEARCH complete and awaiting human review. PLAN not started. Execution blocked.
 
 ## Execution Policy
 
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 12 CONTEXT complete. RESEARCH not started. PLAN not started. Execution blocked. Next permitted step: human review of `.planning/phases/12-ops-audit-critical-tests/12-CONTEXT.md`. OPS-01, OPS-02, and TEST-01 are not complete. Phase 12 is not planned and not in implementation.
+**Current gate:** Phase 12 RESEARCH complete. PLAN not started. Execution blocked. Next permitted step: human review of `.planning/phases/12-ops-audit-critical-tests/12-RESEARCH.md`. Do not start PLAN until RESEARCH is accepted. OPS-01, OPS-02, and TEST-01 are not complete. Phase 12 is not planned and not in implementation.
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
 
@@ -64,12 +64,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — CONTEXT complete; RESEARCH not started; PLAN not started; execution blocked
+Phase: 12 (Ops, Audit & Critical Tests) — RESEARCH complete; PLAN not started; execution blocked
 Plan: 50/50 complete (milestone plans); Phase 12 plans: 0 planned / 0 executed
-Status: phase-12-context-complete
-Last activity: 2026-07-16 - Phase 12 CONTEXT captured; awaiting human review
+Status: phase-12-research-complete
+Last activity: 2026-07-16 - Phase 12 RESEARCH complete; awaiting human review of 12-RESEARCH.md
 
-Progress: [██████████] 92% phases (11/12 complete); 50/50 milestone plans complete; Phase 12 CONTEXT only
+Progress: [██████████] 92% phases (11/12 complete); 50/50 milestone plans complete; Phase 12 RESEARCH awaiting review
 
 ## Performance Metrics
 
@@ -94,7 +94,7 @@ Progress: [██████████] 92% phases (11/12 complete); 50/50 mi
 | 09. Gelato Fulfillment & Webhook | 5 executed / 5 planned | Complete / Closed | — |
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
-| 12. Ops, Audit & Critical Tests | 0 planned / 0 executed | CONTEXT complete / RESEARCH not started / execution blocked | — |
+| 12. Ops, Audit & Critical Tests | 0 planned / 0 executed | RESEARCH complete / PLAN not started / execution blocked | — |
 
 **Recent Trend:**
 
