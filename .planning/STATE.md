@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-11-closed-phase-12-blocked
-stopped_at: REL-01 PASS; runtime version resolves Heroku build/slug metadata before APP_VERSION; manual metadata enablement, push, deploy, and Phase 12 remain blocked
-last_updated: "2026-07-15T19:37:30-03:00"
-last_activity: 2026-07-15
-last_activity_desc: REL-01 added automatic runtime version resolution with health, Sentry, PM2, full unit, lint, build, and integrity gates passing
+status: infra-01-pass
+stopped_at: INFRA-01 PASS; release migration DB-only isolation hardened; unit/modules/HTTP/lint/build green; CACHE-01A/B PASS
+last_updated: "2026-07-16T16:30:00-03:00"
+last_activity: 2026-07-16
+last_activity_desc: INFRA-01 PASS — release DB-only isolation, Redis production fail-fast, full local gates green
 progress:
   total_phases: 12
   completed_phases: 11
@@ -43,7 +43,7 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** REL-01 está **PASS**. A versão efetiva usa `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry convergem em `env.APP_VERSION`, enquanto PM2/VPS continua usando apenas `APP_VERSION`. Env passou 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit completo 44/44 e 730/730, lint 0 erros/208 warnings e build passou. Nenhum model, migration, manifest, lockfile, Procfile, Redis, Event Bus, locking, provider, contrato monetário ou produção foi tocado. A habilitação Heroku de `runtime-dyno-metadata` e `runtime-dyno-build-metadata` é manual e separada. Phase 12 permanece não planejada, não iniciada e bloqueada até aprovação humana explícita.
+**Current gate:** INFRA-01 está **PASS**. O release command fica isolado como migration-only DB-only; produção normal exige quatro contratos/módulos Redis com fail-fast sanitizado e sem fallback. CACHE-01A e CACHE-01B fecharam a precondição do provider de cache. Validação final: Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0 erros/207 warnings, build PASS. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
 
 **Branch policy:**
 
@@ -53,8 +53,8 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 Phase: 12 (Ops, Audit & Critical Tests) — not planned; not started; blocked
 Plan: 50/50 complete (milestone plans)
-Status: phase-11-closed-phase-12-blocked
-Last activity: 2026-07-15 - REL-01 resolveu automaticamente a versão do runtime; health, Sentry, PM2 e todos os gates locais passaram
+Status: infra-01-pass
+Last activity: 2026-07-16 - INFRA-01 PASS; isolamento DB-only do release e fail-fast Redis de produção validados localmente
 
 Progress: [██████████] 100% (50/50 plans complete); Phase 11 closed; Phase 12 blocked
 
@@ -177,6 +177,7 @@ None yet.
 - [Quick 260710-rc1 / RC1-A até RC1-H]: RC1-H está `PASS`: a fixture deixou de ser coletada sem remover suíte real; modules passou 28/28 e 454/454; HTTP passou 14/14 e 170/170; unitários 43/43 e 676/676; lint 0/208; build PASS. As 12 falhas RC1-G foram recuperadas somente em Jest/quatro specs, sem runtime, schema, manifest ou lockfile. Upgrade/bootstrap do RC1-G permaneceram válidos e não precisaram repetição. Nenhum Supabase, Heroku, provider externo, deploy, rollback, tag, push ou Phase 12 foi acionado.
 - [Quick 260713-mny01]: MNY-01 está `PASS`: Medusa core/PaymentSession agora usam major units, Stripe/PaymentAttempt/refund/downstream customizado preservam minor units, e o guard da Order converte componentes antes da soma. Unit 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0/208 e build PASS. Nenhum schema, package/lockfile, APP_VERSION, infraestrutura, produção, provider externo, push ou Phase 12 foi tocado. Preços existentes do catálogo permanecem para correção manual em gate separado.
 - [Quick 260715-rel01]: REL-01 está `PASS`: `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry usam a mesma versão resolvida e PM2/VPS preserva o fallback `APP_VERSION`. Env 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit 44/44 e 730/730, lint 0/208 e build PASS. Nenhum Heroku CLI/API/Labs, config var, deploy, push, provider, Redis, Event Bus, locking, migration, package/lockfile ou Phase 12 foi tocado. A habilitação de metadata Heroku permanece manual e separada.
+- [Quick 260715-infra01]: INFRA-01 está `PASS`: release dyno migration-only DB-only; produção exige quatro contratos/módulos Redis sem fallback; CACHE-01A/B PASS. Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0/207, build PASS. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
 - [Phase 12]: Ops, Audit & Critical Tests is **not planned**, **not started**, and **blocked until explicit human approval**. Do not plan or execute Phase 12 without separate approval.
 - [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
@@ -190,15 +191,16 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15
-Stopped at: REL-01 PASS; runtime version resolution, health/Sentry/PM2 proofs, full local gates and local commits complete.
-Resume file: `.planning/quick/260715-rel01-runtime-version/SUMMARY.md`
-Next permitted step: Human review of REL-01 evidence. Manual Heroku metadata enablement, config vars, external providers, production, Phase 12, deploy, rollback, push and tag remain blocked.
+Last session: 2026-07-16
+Stopped at: INFRA-01 PASS; release migration isolation and Redis production fail-fast committed locally.
+Resume file: `.planning/quick/260715-infra01-release-infrastructure/SUMMARY.md`
+Next permitted step: Human review of INFRA-01 PASS evidence. Config vars, production mutations, Phase 12, deploy, rollback, push and tag remain blocked.
 
 ## Quick Tasks Completed
 
 | Date | Task | Summary |
 |------|------|---------|
+| 2026-07-16 | 260715-infra01-release-infrastructure | INFRA-01 PASS: release DB-only isolation and Redis production fail-fast; Unit 766/766, Modules 463/463, HTTP 172/172, lint 0/207, build PASS; CACHE-01A/B PASS; two local commits; no push/deploy. |
 | 2026-06-25 | 260625-i9n-remover-canary-de-stripe-com-formato-rea | Removed a Stripe-shaped test canary from observability tests and rewrote the local 01-04 commit with autosquash so GitHub Push Protection can accept the branch push. |
 | 2026-06-26 | 260626-hsr-heroku-supabase-redis-checkpoint | Documented the Heroku/Supabase/Redis deployment stabilization checkpoint and recorded the next cycle as production backend smoke test. |
 | 2026-06-26 | 2026-06-26-production-backend-smoke | Validated production backend smoke on Heroku/Supabase/Redis with health, version, dynos, logs, public read-only routes, and no business-data mutation; Phase 01 is ready for closure while Phase 02 remains blocked. |
