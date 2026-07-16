@@ -16,6 +16,19 @@ commits:
 
 Pré-condições operacionais já fechadas em gates separados: **CACHE-01A: PASS**, **CACHE-01B: PASS**.
 
+## Encerramento operacional
+
+```text
+Release stabilization: concluída
+Incidente monetário: resolvido
+Versionamento automático: resolvido
+Cache Redis TLS: resolvido
+Fallbacks do release: classificados e isolados
+Produção: saudável
+```
+
+Este encerramento substitui as instruções operacionais anteriores. Não há investigação de `APP_VERSION`, reativação de cache Redis, prova adicional de Redis em `web.1`/`worker.1` nem revisão de fallbacks do release pendentes.
+
 ## Resultados finais
 
 | Gate | Resultado |
@@ -71,6 +84,6 @@ Pré-condições operacionais já fechadas em gates separados: **CACHE-01A: PASS
 
 Dois commits locais autorizados após PASS. Nenhum push, deploy ou tag.
 
-## Próximo gate
+## Continuidade
 
-Human review do INFRA-01 PASS. Config vars, produção, Phase 12, deploy, rollback, push e tag permanecem bloqueados até aprovação explícita.
+O ciclo de estabilização está encerrado e não possui próximo gate operacional. Phase 12 continua fora deste fechamento e exige autorização humana separada.

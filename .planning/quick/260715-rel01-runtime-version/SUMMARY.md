@@ -33,9 +33,9 @@ code_commit: f1d4d39
 17. **Divergência inicial:** `origin/main...HEAD = 0 0`; divergência final é reportada após o commit documental.
 18. **Não ações:** Heroku CLI/API/Labs, deploy, push, tag, Redis, Event Bus, locking, providers, monetário, catálogo, Stripe, refunds e Phase 12 não foram tocados.
 
-## Operação manual posterior
+## Encerramento posterior
 
-Para que o Heroku forneça automaticamente as duas fontes de metadata, o operador ainda precisa habilitar manualmente `runtime-dyno-metadata` e `runtime-dyno-build-metadata` em gate separado. Este gate não executou os comandos e não alterou config vars.
+A orientação operacional posterior deste gate foi superada pelo encerramento formal da estabilização. O versionamento automático está resolvido e não há investigação ou ação adicional de `APP_VERSION` pendente.
 
 ## Commits
 

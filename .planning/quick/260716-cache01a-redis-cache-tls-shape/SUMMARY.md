@@ -11,7 +11,7 @@ completed_at: 2026-07-16
 
 **PASS.** O CACHE-01A corrige exclusivamente o contrato TLS do provider de cache. A causa raiz era o reuso de um builder que aninhava `tls` em `redisOptions` para todos os módulos, embora o loader do `@medusajs/caching-redis@2.16.0` repasse ao ioredis as propriedades restantes no nível superior. O cache agora recebe o shape plano correto; Event Bus, Locking e Workflow preservam seus contratos válidos.
 
-O workaround continua ativo como capacidade do código: `REDIS_CACHE_PROVIDER_DISABLED=true` ainda omite somente o cache. Não houve deploy nem mudança de config var; portanto, a ativação operacional do cache permanece pendente para um gate separado.
+O workaround continua existindo como capacidade do código: `REDIS_CACHE_PROVIDER_DISABLED=true` omite somente o cache. A pendência operacional registrada originalmente por este gate foi superada pelo encerramento formal da estabilização; o cache Redis TLS está resolvido.
 
 ## Manual gate
 
@@ -40,8 +40,8 @@ O workaround continua ativo como capacidade do código: `REDIS_CACHE_PROVIDER_DI
 - `git diff --check`: limpo.
 - Nenhuma URL completa, credencial ou hostname de teste foi registrado nos artefatos.
 
-## Não-ações e próximo gate
+## Não-ações e encerramento posterior
 
 Este gate não conclui o INFRA-01, não aplica o stash, não remove o workaround, não altera TLS global, secrets, URLs, APP_VERSION, release command, `Procfile`, models, migrations, packages ou lockfiles. Também não executa push, deploy, rollback, conexão com provider real, alteração de dados, `.planning/STATE.md` ou Phase 12.
 
-O próximo passo operacional exige autorização própria: implantar primeiro o commit corrigido, validar o runtime e somente depois decidir sobre a retirada da flag temporária. O CACHE-01A termina neste manual gate documental.
+A instrução de implantar, revalidar o runtime e decidir posteriormente sobre a flag foi superada pelo fechamento formal da estabilização. Não há reativação do cache nem prova adicional de Redis em `web.1`/`worker.1` pendente. O CACHE-01A permanece encerrado como gate documental histórico.

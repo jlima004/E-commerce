@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: infra-01-pass
-stopped_at: INFRA-01 PASS; release migration DB-only isolation hardened; unit/modules/HTTP/lint/build green; CACHE-01A/B PASS
-last_updated: "2026-07-16T16:30:00-03:00"
+status: release-stabilization-complete
+stopped_at: Release stabilization formally complete; production healthy
+last_updated: "2026-07-16T18:04:24-03:00"
 last_activity: 2026-07-16
-last_activity_desc: INFRA-01 PASS — release DB-only isolation, Redis production fail-fast, full local gates green
+last_activity_desc: Release stabilization formally closed; monetary incident, automatic versioning, Redis TLS cache and release fallbacks resolved
 progress:
   total_phases: 12
   completed_phases: 11
@@ -43,7 +43,18 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** INFRA-01 está **PASS**. O release command fica isolado como migration-only DB-only; produção normal exige quatro contratos/módulos Redis com fail-fast sanitizado e sem fallback. CACHE-01A e CACHE-01B fecharam a precondição do provider de cache. Validação final: Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0 erros/207 warnings, build PASS. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
+**Current gate:** a estabilização do release está formalmente encerrada. O incidente monetário, o versionamento automático e o TLS do cache Redis foram resolvidos; os fallbacks do release foram classificados e isolados; a produção está saudável. Não resta gate operacional de estabilização aberto. Phase 12 continua dependendo de autorização humana separada.
+
+### Encerramento da estabilização
+
+```text
+Release stabilization: concluída
+Incidente monetário: resolvido
+Versionamento automático: resolvido
+Cache Redis TLS: resolvido
+Fallbacks do release: classificados e isolados
+Produção: saudável
+```
 
 **Branch policy:**
 
@@ -53,8 +64,8 @@ Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-obser
 
 Phase: 12 (Ops, Audit & Critical Tests) — not planned; not started; blocked
 Plan: 50/50 complete (milestone plans)
-Status: infra-01-pass
-Last activity: 2026-07-16 - INFRA-01 PASS; isolamento DB-only do release e fail-fast Redis de produção validados localmente
+Status: release-stabilization-complete
+Last activity: 2026-07-16 - Estabilização do release encerrada formalmente; produção saudável
 
 Progress: [██████████] 100% (50/50 plans complete); Phase 11 closed; Phase 12 blocked
 
@@ -110,10 +121,10 @@ Recent decisions affecting current work:
 - [Plan 01-06]: Health readiness checks only Postgres and Redis in parallel; expected dependency failures are sanitized warnings and do not create Sentry events by default.
 - [Plan 01-07 / Deployment checkpoint]: The original VPS/PM2/Nginx route was superseded in this cycle by Heroku as the current production target. The validated app is `espacoliminar`, release `v27`, deployed commit `d02fd70`, with `APP_VERSION=d02fd70`.
 - [Plan 01-07 / Deployment checkpoint]: Current production operations use Heroku web/worker dynos, Supabase Postgres through the pooler, Heroku Redis with TLS, and Heroku release phase for `db:migrate:safe`.
-- [Plan 01-07 / Deployment checkpoint]: `REDIS_CACHE_PROVIDER_DISABLED=true` is active on Heroku; the `@medusajs/caching-redis` provider remains temporarily disabled by flag to avoid the Heroku TLS/self-signed loop. Redis remains active for health checks and the remaining Redis-backed modules.
+- [Plan 01-07 / Deployment checkpoint histórico]: `REDIS_CACHE_PROVIDER_DISABLED=true` foi usado no checkpoint `v27` para isolar o loop TLS então existente. Esse estado foi superado pelo fechamento de CACHE-01A/B e INFRA-01; não há reativação de cache pendente.
 - [Plan 01-07 / Deployment checkpoint]: `/health/live` and `/health/ready` were validated in production with HTTP 200; readiness reports Postgres `up` and Redis `up`; `web.1` and `worker.1` are up.
 - [Plan 01-07 / Deployment checkpoint]: Local branch `gsd/phase-01-foundation-observability`, `origin/gsd-...`, and `heroku/main` are synchronized on `d02fd70`.
-- [Production smoke]: Smoke test on Heroku app `espacoliminar` passed on 2026-06-26. Current release is `v27`, `APP_VERSION=d02fd70`, `REDIS_CACHE_PROVIDER_DISABLED=true`, `web.1` and `worker.1` are up, `/health/live` and `/health/ready` return 200, readiness reports Postgres `up` and Redis `up`, web/worker logs show no Redis/TLS loop patterns, and public read-only routes returned no 5xx.
+- [Production smoke histórico]: No checkpoint de 2026-06-26, o app Heroku `espacoliminar` estava no release `v27`, com `APP_VERSION=d02fd70` e `REDIS_CACHE_PROVIDER_DISABLED=true`; `web.1` e `worker.1` estavam `up`, `/health/live` e `/health/ready` retornavam 200, Postgres e Redis estavam `up`, e as rotas públicas read-only não retornaram 5xx. A classificação operacional corrente é a do encerramento da estabilização acima.
 - [Phase 01 closure]: Closure completed on 2026-06-26. The original VPS/PM2/Nginx route remains as a portable blueprint, while the validated operational checkpoint for this cycle is Heroku app `espacoliminar` with Supabase Postgres via pooler, Heroku Redis with TLS, Heroku release phase for `db:migrate:safe`, and Phase 02 left unstarted behind a human review gate.
 - [Plan 02-03]: `@medusajs/file-s3@2.16.0` wired via `@medusajs/medusa/file` + `@medusajs/medusa/file-s3` with `forcePathStyle: true`; production env fail-fast for six S3 vars; manual Admin upload smoke confirmed public Supabase URL and product media association — MEDIA-01 closed.
 - [Plan 02-04]: The standard Medusa Store API now exposes only the stable shopper-facing catalog surface, with BRL pricing, public media URLs, and no public `gelato_*` fields; non-sellable variants stay hidden from the public contract.
@@ -176,10 +187,10 @@ None yet.
 - [Quick 260710-dz0]: Stripe refund smoke preflight stopped before mutation because core `refund` has no `order_id`/`status`/`currency_code` and no local `refund_request` exists for the target Order. A direct Stripe refund would be ignored as `REFUND_WEBHOOK_REQUEST_NOT_FOUND`. The adjusted gate requires authenticated `POST /admin/refunds/request` before the Stripe test-mode refund. It also records that current runtime updates `refund_request` + Order metadata, not core `refund`/`payment_collection.refunded_amount`, and has no refund-email flow.
 - [Quick 260710-rc1 / RC1-A até RC1-H]: RC1-H está `PASS`: a fixture deixou de ser coletada sem remover suíte real; modules passou 28/28 e 454/454; HTTP passou 14/14 e 170/170; unitários 43/43 e 676/676; lint 0/208; build PASS. As 12 falhas RC1-G foram recuperadas somente em Jest/quatro specs, sem runtime, schema, manifest ou lockfile. Upgrade/bootstrap do RC1-G permaneceram válidos e não precisaram repetição. Nenhum Supabase, Heroku, provider externo, deploy, rollback, tag, push ou Phase 12 foi acionado.
 - [Quick 260713-mny01]: MNY-01 está `PASS`: Medusa core/PaymentSession agora usam major units, Stripe/PaymentAttempt/refund/downstream customizado preservam minor units, e o guard da Order converte componentes antes da soma. Unit 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0/208 e build PASS. Nenhum schema, package/lockfile, APP_VERSION, infraestrutura, produção, provider externo, push ou Phase 12 foi tocado. Preços existentes do catálogo permanecem para correção manual em gate separado.
-- [Quick 260715-rel01]: REL-01 está `PASS`: `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry usam a mesma versão resolvida e PM2/VPS preserva o fallback `APP_VERSION`. Env 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit 44/44 e 730/730, lint 0/208 e build PASS. Nenhum Heroku CLI/API/Labs, config var, deploy, push, provider, Redis, Event Bus, locking, migration, package/lockfile ou Phase 12 foi tocado. A habilitação de metadata Heroku permanece manual e separada.
+- [Quick 260715-rel01]: REL-01 está `PASS`: `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry usam a mesma versão resolvida e PM2/VPS preserva o fallback `APP_VERSION`. Env 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit 44/44 e 730/730, lint 0/208 e build PASS. O versionamento automático está resolvido e não há investigação de `APP_VERSION` pendente.
 - [Quick 260715-infra01]: INFRA-01 está `PASS`: release dyno migration-only DB-only; produção exige quatro contratos/módulos Redis sem fallback; CACHE-01A/B PASS. Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0/207, build PASS. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
+- [Release stabilization closure]: incidente monetário resolvido; versionamento automático resolvido; cache Redis TLS resolvido; fallbacks do release classificados e isolados; produção saudável. Não restam próximos passos para investigar `APP_VERSION`, reativar cache Redis, provar Redis em `web.1`/`worker.1` ou revisar fallbacks do release.
 - [Phase 12]: Ops, Audit & Critical Tests is **not planned**, **not started**, and **blocked until explicit human approval**. Do not plan or execute Phase 12 without separate approval.
-- [Deployment checkpoint]: The release dyno may still emit `ECONNRESET`/`ioredis` during `db:migrate:safe`. This did not block release `v27` and did not appear in filtered web/worker runtime logs. Later investigation: whether `db:migrate:safe` can run without initializing unnecessary Redis providers during migrations.
 
 ## Deferred Items
 
@@ -192,14 +203,15 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-16
-Stopped at: INFRA-01 PASS; release migration isolation and Redis production fail-fast committed locally.
-Resume file: `.planning/quick/260715-infra01-release-infrastructure/SUMMARY.md`
-Next permitted step: Human review of INFRA-01 PASS evidence. Config vars, production mutations, Phase 12, deploy, rollback, push and tag remain blocked.
+Stopped at: Release stabilization formally complete; production healthy.
+Resume file: `.planning/quick/260716-p3o-encerrar-formalmente-a-estabiliza-o-no-s/260716-p3o-SUMMARY.md`
+Next permitted step: nenhum passo adicional de estabilização. Phase 12 permanece bloqueada até autorização humana separada.
 
 ## Quick Tasks Completed
 
 | Date | Task | Summary |
 |------|------|---------|
+| 2026-07-16 | 260716-p3o-encerrar-formalmente-a-estabiliza-o-no-s | Estabilização formalmente encerrada; incidente monetário, versionamento automático e TLS do cache Redis resolvidos; fallbacks classificados e isolados; produção saudável; próximos passos obsoletos removidos. |
 | 2026-07-16 | 260715-infra01-release-infrastructure | INFRA-01 PASS: release DB-only isolation and Redis production fail-fast; Unit 766/766, Modules 463/463, HTTP 172/172, lint 0/207, build PASS; CACHE-01A/B PASS; two local commits; no push/deploy. |
 | 2026-06-25 | 260625-i9n-remover-canary-de-stripe-com-formato-rea | Removed a Stripe-shaped test canary from observability tests and rewrote the local 01-04 commit with autosquash so GitHub Push Protection can accept the branch push. |
 | 2026-06-26 | 260626-hsr-heroku-supabase-redis-checkpoint | Documented the Heroku/Supabase/Redis deployment stabilization checkpoint and recorded the next cycle as production backend smoke test. |
