@@ -134,6 +134,16 @@ Confirmed for this RESEARCH gate:
 - No PLAN / VALIDATION / implementation-prompt artifacts
 - No deploy / push / production changes
 
+## Post-completion factual corrections (same RESEARCH gate)
+
+Incorporated from parallel track agents after first RESEARCH draft:
+
+- Exchange update surface is `POST /admin/exchanges/:id` only (no PATCH export).
+- Body spoof debt includes exchange `created_by_operator_id` as well as refund `requested_by_operator_id`.
+- Jest HTTP `testMatch` is flat-only → prescribe `invariants-inv*.spec.ts` (or widen config).
+- Documentary: REQUIREMENTS unchecked FUL/REF/EXC and PROJECT.md stale checkboxes flagged for pre-PLAN hygiene.
+- PLAN Q: whether `api-key` actors are accepted vs user-only (Track 1 prefers user-only; RESEARCH default still accepts both).
+
 ## Gate status
 
 | Step | Status |

@@ -74,7 +74,7 @@ Phase 12 is **plannable and implementable** without inventing payment SLAs, with
 
 #### Claude's Discretion
 
-Research recommends concrete schema columns, scanner job shape, Strategy A, actor resolution including API-key, ack/resolve deferral (fields-only + reopen), thin reprocess route deferred, and invariant suite path under `integration-tests/http/invariants/`.
+Research recommends concrete schema columns, scanner job shape, Strategy A, actor resolution including API-key (PLAN may tighten to user-only), ack/resolve deferral (fields-only + reopen), thin reprocess route deferred, and invariant suite as flat `integration-tests/http/invariants-inv*.spec.ts` (jest discovery constraint).
 
 #### Deferred Ideas / Out of scope (OUT OF SCOPE)
 
@@ -198,7 +198,7 @@ function requireAdminActor(req: AuthenticatedMedusaRequest): {
 |------|-----------------|---------------|-----------------|------------|---------------|
 | `refund_order` | `POST /admin/refunds/request` | Custom | Framework auth yes; route **does not** read it today (body `requested_by_operator_id` spoofable) | **Sim** | Money reservation; D12-09 |
 | `update_exchange` (create) | `POST /admin/exchanges` | Custom | Auth present; not captured | **Sim** | ExchangeRequest create |
-| `update_exchange` / `reject_exchange` / `cancel_exchange` | `POST`/`PATCH /admin/exchanges/:id` | Custom | Auth present; not captured | **Sim** | Status + Correios reverse fields; map action by status delta (`rejected`/`canceled`/other) |
+| `update_exchange` / `reject_exchange` / `cancel_exchange` | `POST /admin/exchanges/:id` (**not** PATCH — only `POST` exported) | Custom | Auth present; not captured | **Sim** | Status + Correios reverse fields; map action by status delta (`rejected`/`canceled`/other) |
 | `approve_exchange` | *(nenhuma)* | — | — | **Não** (MVP) | Runtime statuses have no `approved`; use `update_exchange` for forward transitions |
 | `reprocess_fulfillment` | *(nenhuma)* | — | — | **Não** | No Admin route today; DATA-097 deferred |
 | Catalog sellable gate | Admin product/variant middleware | Custom | Auth present | **Não** | Not money/order/fulfillment |
@@ -225,7 +225,10 @@ Validate `actor_type ∈ {"user","api-key"}`; fail closed otherwise. Helper sugg
 
 ### Security debt to close in Phase 12 (OPS-02)
 
-Refund route currently copies `requested_by_operator_id` from **request body**. That must be replaced by `auth_context.actor_id` for both `RefundRequest.requested_by_operator_id` and `AdminActionLog.admin_id`. Body-supplied operator ids must be ignored or rejected. [VERIFIED: `apps/backend/src/api/admin/refunds/request/route.ts`]
+- Refund route copies `requested_by_operator_id` from **request body**.
+- Exchange create copies `created_by_operator_id` from **request body**.
+
+Both must be replaced by `auth_context.actor_id` for domain operator fields and `AdminActionLog.admin_id`. Body-supplied operator ids must be ignored or rejected. [VERIFIED: `apps/backend/src/api/admin/refunds/request/route.ts`, `apps/backend/src/api/admin/exchanges/route.ts`]
 
 ### No generic intercept
 
@@ -477,31 +480,44 @@ No Admin route today. **Defer** thin audited wrapper (CONTEXT + DISCUSSION). DAT
 
 ### Layout (prescribe)
 
+**Jest discovery constraint (VERIFIED):** `apps/backend/jest.config.js` for `TEST_TYPE=integration:http` uses:
+
 ```text
-apps/backend/integration-tests/http/invariants/
-  inv-01-02-order-birth.spec.ts
-  inv-03-04-webhook-idempotency.spec.ts
-  inv-08-gelato-single-active.spec.ts
-  inv-09-10-refund-decoupling.spec.ts
+**/integration-tests/http/*.spec.[jt]s
+```
+
+Nested `integration-tests/http/invariants/*.spec.ts` would **not** be discovered today. Prefer one of:
+
+1. **Flat named files (default):** `integration-tests/http/invariants-inv01-02-order-birth.spec.ts` (etc.) — no jest.config change.
+2. **Nested folder:** only if PLAN also widens `testMatch` to `**/integration-tests/http/**/*.spec.[jt]s`.
+
+```text
+apps/backend/integration-tests/http/
+  invariants-inv01-02-order-birth.spec.ts
+  invariants-inv03-04-webhook-idempotency.spec.ts
+  invariants-inv08-gelato-single-active.spec.ts
+  invariants-inv09-10-refund-decoupling.spec.ts
 ```
 
 Plus module unit mirrors only when a gap cannot be expressed at HTTP/workflow boundary:
 
 ```text
-apps/backend/src/modules/**/__tests__/invariants/*.unit.spec.ts  # optional thin
+apps/backend/src/modules/**/__tests__/*.unit.spec.ts  # extend / thin INV-named describes
 ```
+
+HTTP “integration” harnesses today use **mocked** module services (no real Postgres suite / no `medusaIntegrationTestRunner` for these INV paths). TEST-01 proves boundaries via existing mock HTTP + unit claim/unique patterns; do not claim cross-dyno DB races.
 
 ### Final INV matrix (TEST-01)
 
 | INV | Existing test | Real DB? | HTTP? | Concurrency? | Gap | Recommended file |
 |-----|---------------|----------|-------|--------------|-----|------------------|
-| INV-1 | `payment-attempt-order-eligibility.unit.spec.ts`; `webhook-order-entrypoint.unit.spec.ts`; `stripe-webhook-order-creation.spec.ts` | HTTP yes (integration harness) | Yes | Partial (claim units) | Not named as INV-1 suite | `integration-tests/http/invariants/inv-01-02-order-birth.spec.ts` (+ keep unit eligibility) |
-| INV-2 | `payment-attempt-state.unit.spec.ts`; `pix-initiation.unit.spec.ts`; eligibility/webhook rejects; HTTP cancel/fail paths | Unit + HTTP partial | Partial | No | Named `pix_expired → zero Order` may be implicit | same `inv-01-02-*.spec.ts` + unit assert |
-| INV-3 | `stripe-webhook-route.unit.spec.ts`; HTTP webhook suites with signature doubles | Route unit + HTTP | Yes | No | Not labeled INV-3 | `integration-tests/http/invariants/inv-03-04-webhook-idempotency.spec.ts` |
-| INV-4 | `webhook-event-log.unit.spec.ts`; `checkout-completion-log.unit.spec.ts`; entrypoint replay units; HTTP duplicate/replay | Unit + HTTP | Yes | Process-local / PG unique claim units | True multi-worker cross-dyno unproven | same `inv-03-04-*.spec.ts` |
-| INV-8 | `gelato-fulfillment.unit.spec.ts` (single-active); dispatch relay units; HTTP “exactly one GelatoFulfillment” | Unit + HTTP filtered | Yes | Unique `order_id` constraint | Manual Admin reprocess path absent | `integration-tests/http/invariants/inv-08-gelato-single-active.spec.ts` |
-| INV-9 | `refund-stripe-webhook.unit.spec.ts`; `stripe-refund-webhook.spec.ts` | Unit + HTTP | Yes | Process-local refund claim | No real Stripe smoke (deferred) | `integration-tests/http/invariants/inv-09-10-refund-decoupling.spec.ts` |
-| INV-10 | `stripe-refund-webhook.spec.ts`; refund-request units (no auto-cancel) | Unit + HTTP | Yes | No | Exchange already avoids order_status mutation | same `inv-09-10-*.spec.ts` |
+| INV-1 | `payment-attempt-order-eligibility.unit.spec.ts`; `webhook-order-entrypoint.unit.spec.ts`; `stripe-webhook-order-creation.spec.ts` | No (mock HTTP harness) | Yes | Partial (claim units) | Not named as INV-1 suite | `integration-tests/http/invariants-inv01-02-order-birth.spec.ts` (+ keep unit eligibility) |
+| INV-2 | `payment-attempt-state.unit.spec.ts`; `pix-initiation.unit.spec.ts`; eligibility/webhook rejects; HTTP cancel/fail paths | No | Partial | No | Named `pix_expired → zero Order` may be implicit | same `invariants-inv01-02-*.spec.ts` + unit assert |
+| INV-3 | `stripe-webhook-route.unit.spec.ts`; HTTP webhook suites with signature doubles | No | Yes | No | Not labeled INV-3 | `integration-tests/http/invariants-inv03-04-webhook-idempotency.spec.ts` |
+| INV-4 | `webhook-event-log.unit.spec.ts`; `checkout-completion-log.unit.spec.ts`; entrypoint replay units; HTTP duplicate/replay | No | Yes | Process-local / unique-constraint simulation | True multi-worker cross-dyno unproven | same `invariants-inv03-04-*.spec.ts` |
+| INV-8 | `gelato-fulfillment.unit.spec.ts` (single-active); dispatch relay units; HTTP “exactly one GelatoFulfillment” | No | Yes | Unique `order_id` design + mock | Manual Admin reprocess path absent | `integration-tests/http/invariants-inv08-gelato-single-active.spec.ts` |
+| INV-9 | `refund-stripe-webhook.unit.spec.ts`; `stripe-refund-webhook.spec.ts` | No | Yes | Process-local refund claim | No real Stripe smoke (deferred) | `integration-tests/http/invariants-inv09-10-refund-decoupling.spec.ts` |
+| INV-10 | `stripe-refund-webhook.spec.ts`; refund-request units (no auto-cancel) | No | Yes | No | Named INV-10 case (partial+total) | same `invariants-inv09-10-*.spec.ts` |
 
 ### Concurrency levels (what tests can prove)
 
@@ -639,7 +655,9 @@ Do **not** fix these texts in this RESEARCH gate. Record only.
 | DB_MODEL `Fulfillment` vs runtime `gelato_fulfillment` | DB_MODEL / module | `entity_type=fulfillment` + GelatoFulfillment.id | Wrong entity_type | Follow §5 mapping |
 | SRS Order-before-payment wording | `docs/SRS_v1.5.md` | PRD + DB_MODEL + Phases 05–06 | Confusion on INV-1 | Already governed; no reopen |
 | ROADMAP “every Admin action on money/order/fulfillment” | Phase 12 success criteria | CONTEXT D12-09 custom refund/exchange only | Over-scope native intercept | Honor CONTEXT in PLAN |
-| Requirements still unchecked for closed phases (if any lingering) | Scan at PLAN | Phase closures 01–11 | False pending work | Hygiene pass before PLAN |
+| FUL-01..04, WHK-03, TRK-01/02, REF-01/02, EXC-01/02 still `[ ]` / “Pending”; footer still says Phase 09 not started | `REQUIREMENTS.md` checklist + traceability | Phase 09–11 CLOSURE + STATE | **High** — PLAN may re-scope closed work | **Before PLAN** documentary sync |
+| PROJECT.md Active checklist still all `[ ]` for built invariants | `.planning/PROJECT.md` | Closures 05–11 | Medium — agents think features unbuilt | Before PLAN |
+| FUL-04 “raise operational alert” vs Phase 09 minimal fields | REQUIREMENTS FUL-04 | 09-CLOSURE minimal; OPS-01 = Phase 12 promotion | Medium — clarify FUL-04 done; OPS-01 additive | Before PLAN |
 
 None of these are unresolvable canonical contradictions that BLOCK research. Do not reopen closed MNY/REL/CACHE/INFRA debts.
 
@@ -655,7 +673,7 @@ None of these are unresolvable canonical contradictions that BLOCK research. Do 
 | **12-02** | Actor helper + AdminActionLog wiring on refund + exchange routes; stop body operator spoof; HTTP tests for audit rows + fail-closed | OPS-02 |
 | **12-03** | Detection: fulfillment transition upserts + stuck-payment/fulfillment scanner job; stale window constant; unit tests | OPS-01 |
 | **12-04** | Read-only `GET /admin/operational-alerts` list+detail filters; HTTP tests | OPS-01 / H12-02 |
-| **12-05** | Invariant suite `integration-tests/http/invariants/*` consolidating INV-1/2/3/4/8/9/10; wire npm script alias optional | TEST-01 |
+| **12-05** | Invariant suite flat `integration-tests/http/invariants-inv*.spec.ts` (or widen jest `testMatch`); consolidate INV-1/2/3/4/8/9/10 | TEST-01 |
 | **12-06** | Documentary PRD divergence note + closure greps (no email relay, no `/admin/*` generic intercept, no Strategy B updates) | Governance |
 
 Wave ordering: 12-01 → (12-02 ∥ 12-03) → 12-04 → 12-05 → 12-06.
@@ -708,8 +726,10 @@ Wave ordering: 12-01 → (12-02 ∥ 12-03) → 12-04 → 12-05 → 12-06.
 4. **Blocked-path audit failure policy** — fail closed always vs best-effort blocked row. Recommendation: best-effort for pre-domain blocks; fail closed after successful domain mutation.
 5. **Optional `GET /admin/admin-action-logs`** for support — default defer.
 6. **Constant placement** for `CHECKOUT_COMPLETION_STALE_PROCESSING_MS` — checkout-completion module vs shared `ops/stale.ts`.
-7. **Invariant suite npm script** — new `test:invariants` vs document `jest --runTestsByPath`.
+7. **Invariant suite layout** — flat `invariants-inv*.spec.ts` (default) vs nested folder + jest `testMatch` widen; optional `test:invariants` script.
 8. **Migration style** — CLI generate vs TBD hand-authored stubs (match Phase 11 Gelato/Refund).
+9. **Actor policy for `api-key`** — accept as `admin_id` (current RESEARCH default) vs **user-only** fail-closed (stricter attribution; Track 1 preference). Default remains accept both until PLAN decides.
+10. **REQUIREMENTS.md checkbox sync** for closed Phases 09–11 / SETUP-02 wording — documentary-only before PLAN Wave 0.
 
 ---
 
@@ -747,7 +767,7 @@ Wave ordering: 12-01 → (12-02 ∥ 12-03) → 12-04 → 12-05 → 12-06.
 | OPS-01 | Alert upsert/reopen + scanner predicates | unit | `test:unit -- --runTestsByPath src/modules/operational-alert/__tests__` | ❌ Wave 0 |
 | OPS-01 | GET list/detail | HTTP | `test:integration:http -- --runTestsByPath integration-tests/http/admin-operational-alerts.spec.ts` | ❌ Wave 0 |
 | OPS-02 | Audit on refund/exchange + fail-closed actor | HTTP/unit | admin-refunds/exchanges + new audit asserts | ⚠️ extend existing |
-| TEST-01 INV-* | Named invariant suite | HTTP/unit | `integration-tests/http/invariants/*` | ❌ Wave 0 |
+| TEST-01 INV-* | Named invariant suite | HTTP/unit | `integration-tests/http/invariants-inv*.spec.ts` | ❌ Wave 0 |
 
 ### Sampling Rate
 
@@ -759,8 +779,9 @@ Wave ordering: 12-01 → (12-02 ∥ 12-03) → 12-04 → 12-05 → 12-06.
 
 - [ ] `src/modules/operational-alert/**` + tests  
 - [ ] `src/modules/admin-action-log/**` + tests  
-- [ ] `integration-tests/http/invariants/*`  
-- [ ] `integration-tests/http/admin-operational-alerts.spec.ts`  
+- [ ] `integration-tests/http/invariants-inv*.spec.ts` (flat; or nested + jest `testMatch` widen)
+- [ ] `integration-tests/http/admin-operational-alerts.spec.ts`
+
 - [ ] Actor fail-closed cases on admin-refunds/exchanges  
 
 ## Assumptions Log
@@ -813,7 +834,7 @@ Wave ordering: 12-01 → (12-02 ∥ 12-03) → 12-04 → 12-05 → 12-06.
 - OPS-02 = explicit wrappers on refund/exchange only; Strategy A immutable rows; stop body `requested_by_operator_id` spoof.
 - OPS-01 = two alert types; unique logical key; 15m stale window derived from CheckoutCompletionLog lock + existing relay stale constants; narrow scanner.
 - Read-only alert Admin API; ack/resolve deferred; email PRD debt recorded (H12-01).
-- TEST-01 = `integration-tests/http/invariants/*` hybrid reuse of existing harnesses.
+- TEST-01 = flat `integration-tests/http/invariants-inv*.spec.ts` hybrid reuse (jest `testMatch` is flat-only today).
 
 ### File Created
 
