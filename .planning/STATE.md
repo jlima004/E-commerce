@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-research-complete
-stopped_at: Phase 12 RESEARCH complete; awaiting human review of 12-RESEARCH.md
-last_updated: "2026-07-16T20:25:00-03:00"
-last_activity: 2026-07-16
-last_activity_desc: Phase 12 RESEARCH complete (OPS-01/OPS-02/TEST-01); PLAN/execution not started
+status: phase-12-research-revised-awaiting-human-review
+stopped_at: Phase 12 RESEARCH revised; awaiting human review; PLAN not started; execution blocked
+last_updated: "2026-07-20T15:34:21-03:00"
+last_activity: 2026-07-20
+last_activity_desc: Phase 12 RESEARCH revised after R12-01..R12-07; awaiting human review; PLAN not started; execution blocked
 progress:
   total_phases: 12
   completed_phases: 11
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-22)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 — Ops, Audit & Critical Tests. RESEARCH complete and awaiting human review. PLAN not started. Execution blocked.
+**Current focus:** Phase 12 — Ops, Audit & Critical Tests. RESEARCH revised and awaiting human review. PLAN not started. Execution blocked.
 
 ## Execution Policy
 
@@ -43,7 +43,14 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 12 RESEARCH complete. PLAN not started. Execution blocked. Next permitted step: human review of `.planning/phases/12-ops-audit-critical-tests/12-RESEARCH.md`. Do not start PLAN until RESEARCH is accepted. OPS-01, OPS-02, and TEST-01 are not complete. Phase 12 is not planned and not in implementation.
+**Current gate:** Phase 12 RESEARCH revised. Awaiting human review. PLAN not started. Execution blocked. Next permitted step: human review of `.planning/phases/12-ops-audit-critical-tests/12-RESEARCH.md`. Do not start PLAN until RESEARCH is accepted. OPS-01, OPS-02, and TEST-01 are not complete. Phase 12 is not planned and not in implementation.
+
+```text
+Phase 12 RESEARCH revised
+awaiting human review
+PLAN not started
+execution blocked
+```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
 
@@ -64,12 +71,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — RESEARCH complete; PLAN not started; execution blocked
+Phase: 12 (Ops, Audit & Critical Tests) — RESEARCH revised; awaiting human review; PLAN not started; execution blocked
 Plan: 50/50 complete (milestone plans); Phase 12 plans: 0 planned / 0 executed
-Status: phase-12-research-complete
-Last activity: 2026-07-16 - Phase 12 RESEARCH complete; awaiting human review of 12-RESEARCH.md
+Status: phase-12-research-revised-awaiting-human-review
+Last activity: 2026-07-20 - Phase 12 RESEARCH revised after R12-01..R12-07; awaiting human review
 
-Progress: [██████████] 92% phases (11/12 complete); 50/50 milestone plans complete; Phase 12 RESEARCH awaiting review
+Progress: [██████████] 92% phases (11/12 complete); 50/50 milestone plans complete; Phase 12 RESEARCH revision awaiting review
 
 ## Performance Metrics
 
@@ -94,7 +101,7 @@ Progress: [██████████] 92% phases (11/12 complete); 50/50 mi
 | 09. Gelato Fulfillment & Webhook | 5 executed / 5 planned | Complete / Closed | — |
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
-| 12. Ops, Audit & Critical Tests | 0 planned / 0 executed | RESEARCH complete / PLAN not started / execution blocked | — |
+| 12. Ops, Audit & Critical Tests | 0 planned / 0 executed | RESEARCH revised / awaiting human review / PLAN not started / execution blocked | — |
 
 **Recent Trend:**
 
@@ -171,6 +178,7 @@ Recent decisions affecting current work:
 - [Phase 11 execution]: Plans `11-01`..`11-04` completed under manual gating on branch `gsd/phase-11-refunds-exchanges-admin`. Final validation closed with 75 unit tests, 29 HTTP integration tests, build PASS, negative greps G1–G7 PASS (G4 informational only — sanitizer Gelato URL pattern), config/lockfile no diff, and `git diff --check` PASS. RefundRequest Admin-safe reservation with captured-truth guards, idempotency, and process-local per-order concurrency claim; Stripe refund object webhook as sole local financial truth with `refund.created` never finalizing money and `charge.refunded` informational/idempotent; `payment_status` recomputation without auto-canceling `order_status`; ExchangeRequest operational workflow for `defect`/`wrong_product` with manual Correios fields and raw body allowlist on exchange routes; sanitization of notes, affected_items, and payloads. No real migration, `medusa db:migrate`, deploy, Stripe real, Stripe CLI smoke, Gelato real, Correios API, broad OperationalAlert, broad AdminActionLog, or Phase 12 work.
 - [Phase 11 closure]: Human review accepted Phase 11 at manual gate on 2026-07-03 (evidence: `11-04-SUMMARY.md`, `11-CLOSURE.md`, 75/75 unit, 29/29 HTTP, 104/104 total, build PASS, greps G1–G7 PASS, `git diff --check` PASS). `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Migration real, cross-dyno refund lock, Stripe refund production smoke, and broad alert/audit modules remain deferred. Phase 12 is not planned, not started, and blocked until explicit human approval.
 - [Phase 12 CONTEXT]: Authorized CONTEXT-only gate completed on branch `gsd/phase-12-ops-audit-critical-tests`. Decisions D12-01..D12-15 lock MVP `OperationalAlert` types (`payment_stuck`, `fulfillment_failed`), stuck-payment predicates (confirmed-without-Order; Pix past Stripe `expires_at`), AdminActionLog on refund/exchange Admin surfaces, hybrid INV suite for TEST-01, and explicit out-of-scope (alert email, REL-02 sweeper, dashboards, real providers). RESEARCH/PLAN/execution not started.
+- [Phase 12 RESEARCH R1]: `12-RESEARCH.md` revised after human-review blockers R12-01..R12-07. Strategy A cross-module atomicity is infeasible on current proof; Strategy B correlated append-only is required. OperationalAlert uses atomic PostgreSQL `ON CONFLICT`; actor is user-only; stale window is local 15m with stable timestamps; invariant HTTP files are flat and persistence/concurrency requires disposable real PostgreSQL. PLAN/VALIDATION/execution remain not started and blocked pending human review.
 
 ### Pending Todos
 
@@ -193,7 +201,7 @@ None yet.
 - [Quick 260715-rel01]: REL-01 está `PASS`: `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry usam a mesma versão resolvida e PM2/VPS preserva o fallback `APP_VERSION`. Env 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit 44/44 e 730/730, lint 0/208 e build PASS. O versionamento automático está resolvido e não há investigação de `APP_VERSION` pendente.
 - [Quick 260715-infra01]: INFRA-01 está `PASS`: release dyno migration-only DB-only; produção exige quatro contratos/módulos Redis sem fallback; CACHE-01A/B PASS. Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0/207, build PASS. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
 - [Release stabilization closure]: incidente monetário resolvido; versionamento automático resolvido; cache Redis TLS resolvido; fallbacks do release classificados e isolados; produção saudável. Não restam próximos passos para investigar `APP_VERSION`, reativar cache Redis, provar Redis em `web.1`/`worker.1` ou revisar fallbacks do release.
-- [Phase 12]: CONTEXT complete (`12-CONTEXT.md`, `12-DISCUSSION-LOG.md`). RESEARCH not started. PLAN not started. Execution blocked. OPS-01/OPS-02/TEST-01 not complete. Next permitted step is human review of `12-CONTEXT.md` before any RESEARCH.
+- [Phase 12]: RESEARCH revised (`12-RESEARCH.md`, `12-DISCUSSION-LOG.md`) after R12-01..R12-07; awaiting human review. PLAN not started. Execution blocked. OPS-01/OPS-02/TEST-01 not complete. Mandatory documentary hygiene before PLAN remains recorded for REQUIREMENTS Phase 09–11 checkboxes, PROJECT active checklist, historical production-blocked language, and superseded `REDIS_CACHE_PROVIDER_DISABLED=true` wording.
 
 ## Deferred Items
 
@@ -205,10 +213,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-16
-Stopped at: Phase 12 CONTEXT complete; awaiting human review of 12-CONTEXT.md.
-Resume file: `.planning/phases/12-ops-audit-critical-tests/12-CONTEXT.md`
-Next permitted step: human review of `12-CONTEXT.md`. Do not start RESEARCH, PLAN, or execution until CONTEXT is accepted.
+Last session: 2026-07-20
+Stopped at: Phase 12 RESEARCH revised; awaiting human review; PLAN not started; execution blocked.
+Resume file: `.planning/phases/12-ops-audit-critical-tests/12-RESEARCH.md`
+Next permitted step: human review of `12-RESEARCH.md`. Do not start PLAN, VALIDATION, or execution until RESEARCH is accepted.
 
 ## Quick Tasks Completed
 

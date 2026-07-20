@@ -1,9 +1,9 @@
 ---
 phase: 12-ops-audit-critical-tests
 artifact: discussion-log
-status: research-complete-awaiting-human-review
+status: research-revised-awaiting-human-review
 created_at: 2026-07-16
-updated_at: 2026-07-16
+updated_at: 2026-07-20
 scope: research-gate
 ---
 
@@ -46,6 +46,7 @@ Recorded as D12-01 … D12-15 in `12-CONTEXT.md`. Human review accepted CONTEXT 
 | Track 5 | AdminActionLog inventory, Strategy A/B, actor fail-closed |
 | Tracks 6–8 | Invariant suite, modules/migrations, documentary inconsistencies |
 | gsd-phase-researcher | Synthesize `12-RESEARCH.md` |
+| P12-RESEARCH-R1 subagents | Medusa cross-module transactions, PostgreSQL atomic upsert, test/document audit |
 
 ### Binding human decisions applied
 
@@ -54,9 +55,9 @@ Recorded as D12-01 … D12-15 in `12-CONTEXT.md`. Human review accepted CONTEXT 
 | H12-01 | Alert email out; PRD divergence recorded; not OPS-01 blocker |
 | H12-02 | Minimal GET list+detail `/admin/operational-alerts`; dashboard out |
 | H12-03 | Full Admin mutation matrix; no generic `/admin/*` intercept |
-| H12-04 | **Strategy A** — one immutable terminal row per Admin attempt |
+| H12-04 | **Strategy A infeasible** without safe cross-module transaction proof; **Strategy B append-only** selected |
 | H12-05 | Fail closed without actor; no unknown/system/null `admin_id` |
-| H12-06 | No immediate alert after `payment_confirmed_by_webhook`; 15m stale derived from existing relay/lock conventions |
+| H12-06 | `CHECKOUT_COMPLETION_STALE_AFTER_MS = 15 * 60_000` fixed as local operational window, not Stripe SLA; persisted CCL `failed` is the explicit no-extra-wait exception |
 
 ### Research classification
 
@@ -64,15 +65,17 @@ Recorded as D12-01 … D12-15 in `12-CONTEXT.md`. Human review accepted CONTEXT 
 
 ### Key RESEARCH recommendations (summary)
 
-- Admin actor: `req.auth_context.actor_id` + `actor_type` `user`|`api-key` (Medusa 2.16.0).
+- Admin actor policy: require `actor_type === "user"` + non-empty `actor_id`; API key fails closed and is never stored as `admin_id`.
 - Modules: `operational_alert`, `admin_action_log`.
-- Detection: Gelato transition upsert (Option A) + narrow scanner; Pix stuck via `expires_at` (markPixExpired unwired).
+- OperationalAlert: one PostgreSQL `ON CONFLICT DO UPDATE`, exact atomic increment/reopen through the total logical-key constraint.
+- AdminActionLog: Strategy B correlated append-only intent/outcome rows; refund outcome is a second correlated `result=requested` row with RefundRequest.id; no mutation without a preceding audit row.
+- Detection: Gelato transition upsert + narrow scanner; CCL `processing` uses `locked_at`, CCL `failed` alerts immediately, absent CCL uses a specific canonical confirmation timestamp; Pix uses `expires_at`.
 - Ack/resolve/ignore APIs deferred (fields-only).
-- TEST-01: `integration-tests/http/invariants/*` hybrid.
+- TEST-01: flat `integration-tests/http/invariants-inv*.spec.ts` for HTTP doubles, unit predicates/state machines, and disposable real PostgreSQL for constraints/claims/concurrency.
 
 ### Items still for PLAN (not decided as locked)
 
-See `12-RESEARCH.md` §17 (scanner cron, exchange action mapping, blocked-audit failure policy, constant placement, migration style, etc.).
+See `12-RESEARCH.md` §17 (scanner cron, exchange action mapping, Strategy B reconciliation, constant placement, disposable-PG harness mechanics, migration style, etc.). Actor policy, blocked audit behavior, Jest layout and proof levels are no longer open.
 
 ## Alternatives evaluated (CONTEXT + RESEARCH)
 
@@ -88,8 +91,8 @@ See `12-RESEARCH.md` §17 (scanner cron, exchange action mapping, blocked-audit 
 
 | Option | Outcome |
 |--------|---------|
-| A. One terminal immutable row | **Accepted (RESEARCH)** |
-| B. Correlated requested→succeeded events | Rejected for MVP |
+| A. One terminal immutable row atomically committed with domain | **Rejected in R1** — safe shared transaction across separate modules not proved |
+| B. Correlated append-only intent/outcome rows | **Accepted in R1** |
 
 ### Fulfillment alert trigger
 
@@ -108,7 +111,7 @@ See `12-RESEARCH.md` §17 (scanner cron, exchange action mapping, blocked-audit 
 ## Decisions taken
 
 CONTEXT: D12-01 … D12-15.
-RESEARCH: Strategy A; Option A detection; 15m stale window derivation; ack/resolve deferred; reprocess deferred; invariant suite under `integration-tests/http/invariants/`.
+RESEARCH R1: Strategy B append-only; atomic PostgreSQL alert upsert; user-only actor; local 15m stale window; ack/resolve deferred; reprocess deferred; flat invariant specs under `integration-tests/http/invariants-inv*.spec.ts`; real disposable-PostgreSQL module integration required.
 
 ## Unresolved questions
 
@@ -140,24 +143,42 @@ Incorporated from parallel track agents after first RESEARCH draft:
 
 - Exchange update surface is `POST /admin/exchanges/:id` only (no PATCH export).
 - Body spoof debt includes exchange `created_by_operator_id` as well as refund `requested_by_operator_id`.
-- Jest HTTP `testMatch` is flat-only → prescribe `invariants-inv*.spec.ts` (or widen config).
+- Jest HTTP `testMatch` is flat-only → prescribe `integration-tests/http/invariants-inv*.spec.ts`; do not widen config.
 - Documentary: REQUIREMENTS unchecked FUL/REF/EXC and PROJECT.md stale checkboxes flagged for pre-PLAN hygiene.
-- PLAN Q: whether `api-key` actors are accepted vs user-only (Track 1 prefers user-only; RESEARCH default still accepts both).
+
+## P12-RESEARCH-R1 human-review blocker corrections
+
+- **R12-01:** Removed the false atomicity claim. Medusa 2.16.0 reuses transaction context within a compatible module manager, but no safe shared transaction was proved across RefundRequest/ExchangeRequest/AdminActionLog. Strategy A is infeasible; Strategy B append-only is required.
+- **R12-02:** Replaced create/catch/reload/update with PostgreSQL `ON CONFLICT DO UPDATE`, atomic `occurrence_count + 1`, atomic `last_seen_at`, reopen without duplicate, and explicit cross-dyno-via-shared-constraint/no-global-order limits.
+- **R12-03:** Fixed the hybrid proof matrix: mocked HTTP, unit predicates/state machines, real disposable PostgreSQL for WebhookEventLog dedupe, CheckoutCompletionLog claim, GelatoFulfillment single-active, OperationalAlert concurrent upsert, and new migrations/indexes.
+- **R12-04:** Fixed MVP actor policy to `actor_type === "user"` and required `actor_id`; API keys fail closed.
+- **R12-05:** Fixed the local 15-minute constant, required it for CCL re-claim/retry, recorded persisted CCL `failed` as the explicit no-extra-wait exception, and rejected unstable `PaymentAttempt.updated_at` as confirmation clock.
+- **R12-06:** Fixed Jest layout to flat `integration-tests/http/invariants-inv*.spec.ts`.
+- **R12-07:** Kept REQUIREMENTS Phase 09–11 checkboxes, PROJECT active checklist, historical production-blocked language, and superseded `REDIS_CACHE_PROVIDER_DISABLED=true` wording as mandatory documentary corrections before PLAN; those documents were not changed in this gate.
 
 ## Gate status
 
 | Step | Status |
 |------|--------|
 | Human review of `12-CONTEXT.md` | Accepted (authorized RESEARCH) |
-| RESEARCH (`12-RESEARCH.md`) | **Complete — awaiting human review** |
-| PLAN / VALIDATION | not started |
-| Implementation | blocked |
+| RESEARCH (`12-RESEARCH.md`) | **Revised — awaiting human review** |
+| PLAN | not started |
+| Execution | blocked |
 
-Baseline at RESEARCH start:
+Baseline at P12-RESEARCH-R1 start:
 
 ```text
 branch=gsd/phase-12-ops-audit-critical-tests
-HEAD=0f6a54527451f293eeb03fc44b0eec5440cb4f74
-origin/main...HEAD = 0 1
-worktree clean
+HEAD=5e2ba43
+expected worktree=clean
+observed pre-existing untracked=.planning/research/.cache/
+```
+
+The untracked cache was not edited, deleted or staged because it is outside this gate's allowlist.
+
+```text
+Phase 12 RESEARCH revised
+awaiting human review
+PLAN not started
+execution blocked
 ```
