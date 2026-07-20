@@ -1,7 +1,7 @@
 ---
 phase: 12-ops-audit-critical-tests
 artifact: discussion-log
-status: plan-complete-checker-passed-awaiting-human-review
+status: plan-revised-checker-passed-awaiting-human-re-review
 created_at: 2026-07-16
 updated_at: 2026-07-20
 scope: planning-only-gate
@@ -375,4 +375,62 @@ SPEC/SDD: not started
 implementation prompt: not started
 execution: blocked
 next permitted step: human review of PLAN/VALIDATION
+```
+
+## P12-PLAN-R1 — audit recovery and execution validation revision
+
+O gate documental foi reaberto exclusivamente para PLAN/VALIDATION. O PASS anterior do checker foi invalidado até nova verificação independente. CONTEXT, RESEARCH, PROJECT, REQUIREMENTS, SPEC/SDD, implementation prompt, runtime, testes, migrations, dependências e execução permaneceram intocados.
+
+Correções incorporadas sem criar sétimo plano nem alterar as quatro waves:
+
+| Requirement | Correção planejada |
+|-------------|--------------------|
+| R12-PLAN-01 | `12-04` agora cria `admin-action-log-reconciliation.ts` e unit spec, com janela local `15 * 60_000`, worker-only, release migration no-op, paginação limitada e reconciliação apenas de RefundRequest/ExchangeRequest comprovável; `12-05` fornece o registro runtime. |
+| R12-PLAN-02 | Migration AdminActionLog exige UNIQUE parcial para intent e UNIQUE parcial conjunto para outcome/reconciliation; service devolve terminal canônico em conflito e seis provas PostgreSQL cobrem concorrência/retry sem uniqueness global de idempotency_key. |
+| R12-PLAN-03 | Helper fixa os três contratos de falha: intent impede domínio; domain failure preserva erro original mesmo se append failed falhar; outcome failure após sucesso preserva resposta de sucesso e nunca repete domínio. |
+| R12-PLAN-04 | `12-01` define ownership único: runner externo controla container/guardas/cleanup e Medusa controla exclusivamente o DB alvo; Docker inicia em `postgres`, readiness roda no container e DSN/nome alternativos são separados e revalidados. |
+| R12-PLAN-05 | `PHASE12_EXECUTION_BASE_SHA` nasce no início autorizado do `12-01`, entra no SUMMARY e alimenta negativas base...HEAD; `medusa-config.ts` recebe inspeção allowlisted revisável em vez de falsa exigência de ausência de diff. |
+| R12-PLAN-06 | VALIDATION e `12-06` exigem job/15m, constraints parciais, outcome versus reconciliation, contrato HTTP de sucesso, ownership do DB, SHA-base e config allowlisted. OPS-02 depende de intent + outcome + orphan detection + runtime reconciliation + terminal dedupe. |
+
+Contagem preservada:
+
+| Plano | Wave | Estado |
+|-------|------|--------|
+| 12-01 | 1 | planned / 0 executed |
+| 12-02 | 2 | planned / 0 executed |
+| 12-03 | 3 | planned / 0 executed |
+| 12-04 | 2 | planned / 0 executed |
+| 12-05 | 3 | planned / 0 executed |
+| 12-06 | 4 | planned / 0 executed |
+
+```text
+Phase 12 PLAN revised
+checker: PASS
+blockers: 0
+warnings: 0
+human re-review: pending
+SPEC/SDD: not started
+implementation prompt: not started
+execution: blocked
+plans: 6 planned / 0 executed
+completed phases: 11
+percent: 92
+```
+
+## P12-PLAN-R1-CHECKER — verification passed
+
+O checker independente retornou **VERIFICATION PASSED** sem findings após duas iterações documentais direcionadas. O resultado é binário: **PASS**, com 0 blockers e 0 warnings; não há `PASS WITH KNOWN DEBTS`.
+
+O checker confirmou seis planos, quatro waves, dependências acíclicas, executor runtime da reconciliação, um único fato terminal por `action_attempt_id`, preservação de sucesso quando audit outcome falha, ownership único do PostgreSQL descartável, negativas finais baseadas em `PHASE12_EXECUTION_BASE_SHA` e ausência de alterações runtime neste gate documental.
+
+```text
+Phase 12 PLAN revised
+checker PASS
+awaiting human re-review
+SPEC/SDD not started
+implementation prompt not started
+execution blocked
+6 planned / 0 executed
+completed_phases: 11
+percent: 92
 ```

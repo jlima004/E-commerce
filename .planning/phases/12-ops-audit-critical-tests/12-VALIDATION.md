@@ -1,7 +1,7 @@
 ---
 phase: 12-ops-audit-critical-tests
 artifact: validation-plan
-status: plan-complete-checker-passed-awaiting-human-review
+status: plan-revised-checker-passed-awaiting-human-re-review
 created_at: 2026-07-20
 updated_at: 2026-07-20
 requirements: [OPS-01, OPS-02, TEST-01]
@@ -14,7 +14,7 @@ execution_authorized: false
 
 Este documento planeja a validação; nenhum comando de runtime, teste, migration, provider, deploy ou commit foi executado neste gate.
 
-Resultado atual: **PLAN COMPLETE — CHECKER PASSED — AWAITING HUMAN REVIEW**. O PASS é exclusivamente do checker documental do PLAN; OPS-01, OPS-02 e TEST-01 continuam incompletos, e a revisão humana permanece obrigatória antes de qualquer próximo gate.
+Resultado atual: **PLAN REVISED — CHECKER PASSED — AWAITING HUMAN RE-REVIEW**. O checker P12-PLAN-R1 retornou PASS binário com 0 blockers e 0 warnings. Esse PASS é exclusivamente documental; OPS-01, OPS-02 e TEST-01 continuam incompletos, e a revisão humana permanece obrigatória antes de SPEC/SDD ou execução.
 
 O resultado de execução futuro é binário:
 
@@ -42,17 +42,19 @@ As contagens finais podem aumentar pelos novos testes, mas nenhuma suite/teste b
 3. D12-15: somente PostgreSQL local descartável; Redis e providers permanecem doubles.
 4. Falta de infraestrutura local não autoriza `skip`, mock substituto ou PASS parcial.
 5. Cada slice para no gate manual antes de iniciar a próxima onda.
+6. `PHASE12_EXECUTION_BASE_SHA` é capturado no início autorizado do 12-01, registrado em `12-01-SUMMARY.md` e reutilizado até o gate final; worktree limpo não substitui diff base...HEAD.
+7. O runner externo possui container/porta/credenciais/guardas/cleanup; somente `medusaIntegrationTestRunner` cria, migra, isola, usa e remove `DB_TEMP_NAME`.
 
 ## Per-plan gates
 
 | Plan | Gate técnico obrigatório | Gate negativo obrigatório | Resultado permitido |
 |------|--------------------------|---------------------------|--------------------|
-| 12-01 | materialização discoverable da migration Gelato + migrations/isolamento/cleanup em PostgreSQL descartável | alvo loopback; DDL do draft preservado; sem secret/DSN/package change | PASS/BLOCKED |
+| 12-01 | materialização discoverable da migration Gelato + ownership único de migrations/isolamento/cleanup em PostgreSQL descartável | manutenção `postgres`; readiness no container; alvo/DSN separados; negativos de allowlist/sinal/Docker; base SHA capturado | PASS/BLOCKED |
 | 12-02 | PG service/atomic upsert/concurrency + HTTP GET list/detail | sem email, mutation route, purge ou raw metadata | PASS/BLOCKED |
-| 12-03 | matriz integral dos detectores + jobs/claim | sem PaymentAttempt.updated_at, REL-02 ou efeito automático | PASS/BLOCKED |
-| 12-04 | hook test-only registra `admin_action_log` antes da migration + unit helper + PG service/append-only/trigger/reconciliation | sem dependência de 12-05, config runtime antecipada, actor body/API key, update/delete ou Strategy A | PASS/BLOCKED |
-| 12-05 | HTTP de três rotas e failure modes + inventário runtime 3 IN/76 OUT | sem interceptor, approve fictício ou reprocess route | PASS/BLOCKED |
-| 12-06 | quatro specs nomeados + cinco specs PG + suites completas | sem provider real, skip, resíduo ou config drift | PASS/BLOCKED |
+| 12-03 | matriz integral dos detectores + jobs/claim; SUMMARY propaga PHASE12_EXECUTION_BASE_SHA | sem PaymentAttempt.updated_at, REL-02 ou efeito automático; sua negativa worktree-only é intermediária, nunca autorizadora do PASS final | PASS/BLOCKED |
+| 12-04 | helper + job de 15m + hook test-only + dois UNIQUE parciais + seis provas PG de concorrência/retry/terminal dedupe | sem dependência runtime de 12-05, provider, alteração/remoção, terminal ambíguo, actor body/API key ou Strategy A | PASS/BLOCKED |
+| 12-05 | registro runtime allowlisted + HTTP de três rotas/failure modes + outcome failure preservando sucesso + inventário 3 IN/76 OUT | sem retry enganoso, segunda execução do domínio, interceptor, approve fictício ou reprocess route | PASS/BLOCKED |
+| 12-06 | quatro specs nomeados + cinco specs PG + job/helper/HTTP recovery + suites completas + negativas base...HEAD | sem provider real, skip, resíduo ou drift fora da allowlist de config | PASS/BLOCKED |
 
 ## Focused validation commands
 
@@ -60,8 +62,9 @@ Executar somente durante o respectivo execution gate aprovado.
 
 ### 12-01 — disposable PostgreSQL foundation
 
-1. `cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runTestsByPath src/infrastructure/__tests__/disposable-postgres-harness.unit.spec.ts --runInBand`
-2. `cd apps/backend && TMPDIR=/tmp rtk node scripts/run-disposable-postgres-tests.mjs -- rtk npm run test:integration:modules -- --runTestsByPath src/modules/webhooks/__tests__/disposable-postgres-harness.spec.ts --runInBand`
+1. Antes de qualquer mudança: `set PHASE12_EXECUTION_BASE_SHA (git rev-parse HEAD)`; registrar o SHA em `12-01-SUMMARY.md`.
+2. `cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runTestsByPath src/infrastructure/__tests__/disposable-postgres-harness.unit.spec.ts --runInBand`
+3. `cd apps/backend && TMPDIR=/tmp rtk node scripts/run-disposable-postgres-tests.mjs -- rtk npm run test:integration:modules -- --runTestsByPath src/modules/webhooks/__tests__/disposable-postgres-harness.spec.ts --runInBand`
 
 ### 12-02 — OperationalAlert
 
@@ -72,12 +75,14 @@ Executar somente durante o respectivo execution gate aprovado.
 
 1. `cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runTestsByPath src/modules/operational-alert/__tests__/operational-alert-detectors.unit.spec.ts src/jobs/__tests__/operational-alert-scanner.unit.spec.ts src/jobs/__tests__/gelato-dispatch-relay.unit.spec.ts src/modules/checkout-completion/__tests__/checkout-completion-log.unit.spec.ts --runInBand`
 
+O executor deve registrar em `12-03-SUMMARY.md` o mesmo `PHASE12_EXECUTION_BASE_SHA` de `12-01-SUMMARY.md`. Qualquer comando legado do 12-03 que compare apenas o worktree, inclusive se exigir ausência de diff em `medusa-config.ts`, é evidência focada intermediária e não pode autorizar o resultado final.
+
 ### 12-04 — AdminActionLog primitives
 
-1. `cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runTestsByPath src/api/admin/_shared/__tests__/audit-admin-action.unit.spec.ts --runInBand`
+1. `cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runTestsByPath src/api/admin/_shared/__tests__/audit-admin-action.unit.spec.ts src/jobs/__tests__/admin-action-log-reconciliation.unit.spec.ts --runInBand`
 2. `cd apps/backend && TMPDIR=/tmp rtk node scripts/run-disposable-postgres-tests.mjs -- rtk npm run test:integration:modules -- --runTestsByPath src/modules/admin-action-log/__tests__/admin-action-log.postgres.spec.ts --runInBand`
 
-O spec PostgreSQL deve usar a API factual de `@medusajs/test-utils@2.16.0`: `hooks.beforeServerStart(container)` resolve `ContainerRegistrationKeys.CONFIG_MODULE` e registra `configModule.modules.admin_action_log = { resolve: "./src/modules/admin-action-log" }`. O runner executa esse hook antes de `initializeDatabase` e `runModulesMigrations`; a evidência deve mostrar migration, trigger e service carregados sem alteração antecipada de `apps/backend/medusa-config.ts` e sem depender de 12-05.
+O spec PostgreSQL deve usar a API factual de `@medusajs/test-utils@2.16.0`: `hooks.beforeServerStart(container)` resolve `ContainerRegistrationKeys.CONFIG_MODULE` e registra `configModule.modules.admin_action_log = { resolve: "./src/modules/admin-action-log" }`. O runner executa esse hook antes de `initializeDatabase` e `runModulesMigrations`; a evidência deve mostrar migration, trigger, dois UNIQUE parciais, service e seis casos concurrency-safe carregados sem alteração antecipada de `apps/backend/medusa-config.ts` e sem depender de 12-05. O job unit prova `ADMIN_ACTION_ORPHAN_AFTER_MS = 15 * 60_000`, paginação limitada, worker-only, release migration no-op, ausência de provider/mutação e ambiguidades mantidas órfãs.
 
 ### 12-05 — factual Admin instrumentation
 
@@ -93,23 +98,32 @@ O spec PostgreSQL deve usar a API factual de `@medusajs/test-utils@2.16.0`: `hoo
 
 Executar após todos os focused gates PASS:
 
-1. `cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runInBand`
-2. `cd apps/backend && TMPDIR=/tmp rtk node scripts/run-disposable-postgres-tests.mjs -- rtk npm run test:integration:modules -- --runInBand`
-3. `cd apps/backend && TMPDIR=/tmp rtk npm run test:integration:http -- --runInBand`
-4. `cd apps/backend && HOME=/tmp XDG_CONFIG_HOME=/tmp ADMIN_DISABLED=true HMR_PORT=5173 rtk npm run lint`
-5. `cd apps/backend && HOME=/tmp XDG_CONFIG_HOME=/tmp ADMIN_DISABLED=true HMR_PORT=5173 rtk npm run build`
-6. `rtk git diff --check`
-7. `rtk git diff --exit-code -- apps/backend/package.json package-lock.json apps/backend/medusa-config.ts`
+1. Recarregar `PHASE12_EXECUTION_BASE_SHA` do valor exato registrado em `12-01-SUMMARY.md`.
+2. `cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runInBand`
+3. `cd apps/backend && TMPDIR=/tmp rtk node scripts/run-disposable-postgres-tests.mjs -- rtk npm run test:integration:modules -- --runInBand`
+4. `cd apps/backend && TMPDIR=/tmp rtk npm run test:integration:http -- --runInBand`
+5. `cd apps/backend && HOME=/tmp XDG_CONFIG_HOME=/tmp ADMIN_DISABLED=true HMR_PORT=5173 rtk npm run lint`
+6. `cd apps/backend && HOME=/tmp XDG_CONFIG_HOME=/tmp ADMIN_DISABLED=true HMR_PORT=5173 rtk npm run build`
+7. `rtk git diff --check`
+8. `rtk git status --short`
+9. `rtk git diff --exit-code "$PHASE12_EXECUTION_BASE_SHA"...HEAD -- apps/backend/package.json package-lock.json apps/backend/jest.config.js`
+10. `rtk git diff "$PHASE12_EXECUTION_BASE_SHA"...HEAD -- apps/backend/medusa-config.ts` e inspeção allowlisted registrada.
+
+O gate recusa PASS se qualquer SUMMARY ou revisão confiar apenas em worktree limpo, no comando legado do 12-03 ou em ausência total de alteração de `medusa-config.ts`. A única negativa final autorizadora para manifests/Jest é a comparação base...HEAD acima; para `medusa-config.ts`, é obrigatória a inspeção separada do diff base...HEAD, aceitando exclusivamente os registros `operational_alert` e `admin_action_log`.
 
 ## PostgreSQL evidence gate
 
 Evidence obrigatória:
 
-- Docker container ou DSN alternativo sanitizado identificado como loopback e descartável.
+- Docker container inicia no banco de manutenção `postgres`, sem `DB_TEMP_NAME` em `POSTGRES_DB`; readiness roda por `docker exec ... pg_isready ... -d postgres`, sem binário no host.
+- Runner externo controla container/porta/credenciais/validações/sinais/finally/confirmação residual; `medusaIntegrationTestRunner` controla exclusivamente criação, migrations, isolamento e remoção de `DB_TEMP_NAME=p12_disposable_*`.
+- Alternativa separa `P12_DISPOSABLE_DATABASE_URL` de `P12_DISPOSABLE_DB_NAME`; URL aponta a manutenção loopback, alvo tem prefixo, difere do database da URL e é revalidado antes de DROP. O database da DSN nunca é removido.
+- Negativos explícitos: host não loopback, nome sem prefixo, alvo igual à manutenção, nome vazio, cleanup fora da allowlist, Docker indisponível e interrupção por sinal.
 - Migration discovery pelo `medusaIntegrationTestRunner({ dbName: process.env.DB_TEMP_NAME, ... })`; toda nova invocação Phase 12 passa o nome explicitamente e não executa `rtk medusa db:migrate` contra qualquer DB persistente. Em 12-04, `hooks.beforeServerStart` registra explicitamente `admin_action_log` em `configModule.modules` antes de `runModulesMigrations`, sem depender do wiring runtime de 12-05.
 - Catálogo PostgreSQL exibindo constraints/índices testados sem incluir credenciais.
 - Concorrência iniciada por múltiplas operações/conexões reais, não Promise mocks.
 - Cardinalidade/estado final de WebhookEventLog, CheckoutCompletionLog, GelatoFulfillment, OperationalAlert e AdminActionLog.
+- Catálogo dos UNIQUE parciais de AdminActionLog e cardinalidade de dois intents concorrentes, dois outcomes, outcome versus reconciliation, dois workers, retry com novo attempt e idempotency_key repetida entre attempts.
 - Cleanup do DB/container confirmado mesmo após cenário de falha.
 - Classificação explícita da força da evidência: **process-local executado**; **PostgreSQL transacional executado**; **cross-process/dyno inferido pela constraint PostgreSQL compartilhada**; **cross-dyno real não executado e não alegado**.
 
@@ -143,10 +157,17 @@ Evidence obrigatória:
 | append-only | PostgreSQL trigger rejects update/delete |
 | actor user-only | route/helper tests for user, missing actor and API key |
 | Strategy B | ordered intent/domain/outcome tests and orphan reconciliation |
+| intent | append obrigatório antes do domínio; falha impede callback e retorna falha saneada |
+| outcome | domínio falho tenta failed e preserva erro original; domínio bem-sucedido preserva sucesso mesmo se audit outcome falhar |
+| orphan detection | query paginada encontra somente intents sem terminal e mais antigos que 15 minutos |
+| runtime reconciliation | job worker-only/release-mode no-op anexa apenas RefundRequest/ExchangeRequest comprovável e mantém ambiguidade órfã |
+| terminal dedupe | UNIQUE parcial garante um outcome/reconciliation por action_attempt_id e conflito devolve o fato canônico |
 | refund factual result | outcome requested after reservation |
 | exchange factual result | succeeded/failed/blocked by actual transition |
 | retries | new attempt rows + reused_idempotency metadata |
 | surface inventory | matriz factual individual em 12-05 para 3 handlers custom IN e todos os 76 pares nativos método/path OUT em payments/payment-collections/orders/fulfillments/returns/claims/exchanges; cada linha tem handler/workflow e justificativa; contagem diferente bloqueia; prova de nenhum intercept genérico/implícito |
+
+OPS-02 somente pode ser marcado `COVERED` quando as cinco linhas obrigatórias — intent, outcome, orphan detection, runtime reconciliation e terminal dedupe — estiverem PASS. A concorrência outcome versus reconciliation e dois workers no mesmo órfão precisam deixar um único fato terminal. Os HTTP specs devem provar que falha de audit outcome após domínio persistido conserva status/body de sucesso e callback executado exatamente uma vez.
 
 ## Security and redaction negative proofs
 
@@ -163,15 +184,18 @@ Comandos:
 - `rtk rg -n "sk_live|api\.stripe\.com|gelatoapis\.com|api\.resend\.com|posthog|supabase|heroku" apps/backend/integration-tests/http/invariants-*.spec.ts apps/backend/src/modules/operational-alert apps/backend/src/modules/admin-action-log`
 - `rtk rg -n "requested_by_operator_id|created_by_operator_id" apps/backend/src/api/admin/refunds apps/backend/src/api/admin/exchanges`
 - `rtk rg -n "reprocess_fulfillment|approve_exchange" apps/backend/src/api/admin apps/backend/src/modules/admin-action-log`
-- `rtk git diff --exit-code -- apps/backend/package.json package-lock.json apps/backend/jest.config.js`
+- `rtk git diff --exit-code "$PHASE12_EXECUTION_BASE_SHA"...HEAD -- apps/backend/package.json package-lock.json apps/backend/jest.config.js`
 
 Resultados não vazios só podem ser aceitos quando forem constantes/testes negativos sanitizados e forem classificados linha a linha na evidência; chamadas ou persistência reais bloqueiam o gate.
 
 ## Workspace integrity
 
 - `rtk git diff --check` PASS.
+- `rtk git status --short` registrado separadamente.
 - Nenhum arquivo fora do allowlist do respectivo plano.
-- Nenhuma alteração em packages, lockfile, Jest config, env/config secrets, deploy ou provider.
+- Nenhuma alteração no intervalo base...HEAD em packages, lockfile ou Jest config.
+- `apps/backend/medusa-config.ts` pode mudar somente para registrar `operational_alert` e `admin_action_log`; o diff base...HEAD é evidência revisável e qualquer mudança em Redis, cache, event bus, workflow, locking, database, providers, health ou release migration mode bloqueia.
+- O `12-03-SUMMARY.md` leva o SHA-base adiante e classifica sua negativa worktree-only como intermediária/superseded pelo gate final; ela nunca é usada isoladamente para PASS.
 - Nenhum container/banco/arquivo temporário residual.
 - Nenhum commit, push, tag ou deploy sem autorização humana separada.
 
@@ -185,7 +209,7 @@ Resultados não vazios só podem ser aceitos quando forem constantes/testes nega
 | Phase goal: Admin actions audited | 12-04 + 12-05 | COVERED |
 | Phase goal: critical invariant tests | 12-01 + 12-06 | COVERED |
 | OPS-01 | 12-02, 12-03, 12-06 | COVERED |
-| OPS-02 | 12-04, 12-05, 12-06 | COVERED |
+| OPS-02: intent + outcome + orphan detection + runtime reconciliation + terminal dedupe | 12-04, 12-05, 12-06 | COVERED |
 | TEST-01 | 12-01, 12-06 | COVERED |
 
 ### CONTEXT locked decisions
@@ -219,6 +243,7 @@ Resultados não vazios só podem ser aceitos quando forem constantes/testes nega
 | H12-05 user-only actor | 12-04, 12-05 | COVERED |
 | H12-06 15m/failed immediate | 12-03 | COVERED |
 | P12-PLAN-01 planning-only, six plans/four waves/no commit | this plan set + ROADMAP/STATE | COVERED |
+| P12-PLAN-R1 audit recovery/execution validation | 12-01, 12-04, 12-05, 12-06 + VALIDATION | COVERED |
 
 ### RESEARCH constraints/features
 
