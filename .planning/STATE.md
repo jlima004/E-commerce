@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-research-revised-awaiting-human-review
-stopped_at: Phase 12 RESEARCH revised; awaiting human review; PLAN not started; execution blocked
-last_updated: "2026-07-20T15:34:21-03:00"
+status: phase-12-preplan-docsync-complete-awaiting-plan-authorization
+stopped_at: Phase 12 CONTEXT approved; RESEARCH approved; pre-PLAN documentary synchronization complete; PLAN not started; execution blocked
+last_updated: "2026-07-20"
 last_activity: 2026-07-20
-last_activity_desc: Phase 12 RESEARCH revised after R12-01..R12-07; awaiting human review; PLAN not started; execution blocked
+last_activity_desc: Phase 12 pre-PLAN documentary synchronization complete after CONTEXT and RESEARCH approval; PLAN not started; execution blocked
 progress:
   total_phases: 12
   completed_phases: 11
@@ -21,10 +21,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-22)
+See: .planning/PROJECT.md (updated 2026-07-20)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 — Ops, Audit & Critical Tests. RESEARCH revised and awaiting human review. PLAN not started. Execution blocked.
+**Current focus:** Phase 12 — Ops, Audit & Critical Tests. CONTEXT approved. RESEARCH approved. Pre-PLAN documentary synchronization complete. PLAN not started. Execution blocked.
 
 ## Execution Policy
 
@@ -43,13 +43,15 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 12 RESEARCH revised. Awaiting human review. PLAN not started. Execution blocked. Next permitted step: human review of `.planning/phases/12-ops-audit-critical-tests/12-RESEARCH.md`. Do not start PLAN until RESEARCH is accepted. OPS-01, OPS-02, and TEST-01 are not complete. Phase 12 is not planned and not in implementation.
+**Current gate:** Phase 12 CONTEXT approved. Phase 12 RESEARCH approved. Pre-PLAN documentary synchronization complete. PLAN not started. Execution blocked. Next permitted step: human review and explicit authorization of PLAN. OPS-01, OPS-02, and TEST-01 are not complete. Phase 12 is not planned and not in implementation.
 
 ```text
-Phase 12 RESEARCH revised
-awaiting human review
+Phase 12 CONTEXT approved
+Phase 12 RESEARCH approved
+pre-PLAN documentary synchronization complete
 PLAN not started
 execution blocked
+next permitted step: human review and explicit authorization of PLAN
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -71,12 +73,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — RESEARCH revised; awaiting human review; PLAN not started; execution blocked
+Phase: 12 (Ops, Audit & Critical Tests) — CONTEXT approved; RESEARCH approved; pre-PLAN documentary synchronization complete; PLAN not started; execution blocked
 Plan: 50/50 complete (milestone plans); Phase 12 plans: 0 planned / 0 executed
-Status: phase-12-research-revised-awaiting-human-review
-Last activity: 2026-07-20 - Phase 12 RESEARCH revised after R12-01..R12-07; awaiting human review
+Status: phase-12-preplan-docsync-complete-awaiting-plan-authorization
+Last activity: 2026-07-20 - Phase 12 pre-PLAN documentary synchronization complete after CONTEXT and RESEARCH approval
 
-Progress: [██████████] 92% phases (11/12 complete); 50/50 milestone plans complete; Phase 12 RESEARCH revision awaiting review
+Progress: [██████████] 92% phases (11/12 complete); 50/50 milestone plans complete; Phase 12 plans remain 0 planned / 0 executed
 
 ## Performance Metrics
 
@@ -93,7 +95,7 @@ Progress: [██████████] 92% phases (11/12 complete); 50/50 mi
 | 01. Foundation & Observability | 7 | Complete | — |
 | 02. Catalog & Media | 5 executed / 5 planned | Complete | — |
 | 03. Cart & Checkout (pre-Order) | 5 executed / 5 planned | Complete | — |
-| 04. Stripe Payments & PaymentAttempt | 6 executed / 6 planned | Complete (pre-Order; production activation blocked) | — |
+| 04. Stripe Payments & PaymentAttempt | 6 executed / 6 planned | Complete (pre-Order; historical activation blocker superseded by later gates) | — |
 | 05. Stripe Webhook Ingestion & Idempotency | 4 executed / 4 planned | Complete (closed 2026-06-30) | — |
 | 06. Idempotent Webhook-Driven Order Creation | 5 executed / 5 planned | Complete (closed 2026-06-30) | — |
 | 07. Analytics Outbox (`purchase_completed`) | 3 executed / 3 planned | Complete (closed 2026-07-01) | — |
@@ -101,7 +103,7 @@ Progress: [██████████] 92% phases (11/12 complete); 50/50 mi
 | 09. Gelato Fulfillment & Webhook | 5 executed / 5 planned | Complete / Closed | — |
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
-| 12. Ops, Audit & Critical Tests | 0 planned / 0 executed | RESEARCH revised / awaiting human review / PLAN not started / execution blocked | — |
+| 12. Ops, Audit & Critical Tests | 0 planned / 0 executed | CONTEXT approved / RESEARCH approved / pre-PLAN docs synchronized / PLAN not started / execution blocked | — |
 
 **Recent Trend:**
 
@@ -150,7 +152,7 @@ Recent decisions affecting current work:
 - [Plan 04-04]: Card initiation pre-Order via `STRIPE_CARD_INITIATION_LAYER`; `client_secret` response-only; fail-closed without audit trail.
 - [Plan 04-05]: Pix initiation pre-Order via `STRIPE_PIX_INITIATION_LAYER`; QR/copia-e-cola/`expires_at` response-only for instructions, `expires_at` persisted; local states `awaiting_pix_payment`, `pix_expired`, `payment_failed`, `payment_canceled` never create Order.
 - [Plan 04-06]: Cart mutation invalidates active PaymentAttempt via safe fingerprint; retry/supersede leaves one active attempt; final negative proofs confirm no Order, webhook, completion, `purchase_completed`, Gelato, or persisted Stripe secrets/QR/`next_action`.
-- [Phase 04 closure]: Phase 04 is complete as money-path pre-Order implementation/test scope. PAY-01..PAY-04 are recorded as implementation complete with production activation blocked until `TBD-payment-attempt.ts` is approved/applied and real Stripe card/Pix layers/config are provided. Phase 05 remains not started behind human approval.
+- [Phase 04 closure — histórico]: Phase 04 completed the money-path pre-Order implementation/test scope. At the 2026-06-29 closure, production activation was blocked by the draft migration and missing real Stripe layers/config. Later safe-layer work, the RC1 applied-migration audit, Phases 05–11 closures, and formal production stabilization superseded that blocker. Separately deferred Stripe smokes/config without specific evidence do not reopen PAY-01..PAY-04.
 - [Gate 04A]: Real Stripe card/Pix initiation layers are implemented and registered behind `STRIPE_REAL_INITIATION_ENABLED=true` with `sk_test_...` only. The layers call Stripe directly, not native-first Medusa Stripe, and hand raw PaymentIntent data immediately to the existing safe boundary. `client_secret`, Pix QR/copia-e-cola, hosted instructions, and integral `next_action` remain response-only; `PaymentAttempt` migration is prepared but not applied; no webhook, Order, `purchase_completed`, or Gelato work was introduced.
 - [Gate 04A validation]: Real Stripe card initiation smoke passed in test mode on local port 9001. The card route returned `201 Created`, created a Stripe test-mode PaymentIntent through the real safe layer, and persisted `PaymentAttempt` with `payment_method_type=card`, `status=card_client_secret_created`, `amount=9900`, `currency_code=brl`, and `order_id=null`. No Order, webhook, `CheckoutCompletionLog`, `WebhookEventLog`, `purchase_completed`, or Gelato fulfillment was created. Pix real smoke remains deferred due to Stripe account eligibility. Phase 05 remains not started.
 - [Phase 05 planning]: Phase 05 was drafted as planning-only into four manual slices: WebhookEventLog schema/config, raw-body `/hooks/stripe` signature route, PaymentIntent-to-PaymentAttempt processing, and final validation/negative proofs. Planned success state is `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 06 remains responsible for `Order` creation via `CheckoutCompletionLog`. No runtime code, endpoint, migration execution, Order, `purchase_completed`, Gelato, e-mail, analytics or refund flow was implemented during planning.
@@ -176,9 +178,11 @@ Recent decisions affecting current work:
 - [Phase 10 closure]: Human review accepted Phase 10 at manual gate on 2026-07-02 (evidence: `10-03-SUMMARY.md`, `10-CLOSURE.md`, 45/45 unit, 11/11 HTTP, build PASS, blocking grep PASS). `TRK-01` and `TRK-02` complete. Migration real, global Redis rate limit, and client token delivery remain deferred. Phase 11 may be planned next, but execution remains blocked until explicit human approval.
 - [Phase 11 planning]: Planning-only artifacts created for Refunds & Exchanges (Admin): `11-CONTEXT.md`, `11-RESEARCH.md`, `11-VALIDATION.md`, and four manual-review-gated slices `11-01`..`11-04`. Branch registered as `gsd/phase-11-refunds-exchanges-admin`. The plan defines local `RefundRequest`, Admin-safe refund request/reservation, Stripe refund object webhook confirmation as the only local final financial truth, transactional `payment_status` recomputation without automatic `order_status = canceled`, local concurrency/idempotency guards against over-refund, operational `ExchangeRequest`, and manual/semi-automatic Correios reverse-logistics fields entered in Admin. `charge.refunded` cannot double-count financial truth; if handled, it is informational/idempotent and subordinate to refund object events. No runtime implementation, tests, build, migration, deploy, real Stripe, real Gelato, Correios API call, Stripe CLI smoke, broad `OperationalAlert`, broad `AdminActionLog`, or Phase 12 work was started.
 - [Phase 11 execution]: Plans `11-01`..`11-04` completed under manual gating on branch `gsd/phase-11-refunds-exchanges-admin`. Final validation closed with 75 unit tests, 29 HTTP integration tests, build PASS, negative greps G1–G7 PASS (G4 informational only — sanitizer Gelato URL pattern), config/lockfile no diff, and `git diff --check` PASS. RefundRequest Admin-safe reservation with captured-truth guards, idempotency, and process-local per-order concurrency claim; Stripe refund object webhook as sole local financial truth with `refund.created` never finalizing money and `charge.refunded` informational/idempotent; `payment_status` recomputation without auto-canceling `order_status`; ExchangeRequest operational workflow for `defect`/`wrong_product` with manual Correios fields and raw body allowlist on exchange routes; sanitization of notes, affected_items, and payloads. No real migration, `medusa db:migrate`, deploy, Stripe real, Stripe CLI smoke, Gelato real, Correios API, broad OperationalAlert, broad AdminActionLog, or Phase 12 work.
-- [Phase 11 closure]: Human review accepted Phase 11 at manual gate on 2026-07-03 (evidence: `11-04-SUMMARY.md`, `11-CLOSURE.md`, 75/75 unit, 29/29 HTTP, 104/104 total, build PASS, greps G1–G7 PASS, `git diff --check` PASS). `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Migration real, cross-dyno refund lock, Stripe refund production smoke, and broad alert/audit modules remain deferred. Phase 12 is not planned, not started, and blocked until explicit human approval.
-- [Phase 12 CONTEXT]: Authorized CONTEXT-only gate completed on branch `gsd/phase-12-ops-audit-critical-tests`. Decisions D12-01..D12-15 lock MVP `OperationalAlert` types (`payment_stuck`, `fulfillment_failed`), stuck-payment predicates (confirmed-without-Order; Pix past Stripe `expires_at`), AdminActionLog on refund/exchange Admin surfaces, hybrid INV suite for TEST-01, and explicit out-of-scope (alert email, REL-02 sweeper, dashboards, real providers). RESEARCH/PLAN/execution not started.
-- [Phase 12 RESEARCH R1]: `12-RESEARCH.md` revised after human-review blockers R12-01..R12-07. Strategy A cross-module atomicity is infeasible on current proof; Strategy B correlated append-only is required. OperationalAlert uses atomic PostgreSQL `ON CONFLICT`; actor is user-only; stale window is local 15m with stable timestamps; invariant HTTP files are flat and persistence/concurrency requires disposable real PostgreSQL. PLAN/VALIDATION/execution remain not started and blocked pending human review.
+- [Phase 11 closure — histórico]: Human review accepted Phase 11 at manual gate on 2026-07-03 (evidence: `11-04-SUMMARY.md`, `11-CLOSURE.md`, 75/75 unit, 29/29 HTTP, 104/104 total, build PASS, greps G1–G7 PASS, `git diff --check` PASS). `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Migration real, cross-dyno refund lock, Stripe refund production smoke, and broad alert/audit modules remain deferred. At that closure, Phase 12 was not planned or started and remained blocked until explicit human approval.
+- [Phase 12 CONTEXT]: Authorized CONTEXT-only gate completed and approved on branch `gsd/phase-12-ops-audit-critical-tests`. Decisions D12-01..D12-15 lock MVP `OperationalAlert` types (`payment_stuck`, `fulfillment_failed`), stuck-payment predicates (confirmed-without-Order; Pix past Stripe `expires_at`), AdminActionLog on refund/exchange Admin surfaces, hybrid INV suite for TEST-01, and explicit out-of-scope (alert email, REL-02 sweeper, dashboards, real providers). PLAN/execution have not started.
+- [Phase 12 RESEARCH R1]: `12-RESEARCH.md` was revised after human-review blockers R12-01..R12-07 and is approved. Strategy A cross-module atomicity is infeasible on current proof; Strategy B correlated append-only is required. OperationalAlert uses atomic PostgreSQL `ON CONFLICT`; actor is user-only; stale window is local 15m with stable timestamps; invariant HTTP files are flat and persistence/concurrency requires disposable real PostgreSQL. PLAN/VALIDATION/execution remain not started and blocked pending explicit authorization.
+- [Phase 09/12 boundary]: `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the Phase 09 local fulfillment truth and keeps FUL-04 closed. Phase 12 OPS-01 promotes that condition to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
+- [Phase 12 alert email]: Resend delivery for `OperationalAlert` is outside the Phase 12 MVP, is a known PRD divergence, and is not a blocker for OPS-01.
 
 ### Pending Todos
 
@@ -200,8 +204,8 @@ None yet.
 - [Quick 260713-mny01]: MNY-01 está `PASS`: Medusa core/PaymentSession agora usam major units, Stripe/PaymentAttempt/refund/downstream customizado preservam minor units, e o guard da Order converte componentes antes da soma. Unit 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0/208 e build PASS. Nenhum schema, package/lockfile, APP_VERSION, infraestrutura, produção, provider externo, push ou Phase 12 foi tocado. Preços existentes do catálogo permanecem para correção manual em gate separado.
 - [Quick 260715-rel01]: REL-01 está `PASS`: `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry usam a mesma versão resolvida e PM2/VPS preserva o fallback `APP_VERSION`. Env 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit 44/44 e 730/730, lint 0/208 e build PASS. O versionamento automático está resolvido e não há investigação de `APP_VERSION` pendente.
 - [Quick 260715-infra01]: INFRA-01 está `PASS`: release dyno migration-only DB-only; produção exige quatro contratos/módulos Redis sem fallback; CACHE-01A/B PASS. Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0/207, build PASS. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
-- [Release stabilization closure]: incidente monetário resolvido; versionamento automático resolvido; cache Redis TLS resolvido; fallbacks do release classificados e isolados; produção saudável. Não restam próximos passos para investigar `APP_VERSION`, reativar cache Redis, provar Redis em `web.1`/`worker.1` ou revisar fallbacks do release.
-- [Phase 12]: RESEARCH revised (`12-RESEARCH.md`, `12-DISCUSSION-LOG.md`) after R12-01..R12-07; awaiting human review. PLAN not started. Execution blocked. OPS-01/OPS-02/TEST-01 not complete. Mandatory documentary hygiene before PLAN remains recorded for REQUIREMENTS Phase 09–11 checkboxes, PROJECT active checklist, historical production-blocked language, and superseded `REDIS_CACHE_PROVIDER_DISABLED=true` wording.
+- [Release stabilization closure]: incidente monetário resolvido; versionamento automático resolvido; cache Redis TLS resolvido; CACHE-01A/B e INFRA-01 PASS; cache Redis ativo em `web.1` e `worker.1`; fallbacks do release classificados e isolados; produção saudável. Não restam próximos passos para investigar `APP_VERSION`, reativar cache Redis, provar Redis em `web.1`/`worker.1` ou revisar fallbacks do release.
+- [Phase 12]: CONTEXT approved. RESEARCH approved. Mandatory pre-PLAN documentary hygiene is complete for REQUIREMENTS Phase 09–11, PROJECT active checklist, historical production-blocked language, and the superseded cache-disable checkpoint. PLAN not started. Execution blocked. Phase 12 plans remain 0 planned / 0 executed. OPS-01/OPS-02/TEST-01 are not complete. Next permitted step: human review and explicit authorization of PLAN.
 
 ## Deferred Items
 
@@ -214,9 +218,9 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-20
-Stopped at: Phase 12 RESEARCH revised; awaiting human review; PLAN not started; execution blocked.
-Resume file: `.planning/phases/12-ops-audit-critical-tests/12-RESEARCH.md`
-Next permitted step: human review of `12-RESEARCH.md`. Do not start PLAN, VALIDATION, or execution until RESEARCH is accepted.
+Stopped at: Phase 12 CONTEXT approved; RESEARCH approved; pre-PLAN documentary synchronization complete; PLAN not started; execution blocked.
+Resume file: `.planning/phases/12-ops-audit-critical-tests/12-DISCUSSION-LOG.md`
+Next permitted step: human review and explicit authorization of PLAN. Do not start PLAN, VALIDATION, or execution without that authorization.
 
 ## Quick Tasks Completed
 

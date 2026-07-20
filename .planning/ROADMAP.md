@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation & Observability** - Medusa v2 + Supabase/Redis + Admin subdomain + PM2/Nginx + Sentry, structured logs with redaction, health check
 - [x] **Phase 2: Catalog & Media** - BRL products/variants with mandatory Gelato metadata, Supabase Storage images, and a Gelato snapshot builder/contract for future Order creation (no Order LineItem persistence yet — verified in Phase 6)
 - [x] **Phase 3: Cart & Checkout (pre-Order)** - Guest + authenticated cart and checkout data collection that creates no Order
-- [x] **Phase 4: Stripe Payments & PaymentAttempt** - Card + async Pix via safe Stripe boundary, every try tracked in PaymentAttempt; implementation/test complete, production activation blocked pending migration and real Stripe layers/config
+- [x] **Phase 4: Stripe Payments & PaymentAttempt** - Card + async Pix via safe Stripe boundary, every try tracked in PaymentAttempt; complete. The activation blocker recorded at the 2026-06-29 closure is historical and superseded by later safe-layer, migration-audit, downstream-closure, and release-stabilization gates; separately deferred Stripe smokes/config do not reopen the phase
 - [x] **Phase 5: Stripe Webhook Ingestion & Idempotency** - Raw-body signature-verified `/hooks/stripe` + WebhookEventLog DB-level dedup
 - [x] **Phase 6: Idempotent Webhook-Driven Order Creation** - Order created only from `payment_confirmed_by_webhook` PaymentAttempt with `order_id = null`, idempotent on payment_intent_id, decoupled state
 - [x] **Phase 7: Analytics Outbox (purchase_completed)** - Durable local outbox written with the Order + async PostHog relay
@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(complete; closed 2026-07-02)*
 - [x] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route *(complete; closed 2026-07-02)*
 - [x] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow *(complete; closed 2026-07-03)*
-- [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests *(not started; blocked until explicit approval)*
+- [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests *(CONTEXT approved; RESEARCH approved; pre-PLAN documentary synchronization complete; PLAN not started; execution blocked)*
 
 ## Phase Details
 
@@ -44,7 +44,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Phase 1 is valid but too large for a single Cursor execution. Planning MUST split it into small, independently reviewable plan slices. These may be planned and executed incrementally and must NOT be implemented as one large uncontrolled change.
 
-**Production target update (2026-06-26):** The original VPS/PM2/Nginx route from Phase 01 planning was superseded in this cycle by Heroku as the current production target. The portable VPS/Nginx artifacts remain useful runbook/templates, but the validated production checkpoint is Heroku app `espacoliminar`, release `v27`, deployed commit `d02fd70`, with Supabase Postgres via pooler, Heroku Redis with TLS, Heroku release phase for migrations, and web/worker dynos up.
+**Historical production checkpoint (2026-06-26):** The original VPS/PM2/Nginx route from Phase 01 planning was superseded in that cycle by Heroku. The portable VPS/Nginx artifacts remain useful runbook/templates; the checkpoint was Heroku app `espacoliminar`, release `v27`, deployed commit `d02fd70`, with Supabase Postgres via pooler, Heroku Redis with TLS, Heroku release phase for migrations, and web/worker dynos up. The current canonical operational classification comes from CACHE-01A PASS, CACHE-01B PASS, INFRA-01 PASS, and the formal stabilization closure: cache Redis active on `web.1` and `worker.1`, stabilization complete, production healthy.
 
 Expected Phase 1 plan slices:
 
@@ -84,7 +84,7 @@ Plans:
 
 - [x] 01-07-PLAN.md — Runbook PM2/Nginx, server/worker e Admin dedicado; current production checkpoint stabilized on Heroku/Supabase/Redis
 
-**Closure status (2026-06-26):** Phase 01 is complete. The VPS/PM2/Nginx route remains as a portable blueprint, but the validated operational checkpoint for this cycle is Heroku app `espacoliminar`, release `v27`, commit `d02fd70`, with `APP_VERSION=d02fd70`, `REDIS_CACHE_PROVIDER_DISABLED=true`, Heroku release phase for `db:migrate:safe`, and production smoke already passed. Phase 02 may begin only in a separate manual-review-gated cycle.
+**Historical closure status (2026-06-26):** Phase 01 is complete. The VPS/PM2/Nginx route remains as a portable blueprint. At that checkpoint, Heroku app `espacoliminar`, release `v27`, commit `d02fd70`, used `APP_VERSION=d02fd70` and `REDIS_CACHE_PROVIDER_DISABLED=true` while the TLS loop was isolated; that cache-disable state was subsequently superseded by CACHE-01A PASS, CACHE-01B PASS, INFRA-01 PASS, cache Redis active on `web.1` and `worker.1`, and the formal release-stabilization closure. Phase 02 began only in its later manual-review-gated cycle.
 
 ### Phase 2: Catalog & Media
 
@@ -162,7 +162,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 3
 **Requirements**: PAY-01, PAY-02, PAY-03, PAY-04
-**Manual gate:** Phase 04 is complete and closed at the manual gate. Production activation remains blocked: `TBD-payment-attempt.ts` is not applied, `medusa db:migrate` is blocked, Stripe card/Pix real is not configured, and `STRIPE_CARD_INITIATION_LAYER` / `STRIPE_PIX_INITIATION_LAYER` still need real safe layers or custom providers. Phase 05 may begin only after human approval.
+**Manual gate:** Phase 04 is complete and closed at the manual gate. **Historical closure note:** on 2026-06-29, activation was still blocked by the draft migration and missing real safe layers/config. Later gates implemented safe Stripe test-mode layers, RC1 confirmed the PaymentAttempt/webhook migrations applied, Phases 05–11 closed, and release stabilization recorded production healthy. Any Stripe smoke/config without specific evidence remains a separate operational concern and does not reopen Phase 04.
 **Success Criteria** (what must be TRUE):
 
   1. Customer can initiate a credit-card payment via a Stripe Payment Session in BRL.
@@ -194,7 +194,7 @@ Plans:
 
 - [x] 04-06-PLAN.md - Invalidation/supersede por mudanca de cart e provas negativas finais da Phase 04
 
-**Closure status (2026-06-29):** Phase 04 is complete for the pre-Order money-path implementation/test scope. Native-first pure Medusa Stripe was rejected after the `04-01` gate; card and Pix were implemented through `filtering_wrapper` + injectable Stripe safe layers. `PaymentAttempt` is auditable with one active attempt per cart, `checkout_data_complete` and server-side amount/currency are payment-start gates, Pix async local states persist `expires_at` without persisting QR/`next_action`, and cart mutation invalidates stale attempts through a safe fingerprint. Final evidence: 89 unit tests, 29 HTTP integration tests, build green, and negative grep clean for Order, webhook, completion, `purchase_completed`, Gelato, and persisted sensitive Stripe payloads. Production activation remains blocked because `TBD-payment-attempt.ts` is still a draft, `medusa db:migrate` has not run, Stripe real card/Pix is not configured, and `STRIPE_CARD_INITIATION_LAYER` / `STRIPE_PIX_INITIATION_LAYER` still need real layers/custom providers. Phase 05 is not started and may begin only after human approval.
+**Historical closure status (2026-06-29):** Phase 04 completed the pre-Order money-path implementation/test scope. Native-first pure Medusa Stripe was rejected after the `04-01` gate; card and Pix were implemented through `filtering_wrapper` + injectable Stripe safe layers. `PaymentAttempt` is auditable with one active attempt per cart, `checkout_data_complete` and server-side amount/currency are payment-start gates, Pix async local states persist `expires_at` without persisting QR/`next_action`, and cart mutation invalidates stale attempts through a safe fingerprint. Final evidence was 89 unit tests, 29 HTTP integration tests, build green, and negative grep clean. The activation blockers recorded at that gate were later superseded by safe Stripe test-mode layers, the RC1 applied-migration audit, Phases 05–11 closures, and formal production stabilization; this does not claim the separately deferred real Pix smoke.
 
 ### Phase 5: Stripe Webhook Ingestion & Idempotency
 
@@ -411,7 +411,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phase 6
 **Requirements**: REF-01, REF-02, EXC-01, EXC-02
-**Manual gate:** Phase 11 is complete and accepted at the manual gate on 2026-07-03. `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Phase 12 is **not started** and blocked until explicit human approval.
+**Manual gate:** Phase 11 is complete and accepted at the manual gate on 2026-07-03. `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. At that historical closure, Phase 12 had not started and remained blocked until explicit human approval.
 **Success Criteria** (what must be TRUE):
 
   1. Operator can request a refund from the Admin; local financial state updates only after a reliable Stripe refund webhook confirms it.
@@ -438,7 +438,7 @@ Plans:
 
 - [x] 11-04-PLAN.md - Final validation, negative proofs and manual gate before Phase 12
 
-**Closure status (2026-07-03):** Phase 11 is complete/closed. `11-01` through `11-04` were executed and verified on branch `gsd/phase-11-refunds-exchanges-admin`. Validation evidence: unit 75/75, HTTP 29/29 — **104 tests PASS**, build PASS, greps G1–G7 PASS (G4 informational only — sanitizer Gelato URL pattern), config/lockfile no diff, `git diff --check` PASS. `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Accepted outcome includes: RefundRequest Admin-safe reservation with captured-truth guards; idempotency; process-local per-order concurrency claim; Stripe refund object webhook as sole local financial truth; `refund.created` never finalizes money; `charge.refunded` informational/idempotent; `payment_status` recomputation without auto-canceling `order_status`; ExchangeRequest operational workflow for `defect`/`wrong_product`; manual Correios reverse logistics; raw body allowlist on exchange routes; sanitization of notes, affected_items, and payloads. No real migration, `medusa db:migrate`, deploy, Stripe real, Stripe CLI smoke, Gelato real, Correios API, broad OperationalAlert, broad AdminActionLog, or Phase 12 work. Migration real, cross-dyno refund lock, and Stripe refund production smoke remain separate future gates. Human review accepted Phase 11 at the manual gate (`11-04-SUMMARY.md`, `11-CLOSURE.md`). Phase 12 is **not started** and blocked until explicit human approval.
+**Closure status (2026-07-03):** Phase 11 is complete/closed. `11-01` through `11-04` were executed and verified on branch `gsd/phase-11-refunds-exchanges-admin`. Validation evidence: unit 75/75, HTTP 29/29 — **104 tests PASS**, build PASS, greps G1–G7 PASS (G4 informational only — sanitizer Gelato URL pattern), config/lockfile no diff, `git diff --check` PASS. `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Accepted outcome includes: RefundRequest Admin-safe reservation with captured-truth guards; idempotency; process-local per-order concurrency claim; Stripe refund object webhook as sole local financial truth; `refund.created` never finalizes money; `charge.refunded` informational/idempotent; `payment_status` recomputation without auto-canceling `order_status`; ExchangeRequest operational workflow for `defect`/`wrong_product`; manual Correios reverse logistics; raw body allowlist on exchange routes; sanitization of notes, affected_items, and payloads. No real migration, `medusa db:migrate`, deploy, Stripe real, Stripe CLI smoke, Gelato real, Correios API, broad OperationalAlert, broad AdminActionLog, or Phase 12 work occurred in that closure. At that historical point, Phase 12 had not started and remained blocked until explicit human approval.
 
 ### Phase 12: Ops, Audit & Critical Tests
 
@@ -446,14 +446,18 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phases 1-11
 **Requirements**: OPS-01, OPS-02, TEST-01
-**Manual gate:** Phase 12 is **not started** and blocked until explicit human approval.
+**Manual gate:** Phase 12 CONTEXT is approved. Phase 12 RESEARCH is approved. The mandatory pre-PLAN documentary synchronization is complete. PLAN has not started; execution remains blocked. Next permitted step: human review and explicit authorization of PLAN.
+
+**Boundary preserved:** Phase 09 `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the local fulfillment truth and closes FUL-04. Phase 12 OPS-01 adds the promotion of that condition to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
+
+**Known PRD divergence:** OperationalAlert email delivery via Resend is outside the Phase 12 MVP, is a known divergence from the PRD, and is not a blocker for OPS-01.
 **Success Criteria** (what must be TRUE):
 
   1. Failed fulfillments and stuck payments surface as persisted OperationalAlerts.
   2. Every Admin action on money, order, or fulfillment is recorded in AdminActionLog for audit.
   3. Automated tests guard the core invariants — no Order without confirmed payment (INV-1/2), webhook idempotency (INV-3/4), single active Gelato order (INV-8), and refund/order-status decoupling (INV-9/10) — and they pass.
 
-**Plans**: TBD
+**Plans**: 0 planned / 0 executed
 
 ## Progress
 
@@ -465,7 +469,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Foundation & Observability | 7/7 | Complete | 2026-06-26 |
 | 2. Catalog & Media | 5/5 | Complete | 2026-06-27 |
 | 3. Cart & Checkout (pre-Order) | 5/5 | Complete | 2026-06-27 |
-| 4. Stripe Payments & PaymentAttempt | 6/6 | Complete (activation blocked) | 2026-06-29 |
+| 4. Stripe Payments & PaymentAttempt | 6/6 | Complete (historical activation blocker superseded by later gates) | 2026-06-29 |
 | 5. Stripe Webhook Ingestion & Idempotency | 4/4 | Complete | 2026-06-30 |
 | 6. Idempotent Webhook-Driven Order Creation | 5/5 | Complete | 2026-06-30 |
 | 7. Analytics Outbox (purchase_completed) | 3/3 | Complete | 2026-07-01 |
@@ -473,7 +477,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Gelato Fulfillment & Webhook | 5/5 | Complete / Closed | 2026-07-02 |
 | 10. Secure Guest Tracking | 3/3 | Complete / Closed | 2026-07-02 |
 | 11. Refunds & Exchanges (Admin) | 4/4 | Complete / Closed | 2026-07-03 |
-| 12. Ops, Audit & Critical Tests | 0/TBD | Not started (blocked until explicit approval) | - |
+| 12. Ops, Audit & Critical Tests | 0/0 | CONTEXT/RESEARCH approved; pre-PLAN docs synchronized; PLAN not started; execution blocked | - |
 
 ---
 *Roadmap created: 2026-06-22*

@@ -1,10 +1,10 @@
 ---
 phase: 12-ops-audit-critical-tests
 artifact: discussion-log
-status: research-revised-awaiting-human-review
+status: pre-plan-documentary-sync-complete-awaiting-plan-authorization
 created_at: 2026-07-16
 updated_at: 2026-07-20
-scope: research-gate
+scope: pre-plan-documentary-sync-gate
 ---
 
 # Phase 12 Discussion Log — Ops, Audit & Critical Tests
@@ -19,6 +19,8 @@ scope: research-gate
 | `.planning/STATE.md` | Stabilization closed; Phase 12 gate tracking |
 | `.planning/config.json` | Interactive/manual gates; discuss_mode; no auto-advance |
 | `.planning/phases/11-refunds-exchanges-admin/11-CLOSURE.md` | Refund/exchange complete; broad alert/audit deferred to Phase 12 |
+| `.planning/phases/10-secure-guest-tracking/10-CLOSURE.md` | TRK-01/TRK-02 complete; hash-only token and public lookup boundary |
+| `.planning/phases/09-gelato-fulfillment-webhook/09-CLOSURE.md` | FUL-01..04/WHK-03 complete; local operator-attention truth |
 | `.planning/phases/11-refunds-exchanges-admin/11-04-SUMMARY.md` | Validation evidence; no Phase 12 start |
 | `.planning/phases/09-gelato-fulfillment-webhook/*` | Minimal operator attention contract; Gelato stale/dead-letter |
 | `.planning/quick/260715-infra01-release-infrastructure/SUMMARY.md` | INFRA-01 PASS; Redis fail-fast; closed |
@@ -156,14 +158,31 @@ Incorporated from parallel track agents after first RESEARCH draft:
 - **R12-06:** Fixed Jest layout to flat `integration-tests/http/invariants-inv*.spec.ts`.
 - **R12-07:** Kept REQUIREMENTS Phase 09–11 checkboxes, PROJECT active checklist, historical production-blocked language, and superseded `REDIS_CACHE_PROVIDER_DISABLED=true` wording as mandatory documentary corrections before PLAN; those documents were not changed in this gate.
 
+## P12-PREPLAN-DOCSYNC
+
+Human review approved Phase 12 CONTEXT and RESEARCH. The mandatory documentary synchronization identified by R12-07 is complete:
+
+- `WHK-03`, `FUL-01..04`, `TRK-01..02`, `REF-01..02`, and `EXC-01..02` are reconciled as complete from the accepted Phase 09–11 closures, including traceability.
+- `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the Phase 09 local fulfillment truth and keeps FUL-04 closed. Phase 12 OPS-01 is the additive promotion to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
+- The Phase 01 cache-disable checkpoint is explicitly historical and superseded by CACHE-01A PASS, CACHE-01B PASS, INFRA-01 PASS, cache Redis active in `web.1` and `worker.1`, and the formal stabilization closure.
+- The Phase 04 activation-blocked wording is historical and superseded by later safe-layer, applied-migration audit, downstream-closure, and stabilization gates. Separately deferred Stripe smokes/config are not overstated.
+- PROJECT active checkboxes are reconciled through Phase 11; OPS-01, OPS-02, and TEST-01 remain incomplete.
+- OperationalAlert email / Resend remains outside the Phase 12 MVP, is a known PRD divergence, and is not an OPS-01 blocker.
+- No PLAN, VALIDATION, SPEC/SDD, implementation prompt, runtime code, test, model, migration, dependency, package/lockfile, deploy, push, or production change was started.
+
 ## Gate status
 
 | Step | Status |
 |------|--------|
-| Human review of `12-CONTEXT.md` | Accepted (authorized RESEARCH) |
-| RESEARCH (`12-RESEARCH.md`) | **Revised — awaiting human review** |
+| Human review of `12-CONTEXT.md` | **Approved** |
+| RESEARCH (`12-RESEARCH.md`) | **Approved** |
+| Pre-PLAN documentary synchronization | **Complete** |
 | PLAN | not started |
 | Execution | blocked |
+| Phase 12 plans | 0 planned / 0 executed |
+| Milestone progress | 11/12 phases complete; 92% |
+| Phase 12 requirements | OPS-01 / OPS-02 / TEST-01 incomplete |
+| Next permitted step | Human review and explicit authorization of PLAN |
 
 Baseline at P12-RESEARCH-R1 start:
 
@@ -174,11 +193,13 @@ expected worktree=clean
 observed pre-existing untracked=.planning/research/.cache/
 ```
 
-The untracked cache was not edited, deleted or staged because it is outside this gate's allowlist.
+The untracked cache was not edited, deleted or staged during P12-RESEARCH-R1 because it was outside that gate's allowlist. At the P12-PREPLAN-DOCSYNC baseline, `.planning/research/.cache/` was absent; `.gitignore` therefore required no change.
 
 ```text
-Phase 12 RESEARCH revised
-awaiting human review
+Phase 12 CONTEXT approved
+Phase 12 RESEARCH approved
+pre-PLAN documentary synchronization complete
 PLAN not started
 execution blocked
+next permitted step: human review and explicit authorization of PLAN
 ```

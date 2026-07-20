@@ -27,25 +27,26 @@ Um pedido (Order) só existe e só é enviado à produção (Gelato) após confi
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Setup Medusa v2 com PostgreSQL/Supabase e Redis
-- [ ] Admin Medusa em subdomínio próprio
-- [ ] Catálogo: produtos, variantes e preços em BRL com metadados Gelato obrigatórios
-- [ ] Imagens de produto em Supabase Storage
-- [ ] Carrinho e checkout convidado e autenticado
-- [ ] Pagamento Stripe (cartão e Pix) via Payment Collection / Payment Session
-- [ ] PaymentAttempt customizado para rastrear tentativas de pagamento
-- [ ] Webhook Stripe validado, persistido e idempotente (WebhookEventLog)
-- [ ] Criação de Order somente após webhook Stripe canônico aprovado, idempotente (CheckoutCompletionLog)
-- [ ] purchase_completed registrado duravelmente pelo backend (AnalyticsEventLog como outbox local)
-- [ ] Fulfillment Gelato somente após Order confirmado + purchase_completed local durável
-- [ ] E-mail de confirmação via Resend antes da tentativa Gelato (EmailDeliveryLog)
-- [ ] Módulo de fulfillment Gelato + webhook Gelato + tracking
-- [ ] TrackingAccessToken seguro (nunca em texto puro) para acesso de convidados
-- [ ] Reembolso via Admin confirmado por webhook Stripe
-- [ ] Trocas operacionais no Admin e fluxo Correios manual/semiautomático
-- [ ] OperationalAlert e AdminActionLog para operação e auditoria
-- [ ] Observabilidade: Sentry backend, logs estruturados, health check
-- [ ] Testes críticos cobrindo invariantes de pagamento/Order/fulfillment
+- [x] Setup Medusa v2 com PostgreSQL/Supabase e Redis
+- [x] Admin Medusa em subdomínio próprio
+- [x] Catálogo: produtos, variantes e preços em BRL com metadados Gelato obrigatórios
+- [x] Imagens de produto em Supabase Storage
+- [x] Carrinho e checkout convidado e autenticado
+- [x] Pagamento Stripe (cartão e Pix) via Payment Collection / Payment Session
+- [x] PaymentAttempt customizado para rastrear tentativas de pagamento
+- [x] Webhook Stripe validado, persistido e idempotente (WebhookEventLog)
+- [x] Criação de Order somente após webhook Stripe canônico aprovado, idempotente (CheckoutCompletionLog)
+- [x] purchase_completed registrado duravelmente pelo backend (AnalyticsEventLog como outbox local)
+- [x] Fulfillment Gelato somente após Order confirmado + purchase_completed local durável
+- [x] E-mail de confirmação via Resend antes da tentativa Gelato (EmailDeliveryLog)
+- [x] Módulo de fulfillment Gelato + webhook Gelato + tracking
+- [x] TrackingAccessToken seguro (nunca em texto puro) para acesso de convidados
+- [x] Reembolso via Admin confirmado por webhook Stripe
+- [x] Trocas operacionais no Admin e fluxo Correios manual/semiautomático
+- [ ] OperationalAlert persistido e consultável para falhas operacionais (OPS-01, Phase 12 incompleta)
+- [ ] AdminActionLog para ações administrativas de dinheiro/pedido/fulfillment (OPS-02, Phase 12 incompleta)
+- [x] Observabilidade: Sentry backend, logs estruturados, health check
+- [ ] Testes críticos cobrindo invariantes de pagamento/Order/fulfillment (TEST-01, Phase 12 incompleta)
 
 ### Out of Scope
 
@@ -64,7 +65,7 @@ Um pedido (Order) só existe e só é enviado à produção (Gelato) após confi
 ## Context
 
 - **Stack alvo**: Medusa v2, Node.js, TypeScript, PostgreSQL/Supabase, Supabase Storage, Redis, Stripe, Resend, Gelato, Sentry, PostHog.
-- **Infra**: VPS Linux com PM2 (ou equivalente) e Nginx (ou equivalente); Admin em subdomínio dedicado. **Checkpoint atual (2026-06-26):** produção validada em Heroku app `espacoliminar`, com web/worker dynos, Supabase Postgres via pooler e Heroku Redis com TLS; a rota VPS/PM2/Nginx fica como blueprint portável.
+- **Infra**: VPS Linux com PM2 (ou equivalente) e Nginx (ou equivalente); Admin em subdomínio dedicado. **Checkpoint histórico (2026-06-26):** produção validada em Heroku app `espacoliminar`, com web/worker dynos, Supabase Postgres via pooler e Heroku Redis com TLS; a rota VPS/PM2/Nginx fica como blueprint portável. **Estado consolidado (2026-07-16):** CACHE-01A PASS, CACHE-01B PASS e INFRA-01 PASS; cache Redis ativo em `web.1` e `worker.1`; estabilização concluída e produção saudável.
 - **Arquitetura**: headless — backend expõe contratos de API que o storefront futuro consumirá (PRD Frontend v1.1 é referência de contrato, não escopo de build).
 - **Domínio**: e-commerce POD exige separação rígida entre confirmação de pagamento (Stripe) e disparo de produção (Gelato), com logs de outbox/idempotência para evitar cobrança fantasma, pedido duplicado e fulfillment indevido.
 - **Analytics**: purchase_completed é um evento de domínio do backend (outbox durável), independente do sucesso do PostHog no frontend.
@@ -115,4 +116,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-22 after initialization*
+*Last updated: 2026-07-20 during the approved Phase 12 pre-PLAN documentary synchronization; Phases 01–11 reconciled and OPS-01/OPS-02/TEST-01 left incomplete*

@@ -12,7 +12,7 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 ### Foundation
 
 - [x] **SETUP-01**: Medusa v2 backend runs locally and in production with PostgreSQL/Supabase as the database. Complete via Phase 01 closure: Heroku app `espacoliminar`, release `v27`, commit `d02fd70`, with Supabase Postgres via pooler and production smoke accepted.
-- [x] **SETUP-02**: Redis is wired for the event bus, cache, and workflow engine (no in-memory defaults in production). Complete via Phase 01 closure for the accepted runtime; Heroku Redis with TLS is validated for health and Redis-backed modules, with `REDIS_CACHE_PROVIDER_DISABLED=true` carried as a temporary operational workaround.
+- [x] **SETUP-02**: Redis is wired for the event bus, cache, and workflow engine (no in-memory defaults in production). Complete via Phase 01 and the later CACHE-01A PASS, CACHE-01B PASS, and INFRA-01 PASS gates. The Redis cache is active on `web.1` and `worker.1`; the Phase 01 cache-disable workaround is historical and superseded by the formal release-stabilization closure.
 - [x] **SETUP-03**: Medusa Admin is served on a dedicated subdomain. Complete via Phase 01 plan/closure evidence; the VPS/PM2/Nginx dedicated-Admin route remains a portable blueprint while the current validated production target is Heroku.
 - [x] **SETUP-04**: A separate worker process runs subscribers/scheduled jobs in the production runtime. Complete via Phase 01 closure: current checkpoint uses Heroku `web.1` and `worker.1` dynos; the original PM2/Nginx route remains a portable blueprint.
 - [x] **SETUP-05**: Central log redaction guarantees secrets, full card data, and plaintext tokens never appear in logs (INV-12). Complete via Phase 01 structured logging/redaction and production smoke evidence.
@@ -37,16 +37,16 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Payments
 
-- [x] **PAY-01**: Customer can pay by credit card via Stripe using Payment Collection / Payment Session. Implementation complete; production activation blocked. Phase 04 implements the pre-Order card initiation contract through a safe Stripe boundary (`filtering_wrapper` + `STRIPE_CARD_INITIATION_LAYER`), with `client_secret` response-only, server-side amount/currency gates, one auditable `PaymentAttempt`, and no native-first pure Medusa Stripe persistence. Real Stripe card setup/layer remains outside Phase 04.
-- [x] **PAY-02**: Customer can pay by Pix via Stripe (BRL), with async confirmation handled correctly. Implementation complete; production activation blocked. Phase 04 implements Pix initiation through the safe Stripe boundary (`STRIPE_PIX_INITIATION_LAYER`), persists safe `expires_at` and local async states, keeps QR/copia-e-cola/`next_action` response-only, and does not treat Pix pending state as financial truth. Real Stripe Pix setup/layer remains outside Phase 04.
-- [x] **PAY-03**: Pending, expired, cancelled, or failed Pix never results in an Order (INV-2). Implementation complete; production activation blocked. Phase 04 verifies `awaiting_pix_payment`, `pix_expired`, `payment_failed`, `payment_canceled`, invalidated, and superseded paths stay pre-Order; final negative proofs show no Order/webhook/completion/purchase/Gelato path.
-- [x] **PAY-04**: Every payment try is recorded as a custom PaymentAttempt, auditable per cart (multiple card/Pix retries). Implementation complete; production activation blocked. Phase 04 implements the `PaymentAttempt` module/state machine, one active attempt per cart, retry/supersede history, and cart-mutation invalidation by safe fingerprint; `TBD-payment-attempt.ts` remains a draft and `medusa db:migrate` is still blocked pending human approval.
+- [x] **PAY-01**: Customer can pay by credit card via Stripe using Payment Collection / Payment Session. Complete through the Phase 04 safe pre-Order boundary (`filtering_wrapper` + `STRIPE_CARD_INITIATION_LAYER`), Gate 04A real test-mode layer/smoke, and the later webhook-to-Order closures. `client_secret` remains response-only and amount/currency gates remain server-side. The Phase 04 wording that production activation was blocked is historical and superseded by later gates and the formal production-stabilization closure.
+- [x] **PAY-02**: Customer can pay by Pix via Stripe (BRL), with async confirmation handled correctly. Complete through the Phase 04 safe boundary (`STRIPE_PIX_INITIATION_LAYER`) and the later canonical webhook/Order closures; safe `expires_at` and local async states persist while QR/copia-e-cola/`next_action` remain response-only. The Phase 04 production-activation blocker is historical; no claim is made that the separately deferred real Pix smoke was performed.
+- [x] **PAY-03**: Pending, expired, cancelled, or failed Pix never results in an Order (INV-2). Complete via Phase 04 negative-state proofs plus the Phase 05/06 canonical webhook-to-Order closures: `awaiting_pix_payment`, `pix_expired`, `payment_failed`, `payment_canceled`, invalidated, and superseded attempts remain pre-Order. The former Phase 04 activation-blocked wording is historical.
+- [x] **PAY-04**: Every payment try is recorded as a custom PaymentAttempt, auditable per cart (multiple card/Pix retries). Complete via the Phase 04 state machine and later applied-migration evidence recorded by the RC1 audit: one active attempt per cart, retry/supersede history, and cart-mutation invalidation by safe fingerprint. The former draft-migration/production-activation blocker is historical.
 
 ### Webhooks & Idempotency
 
 - [x] **WHK-01**: The Stripe webhook endpoint verifies the signature against the raw request body and rejects invalid events (INV-3). Phase 05 complete: raw-body `/hooks/stripe`, signature verification, HTTP 400 on forged payloads.
 - [x] **WHK-02**: Every received Stripe event is persisted to WebhookEventLog and deduplicated by event id (DB-level unique constraint), making processing idempotent (INV-3). Phase 05 complete: DB-level dedup, replay/concurrent no-op, PaymentAttempt webhook states with `order_id = null`.
-- [ ] **WHK-03**: The Gelato webhook is ingested using the same validated, idempotent, persisted-event pattern
+- [x] **WHK-03**: The Gelato webhook is ingested using the same validated, idempotent, persisted-event pattern. Complete via Phase 09 closure: `POST /hooks/gelato` uses fail-closed HTTP Header authentication, persists `WebhookEventLog(provider=gelato)`, deduplicates by `payload.id`, and updates internal fulfillment status/tracking for `order_status_updated`.
 
 ### Order Creation & State
 
@@ -67,22 +67,22 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Fulfillment (Gelato)
 
-- [ ] **FUL-01**: Gelato fulfillment is triggered only after a confirmed Order and a durable local `purchase_completed` record exist (INV-6)
-- [ ] **FUL-02**: An Order cannot produce more than one active Gelato order; dispatch is guarded against duplicates from webhook redelivery or manual retry (INV-8)
-- [ ] **FUL-03**: Gelato status/tracking updates are ingested via the Gelato webhook and update the Fulfillment record
-- [ ] **FUL-04**: Transient Gelato failures are retried; persistent failures raise an operational alert rather than being silently lost
+- [x] **FUL-01**: Gelato fulfillment is triggered only after a confirmed Order and a durable local `purchase_completed` record exist (INV-6). Complete via Phase 09 closure with the accepted eligibility gate, which also requires `EmailDeliveryLog(order_confirmation).status = sent` for automatic dispatch.
+- [x] **FUL-02**: An Order cannot produce more than one active Gelato order; dispatch is guarded against duplicates from webhook redelivery or manual retry (INV-8). Complete via Phase 09 closure: single-active guard plus local idempotency key `gelato-dispatch:{order_id}`.
+- [x] **FUL-03**: Gelato status/tracking updates are ingested via the Gelato webhook and update the Fulfillment record. Complete via Phase 09 closure: the accepted `order_status_updated` webhook updates the internal fulfillment summary.
+- [x] **FUL-04**: Transient Gelato failures are retried; persistent failures surface instead of being silently lost. Complete via Phase 09 closure: retry/backoff/dead-letter, stale recovery without blind redispatch, and `GelatoFulfillment.requires_operator_attention` / `dead_letter` as the local fulfillment truth. Phase 12 OPS-01 remains additive: it promotes that condition to a persisted, consultable `OperationalAlert`; FUL-04 is not reopened.
 
 ### Tracking
 
-- [ ] **TRK-01**: A guest can access order/tracking status via a secure TrackingAccessToken
-- [ ] **TRK-02**: Tracking tokens are stored hashed/encrypted and never in plaintext (INV-11)
+- [x] **TRK-01**: A guest can access order/tracking status via a secure TrackingAccessToken. Complete via Phase 10 closure: body-only token lookup at `POST /store/tracking/lookup`, allowlist-only public response, and enumeration protection.
+- [x] **TRK-02**: Tracking tokens are stored hashed/encrypted and never in plaintext (INV-11). Complete via Phase 10 closure: HMAC-SHA256 hash-only persistence, transient plaintext only, and constant-time verification.
 
 ### Refunds & Exchanges
 
-- [ ] **REF-01**: Operator can issue a refund from the Admin; local financial state updates only after a reliable Stripe webhook confirms it (INV-9)
-- [ ] **REF-02**: A refund never automatically sets `order_status` to canceled (INV-10)
-- [ ] **EXC-01**: Operator can manage operational exchanges (ExchangeRequest) for defective/wrong prints from the Admin
-- [ ] **EXC-02**: Reverse logistics use a manual/semi-automatic Correios flow (tracking codes entered in Admin), with no automated Correios API integration
+- [x] **REF-01**: Operator can issue a refund from the Admin; local financial state updates only after a reliable Stripe webhook confirms it (INV-9). Complete via Phase 11 closure: Admin creates a local `requested` reservation, while terminal Stripe refund-object webhooks remain the sole local financial truth.
+- [x] **REF-02**: A refund never automatically sets `order_status` to canceled (INV-10). Complete via Phase 11 closure: refund confirmation recomputes `payment_status` while preserving `order_status`.
+- [x] **EXC-01**: Operator can manage operational exchanges (ExchangeRequest) for defective/wrong prints from the Admin. Complete via Phase 11 closure: operational `ExchangeRequest` flow for `defect` / `wrong_product`, without automatic financial effects.
+- [x] **EXC-02**: Reverse logistics use a manual/semi-automatic Correios flow (tracking codes entered in Admin), with no automated Correios API integration. Complete via Phase 11 closure.
 
 ### Operations & Audit
 
@@ -138,7 +138,7 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | SETUP-01 | Phase 1 | Complete (Phase 01 closure: Medusa backend validated on Heroku with Supabase Postgres) |
-| SETUP-02 | Phase 1 | Complete (Phase 01 closure: Heroku Redis validated; cache-disable flag carried as temporary ops workaround) |
+| SETUP-02 | Phase 1 + CACHE-01A/B + INFRA-01 | Complete (Redis event bus/cache/workflow; cache active on web/worker; Phase 01 cache-disable workaround historical and superseded) |
 | SETUP-03 | Phase 1 | Complete (Phase 01 closure; dedicated Admin route/runbook retained, Heroku is current validated target) |
 | SETUP-04 | Phase 1 | Complete (Phase 01 closure: Heroku web/worker dynos validated) |
 | SETUP-05 | Phase 1 | Complete (Phase 01 structured logger/redaction evidence) |
@@ -151,13 +151,13 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | CART-02 | Phase 3 | Complete (03-01/03-02/03-05 auth cart + secure attach) |
 | CART-03 | Phase 3 | Complete (03-03/03-04/03-05 email + BR address + masked federal_tax_id) |
 | CART-04 | Phase 3 | Complete (03-01..03-05 pre-Order boundary + negative proofs) |
-| PAY-01 | Phase 4 | Complete for implementation/test scope; production activation blocked (safe card boundary complete, real Stripe card layer/config pending) |
-| PAY-02 | Phase 4 | Complete for implementation/test scope; production activation blocked (safe Pix boundary complete, real Stripe Pix layer/config pending) |
-| PAY-03 | Phase 4 | Complete for implementation/test scope; production activation blocked (local Pix negative Order proofs complete, webhook truth deferred to Phase 5/6) |
-| PAY-04 | Phase 4 | Complete for implementation/test scope; production activation blocked (`PaymentAttempt` implementation complete, migration draft not applied) |
+| PAY-01 | Phase 4 + Gate 04A + Phases 5–6 | Complete (safe card boundary, real test-mode layer/smoke, and canonical webhook-to-Order path; Phase 04 activation blocker is historical) |
+| PAY-02 | Phase 4 + Phases 5–6 | Complete (safe async Pix boundary and canonical webhook-to-Order path; Phase 04 activation blocker historical; real Pix smoke remains separately deferred) |
+| PAY-03 | Phase 4 + Phases 5–6 | Complete (unpaid/expired/canceled/failed Pix remains pre-Order; webhook truth and Order gate closed later) |
+| PAY-04 | Phase 4 + RC1 | Complete (auditable PaymentAttempt lifecycle; former migration/activation blocker historical after applied-migration audit) |
 | WHK-01 | Phase 5 | Complete (05-02/05-04 raw-body signature verification) |
 | WHK-02 | Phase 5 | Complete (05-01/05-02/05-03/05-04 WebhookEventLog dedup + PaymentAttempt webhook states) |
-| WHK-03 | Phase 9 | Pending |
+| WHK-03 | Phase 9 | Complete (Phase 09 closure: authenticated, persisted, deduplicated Gelato webhook with internal status/tracking update) |
 | ORD-01 | Phase 6 | Complete (Phase 06 closure: canonical internal post-webhook Order creation only) |
 | ORD-02 | Phase 6 | Complete (Phase 06 closure: CheckoutCompletionLog idempotency under replay/concurrency) |
 | ORD-03 | Phase 6 | Complete (Phase 06 closure: decoupled `order_status` / `payment_status` in `Order.metadata`) |
@@ -166,16 +166,16 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | ANL-03 | Phase 7 | Complete (Phase 07 closure: async PostHog relay with retry/dead-letter, non-blocking) |
 | EMAIL-01 | Phase 8 | Complete (Phase 08 closure: async Resend confirmation after Order + durable local `purchase_completed`) |
 | EMAIL-02 | Phase 8 | Complete (Phase 08 closure: `EmailDeliveryLog` idempotency, audit, retry/dead-letter) |
-| FUL-01 | Phase 9 | Pending |
-| FUL-02 | Phase 9 | Pending |
-| FUL-03 | Phase 9 | Pending |
-| FUL-04 | Phase 9 | Pending |
-| TRK-01 | Phase 10 | Pending |
-| TRK-02 | Phase 10 | Pending |
-| REF-01 | Phase 11 | Pending |
-| REF-02 | Phase 11 | Pending |
-| EXC-01 | Phase 11 | Pending |
-| EXC-02 | Phase 11 | Pending |
+| FUL-01 | Phase 9 | Complete (Phase 09 closure: eligibility after confirmed Order + durable local purchase_completed + confirmation email sent) |
+| FUL-02 | Phase 9 | Complete (Phase 09 closure: single-active guard + idempotent gelato-dispatch:{order_id}) |
+| FUL-03 | Phase 9 | Complete (Phase 09 closure: order_status_updated updates internal fulfillment status/tracking) |
+| FUL-04 | Phase 9 | Complete (Phase 09 closure: retry/backoff/dead-letter + local operator-attention truth; OPS-01 promotion remains Phase 12) |
+| TRK-01 | Phase 10 | Complete (Phase 10 closure: body-only token-gated lookup, allowlist response, enumeration protection) |
+| TRK-02 | Phase 10 | Complete (Phase 10 closure: hash-only persistence, transient plaintext, constant-time verification) |
+| REF-01 | Phase 11 | Complete (Phase 11 closure: Admin reservation + terminal Stripe refund-object webhook truth) |
+| REF-02 | Phase 11 | Complete (Phase 11 closure: financial recomputation without automatic order cancellation) |
+| EXC-01 | Phase 11 | Complete (Phase 11 closure: operational ExchangeRequest Admin flow without financial effects) |
+| EXC-02 | Phase 11 | Complete (Phase 11 closure: manual/semi-automatic Correios reverse flow, no API) |
 | OPS-01 | Phase 12 | Pending |
 | OPS-02 | Phase 12 | Pending |
 | OBS-01 | Phase 1 | Complete (Phase 01 Sentry backend integration) |
@@ -190,4 +190,4 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 
 ---
 *Requirements defined: 2026-06-22*
-*Last updated: 2026-07-01 after closing Phase 08 documentally and marking EMAIL-01..EMAIL-02 complete; Phase 09 remains not started*
+*Last updated: 2026-07-20 during the approved pre-PLAN documentary synchronization after Phase 09–11 closures; OPS-01, OPS-02, and TEST-01 remain incomplete*
