@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(complete; closed 2026-07-02)*
 - [x] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route *(complete; closed 2026-07-02)*
 - [x] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow *(complete; closed 2026-07-03)*
-- [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests *(CONTEXT approved; RESEARCH approved; pre-PLAN documentary synchronization complete; PLAN not started; execution blocked)*
+- [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests *(CONTEXT/RESEARCH approved; PLAN complete with 6 plans; checker PASS; 0 executed; awaiting human review; SPEC/SDD and implementation prompt not started; execution blocked)*
 
 ## Phase Details
 
@@ -446,7 +446,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phases 1-11
 **Requirements**: OPS-01, OPS-02, TEST-01
-**Manual gate:** Phase 12 CONTEXT is approved. Phase 12 RESEARCH is approved. The mandatory pre-PLAN documentary synchronization is complete. PLAN has not started; execution remains blocked. Next permitted step: human review and explicit authorization of PLAN.
+**Manual gate:** Phase 12 CONTEXT and RESEARCH are approved. PLAN is complete with six manual-review-gated slices; 0 executed. The final checker passed with 0 blockers and 0 warnings. Human review is pending. SPEC/SDD and implementation prompt have not started; execution remains blocked. Next permitted step: human review of PLAN/VALIDATION.
 
 **Boundary preserved:** Phase 09 `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the local fulfillment truth and closes FUL-04. Phase 12 OPS-01 adds the promotion of that condition to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
 
@@ -457,7 +457,15 @@ Plans:
   2. Every Admin action on money, order, or fulfillment is recorded in AdminActionLog for audit.
   3. Automated tests guard the core invariants — no Order without confirmed payment (INV-1/2), webhook idempotency (INV-3/4), single active Gelato order (INV-8), and refund/order-status decoupling (INV-9/10) — and they pass.
 
-**Plans**: 0 planned / 0 executed
+**Plans**: 6 planned / 0 executed
+
+Plans:
+- [ ] 12-01-PLAN.md — Local disposable PostgreSQL harness and fail-closed proof foundation
+- [ ] 12-02-PLAN.md — OperationalAlert persistence, atomic upsert and Admin GET list/detail
+- [ ] 12-03-PLAN.md — Factual fulfillment/payment-stuck detections and worker scanner
+- [ ] 12-04-PLAN.md — Append-only AdminActionLog primitives and user-only actor guard
+- [ ] 12-05-PLAN.md — Explicit Strategy B audit instrumentation on refund/exchange Admin routes
+- [ ] 12-06-PLAN.md — Named invariant suites, PostgreSQL concurrency proofs and final validation
 
 ## Progress
 
@@ -477,7 +485,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Gelato Fulfillment & Webhook | 5/5 | Complete / Closed | 2026-07-02 |
 | 10. Secure Guest Tracking | 3/3 | Complete / Closed | 2026-07-02 |
 | 11. Refunds & Exchanges (Admin) | 4/4 | Complete / Closed | 2026-07-03 |
-| 12. Ops, Audit & Critical Tests | 0/0 | CONTEXT/RESEARCH approved; pre-PLAN docs synchronized; PLAN not started; execution blocked | - |
+| 12. Ops, Audit & Critical Tests | 0/6 | PLAN complete; checker PASS; awaiting human review; SPEC/SDD and implementation prompt not started; execution blocked | - |
 
 ---
 *Roadmap created: 2026-06-22*

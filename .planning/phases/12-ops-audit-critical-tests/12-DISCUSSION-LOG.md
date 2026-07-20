@@ -1,10 +1,10 @@
 ---
 phase: 12-ops-audit-critical-tests
 artifact: discussion-log
-status: pre-plan-documentary-sync-complete-awaiting-plan-authorization
+status: plan-complete-checker-passed-awaiting-human-review
 created_at: 2026-07-16
 updated_at: 2026-07-20
-scope: pre-plan-documentary-sync-gate
+scope: planning-only-gate
 ---
 
 # Phase 12 Discussion Log — Ops, Audit & Critical Tests
@@ -177,12 +177,12 @@ Human review approved Phase 12 CONTEXT and RESEARCH. The mandatory documentary s
 | Human review of `12-CONTEXT.md` | **Approved** |
 | RESEARCH (`12-RESEARCH.md`) | **Approved** |
 | Pre-PLAN documentary synchronization | **Complete** |
-| PLAN | not started |
+| PLAN | **Complete — checker PASS (0 blockers / 0 warnings); awaiting human review** |
 | Execution | blocked |
-| Phase 12 plans | 0 planned / 0 executed |
+| Phase 12 plans | 6 planned / 0 executed |
 | Milestone progress | 11/12 phases complete; 92% |
 | Phase 12 requirements | OPS-01 / OPS-02 / TEST-01 incomplete |
-| Next permitted step | Human review and explicit authorization of PLAN |
+| Next permitted step | Human review of PLAN/VALIDATION; SPEC/SDD and implementation prompt remain not started |
 
 Baseline at P12-RESEARCH-R1 start:
 
@@ -199,7 +199,180 @@ The untracked cache was not edited, deleted or staged during P12-RESEARCH-R1 bec
 Phase 12 CONTEXT approved
 Phase 12 RESEARCH approved
 pre-PLAN documentary synchronization complete
-PLAN not started
+PLAN complete: 6 plans / 4 waves
 execution blocked
-next permitted step: human review and explicit authorization of PLAN
+next permitted step: human review of PLAN
+```
+
+## P12-PLAN-01
+
+### Authorization and scope
+
+The human explicitly authorized **planning only** on 2026-07-20. This gate created exactly six executable PLAN prompts plus `12-VALIDATION.md`, synchronized this discussion log, ROADMAP and STATE, and did not authorize implementation.
+
+The planning authorization is recorded as binding decision **P12-PLAN-01**:
+
+- exactly six plans;
+- Wave 1: disposable PostgreSQL harness/foundation;
+- Wave 2: OperationalAlert + Admin GET and AdminActionLog primitives;
+- Wave 3: alert detections and factual Admin instrumentation;
+- Wave 4: named invariant suites + final validation;
+- all slices stop at manual review;
+- no runtime edit, test run, migration run, provider call, deploy, push or commit in this gate.
+
+### Plan decomposition
+
+| Wave | Plan | Outcome | Depends on |
+|------|------|---------|------------|
+| 1 | 12-01 | Local disposable PostgreSQL harness and fail-closed proof foundation | — |
+| 2 | 12-02 | OperationalAlert module, atomic upsert and Admin GET list/detail | 12-01 |
+| 2 | 12-04 | AdminActionLog append-only primitives and user-only actor guard | 12-01 |
+| 3 | 12-03 | Fulfillment/payment-stuck detectors and scanner | 12-02 |
+| 3 | 12-05 | Explicit Strategy B instrumentation of refund/exchange Admin routes | 12-04 |
+| 4 | 12-06 | INV-1/2, INV-3/4, INV-8, INV-9/10 + PostgreSQL concurrency proof | 12-03, 12-05 |
+
+Same-wave plans have no file overlap. `apps/backend/medusa-config.ts` is changed only in sequential waves: 12-02 registers OperationalAlert and 12-05 preserves it while registering AdminActionLog.
+
+### Decision closure
+
+All 15 locked decisions D12-01..D12-15, all six binding human decisions H12-01..H12-06, and P12-PLAN-01 have explicit plan coverage. The full GOAL/REQ/RESEARCH/CONTEXT audit is in `12-VALIDATION.md` and is PASS with no unplanned item.
+
+### Baseline carried into execution
+
+```text
+Unit: 49/49 suites; 766/766 tests
+Modules: 29/29 suites; 463/463 tests
+HTTP: 14/14 suites; 172/172 tests
+Lint: 0 errors; 207 warnings
+Build: PASS
+```
+
+This baseline was supplied as pre-PLAN evidence and was **not reexecuted** during planning.
+
+### Gate status after planning
+
+```text
+Phase 12 CONTEXT approved
+Phase 12 RESEARCH approved
+Phase 12 PLAN complete: 6 planned / 0 executed
+Phase 12 VALIDATION planned
+SPEC/SDD not started
+implementation prompt not started
+execution blocked
+next permitted step: human review of PLAN
+```
+
+## P12-PLAN-CHECKER-R1 — revision iteration 1/3
+
+O primeiro checker do PLAN retornou **8 BLOCKERs e 1 WARNING**. Esta rodada aplicou correções direcionadas nos seis PLANs, em `12-VALIDATION.md`, ROADMAP e STATE, sem refazer o planejamento e sem alegar PASS antes do recheck.
+
+| Finding do checker | Correção aplicada nesta rodada |
+|--------------------|--------------------------------|
+| XML malformado em 12-01 Task 2 | fechamento de `<behavior>` corrigido e task reescrita com XML válido |
+| Referências inexistentes/históricas | paths substituídos pelos artefatos reais: `webhook-event-log.unit.spec.ts`, migrations `20260701000000`/`20260702000000`, `stripe-webhook-store.spec.ts`, `stripe-webhook-order-creation.spec.ts`, `webhook-order-entrypoint.ts` e `framework/dist/http/types.d.ts` |
+| Migration Gelato não descobrível | 12-01 agora planeja renomear o draft factual para `Migration20260703000000.ts`, preservando DDL e provando discovery/catálogo somente no PostgreSQL descartável; nenhuma migration foi criada ou aplicada neste gate |
+| CCL ausente sem idade mínima | 12-03/VALIDATION exigem evento canônico correlacionado, `received_at` válido e idade ≥ `CHECKOUT_COMPLETION_STALE_AFTER_MS`; evento fresco, timestamp ausente/inválido ou ambíguo não alerta |
+| Inventário Admin nativo agregado | 12-05 enumera e classifica individualmente custom IN e rotas nativas OUT de refund, Order cancel/complete e fulfillment create/cancel/shipment/mark-delivered confirmadas no `@medusajs/medusa@2.16.0`, com prova de não interceptação implícita |
+| INV-2/INV-3/INV-4 trocados | 12-06/VALIDATION separam: INV-2 = Pix expirado/aguardando com zero Order; INV-3 = raw body/assinatura fail-closed antes de DB/workflow; INV-4 = replay/dedupe |
+| Full modules fora do runner | regressão completa de modules agora passa pelo runner PostgreSQL descartável |
+| Cross-dyno não classificado | evidência futura exige as quatro classificações e declara cross-dyno real não executado/não alegado |
+| Contagens de rollback/files | 12-01 lista rollback exato dos quatro arquivos de harness + rename Gelato; 12-05 foi então corrigido para onze arquivos (posteriormente rebalanceado para nove na R2) |
+
+Validações desta rodada permanecem exclusivamente documentais/estruturais. Nenhuma suite do produto, build, lint, migration, provider, deploy, push ou commit foi executado. O resultado desta revisão é **AWAITING CHECKER RECHECK**, não PASS.
+
+```text
+revision iteration: 1/3
+checker input: 8 BLOCKERs + 1 WARNING
+revision applied: yes
+checker recheck: pending
+execution authorized: no
+next permitted step: checker recheck dos artefatos PLAN/VALIDATION
+```
+
+## P12-PLAN-CHECKER-R2 — revision iteration 2/3
+
+O segundo checker retornou **2 BLOCKERs e 3 WARNINGs**. Esta rodada corrigiu somente os seis PLANs, `12-VALIDATION.md` e este log; CONTEXT, RESEARCH, runtime, testes, configuração e demais documentos permaneceram intocados. O resultado continua **AWAITING CHECKER RECHECK**, sem alegação de PASS.
+
+| Finding do checker | Correção aplicada nesta rodada |
+|--------------------|--------------------------------|
+| H12-03 incompleto | 12-05 agora contém 3 handlers custom IN e inventário individual de todos os 76 pares nativos método/path realmente exportados sob `payments`, `payment-collections`, `orders`, `fulfillments`, `returns`, `claims` e `exchanges`, com handler/workflow, decisão OUT e justificativa; a execução exige travessia sistemática e bloqueia por divergência. VALIDATION exige a mesma contagem/cobertura e negativas sobre todas as sete famílias. |
+| Path inválido em 12-01 | Exact validation command 4 agora usa `apps/backend/medusa-config.ts` e preserva a negativa de manifesto/lockfile/config. |
+| `DB_TEMP_NAME` não controlava o runner | 12-01, 12-02, 12-04, 12-06 e VALIDATION exigem `medusaIntegrationTestRunner({ dbName: process.env.DB_TEMP_NAME, ... })`, guardam prefixo loopback/descartável e vinculam catálogo/cleanup ao nome realmente usado. |
+| Comandos sem RTK | Todos os executáveis futuros documentados nos seis PLANs e em VALIDATION agora usam prefixo `rtk`; `cd` e atribuições de ambiente permanecem operações do shell. |
+| Escopo por arquivos | 12-02 consolidou tipos/casos de service no modelo/service + spec PostgreSQL (9 arquivos); 12-04 fez a mesma consolidação (8 arquivos); 12-05 concentrou regressões nos dois specs HTTP existentes (9 arquivos). Nenhuma cobertura foi removida e waves/dependências permaneceram inalteradas. |
+
+Contagem pós-rebalanceamento:
+
+| Plano | Arquivos modificados | Wave |
+|-------|----------------------|------|
+| 12-01 | 6 | 1 |
+| 12-02 | 9 | 2 |
+| 12-03 | 8 | 3 |
+| 12-04 | 8 | 2 |
+| 12-05 | 9 | 3 |
+| 12-06 | 7 | 4 |
+
+Validações desta rodada permanecem exclusivamente documentais/estruturais. Nenhuma suite do produto, build, lint, migration, provider, deploy, push ou commit foi executado.
+
+```text
+revision iteration: 2/3
+checker input: 2 BLOCKERs + 3 WARNINGs
+revision applied: yes
+checker recheck: pending
+execution authorized: no
+result claimed: no PASS
+next permitted step: checker recheck dos artefatos PLAN/VALIDATION
+```
+
+## P12-PLAN-CHECKER-R3 — revision iteration 3/3
+
+O terceiro checker retornou **1 BLOCKER e 2 WARNINGs**. Esta rodada final corrigiu somente os artefatos allowlisted de planejamento/estado, sem alterar runtime, testes, CONTEXT, RESEARCH, configuração ou outros documentos. O resultado permanece **AWAITING FINAL CHECKER RECHECK**, sem alegação de PASS.
+
+| Finding do checker | Correção aplicada nesta rodada |
+|--------------------|--------------------------------|
+| 12-04 dependia do registro runtime de 12-05 | O spec PostgreSQL de 12-04 agora usa a API factual de `@medusajs/test-utils@2.16.0`: `hooks.beforeServerStart(container)` resolve `ContainerRegistrationKeys.CONFIG_MODULE` e registra explicitamente `configModule.modules.admin_action_log = { resolve: "./src/modules/admin-action-log" }`. A implementação instalada chama esse hook antes de `initializeDatabase`, `migrateDatabase(appLoader)` e `appLoader.runModulesMigrations`, permitindo provar migration, trigger, service e reconciliação no PostgreSQL descartável sem depender de 12-05 e sem antecipar `medusa-config.ts`. Nenhum config/helper novo foi planejado; 12-04 permanece com 8 arquivos e sem overlap na Wave 2. |
+| Negativa 12-01 não era executável | O comando factual passou a ser `rtk git diff --exit-code -- apps/backend/package.json package-lock.json apps/backend/medusa-config.ts` e agora consta em exact validation, negative proof, evidence e VALIDATION. |
+| ROADMAP/STATE defasados | ROADMAP, STATE, este log e VALIDATION registram revision 3/3 aplicada, final checker pendente, revisão humana obrigatória, 6 planned/0 executed, SPEC/SDD e implementation prompt não iniciados e execução bloqueada, sem alegar PASS. As métricas permanecem 11 fases completas, 92%, 56 planos totais e 50 completos. |
+
+Contagem final preservada:
+
+| Plano | Arquivos modificados | Wave |
+|-------|----------------------|------|
+| 12-01 | 6 | 1 |
+| 12-02 | 9 | 2 |
+| 12-03 | 8 | 3 |
+| 12-04 | 8 | 2 |
+| 12-05 | 9 | 3 |
+| 12-06 | 7 | 4 |
+
+Validações desta rodada permanecem exclusivamente documentais/estruturais via RTK. Nenhuma suite do produto, build, lint, migration, provider, deploy, push ou commit foi executado.
+
+```text
+revision iteration: 3/3
+checker input: 1 BLOCKER + 2 WARNINGs
+revision applied: yes
+final checker recheck: pending
+human review: pending
+execution authorized: no
+result claimed: no PASS
+next permitted step: final checker recheck dos artefatos PLAN/VALIDATION
+```
+
+## P12-PLAN-CHECKER-FINAL — verification passed
+
+Após três rodadas documentais direcionadas e a sincronização mecânica final de `STATE.md`, o checker independente retornou **VERIFICATION PASSED** com **0 blockers e 0 warnings**.
+
+O PASS cobre somente a qualidade e executabilidade documental do PLAN: seis planos, quatro waves, dependências acíclicas, cobertura de OPS-01/OPS-02/TEST-01, 22 decisões fechadas, harness PostgreSQL descartável, `OperationalAlert` com upsert atômico, `AdminActionLog` Strategy B, matriz Admin factual e suíte híbrida INV-1/2/3/4/8/9/10. Nenhum requisito foi implementado ou concluído.
+
+```text
+plans: 6 planned / 0 executed
+waves: 4
+checker: PASS
+blockers: 0
+warnings: 0
+human review: pending
+SPEC/SDD: not started
+implementation prompt: not started
+execution: blocked
+next permitted step: human review of PLAN/VALIDATION
 ```
