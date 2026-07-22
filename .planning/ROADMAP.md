@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(complete; closed 2026-07-02)*
 - [x] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route *(complete; closed 2026-07-02)*
 - [x] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow *(complete; closed 2026-07-03)*
-- [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests *(SPEC/SDD complete; checker PASS; awaiting human review; 6 planned / 0 executed; implementation prompt not started; execution blocked)*
+- [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests *(implementation prompt complete; checker PASS; awaiting human review; 6 planned / 0 executed; execution not started)*
 
 ## Phase Details
 
@@ -446,7 +446,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phases 1-11
 **Requirements**: OPS-01, OPS-02, TEST-01
-**Manual gate:** Phase 12 CONTEXT/RESEARCH and PLAN/VALIDATION are approved historical inputs. SPEC/SDD were completed documentally and the two transient contract blockers were resolved: `OperationalAlert.severity` permanece `low|medium|high|critical`, separado de `AdminActionLog.severity = info|warning|critical`, e o 12-01 inclui a atualização da referência literal no teste Gelato durante o rename. O checker retornou **PASS** com 0 blockers e 0 warnings. Human review continua obrigatória; implementation prompt has not started; 6 plans remain unexecuted; execution is blocked.
+**Manual gate:** Phase 12 CONTEXT/RESEARCH, PLAN/VALIDATION e SPEC/SDD são inputs aprovados. O implementation prompt consolidado está completo e o checker documental retornou **PASS** com 0 blockers e 0 warnings. Human review continua obrigatória; 6 planos permanecem não executados; execução não começou. Próximo passo permitido: autorização humana explícita somente do `12-01`.
 
 **Boundary preserved:** Phase 09 `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the local fulfillment truth and closes FUL-04. Phase 12 OPS-01 adds the promotion of that condition to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
 
@@ -485,7 +485,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Gelato Fulfillment & Webhook | 5/5 | Complete / Closed | 2026-07-02 |
 | 10. Secure Guest Tracking | 3/3 | Complete / Closed | 2026-07-02 |
 | 11. Refunds & Exchanges (Admin) | 4/4 | Complete / Closed | 2026-07-03 |
-| 12. Ops, Audit & Critical Tests | 0/6 | SPEC/SDD complete; checker PASS; awaiting human review; implementation prompt not started; execution blocked | - |
+| 12. Ops, Audit & Critical Tests | 0/6 | Implementation prompt complete; checker PASS; awaiting human review; execution not started | - |
 
 ---
 *Roadmap created: 2026-06-22*

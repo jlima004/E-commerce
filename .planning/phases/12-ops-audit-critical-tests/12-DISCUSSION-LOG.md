@@ -504,3 +504,39 @@ OPS-01 incomplete
 OPS-02 incomplete
 TEST-01 incomplete
 ```
+
+## P12-IMPLEMENTATION-PROMPT — execução manual preparada
+
+### Autorização e limite
+
+O humano autorizou somente a criação do pacote documental consolidado para a futura execução manual da Phase 12. Foi criado `12-IMPLEMENTATION-PROMPT.md`; este log, ROADMAP e STATE foram sincronizados. Nenhum plano, runtime, teste, migration, Docker/PostgreSQL, dependência, package/lockfile, provider, deploy, push ou produção foi executado.
+
+### Contrato operacional consolidado
+
+- ordem sequencial obrigatória: `12-01 → 12-02 → 12-04 → 12-03 → 12-05 → 12-06`;
+- uma autorização humana abre somente um plano e cada summary encerra o gate ativo;
+- `PHASE12_EXECUTION_BASE_SHA` será capturado somente no início futuro autorizado do `12-01`, após o commit deste gate;
+- cada packet reproduz a allowlist exata do PLAN e permite somente o respectivo `12-0X-SUMMARY.md` como exceção documental;
+- commits atômicos de implementação precedem um commit documental separado do summary, sem amend;
+- o SPEC/SDD final prevalece sobre shorthand histórico do PLAN no único conflito conhecido: `OperationalAlert.sent_at` não será criado;
+- VERIFICATION, REVIEW e CLOSURE permanecem gates separados mesmo depois do `12-06`.
+
+### Checker documental
+
+Resultado binário: **PASS**, com **0 blockers e 0 warnings**. Não há `PASS WITH KNOWN DEBTS`.
+
+```text
+Phase 12 implementation prompt complete
+checker PASS
+awaiting human review
+6 planned / 0 executed
+execution not started
+next permitted step: explicit authorization of 12-01
+completed_phases: 11
+total_plans: 56
+completed_plans: 50
+percent: 92
+OPS-01 incomplete
+OPS-02 incomplete
+TEST-01 incomplete
+```

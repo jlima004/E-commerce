@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-spec-sdd-complete-checker-passed-awaiting-human-review
-stopped_at: Phase 12 SPEC/SDD complete; checker PASS with 0 blockers and 0 warnings; awaiting human review; implementation prompt not started; 6 planned / 0 executed; execution blocked
+status: phase-12-implementation-prompt-complete-checker-passed-awaiting-human-review
+stopped_at: Phase 12 implementation prompt complete; checker PASS with 0 blockers and 0 warnings; awaiting human review; 6 planned / 0 executed; execution not started; next permitted step explicit authorization of 12-01
 last_updated: "2026-07-21"
 last_activity: 2026-07-21
-last_activity_desc: Phase 12 SPEC/SDD blockers resolved documentally; checker PASS with 0 blockers and 0 warnings; awaiting human review
+last_activity_desc: Phase 12 implementation prompt complete; checker PASS with 0 blockers and 0 warnings; awaiting human review
 progress:
   total_phases: 12
   completed_phases: 11
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-20)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 — Ops, Audit & Critical Tests. SPEC/SDD complete, checker PASS with 0 blockers / 0 warnings, awaiting human review. PLAN remains 6 planned / 0 executed. Implementation prompt not started. Execution blocked.
+**Current focus:** Phase 12 — Ops, Audit & Critical Tests. Implementation prompt complete, checker PASS with 0 blockers / 0 warnings, awaiting human review. PLAN remains 6 planned / 0 executed. Execution not started.
 
 ## Execution Policy
 
@@ -43,18 +43,18 @@ The GSD auto chain must not continue through all phases.
 
 Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
 
-**Current gate:** Phase 12 SPEC/SDD complete. Os dois blockers documentais foram resolvidos e o checker retornou PASS com 0 blockers e 0 warnings. Next permitted step: human review. Implementation prompt is not started; all 6 plans remain unexecuted; OPS-01, OPS-02, and TEST-01 remain incomplete.
+**Current gate:** Phase 12 implementation prompt complete. O checker documental retornou PASS com 0 blockers e 0 warnings. Next permitted step: human review e autorização explícita somente do `12-01`. Todos os 6 planos permanecem não executados; OPS-01, OPS-02 e TEST-01 permanecem incompletos.
 
 ```text
 Phase 12 CONTEXT approved
 Phase 12 RESEARCH approved
 Phase 12 PLAN revised: 6 planned / 0 executed
 Phase 12 SPEC/SDD complete
+Phase 12 implementation prompt complete
 checker PASS: 0 blockers / 0 warnings
 human review pending
-implementation prompt not started
-execution blocked
-next permitted step: human review; no implementation
+execution not started
+next permitted step: explicit human authorization of 12-01
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -76,10 +76,10 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — SPEC/SDD complete; checker PASS; awaiting human review; execution blocked
+Phase: 12 (Ops, Audit & Critical Tests) — implementation prompt complete; checker PASS; awaiting human review; execution not started
 Plan: 50/56 complete (milestone plans); Phase 12 plans: 6 planned / 0 executed
-Status: phase-12-spec-sdd-complete-checker-passed-awaiting-human-review
-Last activity: 2026-07-21 - Phase 12 SPEC/SDD blockers resolved; checker PASS with 0 blockers and 0 warnings; awaiting human review
+Status: phase-12-implementation-prompt-complete-checker-passed-awaiting-human-review
+Last activity: 2026-07-21 - Phase 12 implementation prompt complete; checker PASS with 0 blockers and 0 warnings; awaiting human review
 
 Progress: [██████████] 92% phases (11/12 complete); 50/56 milestone plans complete; Phase 12 plans are 6 planned / 0 executed
 
@@ -106,7 +106,7 @@ Progress: [██████████] 92% phases (11/12 complete); 50/56 mi
 | 09. Gelato Fulfillment & Webhook | 5 executed / 5 planned | Complete / Closed | — |
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
-| 12. Ops, Audit & Critical Tests | 0 executed / 6 planned | SPEC/SDD complete / checker PASS / awaiting human review / implementation prompt not started / execution blocked | — |
+| 12. Ops, Audit & Critical Tests | 0 executed / 6 planned | Implementation prompt complete / checker PASS / awaiting human review / execution not started | — |
 
 **Recent Trend:**
 
@@ -188,6 +188,7 @@ Recent decisions affecting current work:
 - [Phase 12 alert email]: Resend delivery for `OperationalAlert` is outside the Phase 12 MVP, is a known PRD divergence, and is not a blocker for OPS-01.
 - [Phase 12 PLAN]: Planning-only gate P12-PLAN-01 created exactly six manual-review-gated plans across four waves plus `12-VALIDATION.md`. Wave 1 establishes local disposable PostgreSQL proof; Wave 2 builds OperationalAlert/Admin GET and AdminActionLog primitives; Wave 3 connects factual detections and explicit refund/exchange audit wrappers; Wave 4 adds named INV-1/2, INV-3/4, INV-8 and INV-9/10 suites with PostgreSQL constraint/concurrency proofs. All D12-01..D12-15, H12-01..H12-06 and P12-PLAN-01 are covered. No runtime, tests, migration execution, provider, deploy, push or commit occurred.
 - [Phase 12 PLAN checker R1]: Revision iteration 1/3 corrected 8 BLOCKERs and 1 WARNING documentally: XML/task references, discoverable Gelato migration planning in 12-01, CCL-absent 15m/`received_at` gate, factual native Admin route inventory, INV-2/3/4 contracts, disposable-runner full modules command, evidence-strength classification and file/rollback counts. Recheck remains pending; no PASS is claimed. No runtime, product test, build, lint, migration, provider, deploy, push or commit occurred.
+- [Phase 12 implementation prompt]: Pacote consolidado criado para execução manual estritamente sequencial `12-01 → 12-02 → 12-04 → 12-03 → 12-05 → 12-06`, com gate humano entre planos, SHA-base futuro, allowlists exatas, summaries/commits separados, stop conditions e negativas. Checker documental PASS com 0 blockers e 0 warnings. Nenhum plano, runtime, teste, migration, Docker/PostgreSQL, provider, deploy ou push foi executado.
 
 ### Pending Todos
 
@@ -210,7 +211,7 @@ None yet.
 - [Quick 260715-rel01]: REL-01 está `PASS`: `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry usam a mesma versão resolvida e PM2/VPS preserva o fallback `APP_VERSION`. Env 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit 44/44 e 730/730, lint 0/208 e build PASS. O versionamento automático está resolvido e não há investigação de `APP_VERSION` pendente.
 - [Quick 260715-infra01]: INFRA-01 está `PASS`: release dyno migration-only DB-only; produção exige quatro contratos/módulos Redis sem fallback; CACHE-01A/B PASS. Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0/207, build PASS. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
 - [Release stabilization closure]: incidente monetário resolvido; versionamento automático resolvido; cache Redis TLS resolvido; CACHE-01A/B e INFRA-01 PASS; cache Redis ativo em `web.1` e `worker.1`; fallbacks do release classificados e isolados; produção saudável. Não restam próximos passos para investigar `APP_VERSION`, reativar cache Redis, provar Redis em `web.1`/`worker.1` ou revisar fallbacks do release.
-- [Phase 12 — historical pre-P12-PLAN-R1 snapshot]: CONTEXT and RESEARCH were approved and the earlier PLAN had 6 plans / 0 executed with `12-VALIDATION.md`; its checker passed with 0 blockers and 0 warnings, and human review remained required. That earlier PASS was superseded/invalidated when P12-PLAN-R1 reopened and revised PLAN/VALIDATION. P12-PLAN-R1 later passed its checker. The separately authorized SPEC/SDD gate initially found two transient documentary blockers, resolved by P12-SPEC-SDD-R1; the current authority at the top is checker PASS, awaiting human review, implementation prompt not started, execution blocked, and OPS-01/OPS-02/TEST-01 incomplete.
+- [Phase 12 — historical pre-P12-PLAN-R1 snapshot]: CONTEXT and RESEARCH were approved and the earlier PLAN had 6 plans / 0 executed with `12-VALIDATION.md`; its checker passed with 0 blockers and 0 warnings, and human review remained required. That earlier PASS was superseded/invalidated when P12-PLAN-R1 reopened and revised PLAN/VALIDATION. P12-PLAN-R1 later passed its checker. The separately authorized SPEC/SDD gate initially found two transient documentary blockers, resolved by P12-SPEC-SDD-R1. The implementation prompt gate later completed with checker PASS; the current authority is recorded at the top.
 
 ## Deferred Items
 
@@ -223,9 +224,9 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-07-21
-Stopped at: Phase 12 SPEC/SDD complete; checker PASS with 0 blockers / 0 warnings; 6 planned / 0 executed; awaiting human review; execution blocked.
+Stopped at: Phase 12 implementation prompt complete; checker PASS with 0 blockers / 0 warnings; 6 planned / 0 executed; awaiting human review; execution not started.
 Resume file: `.planning/phases/12-ops-audit-critical-tests/12-DISCUSSION-LOG.md`
-Next permitted step: human review of the corrected SPEC/SDD gate. Do not start implementation prompt or execution.
+Next permitted step: explicit human authorization of `12-01`. Do not start it automatically.
 
 ## Quick Tasks Completed
 
