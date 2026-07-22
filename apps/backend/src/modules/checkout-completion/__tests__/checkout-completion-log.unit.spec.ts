@@ -350,6 +350,152 @@ describe("CheckoutCompletionLog retry/idempotency decisions", () => {
     )
   })
 
+  it("reclama processing exatamente aos 15 minutos por locked_at", () => {
+    const lockedAt = "2026-07-08T12:00:00.000Z"
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: lockedAt,
+      },
+      "chkcpl_123",
+      new Date(lockedAt)
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T12:15:00.000Z"),
+    })
+
+    expect(decision.type).toBe("retry_processing_without_order")
+  })
+
+  it("reclama processing acima de 15 minutos por locked_at", () => {
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: "2026-07-08T12:00:00.000Z",
+      },
+      "chkcpl_123",
+      new Date("2026-07-08T12:00:00.000Z")
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T12:15:01.000Z"),
+    })
+
+    expect(decision.type).toBe("retry_processing_without_order")
+  })
+
+  it("preserva processing fresco abaixo de 15 minutos", () => {
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: "2026-07-08T12:00:00.000Z",
+      },
+      "chkcpl_123",
+      new Date("2026-07-08T12:00:00.000Z")
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T12:14:59.000Z"),
+    })
+
+    expect(decision.type).toBe("already_processing")
+  })
+
+  it("nao reclama processing sem locked_at", () => {
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: null,
+      },
+      "chkcpl_123",
+      new Date("2026-07-08T12:00:00.000Z")
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T13:00:00.000Z"),
+    })
+
+    expect(decision.type).toBe("already_processing")
+  })
+
+  it("nao reclama processing com locked_at invalido", () => {
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: "not-a-date",
+      },
+      "chkcpl_123",
+      new Date("2026-07-08T12:00:00.000Z")
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T13:00:00.000Z"),
+    })
+
+    expect(decision.type).toBe("already_processing")
+  })
+
+  it("nao usa relogio instavel de payment attempt no reclaim de processing", async () => {
+    const fs = await import("fs/promises")
+    const path = await import("path")
+    const source = await fs.readFile(
+      path.join(__dirname, "..", "service.ts"),
+      "utf8"
+    )
+    expect(source).toContain("CHECKOUT_COMPLETION_STALE_AFTER_MS")
+    expect(source).toContain("isCheckoutCompletionLockedStale")
+    expect(source).not.toMatch(
+      /PaymentAttempt\.updated_at|paymentAttempt\.updated_at|payment_attempt\.updated_at/
+    )
+    expect(source).toMatch(/locked_at/)
+  })
+
   it("permite retry controlado de failed sem order_id", () => {
     const existing = buildCheckoutCompletionLogRecord(
       {

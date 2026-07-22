@@ -587,6 +587,8 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
         payment_attempt_id: "payatt_01",
         order_id: null,
         status: "processing",
+        // H12-06 / 12-03: reclaim only after locked_at is stale (>= 15m).
+        locked_at: "2026-06-30T15:45:00.000Z",
         metadata: null,
       },
     ])
