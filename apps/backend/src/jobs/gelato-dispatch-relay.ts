@@ -1,7 +1,7 @@
 import { createHash } from "crypto"
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { isReleaseMigrationMode } from "../infrastructure/release-migration-mode"
-import { Modules } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { ANALYTICS_EVENT_LOG_MODULE } from "../modules/analytics-event-log"
 import type { AnalyticsEventLogRecord } from "../modules/analytics-event-log/types"
 import { EMAIL_DELIVERY_LOG_MODULE } from "../modules/email-delivery-log"
@@ -29,6 +29,11 @@ import type {
   GelatoDispatchResult,
   GelatoFulfillmentRecord,
 } from "../modules/gelato-fulfillment/types"
+import { detectFulfillmentFailed } from "../modules/operational-alert/detectors"
+import {
+  OPERATIONAL_ALERT_MODULE,
+  type UpsertAlertInput,
+} from "../modules/operational-alert"
 
 type AnalyticsEventLogModule = {
   listAnalyticsEventLogs: (
@@ -74,6 +79,16 @@ type OrderModule = {
     selector?: Record<string, unknown>,
     config?: Record<string, unknown>
   ) => Promise<OrderRecord[]>
+}
+
+type OperationalAlertModuleLike = {
+  upsertAlert: (input: UpsertAlertInput) => Promise<unknown>
+}
+
+type SanitizedJobLogger = {
+  warn?: (message: string, meta?: Record<string, unknown>) => void
+  error?: (message: string, meta?: Record<string, unknown>) => void
+  info?: (message: string, meta?: Record<string, unknown>) => void
 }
 
 export type GelatoDispatchRelayResult = {
@@ -197,6 +212,79 @@ function resolveOrderModule(container: MedusaContainer): OrderModule {
   }
 
   throw new Error("GELATO_DISPATCH_ORDER_MODULE_UNAVAILABLE")
+}
+
+function resolveOperationalAlertModule(
+  container: MedusaContainer
+): OperationalAlertModuleLike | null {
+  try {
+    const candidate = container.resolve(
+      OPERATIONAL_ALERT_MODULE
+    ) as OperationalAlertModuleLike | undefined
+
+    if (candidate && typeof candidate.upsertAlert === "function") {
+      return candidate
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function resolveLogger(container: MedusaContainer): SanitizedJobLogger | null {
+  try {
+    return container.resolve(
+      ContainerRegistrationKeys.LOGGER
+    ) as SanitizedJobLogger
+  } catch {
+    return null
+  }
+}
+
+async function promoteFulfillmentOperationalAlert(input: {
+  container: MedusaContainer
+  fulfillment: GelatoFulfillmentRecord
+  now: Date
+  upsertAlert?: (dto: UpsertAlertInput) => Promise<unknown>
+  logger?: SanitizedJobLogger | null
+}): Promise<void> {
+  const dto = detectFulfillmentFailed(input.fulfillment, input.now)
+  if (!dto) {
+    return
+  }
+
+  let upsert = input.upsertAlert
+  if (!upsert) {
+    const module = resolveOperationalAlertModule(input.container)
+    if (module) {
+      upsert = (alertInput) => module.upsertAlert(alertInput)
+    }
+  }
+
+  if (!upsert) {
+    input.logger?.warn?.("GELATO_DISPATCH_ALERT_MODULE_UNAVAILABLE", {
+      error_code: "GELATO_DISPATCH_ALERT_MODULE_UNAVAILABLE",
+      job: "gelato-dispatch-relay",
+      fulfillment_id: input.fulfillment.id,
+      message_code: dto.message_code,
+    })
+    return
+  }
+
+  try {
+    await upsert(dto)
+  } catch {
+    input.logger?.warn?.("GELATO_DISPATCH_ALERT_UPSERT_FAILED", {
+      error_code: "GELATO_DISPATCH_ALERT_UPSERT_FAILED",
+      job: "gelato-dispatch-relay",
+      fulfillment_id: input.fulfillment.id,
+      type: dto.type,
+      entity_type: dto.entity_type,
+      entity_id: dto.entity_id,
+      message_code: dto.message_code,
+    })
+  }
 }
 
 export function isGelatoDispatchDisabled(
@@ -577,10 +665,13 @@ export async function runGelatoDispatchRelay(
     createClient?: (config: GelatoDispatchConfig) => GelatoDispatchClient
     maxAttempts?: number
     batchSize?: number
+    upsertOperationalAlert?: (dto: UpsertAlertInput) => Promise<unknown>
+    logger?: SanitizedJobLogger | null
   } = {}
 ): Promise<GelatoDispatchRelayResult> {
   const now = deps.now?.() ?? new Date()
   const env = deps.env ?? (process.env as Record<string, string | undefined>)
+  const logger = deps.logger ?? resolveLogger(container)
 
   if (deps.config === undefined && isGelatoDispatchDisabled(env)) {
     return {
@@ -710,11 +801,18 @@ export async function runGelatoDispatchRelay(
     }
 
     if (decision.action === "operator_attention") {
-      await updateFulfillment(
+      const updated = await updateFulfillment(
         fulfillmentModule,
         latest.id,
         buildGelatoStaleOperatorAttentionUpdate(now)
       )
+      await promoteFulfillmentOperationalAlert({
+        container,
+        fulfillment: updated,
+        now,
+        upsertAlert: deps.upsertOperationalAlert,
+        logger,
+      })
       deadLettered += 1
       continue
     }
@@ -735,8 +833,33 @@ export async function runGelatoDispatchRelay(
       submitted += 1
     } else if (outcome === "dead_lettered") {
       deadLettered += 1
+      const persisted =
+        (await readReusableGelatoFulfillment(
+          fulfillmentModule,
+          candidate.order.id
+        )) ?? latest
+      await promoteFulfillmentOperationalAlert({
+        container,
+        fulfillment: persisted,
+        now,
+        upsertAlert: deps.upsertOperationalAlert,
+        logger,
+      })
     } else {
       failed += 1
+      const persisted = await readReusableGelatoFulfillment(
+        fulfillmentModule,
+        candidate.order.id
+      )
+      if (persisted?.requires_operator_attention) {
+        await promoteFulfillmentOperationalAlert({
+          container,
+          fulfillment: persisted,
+          now,
+          upsertAlert: deps.upsertOperationalAlert,
+          logger,
+        })
+      }
     }
   }
 
