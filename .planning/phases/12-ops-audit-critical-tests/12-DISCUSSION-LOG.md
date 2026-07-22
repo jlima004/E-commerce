@@ -540,3 +540,40 @@ OPS-01 incomplete
 OPS-02 incomplete
 TEST-01 incomplete
 ```
+
+## P12-12-03-R1 — reconciliação da fixture cascata de reclaim de checkout
+
+### Autorização
+
+Gate humano exclusivamente documental. Sem alteração de runtime, sem alteração de testes, sem rewrite/amend dos commits `8bbb38d` e `586c81f`, sem 12-05/12-06, migrations, manifests, Jest config, providers, PostgreSQL/Docker, push ou deploy. A mudança técnica já commitada permanece intacta.
+
+### Cronologia factual
+
+1. O gate original do Plan 12-03 autorizava **oito** paths técnicos.
+2. A Unit completa revelou uma fixture preexistente em `webhook-order-creation.unit.spec.ts` incompatível com H12-06: o cenário `processing` retryable não possuía `locked_at`, e o reclaim passou a exigir idade ≥ 15 minutos.
+3. O agente modificou um **nono** path técnico sem autorização prévia na allowlist formal (adição de comentário H12-06 + `locked_at: "2026-06-30T15:45:00.000Z"` com `now = 2026-06-30T16:00:00.000Z`).
+4. A revisão humana classificou o resultado como **BLOCKED documental** (escopo fora da allowlist), não como falha funcional da fixture.
+5. P12-12-03-R1 auditou o diff `PLAN12_03_BASE_SHA...HEAD` desse arquivo: +2 linhas apenas (comentário + `locked_at` stale); status permanece `processing`; assertions, mocks, callbacks e demais cenários intactos.
+6. A exceção estreita foi aprovada somente para a adição de `locked_at` stale / comentário explicativo; nenhuma alteração runtime adicional foi autorizada.
+7. `12-05` e `12-06` permaneceram bloqueados / não iniciados.
+
+### Decisão humana vinculante
+
+Path formalmente incorporado à allowlist do 12-03:
+
+```text
+apps/backend/src/workflows/order/__tests__/webhook-order-creation.unit.spec.ts
+```
+
+Motivo: alinhar a fixture processing retryable ao contrato H12-06 sem alterar a intenção ou as assertions do teste.
+
+Contagem factual reconciliada: **9 paths técnicos** + `12-03-SUMMARY.md`. Número de tasks do plano permanece 3.
+
+### Artefatos atualizados neste gate
+
+- `12-03-PLAN.md` — allowlist / task reclaim / validações / evidence / rollback
+- `12-VALIDATION.md` — allowlist SHA-base + prova cascata + teste focado
+- `12-03-SUMMARY.md` — reconciliação de escopo; status `passed` após auditoria
+- este discussion log
+
+`ROADMAP.md` / `STATE.md` não foram alterados: não registravam 12-03 como aprovado sem a reconciliação.

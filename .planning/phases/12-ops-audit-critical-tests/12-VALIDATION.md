@@ -84,9 +84,39 @@ Prova obrigatória do rename Gelato:
 
 ### 12-03 — detections
 
-1. `cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runTestsByPath src/modules/operational-alert/__tests__/operational-alert-detectors.unit.spec.ts src/jobs/__tests__/operational-alert-scanner.unit.spec.ts src/jobs/__tests__/gelato-dispatch-relay.unit.spec.ts src/modules/checkout-completion/__tests__/checkout-completion-log.unit.spec.ts --runInBand`
+1. `cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runTestsByPath src/modules/operational-alert/__tests__/operational-alert-detectors.unit.spec.ts src/jobs/__tests__/operational-alert-scanner.unit.spec.ts src/jobs/__tests__/gelato-dispatch-relay.unit.spec.ts src/modules/checkout-completion/__tests__/checkout-completion-log.unit.spec.ts src/workflows/order/__tests__/webhook-order-creation.unit.spec.ts --runInBand`
+2. `TMPDIR=/tmp npm run test:unit -w @dtc/backend -- --runTestsByPath src/workflows/order/__tests__/webhook-order-creation.unit.spec.ts`
 
 O executor deve registrar em `12-03-SUMMARY.md` o mesmo `PHASE12_EXECUTION_BASE_SHA` de `12-01-SUMMARY.md`. Qualquer comando legado do 12-03 que compare apenas o worktree, inclusive se exigir ausência de diff em `medusa-config.ts`, é evidência focada intermediária e não pode autorizar o resultado final.
+
+#### Allowlist SHA-base `PLAN12_03_BASE_SHA...HEAD` (P12-12-03-R1)
+
+`PLAN12_03_BASE_SHA = bbe3d00d3c937c5e478c0b147f2a54dcbecafd06`
+
+9 paths técnicos formalmente allowlisted + `12-03-SUMMARY.md`:
+
+1. `apps/backend/src/modules/operational-alert/detectors.ts`
+2. `apps/backend/src/modules/operational-alert/__tests__/operational-alert-detectors.unit.spec.ts`
+3. `apps/backend/src/jobs/operational-alert-scanner.ts`
+4. `apps/backend/src/jobs/__tests__/operational-alert-scanner.unit.spec.ts`
+5. `apps/backend/src/jobs/gelato-dispatch-relay.ts`
+6. `apps/backend/src/jobs/__tests__/gelato-dispatch-relay.unit.spec.ts`
+7. `apps/backend/src/modules/checkout-completion/service.ts`
+8. `apps/backend/src/modules/checkout-completion/__tests__/checkout-completion-log.unit.spec.ts`
+9. `apps/backend/src/workflows/order/__tests__/webhook-order-creation.unit.spec.ts`
+
+Qualquer outro path técnico no intervalo bloqueia. Outras alterações fora desta allowlist **não** são reclassificáveis como cascata aceitável.
+
+#### Prova cascata `webhook-order-creation.unit.spec.ts` (P12-12-03-R1)
+
+Obrigatório registrar:
+
+- diff limitado a uma fixture (`recupera log processing sem order_id como tentativa retryable`);
+- `status` permanece `processing`;
+- `locked_at: "2026-06-30T15:45:00.000Z"` com `now = 2026-06-30T16:00:00.000Z` → exatamente 15 minutos;
+- intenção retryable preservada;
+- nenhuma assertion removida ou modificada;
+- teste focado PASS.
 
 ### 12-04 — AdminActionLog primitives
 
@@ -209,6 +239,7 @@ Resultados não vazios só podem ser aceitos quando forem constantes/testes nega
 - Nenhuma alteração no intervalo base...HEAD em packages, lockfile ou Jest config.
 - `apps/backend/medusa-config.ts` pode mudar somente para registrar `operational_alert` e `admin_action_log`; o diff base...HEAD é evidência revisável e qualquer mudança em Redis, cache, event bus, workflow, locking, database, providers, health ou release migration mode bloqueia.
 - O `12-03-SUMMARY.md` leva o SHA-base adiante e classifica sua negativa worktree-only como intermediária/superseded pelo gate final; ela nunca é usada isoladamente para PASS.
+- Allowlist formal do 12-03 (P12-12-03-R1): 9 paths técnicos + `12-03-SUMMARY.md`, incluindo a cascata auditada `webhook-order-creation.unit.spec.ts` restrita a `locked_at` stale / comentário H12-06; nenhuma outra cascata é aceitável.
 - Nenhum container/banco/arquivo temporário residual.
 - Nenhum commit, push, tag ou deploy sem autorização humana separada.
 

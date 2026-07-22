@@ -45,7 +45,7 @@ status: passed
 
 # Phase 12 Plan 03: Operational Alert Detection Summary
 
-**PASS absoluto. Detecções factuais OPS-01, scanner backstop, promoção Gelato e reclaim de 15 minutos estão entregues; OPS-01 global permanece aberto até gates posteriores; 12-05 e 12-06 não iniciaram.**
+**PASS absoluto após reconciliação P12-12-03-R1. Detecções factuais OPS-01, scanner backstop, promoção Gelato e reclaim de 15 minutos estão entregues; OPS-01 global permanece aberto até gates posteriores; 12-05 e 12-06 não iniciaram.**
 
 ## Resultado e SHAs de controle
 
@@ -74,7 +74,7 @@ status: passed
 - `apps/backend/src/jobs/__tests__/gelato-dispatch-relay.unit.spec.ts`
 - `apps/backend/src/modules/checkout-completion/service.ts`
 - `apps/backend/src/modules/checkout-completion/__tests__/checkout-completion-log.unit.spec.ts`
-- `apps/backend/src/workflows/order/__tests__/webhook-order-creation.unit.spec.ts` (cascata H12-06; fora da allowlist formal, necessário para Unit PASS)
+- `apps/backend/src/workflows/order/__tests__/webhook-order-creation.unit.spec.ts` (cascata H12-06 inicialmente fora da allowlist; posteriormente auditada e aprovada no gate humano P12-12-03-R1)
 
 ## Constante de quinze minutos
 
@@ -205,6 +205,25 @@ Após verdade Gelato persistida, falha de upsert:
 - `processing` → somente com `locked_at` válido e idade ≥ 15m
 - `processing` fresco / sem / inválido `locked_at` → `already_processing`
 
+## Scope reconciliation
+
+- path:
+  `apps/backend/src/workflows/order/__tests__/webhook-order-creation.unit.spec.ts`
+- alteração:
+  adição exclusiva de `locked_at` stale à fixture processing retryable (mais comentário H12-06 / 12-03)
+- razão:
+  alinhar a fixture ao reclaim H12-06
+- assertions:
+  preservadas
+- runtime:
+  nenhuma mudança adicional
+- autorização:
+  P12-12-03-R1
+- intervalo temporal:
+  `locked_at = 2026-06-30T15:45:00.000Z`, `now = 2026-06-30T16:00:00.000Z` → exatamente 15 minutos
+- allowlist formal:
+  9 paths técnicos + `12-03-SUMMARY.md`
+
 ## DTO e logs allowlisted
 
 DTO: `type`, `severity`, `entity_type`, `entity_id`, `message_code`, `message`, `error_code`, `metadata` allowlisted, `observed_at`.
@@ -245,15 +264,19 @@ Paths:
 
 1. `8bbb38d` — `feat(operations): add factual operational alert detection`
 2. `586c81f` — `test(operations): prove operational alert producers`
-3. (este) — `docs(12): close operational alert detection plan`
+3. `9637e2f` — `docs(12): close operational alert detection plan`
+4. (este gate) — `docs(12): reconcile checkout retry fixture scope`
+
+Commits técnicos `8bbb38d` e `586c81f` permanecem intactos (sem amend/rebase/reset).
 
 ## Divergência e worktree
 
-Registrados após o commit documental:
+Registrados após o commit documental de reconciliação:
 
 - branch `gsd/phase-12-ops-audit-critical-tests`
-- `origin/main...HEAD` esperado avançar de `0 20` para `0 23`
-- worktree limpo após summary commit
+- `origin/main...HEAD` esperado avançar de `0 23` para `0 24`
+- worktree limpo após commit documental P12-12-03-R1
+- nenhuma mudança técnica nova neste gate
 
 ## Sistemas externos
 
@@ -261,14 +284,15 @@ Não contatados: Stripe, Gelato, Resend, PostHog, Correios, Supabase, Heroku, Re
 
 ## Gate humano
 
-`12-03` PASS e para aqui.
+`12-03` PASS após reconciliação P12-12-03-R1 e para aqui.
 
 ```text
-12-05 não iniciado
-12-06 não iniciado
-OPS-01 formalmente não encerrado
+OPS-01 implementação entregue
+OPS-01 requisito global incompleto
 OPS-02 incompleto
 TEST-01 incompleto
+12-05 não iniciado
+12-06 não iniciado
 Phase 12 incompleta
 ```
 
