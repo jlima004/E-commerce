@@ -8,13 +8,13 @@ requires:
   - phase: 11-refunds-exchanges-admin
     provides: Backend MVP runtime fechado antes das provas críticas da Phase 12
 provides:
-  - Evidência BLOCKED do harness PostgreSQL descartável, com cleanup confirmado
-  - Implementação não commitada restrita à allowlist para continuação após novo gate
+  - Foundation TEST-01 com PostgreSQL 17 descartável e isolamento Redis local/in-memory
+  - Probes determinísticos do contrato release migration DB-only
 affects: [12-01, TEST-01, disposable-postgres, phase-12]
 
 tech-stack:
   added: []
-  patterns: [PostgreSQL descartável em loopback, lifecycle fail-closed, DB_TEMP_NAME explícito]
+  patterns: [PostgreSQL descartável em loopback, lifecycle fail-closed, DB_TEMP_NAME explícito, stdout síncrono em subprocessos]
 
 key-files:
   created:
@@ -23,191 +23,202 @@ key-files:
     - apps/backend/src/infrastructure/__tests__/disposable-postgres-harness.unit.spec.ts
     - apps/backend/src/modules/webhooks/__tests__/disposable-postgres-harness.spec.ts
   modified:
+    - apps/backend/src/infrastructure/__tests__/run-migrations.unit.spec.ts
     - apps/backend/src/modules/gelato-fulfillment/migrations/Migration20260703000000.ts
     - apps/backend/src/modules/gelato-fulfillment/__tests__/gelato-fulfillment.unit.spec.ts
 
 key-decisions:
-  - "Resultado BLOCKED: o smoke acionou módulos Redis reais do ambiente local, contrariando a negativa vinculante de Redis dobrado."
-  - "Nenhum commit de implementação foi criado porque o gate PostgreSQL não ficou verde."
+  - "run-migrations.mjs permaneceu intacto: exports, check-only e CLI funcionaram nos probes diretos."
+  - "Os snippets filhos do spec emitem JSON adicional com writeSync e falham com diagnóstico apenas estrutural, sem DSNs."
+  - "A guarda loopback remove somente um par externo de colchetes e aceita [::1] como ::1."
 
 patterns-established:
-  - "O runner externo controla container, porta, credenciais, sinais e confirmação residual; medusaIntegrationTestRunner mantém a chamada com DB_TEMP_NAME explícito."
+  - "O runner externo controla container, porta, credenciais, sinais e confirmação residual; medusaIntegrationTestRunner controla criação, migrations, isolamento e remoção do DB_TEMP_NAME."
 
 requirements-completed: []
 
-duration: 16 min
+duration: 18 min
 completed: 2026-07-22
-status: blocked
+status: passed
 ---
 
 # Phase 12 Plan 01: Disposable PostgreSQL Harness Summary
 
-**Harness local fail-closed chegou a migrations reais e isolamento PostgreSQL, mas o plano ficou BLOCKED porque o bootstrap Medusa contatou Redis local real e a suíte terminou com 1 falha.**
+**PASS absoluto. A foundation de PostgreSQL descartável de TEST-01 está completa; o requisito TEST-01 global permanece incompleto e nenhum plano posterior foi iniciado.**
 
 ## Resultado
 
-**BLOCKED** — não existe PASS parcial.
-
+- **Status:** `passed`
+- **Tasks:** `2/2`
+- **TEST-01 foundation:** `complete`
+- **TEST-01 requirement:** `incomplete`
 - **PHASE12_EXECUTION_BASE_SHA:** `1cdb597d15e74f96e5e77a17a307d168433b0e7a`
 - **Branch:** `gsd/phase-12-ops-audit-critical-tests`
-- **Divergência inicial `origin/main...HEAD`:** `0 10`
-- **Implementação commitada:** não
-- **Motivo:** o gate vinculante de PostgreSQL real terminou com 3/4 casos PASS e 1/4 FAIL após o bootstrap carregar Redis real local.
-- **Próximo plano:** `12-02` permanece bloqueado.
+- **12-02:** bloqueado, pendente de revisão humana
+- **Push/deploy:** não executados
 
-## Performance
+## Histórico dos blockers
 
-- **Duração:** 16 min
-- **Início:** 2026-07-22T02:59:59Z
-- **Término:** 2026-07-22T03:15:59Z
-- **Tasks concluídos:** 0/2
-- **Paths de implementação/teste tocados:** 7/7 da allowlist, contando rename antigo/novo
+1. **Redis herdado no bootstrap:** a tentativa PostgreSQL anterior carregou módulos Redis locais reais e terminou `3/4`, portanto o plano permaneceu BLOCKED sem commit.
+2. **Baseline Unit vermelho:** após isolar Redis, a Unit completa ficou vermelha por uma falha isolada em `run-migrations.unit.spec.ts`; os demais gates não foram promovidos.
+3. **Probe de stdout não determinístico:** quatro casos do spec perderam os JSONs adicionais emitidos com `console.log`; a linha operacional `release_migration.infrastructure_mode`, escrita sincronamente pelo runtime, permaneceu presente.
 
-## Evidência executada
+Os três blockers foram resolvidos dentro da allowlist. Nenhum deles foi reclassificado como PASS parcial.
 
-### Gate unitário do harness
+## Diagnóstico de run-migrations
 
-Comando:
+### Falha antes da correção
 
-```text
-cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runTestsByPath src/infrastructure/__tests__/disposable-postgres-harness.unit.spec.ts --runInBand
-```
+O rerun único preservado em `/tmp/p12-run-migrations-before.log` terminou com:
 
-Resultado: **PASS — 1/1 suite, 9/9 testes**.
+- status `1`;
+- `1/1` suíte FAIL;
+- `4` testes FAIL e `1` PASS;
+- stdout dos probes sem os JSONs adicionais esperados;
+- stderr sem erro runtime do script;
+- linha operacional `release_migration.infrastructure_mode` presente nos casos que chamam `runMigrations`.
 
-As guardas cobriram host não loopback, nome vazio/sem prefixo, alvo igual à manutenção, configuração alternativa incompleta, Docker indisponível, redaction, cleanup fora da allowlist, sinal e resíduo.
+### Probes diretos fora do Jest
 
-### Gate PostgreSQL real descartável
+Executados a partir de `apps/backend`:
 
-Comando repetido durante as correções limitadas:
+| Probe | Status | stdout | stderr |
+|---|---:|---:|---:|
+| export puro + `console.log` | 0 | 37 bytes | 0 bytes |
+| export puro + `writeSync(1, ...)` | 0 | 37 bytes | 0 bytes |
+| CLI `node scripts/run-migrations.mjs --check-only` | 0 | 167 bytes | 0 bytes |
 
-```text
-cd apps/backend && TMPDIR=/tmp rtk node scripts/run-disposable-postgres-tests.mjs -- rtk npm run test:integration:modules -- --runTestsByPath src/modules/webhooks/__tests__/disposable-postgres-harness.spec.ts --runInBand
-```
+Os exports, `buildMigrationChildEnv`, `runMigrations({ checkOnly: true })` e o CLI funcionaram. Fora do Jest, ambos os canais emitiram; sob o subprocesso do Jest, somente a escrita síncrona já usada pela linha operacional foi determinística. A causa factual era a fragilidade do probe de teste, não defeito runtime.
 
-Resultado final: **FAIL — 1 suite; 3/4 testes PASS; 1/4 FAIL**.
+### Correção
 
-Evidência positiva observada antes do blocker:
+Somente `apps/backend/src/infrastructure/__tests__/run-migrations.unit.spec.ts` mudou:
 
-- container PostgreSQL 17 iniciou no database de manutenção `postgres`;
-- readiness usou `docker exec ... pg_isready ... -d postgres`;
-- `DB_TEMP_NAME` explícito tinha prefixo `p12_disposable_`;
-- migrations reais foram aplicadas no banco descartável;
-- o teste confirmou o database explicitamente nomeado;
-- escrita do fixture passou;
-- isolamento do caso seguinte passou;
-- runner confirmou remoção do database alvo e do container após cada tentativa.
+- os quatro JSONs adicionais usam `writeSync(1, JSON.stringify(record) + "\\n")`;
+- `stdio` ficou explícito como `ignore/pipe/pipe`;
+- `encoding: "utf8"` foi preservado;
+- timeout finito de `10_000` ms;
+- falhas diagnosticam somente status, signal, error.code e comprimentos de stdout/stderr;
+- nenhuma asserção ou cobertura foi removida;
+- stdout vazio continua falha explícita.
 
-Falha terminal:
+`apps/backend/scripts/run-migrations.mjs` permaneceu sem qualquer diff.
 
-```text
-Unhandled error: Connection is closed
-origem: bullmq/ioredis durante o bootstrap do medusaIntegrationTestRunner
-```
+Resultado isolado e repetido: **1/1 suíte, 5/5 testes PASS**.
 
-Os logs mostraram conexão aos módulos locais `event-bus-redis`, `cache`, `locking-redis` e `workflow-engine-redis`. Isso viola D12-15/SDD/VALIDATION, que exigem Redis dobrado e proíbem Redis real neste plano.
+## Guarda loopback IPv6
 
-## Tentativas e cleanup
+O harness agora normaliza somente um par externo de colchetes antes da comparação. São aceitos:
 
-| Tentativa | Resultado | Cleanup |
-|---|---|---|
-| 1 | `@medusajs/test-utils@2.16.0` não resolveu seu import interno não declarado de `pg-god` | database/container ausentes |
-| 2 | hook global padrão de 5 s expirou durante bootstrap | database/container ausentes |
-| 3 | URL com `127.0.0.1` acionou a branch SSL remota do test-utils e esgotou o pool | database/container ausentes |
-| 4, após a terceira correção | migrations reais + 3 casos PASS; 1 caso FAIL por Redis real local | database/container ausentes |
+- `localhost`;
+- `127.0.0.1`;
+- `::1`;
+- `[::1]`.
 
-A inspeção final `rtk docker ps -a --filter name=p12-pg-` retornou vazia. Nenhum container Phase 12 permaneceu residual.
+Continuam rejeitados `0.0.0.0`, `host.docker.internal`, `::ffff:127.0.0.1`, IPv6 externo e hostname externo. Os testes cobrem a URL WHATWG com `[::1]`, hostname normalizado, redaction IPv6 e todas as rejeições.
 
-## Rename Gelato
+Resultado focado: **1/1 suíte, 23/23 testes PASS**.
 
-- O path de trabalho foi renomeado via `git mv` para `Migration20260703000000.ts`.
-- A classe de trabalho é `Migration20260703000000`.
-- A referência literal do teste Gelato foi atualizada para o novo path.
-- O diff normalizado contra o SHA-base foi vazio, provando que o DDL permanece equivalente e somente o nome da classe mudou no conteúdo.
-- O teste unitário Gelato focado **não foi executado**, pois a condição de parada Redis ocorreu antes dos gates seguintes.
+## Isolamento Redis
 
-Essas mudanças permanecem não commitadas; não são alegadas como entrega concluída.
+O gate confirmou:
 
-## Baselines
+- `NODE_ENV=test`;
+- `REDIS_URL`, `CACHE_REDIS_URL`, `EVENTS_REDIS_URL` e `WE_REDIS_URL` presentes e vazios;
+- `DTC_RELEASE_MIGRATION_MODE` e child marker vazios;
+- flags de Stripe, Resend e Gelato falsas;
+- cache in-memory, event bus local, workflow engine in-memory e locking local;
+- ausência dos cinco módulos Redis proibidos;
+- ausência de URL Redis falsa e de container Redis;
+- ausência de `bullmq`, `ioredis`, `Connection is closed`, `MaxRetriesPerRequestError` ou tentativa em porta 6379 no output capturado.
 
-Não executadas após o blocker, conforme a regra de parada imediata:
+`apps/backend/medusa-config.ts` não mudou.
 
-- Unit completa: não executada;
-- Modules completa: não executada;
-- HTTP completa: não executada;
-- lint: não executado;
-- build: não executado.
+## PostgreSQL real descartável
+
+O runner executou com Docker local e terminou **1/1 suíte, 6/6 testes PASS**:
+
+- imagem `postgres:17-alpine`;
+- maintenance DB `postgres`;
+- target `p12_disposable_*`;
+- readiness dentro do container;
+- migrations Medusa reais aplicadas;
+- WebhookEventLog, CheckoutCompletionLog e GelatoFulfillment descobertos;
+- índices únicos esperados encontrados;
+- fixture escrita e isolada no caso seguinte;
+- database alvo removido;
+- container `p12-pg-*` removido.
+
+As verificações `docker ps -a --filter name=p12-pg-` antes e depois retornaram vazias. Nenhum skip ocorreu.
+
+## Gelato e DDL
+
+- Teste Gelato focado: **1/1 suíte, 17/17 testes PASS**.
+- Migration descoberta pelo nome `Migration20260703000000`.
+- O diff normalizado contra o SHA-base, substituindo apenas `MigrationTBDGelatoFulfillment` pelo nome timestamped, ficou vazio.
+- O rename foi detectado pelo Git com similaridade de 98%; o DDL factual não mudou.
+
+## Baselines finais
+
+| Gate | Resultado |
+|---|---|
+| Run migrations focado | 1/1 suíte, 5/5 testes PASS |
+| Harness unitário | 1/1 suíte, 23/23 testes PASS |
+| Gelato focado | 1/1 suíte, 17/17 testes PASS |
+| PostgreSQL real | 1/1 suíte, 6/6 testes PASS |
+| Unit completa | 50/50 suítes, 789/789 testes PASS, 1 snapshot PASS |
+| Integration Modules | 30/30 suítes, 464/464 testes PASS |
+| Integration HTTP | 14/14 suítes, 172/172 testes PASS |
+| Lint | 0 erros, 207 warnings |
+| Build | PASS |
 
 ## Negative proofs
 
-| Prova | Resultado |
-|---|---|
-| Package/lockfile/Jest config sem diff em `PHASE12_EXECUTION_BASE_SHA...worktree` | PASS |
-| `apps/backend/medusa-config.ts` sem diff | PASS |
-| `git diff --check` | PASS |
-| Apenas paths da allowlist + este summary | PASS |
-| Sem Supabase/Heroku/provider externo/push/deploy | PASS |
-| Sem Stripe/Gelato/Resend/PostHog/Correios real | PASS |
-| Sem Redis real | **FAIL — Redis local foi carregado pelo bootstrap Medusa** |
-| Sem container PostgreSQL residual | PASS |
-| Sem database Phase 12 residual no container descartável | PASS |
+PASS para todas as negativas:
 
-Não houve uso de Supabase, Heroku, banco externo, migration remota, provider externo, push, deploy, tag, produção, alteração de package/lockfile/Jest config ou início do `12-02`.
+- nenhum diff base...HEAD ou WIP em `package.json`, `package-lock.json`, `apps/backend/package.json`, `apps/backend/jest.config.js` ou `apps/backend/medusa-config.ts`;
+- nenhum diff em `apps/backend/scripts/run-migrations.mjs`;
+- somente os paths da allowlist do P12-12-01-R3;
+- `git diff --check` limpo;
+- índice conferido antes de cada commit;
+- nenhum Supabase, Heroku, provider externo, Redis real, push, deploy, tag, reset, restore, stash, clean ou amend;
+- nenhum container PostgreSQL residual.
+
+## Arquivos entregues
+
+- `apps/backend/src/infrastructure/__tests__/run-migrations.unit.spec.ts`
+- `apps/backend/scripts/run-disposable-postgres-tests.mjs`
+- `apps/backend/integration-tests/postgres/disposable-postgres-harness.ts`
+- `apps/backend/src/infrastructure/__tests__/disposable-postgres-harness.unit.spec.ts`
+- `apps/backend/src/modules/webhooks/__tests__/disposable-postgres-harness.spec.ts`
+- `apps/backend/src/modules/gelato-fulfillment/migrations/Migration20260703000000.ts`
+- `apps/backend/src/modules/gelato-fulfillment/__tests__/gelato-fulfillment.unit.spec.ts`
+- `.planning/phases/12-ops-audit-critical-tests/12-01-SUMMARY.md`
+
+O path histórico `apps/backend/src/modules/gelato-fulfillment/migrations/TBD-gelato-fulfillment.ts` foi renomeado, não mantido em paralelo.
 
 ## Commits
 
-- Implementação: **não criado**, porque os gates não passaram.
-- Documento: será versionado separadamente com este estado BLOCKED.
+| Commit | Conteúdo |
+|---|---|
+| `8009f47` | `test(infrastructure): stabilize migration subprocess probes` |
+| `a9ed6c4` | `test(infrastructure): add disposable postgres harness` |
+| este commit documental | `docs(12): close disposable postgres harness plan` |
 
-## Deviations from Plan
+O commit BLOCKED `738edd2` foi preservado no histórico. Nenhum push foi executado.
 
-### Auto-fixed Issues
+## Próximo gate
 
-**1. [Rule 3 - Blocking] Adaptador virtual para import interno ausente do test-utils**
-
-- **Encontrado durante:** Task 2, primeira execução PostgreSQL.
-- **Problema:** `@medusajs/test-utils@2.16.0` importa `pg-god`, mas o pacote publicado não o declara nem o inclui.
-- **Correção:** o spec allowlisted fornece somente as operações create/drop esperadas, usando o driver `pg` já instalado e nome de database estritamente prefixado.
-- **Arquivo:** `apps/backend/src/modules/webhooks/__tests__/disposable-postgres-harness.spec.ts`.
-- **Verificação:** a tentativa final criou e removeu o database por meio do lifecycle do runner Medusa.
-
-**2. [Rule 3 - Blocking] Timeout compatível com bootstrap Medusa**
-
-- **Encontrado durante:** Task 2, segunda execução PostgreSQL.
-- **Problema:** o hook de 5 s expirou antes das migrations.
-- **Correção:** timeout local do spec elevado para 120 s, sem alterar Jest config.
-- **Verificação:** a tentativa seguinte avançou até o bootstrap/migrations.
-
-**3. [Rule 3 - Blocking] Literal localhost exigido pelo test-utils 2.16.0**
-
-- **Encontrado durante:** Task 2, terceira execução PostgreSQL.
-- **Problema:** a implementação instalada só desativa sua branch SSL remota quando a URL contém literalmente `localhost`; `127.0.0.1` esgotou o pool.
-- **Correção:** o environment do child normaliza `127.0.0.1` para `localhost`, preservando loopback.
-- **Verificação:** a tentativa final aplicou migrations e executou os quatro casos.
-
-**Total deviations:** 3 correções bloqueantes, limite atingido.
-
-## Issues Encountered
-
-- **Blocker não resolvido:** o app completo carregado por `medusaIntegrationTestRunner` consumiu Redis local real e produziu erro assíncrono de conexão fechada.
-- Corrigir isso exigiria uma quarta tentativa e novo isolamento explícito de Redis dentro da allowlist. O limite de correções foi atingido e a negativa já falhou, portanto o executor parou.
-
-## User Setup Required
-
-Nenhum. Não instalar dependência nem configurar serviço externo para este estado BLOCKED.
-
-## Next Phase Readiness
-
-- `12-01` requer novo gate humano para decidir se a continuação deve limpar/injetar os envs Redis antes do carregamento de `medusa-config.ts` ou revisar o desenho do spec.
-- `12-02` não está autorizado.
-- OPS-01, OPS-02 e TEST-01 permanecem incompletos.
+`12-01` encerra em PASS no gate manual. `12-02` não foi iniciado e permanece bloqueado até revisão e autorização humana explícita. `STATE.md`, `ROADMAP.md` e requisitos globais não foram promovidos por este slice.
 
 ## Self-Check: PASSED
 
-- O summary existe no path obrigatório.
-- O SHA-base, comandos, contagens, blocker e ausência de implementação commitada correspondem à evidência real.
-- O cleanup final de containers Phase 12 foi confirmado.
-- A classificação global do plano permanece **BLOCKED**.
+- `status: passed` e `tasks: 2/2` correspondem aos gates executados.
+- TEST-01 foundation está completa; TEST-01 global permanece incompleto.
+- Os três blockers históricos foram preservados.
+- Runtime, manifests, lockfile, Jest config e medusa-config ficaram intactos.
+- Cleanup PostgreSQL foi confirmado.
+- O escopo termina neste summary; 12-02 não começou.
 
 ---
 *Phase: 12-ops-audit-critical-tests*
