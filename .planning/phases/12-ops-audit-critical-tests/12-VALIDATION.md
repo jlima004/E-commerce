@@ -1,9 +1,9 @@
 ---
 phase: 12-ops-audit-critical-tests
 artifact: validation-plan
-status: plan-revised-checker-passed-awaiting-human-re-review
+status: spec-sdd-checker-passed-awaiting-human-review
 created_at: 2026-07-20
-updated_at: 2026-07-20
+updated_at: 2026-07-21
 requirements: [OPS-01, OPS-02, TEST-01]
 execution_authorized: false
 ---
@@ -14,7 +14,7 @@ execution_authorized: false
 
 Este documento planeja a validação; nenhum comando de runtime, teste, migration, provider, deploy ou commit foi executado neste gate.
 
-Resultado atual: **PLAN REVISED — CHECKER PASSED — AWAITING HUMAN RE-REVIEW**. O checker P12-PLAN-R1 retornou PASS binário com 0 blockers e 0 warnings. Esse PASS é exclusivamente documental; OPS-01, OPS-02 e TEST-01 continuam incompletos, e a revisão humana permanece obrigatória antes de SPEC/SDD ou execução.
+Resultado atual: **SPEC/SDD COMPLETE — CHECKER PASS — AWAITING HUMAN REVIEW**. O checker documental retornou PASS binário com 0 blockers e 0 warnings. Esse PASS é exclusivamente documental; OPS-01, OPS-02 e TEST-01 continuam incompletos, e a revisão humana permanece obrigatória antes do implementation prompt ou execução.
 
 O resultado de execução futuro é binário:
 
@@ -49,7 +49,7 @@ As contagens finais podem aumentar pelos novos testes, mas nenhuma suite/teste b
 
 | Plan | Gate técnico obrigatório | Gate negativo obrigatório | Resultado permitido |
 |------|--------------------------|---------------------------|--------------------|
-| 12-01 | materialização discoverable da migration Gelato + ownership único de migrations/isolamento/cleanup em PostgreSQL descartável | manutenção `postgres`; readiness no container; alvo/DSN separados; negativos de allowlist/sinal/Docker; base SHA capturado | PASS/BLOCKED |
+| 12-01 | rename Gelato com path descobrível, classe timestamped, referência literal do teste atualizada, DDL preservado, teste unitário focado PASS + ownership único de migrations/isolamento/cleanup em PostgreSQL descartável | manutenção `postgres`; readiness no container; alvo/DSN separados; negativos de allowlist/sinal/Docker; migration descoberta no PostgreSQL descartável; base SHA capturado | PASS/BLOCKED |
 | 12-02 | PG service/atomic upsert/concurrency + HTTP GET list/detail | sem email, mutation route, purge ou raw metadata | PASS/BLOCKED |
 | 12-03 | matriz integral dos detectores + jobs/claim; SUMMARY propaga PHASE12_EXECUTION_BASE_SHA | sem PaymentAttempt.updated_at, REL-02 ou efeito automático; sua negativa worktree-only é intermediária, nunca autorizadora do PASS final | PASS/BLOCKED |
 | 12-04 | helper + job de 15m + hook test-only + dois UNIQUE parciais + seis provas PG de concorrência/retry/terminal dedupe | sem dependência runtime de 12-05, provider, alteração/remoção, terminal ambíguo, actor body/API key ou Strategy A | PASS/BLOCKED |
@@ -65,6 +65,17 @@ Executar somente durante o respectivo execution gate aprovado.
 1. Antes de qualquer mudança: `set PHASE12_EXECUTION_BASE_SHA (git rev-parse HEAD)`; registrar o SHA em `12-01-SUMMARY.md`.
 2. `cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runTestsByPath src/infrastructure/__tests__/disposable-postgres-harness.unit.spec.ts --runInBand`
 3. `cd apps/backend && TMPDIR=/tmp rtk node scripts/run-disposable-postgres-tests.mjs -- rtk npm run test:integration:modules -- --runTestsByPath src/modules/webhooks/__tests__/disposable-postgres-harness.spec.ts --runInBand`
+4. `TMPDIR=/tmp npm run test:unit -w @dtc/backend -- --runTestsByPath src/modules/gelato-fulfillment/__tests__/gelato-fulfillment.unit.spec.ts`
+5. `rg -n 'TBD-gelato-fulfillment|Migration20260703000000' apps/backend/src/modules/gelato-fulfillment`
+
+Prova obrigatória do rename Gelato:
+
+- path descobrível;
+- classe correspondente ao timestamp;
+- teste de referência literal atualizado, sem alterar as demais asserções;
+- DDL preservado;
+- teste unitário Gelato focado PASS;
+- migration descoberta no PostgreSQL descartável.
 
 ### 12-02 — OperationalAlert
 
@@ -120,6 +131,7 @@ Evidence obrigatória:
 - Alternativa separa `P12_DISPOSABLE_DATABASE_URL` de `P12_DISPOSABLE_DB_NAME`; URL aponta a manutenção loopback, alvo tem prefixo, difere do database da URL e é revalidado antes de DROP. O database da DSN nunca é removido.
 - Negativos explícitos: host não loopback, nome sem prefixo, alvo igual à manutenção, nome vazio, cleanup fora da allowlist, Docker indisponível e interrupção por sinal.
 - Migration discovery pelo `medusaIntegrationTestRunner({ dbName: process.env.DB_TEMP_NAME, ... })`; toda nova invocação Phase 12 passa o nome explicitamente e não executa `rtk medusa db:migrate` contra qualquer DB persistente. Em 12-04, `hooks.beforeServerStart` registra explicitamente `admin_action_log` em `configModule.modules` antes de `runModulesMigrations`, sem depender do wiring runtime de 12-05.
+- Rename Gelato provado por path `Migration20260703000000.ts`, classe `Migration20260703000000`, referência literal atualizada em `gelato-fulfillment.unit.spec.ts`, teste focado PASS e diff normalizado vazio contra o SHA-base após substituir somente `MigrationTBDGelatoFulfillment` pelo nome timestamped; o DDL factual permanece equivalente.
 - Catálogo PostgreSQL exibindo constraints/índices testados sem incluir credenciais.
 - Concorrência iniciada por múltiplas operações/conexões reais, não Promise mocks.
 - Cardinalidade/estado final de WebhookEventLog, CheckoutCompletionLog, GelatoFulfillment, OperationalAlert e AdminActionLog.
@@ -193,6 +205,7 @@ Resultados não vazios só podem ser aceitos quando forem constantes/testes nega
 - `rtk git diff --check` PASS.
 - `rtk git status --short` registrado separadamente.
 - Nenhum arquivo fora do allowlist do respectivo plano.
+- A comparação final por `PHASE12_EXECUTION_BASE_SHA...HEAD` aceita `apps/backend/src/modules/gelato-fulfillment/__tests__/gelato-fulfillment.unit.spec.ts` no 12-01 exclusivamente para atualizar a referência literal do rename; isso não é scope creep e nenhum outro teste pode mudar por esse rename.
 - Nenhuma alteração no intervalo base...HEAD em packages, lockfile ou Jest config.
 - `apps/backend/medusa-config.ts` pode mudar somente para registrar `operational_alert` e `admin_action_log`; o diff base...HEAD é evidência revisável e qualquer mudança em Redis, cache, event bus, workflow, locking, database, providers, health ou release migration mode bloqueia.
 - O `12-03-SUMMARY.md` leva o SHA-base adiante e classifica sua negativa worktree-only como intermediária/superseded pelo gate final; ela nunca é usada isoladamente para PASS.
@@ -267,7 +280,7 @@ Audit result: **PASS — no unplanned source item and no deferred idea implement
 - [ ] Todas as decisões D12/H12/P12 têm cobertura explícita.
 - [ ] Cada plano contém gate manual e resultado PASS/BLOCKED.
 - [ ] Nenhum runtime/test/migration/provider/deploy/commit foi executado no PLAN gate.
-- [ ] O humano aprovou o plano antes de SPEC/SDD ou execução.
+- [ ] O checker SPEC/SDD passou e o humano revisou o gate antes do implementation prompt ou execução.
 
 ## Completion record template
 

@@ -1,10 +1,10 @@
 ---
 phase: 12-ops-audit-critical-tests
 artifact: discussion-log
-status: plan-revised-checker-passed-awaiting-human-re-review
+status: spec-sdd-complete-checker-passed-awaiting-human-review
 created_at: 2026-07-16
-updated_at: 2026-07-20
-scope: planning-only-gate
+updated_at: 2026-07-21
+scope: spec-sdd-only-gate
 ---
 
 # Phase 12 Discussion Log — Ops, Audit & Critical Tests
@@ -433,4 +433,74 @@ execution blocked
 6 planned / 0 executed
 completed_phases: 11
 percent: 92
+```
+
+## P12-SPEC-SDD — contracts complete, checker BLOCKED
+
+### Autorização e limite
+
+O humano autorizou separadamente apenas SPEC/SDD em 2026-07-21, com leitura integral, consulta read-only do runtime, uso de subagentes e parada obrigatória para revisão. Foram criados somente `12-SPEC.md` e `12-SDD.md`; este log, ROADMAP e STATE foram sincronizados. Nenhum PLAN/VALIDATION, runtime, teste, migration, package/lockfile, provider, PostgreSQL/Docker, deploy, push ou produção foi alterado/executado.
+
+### Correções factuais de inventário
+
+- O `12-04-PLAN.md` atual contém **10 arquivos**, não 8. As contagens de 8 nas tabelas históricas R2/R3 antecedem a inclusão de `admin-action-log-reconciliation.ts` e seu unit spec pelo P12-PLAN-R1. O PLAN atual é a autoridade; os registros históricos não foram reescritos.
+- O contrato antigo do RESEARCH que sugeria devolver falha após erro no append do outcome foi supersedido pelo P12-PLAN-R1/H12-S04: após domínio persistido, preservar status/body de sucesso, não repetir domínio, logar erro saneado e reconciliar o intent órfão.
+
+### Checker documental
+
+Resultado binário: **BLOCKED**. Não há `PASS WITH KNOWN DEBTS`.
+
+| Blocker | Evidência | Impacto |
+|---|---|---|
+| B12-SPEC-01 — enum de severidade | O prompt SPEC/SDD exige `OperationalAlert.severity = info|warning|critical`; CONTEXT, RESEARCH, DB_MODEL e 12-02/12-03 fixam `low|medium|high|critical`, com detectores emitindo `high|critical`. `info|warning|critical` é o enum de severity do AdminActionLog. | PLAN/VALIDATION precisam de decisão/revisão explícita; não é permitido corrigir silenciosamente. |
+| B12-SDD-02 — rename Gelato fora do allowlist | 12-01 renomeia `TBD-gelato-fulfillment.ts` para `Migration20260703000000.ts`, mas `apps/backend/src/modules/gelato-fulfillment/__tests__/gelato-fulfillment.unit.spec.ts` referencia literalmente o nome antigo e não consta em `files_modified`. | A execução quebraria a prova existente ou tocaria arquivo não previsto; 12-01 requer revisão antes da implementação. |
+
+O checker também confirmou que o gate atual foi aberto pela autorização SPEC/SDD desta sessão, portanto o antigo texto “SPEC/SDD not started” era histórico, não um terceiro blocker.
+
+### Estado do gate
+
+```text
+Phase 12 SPEC/SDD complete
+checker BLOCKED: 2 blockers / 0 warnings
+awaiting human review
+implementation prompt not started
+execution blocked
+6 planned / 0 executed
+completed_phases: 11
+total_plans: 56
+completed_plans: 50
+percent: 92
+OPS-01 incomplete
+OPS-02 incomplete
+TEST-01 incomplete
+commit: not created because PASS was not reached
+```
+
+## P12-SPEC-SDD-R1 — blockers documentais resolvidos
+
+### Correções autorizadas
+
+- `OperationalAlert.severity` foi restaurado ao contrato canônico `low|medium|high|critical`, com ordem monotônica `1..4`; os detectores MVP emitem `payment_stuck=high`, `fulfillment_failed/dead_letter=critical` e operator attention/stale reconhecido=`high`.
+- `AdminActionLog.severity` permaneceu independente e inalterado em `info|warning|critical`.
+- O 12-01 passou a incluir `apps/backend/src/modules/gelato-fulfillment/__tests__/gelato-fulfillment.unit.spec.ts` no rename planejado: path, classe exportada e referência literal serão atualizados, as demais asserções serão preservadas e o DDL factual não mudará.
+- `12-VALIDATION.md` registra o teste unitário Gelato focado, inspeção por `rg`, discovery no PostgreSQL descartável e a allowlist por SHA-base.
+
+### Checker documental
+
+Resultado binário: **PASS**, com **0 blockers e 0 warnings**. Não há `PASS WITH KNOWN DEBTS`.
+
+```text
+Phase 12 SPEC/SDD complete
+checker PASS
+awaiting human review
+implementation prompt not started
+execution blocked
+6 planned / 0 executed
+completed_phases: 11
+total_plans: 56
+completed_plans: 50
+percent: 92
+OPS-01 incomplete
+OPS-02 incomplete
+TEST-01 incomplete
 ```
