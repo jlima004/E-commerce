@@ -18,7 +18,7 @@ const CANONICAL_STATUSES_SQL = [
   .map((value) => `'${value}'`)
   .join(", ")
 
-export class MigrationTBDGelatoFulfillment extends Migration {
+export class Migration20260703000000 extends Migration {
   async up(): Promise<void> {
     this.addSql(`
       create table if not exists "gelato_fulfillment" (

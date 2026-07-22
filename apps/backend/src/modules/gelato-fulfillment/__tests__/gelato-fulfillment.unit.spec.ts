@@ -24,7 +24,7 @@ import {
 
 const migrationPath = path.join(
   __dirname,
-  "../migrations/TBD-gelato-fulfillment.ts"
+  "../migrations/Migration20260703000000.ts"
 )
 const modelPath = path.join(__dirname, "../models/gelato-fulfillment.ts")
 
