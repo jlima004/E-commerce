@@ -50,12 +50,25 @@ function run(command, args, options = {}) {
 }
 
 async function dockerIsAvailable() {
-  const result = await run("rtk", ["docker", "info"], { capture: true })
-  return result.code === 0
+  try {
+    const result = await run("docker", ["info"], { capture: true })
+    return result.code === 0
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return false
+    }
+
+    throw error
+  }
 }
 
 async function dockerRun(args, capture = true) {
-  return run("rtk", ["docker", ...args], { capture })
+  return run("docker", args, { capture })
 }
 
 async function waitForDockerPostgres(containerName, username, wasSignaled) {

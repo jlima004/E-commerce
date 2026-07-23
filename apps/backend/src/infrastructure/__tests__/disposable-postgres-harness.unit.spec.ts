@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import {
   POSTGRES_UNAVAILABLE_CODE,
   assertDisposableMedusaEnvironment,
@@ -11,6 +13,11 @@ import {
   selectProvisioningMode,
   validateMaintenanceTarget,
 } from "../../../integration-tests/postgres/disposable-postgres-harness"
+
+const DISPOSABLE_POSTGRES_RUNNER_SOURCE = readFileSync(
+  resolve(__dirname, "../../../scripts/run-disposable-postgres-tests.mjs"),
+  "utf8"
+)
 
 describe("disposable PostgreSQL harness guards", () => {
   it.each(["localhost", "127.0.0.1", "::1", "[::1]"])(
@@ -259,5 +266,34 @@ describe("disposable PostgreSQL harness guards", () => {
       "P12_DISPOSABLE_DATABASE_RESIDUE"
     )
     expect(removeContainer).toHaveBeenCalledWith("p12-pg-residue")
+  })
+
+  it("invokes Docker directly without an agent wrapper or shell", () => {
+    expect(DISPOSABLE_POSTGRES_RUNNER_SOURCE).toMatch(
+      /run\(\s*["']docker["']\s*,\s*\[["']info["']\]/
+    )
+    expect(DISPOSABLE_POSTGRES_RUNNER_SOURCE).toMatch(
+      /run\(\s*["']docker["']\s*,\s*args/
+    )
+    expect(DISPOSABLE_POSTGRES_RUNNER_SOURCE).not.toMatch(
+      /run\(\s*["']rtk["']/
+    )
+    expect(DISPOSABLE_POSTGRES_RUNNER_SOURCE).not.toMatch(
+      /spawn\(\s*["']rtk["']/
+    )
+    expect(DISPOSABLE_POSTGRES_RUNNER_SOURCE).not.toMatch(/rtk.*docker/)
+    expect(DISPOSABLE_POSTGRES_RUNNER_SOURCE).not.toMatch(/shell\s*:\s*true/)
+    expect(DISPOSABLE_POSTGRES_RUNNER_SOURCE).toMatch(
+      /spawn\(\s*command\s*,\s*args\s*,/
+    )
+    expect(DISPOSABLE_POSTGRES_RUNNER_SOURCE).toMatch(
+      /selectProvisioningMode\(/
+    )
+    expect(DISPOSABLE_POSTGRES_RUNNER_SOURCE).toMatch(
+      /createCleanupCoordinator\(/
+    )
+    expect(DISPOSABLE_POSTGRES_RUNNER_SOURCE).toMatch(
+      /assertDisposableMedusaEnvironment\(/
+    )
   })
 })
