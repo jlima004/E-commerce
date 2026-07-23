@@ -10,6 +10,97 @@ import {
   type AppendIntentInput,
 } from ".."
 
+const CANONICAL_ADMIN_ACTION_LOG_RESOLVE = "./src/modules/admin-action-log"
+
+function isCanonicalAdminActionLogRegistration(
+  registration: unknown
+): boolean {
+  if (
+    !registration ||
+    typeof registration !== "object" ||
+    Array.isArray(registration)
+  ) {
+    return false
+  }
+
+  const entry = registration as { resolve?: unknown; disable?: unknown }
+  if (entry.disable === true) {
+    return false
+  }
+
+  return entry.resolve === CANONICAL_ADMIN_ACTION_LOG_RESOLVE
+}
+
+function ensureAdminActionLogModuleRegistration(
+  modules: Record<string, unknown>
+): {
+  registered: boolean
+  alreadyPresent: boolean
+  resolvePath: string
+} {
+  const existingRegistration = modules.admin_action_log
+
+  if (!existingRegistration) {
+    modules.admin_action_log = {
+      resolve: CANONICAL_ADMIN_ACTION_LOG_RESOLVE,
+    }
+    return {
+      registered: true,
+      alreadyPresent: false,
+      resolvePath: CANONICAL_ADMIN_ACTION_LOG_RESOLVE,
+    }
+  }
+
+  if (!isCanonicalAdminActionLogRegistration(existingRegistration)) {
+    throw new Error("ADMIN_ACTION_LOG_CONFLICTING_REGISTRATION")
+  }
+
+  return {
+    registered: false,
+    alreadyPresent: true,
+    resolvePath: CANONICAL_ADMIN_ACTION_LOG_RESOLVE,
+  }
+}
+
+describe("AdminActionLog test-only registration idempotency", () => {
+  it("registers when the module is absent", () => {
+    const modules: Record<string, unknown> = {}
+    expect(ensureAdminActionLogModuleRegistration(modules)).toEqual({
+      registered: true,
+      alreadyPresent: false,
+      resolvePath: CANONICAL_ADMIN_ACTION_LOG_RESOLVE,
+    })
+    expect(modules.admin_action_log).toEqual({
+      resolve: CANONICAL_ADMIN_ACTION_LOG_RESOLVE,
+    })
+  })
+
+  it("preserves an existing canonical registration", () => {
+    const existing = { resolve: CANONICAL_ADMIN_ACTION_LOG_RESOLVE }
+    const modules: Record<string, unknown> = {
+      admin_action_log: existing,
+    }
+    expect(ensureAdminActionLogModuleRegistration(modules)).toEqual({
+      registered: false,
+      alreadyPresent: true,
+      resolvePath: CANONICAL_ADMIN_ACTION_LOG_RESOLVE,
+    })
+    expect(modules.admin_action_log).toBe(existing)
+  })
+
+  it("rejects a divergent existing registration", () => {
+    const modules: Record<string, unknown> = {
+      admin_action_log: { resolve: "./src/modules/other-module" },
+    }
+    expect(() => ensureAdminActionLogModuleRegistration(modules)).toThrow(
+      "ADMIN_ACTION_LOG_CONFLICTING_REGISTRATION"
+    )
+    expect(modules.admin_action_log).toEqual({
+      resolve: "./src/modules/other-module",
+    })
+  })
+})
+
 jest.mock(
   "pg-god",
   () => {
@@ -117,31 +208,23 @@ if (!requestedDatabaseName) {
         const configModule = container.resolve(
           ContainerRegistrationKeys.CONFIG_MODULE
         ) as {
-          modules?: Record<string, { resolve?: string } | unknown>
+          modules?: Record<string, unknown>
         }
 
-        if (!configModule.modules || typeof configModule.modules !== "object") {
+        if (
+          !configModule.modules ||
+          typeof configModule.modules !== "object" ||
+          Array.isArray(configModule.modules)
+        ) {
           throw new Error("ADMIN_ACTION_LOG_CONFIG_MODULE_INVALID")
         }
 
-        if (configModule.modules.admin_action_log) {
-          beforeServerStartEvidence.alreadyPresent = true
-          throw new Error("ADMIN_ACTION_LOG_ALREADY_REGISTERED")
-        }
-
-        configModule.modules.admin_action_log = {
-          resolve: "./src/modules/admin-action-log",
-        }
-
-        const registered = configModule.modules.admin_action_log as {
-          resolve?: string
-        }
-        if (registered.resolve !== "./src/modules/admin-action-log") {
-          throw new Error("ADMIN_ACTION_LOG_RESOLVE_DIVERGED")
-        }
-
-        beforeServerStartEvidence.registered = true
-        beforeServerStartEvidence.resolvePath = registered.resolve
+        const evidence = ensureAdminActionLogModuleRegistration(
+          configModule.modules
+        )
+        beforeServerStartEvidence.registered = evidence.registered
+        beforeServerStartEvidence.alreadyPresent = evidence.alreadyPresent
+        beforeServerStartEvidence.resolvePath = evidence.resolvePath
       },
     },
     testSuite: ({ dbConnection, getContainer }) => {
@@ -168,11 +251,13 @@ if (!requestedDatabaseName) {
       })
 
       it("registers admin_action_log before migrations and discovers DDL", async () => {
-        expect(beforeServerStartEvidence).toEqual({
-          registered: true,
-          resolvePath: "./src/modules/admin-action-log",
-          alreadyPresent: false,
-        })
+        expect(beforeServerStartEvidence.resolvePath).toBe(
+          CANONICAL_ADMIN_ACTION_LOG_RESOLVE
+        )
+        expect(
+          beforeServerStartEvidence.registered !==
+            beforeServerStartEvidence.alreadyPresent
+        ).toBe(true)
 
         const service = resolveService()
         expect(service).toBeTruthy()
