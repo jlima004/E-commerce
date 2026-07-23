@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-plan-05-passed-awaiting-human-review
-stopped_at: Plan 12-05 PASS (incl. P12-12-05-R1); awaiting human review; 12-06 blocked until explicit authorization
-last_updated: "2026-07-22"
-last_activity: 2026-07-22
-last_activity_desc: Plan 12-05 Admin Action instrumentation PASS with R1 idempotent postgres registration
+status: phase-12-plans-executed-awaiting-review
+stopped_at: Plan 12-06 PASS (P12-12-06-R1 composite gate); six Phase 12 plans executed; awaiting REVIEW
+last_updated: "2026-07-23"
+last_activity: 2026-07-23
+last_activity_desc: Plan 12-06 final invariant verification PASS under serial PostgreSQL + normal Modules gate
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 56
-  completed_plans: 55
-  percent: 98
+  completed_plans: 56
+  percent: 100
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-20)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 — Ops, Audit & Critical Tests. Plans 12-01..12-05 executed and passed; Plan 12-06 blocked pending human review of 12-05.
+**Current focus:** Phase 12 — Ops, Audit & Critical Tests. Plans 12-01..12-06 executed and passed technically; REVIEW/CLOSURE not started.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Plan 12-05 PASS absoluto (incl. P12-12-05-R1). Next permitted step: human review of `12-05-SUMMARY.md`. Do not start `12-06` without explicit authorization.
+**Current gate:** Plans 12-01..12-06 executed (12-06 PASS via P12-12-06-R1). Next permitted step: human **REVIEW**. Do not start CLOSURE or Phase 13 without explicit authorization. Phase 12 is not closed.
 
 ```text
 Phase 12 CONTEXT approved
@@ -53,7 +53,11 @@ Phase 12 SPEC/SDD complete
 12-03 PASS
 12-04 PASS
 12-05 PASS (R1 included)
-12-06 blocked until human review of 12-05
+12-06 PASS (P12-12-06-R1 composite gate)
+TEST-01 complete
+OPS-01 complete
+OPS-02 complete
+awaiting REVIEW
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -75,18 +79,18 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — Plan 12-05 passed; awaiting human review before 12-06
-Plan: 55/56 complete (milestone plans); Phase 12 plans: 5/6 executed (12-06 pending)
-Status: phase-12-plan-05-passed-awaiting-human-review
-Last activity: 2026-07-22 - Plan 12-05 Admin Action instrumentation PASS with P12-12-05-R1
+Phase: 12 (Ops, Audit & Critical Tests) — six plans executed; awaiting REVIEW
+Plan: 56/56 complete (milestone plans); Phase 12 plans: 6/6 executed (awaiting REVIEW)
+Status: phase-12-plans-executed-awaiting-review
+Last activity: 2026-07-23 - Plan 12-06 PASS under P12-12-06-R1 (serial disposable PostgreSQL + normal Modules)
 
-Progress: [██████████] 98% plans (55/56); Phase 12 plans are 5 executed / 1 pending (12-06)
+Progress: [██████████] 100% plans (56/56); Phase 12 plans are 6 executed / awaiting REVIEW (not closed)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 55 / 56 planned
+- Total plans completed: 56 / 56 planned
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -105,7 +109,7 @@ Progress: [██████████] 98% plans (55/56); Phase 12 plans are
 | 09. Gelato Fulfillment & Webhook | 5 executed / 5 planned | Complete / Closed | — |
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
-| 12. Ops, Audit & Critical Tests | 5 executed / 6 planned | 12-05 PASS; 12-06 blocked pending human review | — |
+| 12. Ops, Audit & Critical Tests | 6 executed / 6 planned | 12-06 PASS; awaiting REVIEW (not closed) | — |
 
 **Recent Trend:**
 
@@ -117,6 +121,8 @@ Progress: [██████████] 98% plans (55/56); Phase 12 plans are
 ## Accumulated Context
 
 ### Decisions
+
+- [P12-12-06-R1]: Final Plan 12-06 gate is composite — serial disposable PostgreSQL (one process per spec) + normal Modules suite. Stacked `medusaIntegrationTestRunner` `Map.prototype.set` remains a known Jest/test-utils stacking limitation; not required for PASS; not corrected in Phase 12.
 
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:

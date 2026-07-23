@@ -577,3 +577,34 @@ Contagem factual reconciliada: **9 paths técnicos** + `12-03-SUMMARY.md`. Núme
 - este discussion log
 
 `ROADMAP.md` / `STATE.md` não foram alterados: não registravam 12-03 como aprovado sem a reconciliação.
+
+## P12-12-06-R1 — gate PostgreSQL serial + Modules normal
+
+### Autorização
+
+O humano formalizou o gate final do Plan 12-06 como composto:
+
+1. cinco specs PostgreSQL em processos descartáveis independentes (serial);
+2. suíte Modules completa pelo comando normal do projeto;
+3. combinação das duas evidências para o gate final.
+
+Não é mais obrigatório empilhar múltiplos `medusaIntegrationTestRunner` no mesmo processo Jest. A falha `Map.prototype.set` permanece registrada como limitação de empilhamento Jest/test-utils — não defeito das constraints — e não foi corrigida.
+
+### Proibido
+
+Corrigir Jest/`@medusajs/test-utils`; alterar runner 12-01; modificar specs predecessores; modificar runtime/migrations/models/services; alterar manifests/lockfile/Jest config; consolidar runners; criar dependências; push; deploy; REVIEW; CLOSURE. Sem PASS parcial.
+
+### Evidência técnica (2026-07-23)
+
+- Parte A: 5/5 PostgreSQL serial disposable PASS; cleanup sem residual `p12-pg-*`
+- Parte B: Modules normal 36/36 · 511/511
+- HTTP focado 4/4 · 23/23; Unit 54/54 · 877/877; HTTP completo 19/19 · 235/235
+- Lint 0 erros / 210 warnings; Build PASS
+- Negativas package/lockfile/Jest vazias; medusa-config allowlist-only
+- `TEST-01` / `OPS-01` / `OPS-02` complete tecnicamente
+- Phase 12 closed / cross-dyno real / stacked PASS: não alegados
+
+### Artefatos atualizados
+
+- `12-06-PLAN.md`, `12-VALIDATION.md`, `12-IMPLEMENTATION-PROMPT.md`, este log, `12-06-SUMMARY.md`
+- `STATE.md` / `ROADMAP.md` após PASS técnico: seis planos executados; aguardam REVIEW

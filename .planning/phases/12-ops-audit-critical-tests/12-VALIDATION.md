@@ -132,23 +132,56 @@ O spec PostgreSQL deve usar a API factual de `@medusajs/test-utils@2.16.0`: `hoo
 
 ### 12-06 — named invariants and real constraints
 
-1. `cd apps/backend && TMPDIR=/tmp rtk npm run test:integration:http -- --runTestsByPath integration-tests/http/invariants-inv01-02-order-birth.spec.ts integration-tests/http/invariants-inv03-04-webhook-idempotency.spec.ts integration-tests/http/invariants-inv08-gelato-single-active.spec.ts integration-tests/http/invariants-inv09-10-refund-decoupling.spec.ts --runInBand`
-2. `cd apps/backend && TMPDIR=/tmp rtk node scripts/run-disposable-postgres-tests.mjs -- rtk npm run test:integration:modules -- --runTestsByPath src/modules/webhooks/__tests__/webhook-event-log.postgres.spec.ts src/modules/checkout-completion/__tests__/checkout-completion-log.postgres.spec.ts src/modules/gelato-fulfillment/__tests__/gelato-fulfillment.postgres.spec.ts src/modules/operational-alert/__tests__/operational-alert.postgres.spec.ts src/modules/admin-action-log/__tests__/admin-action-log.postgres.spec.ts --runInBand`
+Gate PostgreSQL (P12-12-06-R1):
+
+```text
+Gate PostgreSQL:
+- cinco specs executados serialmente;
+- um processo descartável por spec;
+- todos PASS;
+- cleanup após cada processo.
+```
+
+1. `cd apps/backend && TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath integration-tests/http/invariants-inv01-02-order-birth.spec.ts integration-tests/http/invariants-inv03-04-webhook-idempotency.spec.ts integration-tests/http/invariants-inv08-gelato-single-active.spec.ts integration-tests/http/invariants-inv09-10-refund-decoupling.spec.ts --runInBand`
+2. Para cada um dos cinco paths abaixo (um processo Jest descartável por spec; não empilhar no mesmo Jest): `cd apps/backend && node scripts/run-disposable-postgres-tests.mjs -- npm run test:integration:modules -- --runTestsByPath <one-spec> --runInBand`, depois confirmar ausência de residual `p12-pg-*`:
+   - `src/modules/webhooks/__tests__/webhook-event-log.postgres.spec.ts`
+   - `src/modules/checkout-completion/__tests__/checkout-completion-log.postgres.spec.ts`
+   - `src/modules/gelato-fulfillment/__tests__/gelato-fulfillment.postgres.spec.ts`
+   - `src/modules/operational-alert/__tests__/operational-alert.postgres.spec.ts`
+   - `src/modules/admin-action-log/__tests__/admin-action-log.postgres.spec.ts`
+
+Stacked (diagnóstico, não gate):
+
+```text
+Stacked execution:
+known incompatible Map.prototype.set failure;
+not required for PASS;
+no correction attempted in Phase 12.
+```
 
 ## Full regression gate
 
 Executar após todos os focused gates PASS:
 
+Gate Modules:
+
+```text
+Gate Modules:
+- suíte completa pelo comando normal;
+- baseline igual ou superior à vigente;
+- nenhum teste omitido.
+```
+
 1. Recarregar `PHASE12_EXECUTION_BASE_SHA` do valor exato registrado em `12-01-SUMMARY.md`.
-2. `cd apps/backend && TMPDIR=/tmp rtk npm run test:unit -- --runInBand`
-3. `cd apps/backend && TMPDIR=/tmp rtk node scripts/run-disposable-postgres-tests.mjs -- rtk npm run test:integration:modules -- --runInBand`
-4. `cd apps/backend && TMPDIR=/tmp rtk npm run test:integration:http -- --runInBand`
-5. `cd apps/backend && HOME=/tmp XDG_CONFIG_HOME=/tmp ADMIN_DISABLED=true HMR_PORT=5173 rtk npm run lint`
-6. `cd apps/backend && HOME=/tmp XDG_CONFIG_HOME=/tmp ADMIN_DISABLED=true HMR_PORT=5173 rtk npm run build`
-7. `rtk git diff --check`
-8. `rtk git status --short`
-9. `rtk git diff --exit-code "$PHASE12_EXECUTION_BASE_SHA"...HEAD -- apps/backend/package.json package-lock.json apps/backend/jest.config.js`
-10. `rtk git diff "$PHASE12_EXECUTION_BASE_SHA"...HEAD -- apps/backend/medusa-config.ts` e inspeção allowlisted registrada.
+2. `TMPDIR=/tmp npm run test:unit -w @dtc/backend`
+3. `TMPDIR=/tmp npm run test:integration:modules -w @dtc/backend`
+4. `TMPDIR=/tmp npm run test:integration:http -w @dtc/backend`
+5. `HOME=/tmp XDG_CONFIG_HOME=/tmp TMPDIR=/tmp ADMIN_DISABLED=true npm run lint -w @dtc/backend`
+6. `HOME=/tmp XDG_CONFIG_HOME=/tmp TMPDIR=/tmp ADMIN_DISABLED=true npm run build -w @dtc/backend`
+7. `git diff --check`
+8. `git status --short`
+9. `git diff --exit-code "$PHASE12_EXECUTION_BASE_SHA"...HEAD -- apps/backend/package.json package-lock.json apps/backend/jest.config.js`
+10. `git diff "$PHASE12_EXECUTION_BASE_SHA"...HEAD -- apps/backend/medusa-config.ts` e inspeção allowlisted registrada.
 
 O gate recusa PASS se qualquer SUMMARY ou revisão confiar apenas em worktree limpo, no comando legado do 12-03 ou em ausência total de alteração de `medusa-config.ts`. A única negativa final autorizadora para manifests/Jest é a comparação base...HEAD acima; para `medusa-config.ts`, é obrigatória a inspeção separada do diff base...HEAD, aceitando exclusivamente os registros `operational_alert` e `admin_action_log`.
 
@@ -167,7 +200,8 @@ Evidence obrigatória:
 - Cardinalidade/estado final de WebhookEventLog, CheckoutCompletionLog, GelatoFulfillment, OperationalAlert e AdminActionLog.
 - Catálogo dos UNIQUE parciais de AdminActionLog e cardinalidade de dois intents concorrentes, dois outcomes, outcome versus reconciliation, dois workers, retry com novo attempt e idempotency_key repetida entre attempts.
 - Cleanup do DB/container confirmado mesmo após cenário de falha.
-- Classificação explícita da força da evidência: **process-local executado**; **PostgreSQL transacional executado**; **cross-process/dyno inferido pela constraint PostgreSQL compartilhada**; **cross-dyno real não executado e não alegado**.
+- Classificação explícita da força da evidência: **process-local executado**; **PostgreSQL transacional executado em processos descartáveis serializados**; **cross-process/dyno inferido pela constraint PostgreSQL compartilhada**; **cross-dyno real não executado e não alegado**.
+- O gate PostgreSQL final do 12-06 (P12-12-06-R1) é composto: serial disposable por spec + Modules normal. Empilhar múltiplos `medusaIntegrationTestRunner` no mesmo processo Jest sob disposable é diagnóstico conhecido (`Map.prototype.set`) e não é obrigatório para PASS.
 
 ## Invariant evidence matrix
 

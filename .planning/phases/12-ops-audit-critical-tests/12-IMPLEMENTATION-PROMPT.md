@@ -500,11 +500,13 @@ Referências vinculantes: `12-06-PLAN.md`, `12-SPEC.md`, `12-SDD.md`, `12-VALIDA
 - provar `OperationalAlert` concurrent upsert com cardinalidade, ocorrência e severity finais corretas;
 - provar migration discovery, inclusive Gelato renomeada;
 - executar gates completos de unit, modules, HTTP, lint e build;
-- executar suites PostgreSQL pelo runner descartável, não por Jest direto;
+- executar suites PostgreSQL pelo runner descartável **serialmente** (um processo Jest por `.postgres.spec.ts`); não empilhar os cinco paths no mesmo Jest;
+- Gate Modules: suíte completa pelo comando normal `TMPDIR=/tmp npm run test:integration:modules -w @dtc/backend` (baseline ≥ vigente; nenhum omitido);
+- Stacked disposable: diagnóstico conhecido (`Map.prototype.set`); not required for PASS; no correction attempted in Phase 12;
 - comparar todo o intervalo desde `PHASE12_EXECUTION_BASE_SHA`;
 - revisar linha a linha o diff allowlisted de `apps/backend/medusa-config.ts`;
 - provar diff vazio no intervalo para package, lockfile e Jest config;
-- classificar honestamente: process-local executado; PostgreSQL transacional executado; cross-process/dyno apenas inferido pela constraint compartilhada; cross-dyno real não executado e não alegado.
+- classificar honestamente: process-local executado; PostgreSQL transacional executado em processos descartáveis serializados; cross-process/dyno apenas inferido pela constraint compartilhada; cross-dyno real não executado e não alegado.
 
 ### Allowlist exata
 
@@ -529,6 +531,30 @@ Qualquer infra indisponível, skip, resíduo, regressão, warning ou negativa fa
 ```
 
 Parar para `VERIFICATION` humana. Não iniciar REVIEW, CLOSURE ou Phase 13.
+
+### P12-12-06-R1 — gate PostgreSQL composto
+
+Autorização humana substituiu o stacked Jest obrigatório pelo gate composto:
+
+```text
+Gate PostgreSQL:
+- cinco specs executados serialmente;
+- um processo descartável por spec;
+- todos PASS;
+- cleanup após cada processo.
+
+Gate Modules:
+- suíte completa pelo comando normal;
+- baseline igual ou superior à vigente;
+- nenhum teste omitido.
+
+Stacked execution:
+known incompatible Map.prototype.set failure;
+not required for PASS;
+no correction attempted in Phase 12.
+```
+
+A falha `Method Map.prototype.set called on incompatible receiver #<Map>` registra-se como limitação do empilhamento Jest/test-utils, não como defeito das constraints. Continuam proibidos: corrigir Jest/test-utils; alterar runner 12-01; modificar specs predecessores/runtime/migrations/models/services; alterar manifests/lockfile/Jest config; consolidar runners; criar dependências; push; deploy; REVIEW; CLOSURE.
 
 ## 12. Global validation matrix
 
