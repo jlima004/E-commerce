@@ -258,3 +258,52 @@ Três commits atômicos do 12-06 (sem push):
 3. `docs(12): record final invariant verification`
 
 Próximo passo humano: **REVIEW** (não CLOSURE automático). Não iniciar Phase 13.
+
+## REVIEW correction — P12-REVIEW-R1
+
+Gate humano de REVIEW identificou dois blockers; correção estreita aplicada sem CLOSURE / Phase 13 / push / deploy.
+
+### INV-4 distinct-event proof
+
+- Evento A: `evt_inv04_success_a`
+- Evento B: `evt_inv04_success_b`
+- Mesmo `payment_intent_id`: `pi_inv03_123`
+- WebhookEventLog: 2 fatos distintos
+- CheckoutCompletionLog/claim: 1 fato canônico
+- Order: 1
+- Segundo processamento: `reused_existing_order` (não cria nova Order)
+- Resultado: PASS
+
+Arquivo técnico: `apps/backend/integration-tests/http/invariants-inv03-04-webhook-idempotency.spec.ts`
+Commit técnico: `7609d8473b252b7545bb272b189438a416c96b0e`
+
+### Focused validation
+
+- INV-3/4 focused: **1/1** suite, **6/6** testes PASS
+- Four invariant suites: **4/4** suites, **23/23** testes PASS (sem skip/todo/only)
+- HTTP complete: **19/19** suites, **235/235** testes PASS (sem regressão)
+
+### Negatives
+
+- `git diff --check`: vazio
+- Diff `package.json` / `package-lock.json` / `jest.config.js` / `medusa-config.ts` vs `P12_REVIEW_R1_BASE_SHA`: vazio
+- rg external providers no spec INV-3/4: sem matches
+
+### Final repository state
+
+Verified immediately after the documentary commit of this gate (gate step 9). A git commit cannot cryptographically contain its own tip SHA; the authoritative tip is `git rev-parse HEAD` after `docs(12): record invariant review corrections`.
+
+- HEAD: `7ca69486462cc9816bcb1708a674fc15d19214a2`
+- Authoritative tip: `git rev-parse HEAD` (worktree must be empty)
+- `origin/main...HEAD`: `0 32`
+- `git status --short --untracked-files=all`: vazio
+- `git diff --check`: vazio
+- Push/deploy: não executados
+- CLOSURE: não iniciado
+- Phase 13: não iniciada
+
+```text
+P12_REVIEW_R1_BASE_SHA=30c8612515832a181d80f1313ee26e7cf56624e6
+technical=7609d8473b252b7545bb272b189438a416c96b0e
+awaiting human re-review
+```

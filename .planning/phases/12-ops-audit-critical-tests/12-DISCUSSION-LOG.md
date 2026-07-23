@@ -608,3 +608,64 @@ Corrigir Jest/`@medusajs/test-utils`; alterar runner 12-01; modificar specs pred
 
 - `12-06-PLAN.md`, `12-VALIDATION.md`, `12-IMPLEMENTATION-PROMPT.md`, este log, `12-06-SUMMARY.md`
 - `STATE.md` / `ROADMAP.md` após PASS técnico: seis planos executados; aguardam REVIEW
+
+## P12-REVIEW-R1 — correção dos blockers do REVIEW humano
+
+### Blockers originais
+
+1. INV-4 ainda não provava dois eventos Stripe `payment_intent.succeeded` **distintos** para o mesmo `payment_intent` (o caso reutilizava o mesmo `event.id`).
+2. A evidência final não registrava explicitamente o estado do worktree após o commit documental `30c8612`.
+
+### Correção estreita
+
+- Único arquivo técnico: `apps/backend/integration-tests/http/invariants-inv03-04-webhook-idempotency.spec.ts`
+- Caso INV-4 corrigido para `evt_inv04_success_a` + `evt_inv04_success_b`, ambos `pi_inv03_123`
+- Harness de claim via `CheckoutCompletionLog` (idempotency_key = payment_intent); segundo evento → `reused_existing_order`
+- Preservados: replay do mesmo event, raw body/assinatura ausente/inválida, falha intermediária recuperável, zero persistência pré-auth, IDs INV
+
+### Comandos e resultados
+
+```text
+TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath \
+  integration-tests/http/invariants-inv03-04-webhook-idempotency.spec.ts --runInBand
+→ 1/1 suite, 6/6 PASS
+
+TMPDIR=/tmp npm run test:integration:http -- --runTestsByPath \
+  <four invariant specs> --runInBand
+→ 4/4 suites, 23/23 PASS
+
+TMPDIR=/tmp npm run test:integration:http -w @dtc/backend
+→ 19/19 suites, 235/235 PASS
+```
+
+Negativas: `git diff --check` limpo; config/lockfile/jest/medusa-config sem diff vs `P12_REVIEW_R1_BASE_SHA`; rg external providers sem matches no spec.
+
+### Git
+
+- `P12_REVIEW_R1_BASE_SHA`: `30c8612515832a181d80f1313ee26e7cf56624e6`
+- Commit técnico: `7609d8473b252b7545bb272b189438a416c96b0e` — `test(invariants): prove distinct webhook events share one order claim`
+- Commit documental: `7ca69486462cc9816bcb1708a674fc15d19214a2` — `docs(12): record invariant review corrections`
+- `origin/main...HEAD`: `0 32`
+- worktree: vazio após commit documental (`git status --short --untracked-files=all` vazio)
+- `git diff --check`: vazio
+- Push/deploy: não executados
+
+### Post-commit Git evidence
+
+```text
+HEAD=7ca69486462cc9816bcb1708a674fc15d19214a2
+origin/main...HEAD=0 32
+git status --short --untracked-files=all=(empty)
+git diff --check=(empty)
+```
+
+Authoritative tip after documentary commit: `7ca69486462cc9816bcb1708a674fc15d19214a2` via `git rev-parse HEAD`.
+
+### Decisão de parada
+
+```text
+stopped for human re-review
+CLOSURE: not started
+Phase 13: not started
+next permitted step: human REVIEW only
+```

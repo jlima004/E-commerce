@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 9: Gelato Fulfillment & Webhook** - Gated single-active Gelato dispatch + Gelato webhook for status/tracking *(complete; closed 2026-07-02)*
 - [x] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route *(complete; closed 2026-07-02)*
 - [x] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow *(complete; closed 2026-07-03)*
-- [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests *(6/6 plans executed; 12-06 PASS via P12-12-06-R1; awaiting REVIEW; not closed)*
+- [ ] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests *(6/6 plans executed; REVIEW blockers corrected via P12-REVIEW-R1; awaiting human re-review; not closed)*
 
 ## Phase Details
 
@@ -446,7 +446,7 @@ Plans:
 **Mode:** mvp
 **Depends on**: Phases 1-11
 **Requirements**: OPS-01, OPS-02, TEST-01
-**Manual gate:** Plans `12-01`..`12-06` foram executados e o Plan 12-06 passou sob o gate composto P12-12-06-R1 (PostgreSQL serial disposable + Modules normal). `TEST-01`, `OPS-01` e `OPS-02` estão tecnicamente complete. Phase 12 **não** está closed; próximo passo permitido: human **REVIEW**. CLOSURE e Phase 13 permanecem bloqueados até autorização explícita.
+**Manual gate:** Plans `12-01`..`12-06` foram executados e o Plan 12-06 passou sob o gate composto P12-12-06-R1 (PostgreSQL serial disposable + Modules normal). `TEST-01`, `OPS-01` e `OPS-02` estão tecnicamente complete. Blockers do REVIEW humano corrigidos em P12-REVIEW-R1 (INV-4 distinct-event proof + evidência final de worktree). Phase 12 **não** está closed; próximo passo permitido: human **re-REVIEW**. CLOSURE e Phase 13 permanecem bloqueados até autorização explícita.
 
 **Boundary preserved:** Phase 09 `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the local fulfillment truth and closes FUL-04. Phase 12 OPS-01 adds the promotion of that condition to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
 
@@ -457,7 +457,7 @@ Plans:
   2. Every Admin action on money, order, or fulfillment is recorded in AdminActionLog for audit.
   3. Automated tests guard the core invariants — no Order without confirmed payment (INV-1/2), webhook idempotency (INV-3/4), single active Gelato order (INV-8), and refund/order-status decoupling (INV-9/10) — and they pass.
 
-**Plans**: 6 planned / 6 executed (awaiting REVIEW)
+**Plans**: 6 planned / 6 executed (awaiting REVIEW; P12-REVIEW-R1 corrections complete)
 
 Plans:
 - [x] 12-01-PLAN.md — Single-owner disposable PostgreSQL lifecycle and execution-base proof foundation
@@ -485,7 +485,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Gelato Fulfillment & Webhook | 5/5 | Complete / Closed | 2026-07-02 |
 | 10. Secure Guest Tracking | 3/3 | Complete / Closed | 2026-07-02 |
 | 11. Refunds & Exchanges (Admin) | 4/4 | Complete / Closed | 2026-07-03 |
-| 12. Ops, Audit & Critical Tests | 6/6 | Plans executed; 12-06 PASS (P12-12-06-R1); awaiting REVIEW (not closed) | - |
+| 12. Ops, Audit & Critical Tests | 6/6 | Plans executed; REVIEW blockers corrected (P12-REVIEW-R1); awaiting human re-review (not closed) | - |
 
 ---
 *Roadmap created: 2026-06-22*
