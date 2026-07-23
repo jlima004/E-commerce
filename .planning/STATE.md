@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-closed-awaiting-product-manager-milestone-decision
-stopped_at: Phase 12 closed; awaiting separate Product Manager milestone decision
+status: phase-12-closed-post-closure-pr7-r1-pass-awaiting-pr-update
+stopped_at: P12-POST-CLOSURE-PR7-R1 PASS; awaiting separate push and Codex re-review authorization
 last_updated: "2026-07-23"
 last_activity: 2026-07-23
-last_activity_desc: Phase 12 CLOSURE PASS; backend MVP phases 12/12 closed
+last_activity_desc: P12-POST-CLOSURE-PR7-R1 PASS; Phase 12 closure reaffirmed; awaiting PR update authorization
 progress:
   total_phases: 12
   completed_phases: 12
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-20)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 complete and closed. All 12 backend MVP phases are formally closed. No next phase or milestone is authorized automatically.
+**Current focus:** Phase 12 closed and reaffirmed by P12-POST-CLOSURE-PR7-R1 PASS. Phase 12.1 not started / blocked until separate push + Codex re-review on PR 7. Awaiting separate authorization for PR update.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 12 CLOSURE PASS. `completed_phases: 12`; `completed_plans: 56`; milestone phases 12/12 closed. Next step: separate Product Manager decision. Do not start Phase 13, milestone closeout, push, deploy, or frontend automatically.
+**Current gate:** P12-POST-CLOSURE-PR7-R1 PASS. `completed_phases: 12`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 closed and reaffirmed by post-closure addendum. Phase 12.1 not started / blocked until separate push and Codex re-review authorization. Do not start Phase 12.1, Phase 13, milestone closeout, push, deploy, or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -63,11 +63,14 @@ OPS-02 complete
 completed_phases: 12
 completed_plans: 56
 percent: 100
-Phase 12 closed
+Phase 12 closed; reaffirmed by P12-POST-CLOSURE-PR7-R1 PASS
+P12-POST-CLOSURE-PR7-R1 PASS
+PR 7 open; three Codex findings corrected locally; awaiting push authorization
+Phase 12.1 not started / blocked until PR re-review
 milestone phases: 12/12 closed
 milestone closed/archived: no
 Phase 13 not started / not authorized
-next permitted step: separate Product Manager milestone decision only
+next permitted step: separate authorization to push the two commits and request Codex re-review on PR 7
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -89,12 +92,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — complete and closed; awaiting separate Product Manager milestone decision
+Phase: 12 (Ops, Audit & Critical Tests) — closed; post-closure PR7-R1 PASS; awaiting PR update authorization
 Plan: 56/56 complete (milestone plans); Phase 12 plans: 6/6 executed and closed
-Status: phase-12-closed-awaiting-product-manager-milestone-decision
-Last activity: 2026-07-23 - Phase 12 CLOSURE PASS; backend MVP phases 12/12 closed
+Status: phase-12-closed-post-closure-pr7-r1-pass-awaiting-pr-update
+Last activity: 2026-07-23 - P12-POST-CLOSURE-PR7-R1 PASS; Phase 12 closure reaffirmed
 
-Progress: [██████████] 100% plans (56/56); Phase 12 complete / closed 2026-07-23
+Progress: [██████████] 100% plans (56/56); Phase 12 complete / closed 2026-07-23; PR7-R1 post-closure PASS
 
 ## Performance Metrics
 
@@ -241,24 +244,21 @@ Items acknowledged and carried forward from previous milestone close:
 
 Last session: 2026-07-23
 
-Stopped at: Phase 12 CLOSURE PASS. Plans 12-01..12-06, OPS-01, OPS-02
-and TEST-01 are complete. All 12 backend MVP phases are formally closed.
+Stopped at: P12-POST-CLOSURE-PR7-R1 PASS; awaiting separate push and Codex
+re-review authorization.
 
 Resume file:
-`.planning/phases/12-ops-audit-critical-tests/12-CLOSURE.md`
+`.planning/phases/12-ops-audit-critical-tests/12-POST-CLOSURE-PR7-R1-SUMMARY.md`
 
-Next permitted step: a separate Product Manager decision among milestone
-v1.0 closeout, release-readiness/production-validation work, or planning a
-new milestone.
-
-Do not start Phase 13 automatically.
-Do not start a new milestone automatically.
-Do not start frontend/storefront work automatically.
+Next permitted step: separate authorization to push the two local commits and
+request Codex re-review on PR 7. Do not start Phase 12.1, Phase 13, milestone
+closeout, or frontend automatically.
 
 ## Quick Tasks Completed
 
 | Date | Task | Summary |
 |------|------|---------|
+| 2026-07-23 | P12-POST-CLOSURE-PR7-R1 | Corrected three Codex PR7 findings (refund replay audit, exchange reconciliation, alert scanner pagination); focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | phase-12-closure | Closed Phase 12 documentally after accepted execution, validation and human REVIEW; all 12 backend MVP phases closed; no Phase 13, milestone closeout, push or deploy. |
 | 2026-07-16 | 260716-p3o-encerrar-formalmente-a-estabiliza-o-no-s | Estabilização formalmente encerrada; incidente monetário, versionamento automático e TLS do cache Redis resolvidos; fallbacks classificados e isolados; produção saudável; próximos passos obsoletos removidos. |
 | 2026-07-16 | 260715-infra01-release-infrastructure | INFRA-01 PASS: release DB-only isolation and Redis production fail-fast; Unit 766/766, Modules 463/463, HTTP 172/172, lint 0/207, build PASS; CACHE-01A/B PASS; two local commits; no push/deploy. |

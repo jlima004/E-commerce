@@ -448,6 +448,10 @@ Plans:
 **Requirements**: OPS-01, OPS-02, TEST-01
 **Manual gate:** Plans `12-01`..`12-06` foram executados e o Plan 12-06 passou sob o gate composto P12-12-06-R1 (PostgreSQL serial disposable + Modules normal). `TEST-01`, `OPS-01` e `OPS-02` estão complete. Human REVIEW/re-REVIEW **PASS** (P12-REVIEW-R2). Phase 12 **CLOSURE PASS** — complete / closed 2026-07-23. Milestone closeout, Phase 13, push, deploy e frontend permanecem fora deste fechamento e exigem decisão/autorização separada.
 
+**Post-closure PR7 correction gate P12-POST-CLOSURE-PR7-R1:**
+PASS; refund replay audit, exchange reconciliation and alert scanner pagination corrected.
+Phase 12 closure reaffirmed. Phase 12.1 remains not started.
+
 **Boundary preserved:** Phase 09 `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the local fulfillment truth and closes FUL-04. Phase 12 OPS-01 adds the promotion of that condition to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
 
 **Known PRD divergence:** OperationalAlert email delivery via Resend is outside the Phase 12 MVP, is a known divergence from the PRD, and is not a blocker for OPS-01.

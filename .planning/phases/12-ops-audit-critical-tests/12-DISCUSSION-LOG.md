@@ -755,3 +755,80 @@ closeout, release-readiness/production validation, or creation of a new
 milestone.
 
 No next phase starts automatically.
+
+---
+
+## P12-POST-CLOSURE-PR7-R1 — Codex PR 7 corrective gate
+
+### Authorization
+
+Human authorization covered exclusively:
+
+```text
+P12-POST-CLOSURE-PR7-R1
+```
+
+Local technical + documentary gate only. No push, deploy, GitHub write,
+Phase 12.1, Phase 13, or milestone closeout.
+
+### Findings
+
+Reviewer `chatgpt-codex-connector` on commit
+`96cf6452f9a893350ee582b41378eea1b3c51725` (PR 7):
+
+1. **Point replay audits at the reused refund request**
+   (`apps/backend/src/api/admin/refunds/request/route.ts`)
+2. **Don’t reconcile failed updates as successful creates**
+   (`apps/backend/src/jobs/admin-action-log-reconciliation.ts`)
+3. **Use one pagination strategy for alert scans**
+   (`apps/backend/src/jobs/operational-alert-scanner.ts`)
+
+All three confirmed and corrected.
+
+### Technical decisions
+
+- Pre-resolve refund replay by `idempotency_key` before audit intent; keep
+  claim-time authoritative lookup.
+- Typed `resolveOutcomeEntityId` for success outcomes; error outcomes remain on
+  original intent entity id.
+- Reconciliation may override `entity_id` factually and resolve refunds by
+  unambiguous idempotency key.
+- Exchange intents carry immutable `exchange_operation` (`create`|`update`) and
+  intended allowlisted state for update/reject/cancel.
+- Alert scanner uses pure offset pagination ordered by `id ASC` only.
+
+### Files changed
+
+Technical allowlist only (12 files) plus documentary allowlist
+(`12-POST-CLOSURE-PR7-R1-SUMMARY.md`, `12-DISCUSSION-LOG.md`, `12-CLOSURE.md`,
+`ROADMAP.md`, `STATE.md`).
+
+### Tests
+
+```text
+Focused Unit PASS
+Focused HTTP PASS
+Focused PostgreSQL PASS (admin-action-log disposable)
+Full Unit PASS (889)
+Full Modules PASS (511)
+Full HTTP PASS (236)
+Lint PASS (0 errors)
+Build PASS
+```
+
+### Result
+
+```text
+P12-POST-CLOSURE-PR7-R1: PASS
+Phase 12 closure: reaffirmed by post-closure addendum
+Phase 12.1: not started / blocked until PR re-review
+Push/deploy: not executed
+```
+
+### Next gates
+
+Separate authorization may permit:
+
+```text
+push → PR 7 update → Codex re-review → thread resolution after confirmation
+```

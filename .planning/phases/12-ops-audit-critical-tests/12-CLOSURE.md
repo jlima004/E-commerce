@@ -292,3 +292,59 @@ No next phase starts automatically.
 Do not start Phase 13 automatically.
 Do not start a new milestone automatically.
 Do not start frontend/storefront work automatically.
+
+## Post-closure addendum — P12-POST-CLOSURE-PR7-R1
+
+```text
+date: 2026-07-23
+PR: https://github.com/jlima004/E-commerce/pull/7
+reviewer: chatgpt-codex-connector
+reviewed commit: 96cf6452f9a893350ee582b41378eea1b3c51725
+findings received/confirmed/corrected: 3/3/3
+gate: P12-POST-CLOSURE-PR7-R1 PASS
+```
+
+### Diagnosis
+
+1. Refund replay audit indexed outcomes/intents on a pre-generated unused
+   `RefundRequest` id when idempotency reused the canonical row.
+2. Exchange reconciliation treated `update_exchange` without comparable
+   `new_state` as create-success by existence, allowing failed updates to
+   reconcile as `succeeded`.
+3. Operational alert scanner mixed offset pagination with local temporal cursor
+   reordering, omitting candidates when timestamps were out of id order.
+
+### Corrections
+
+- Refund: pre-resolve by `idempotency_key`, `resolveOutcomeEntityId`,
+  reconciliation fallback by unambiguous idempotency key with canonical
+  `entity_id` override.
+- Exchange: immutable `exchange_operation` discriminator; intended allowlisted
+  state on update/reject/cancel; create/update/reject/cancel reconciliation
+  rules tightened; no false `succeeded` from existence alone on updates.
+- Scanner: pure `skip`/`take`/`id ASC` pagination; stalled-page defense;
+  temporal cursor/local reorder removed.
+
+### Tests
+
+Focused Unit/HTTP/PostgreSQL PASS. Full Unit/Modules/HTTP PASS. Lint 0 errors.
+Build PASS. Negatives clean (no schema/migration/package/lockfile/config/provider).
+
+### Limits
+
+No push, deploy, GitHub thread mutation, Codex re-review request, Phase 12.1,
+Phase 13, milestone closeout, frontend, or external providers.
+
+### Commits
+
+```text
+technical: 930fa1fbb5ff8089e6d1b1c8e82919b31eb13df1
+  fix(ops): correct audit reconciliation and alert pagination
+documentary: docs(12): record PR7 post-closure corrections
+```
+
+### Closure reaffirmation
+
+Phase 12 closure is reaffirmed after this PASS. Phase 12.1 remains not started
+and blocked until separate authorization to push and request Codex re-review on
+PR 7.
