@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-review-corrections-complete-awaiting-human-rereview
-stopped_at: P12-REVIEW-R1 corrections complete; awaiting human re-review
+status: phase-12-human-review-passed-awaiting-closure-authorization
+stopped_at: Phase 12 human re-REVIEW PASS; awaiting separate CLOSURE authorization
 last_updated: "2026-07-23"
 last_activity: 2026-07-23
-last_activity_desc: P12-REVIEW-R1 INV-4 distinct-event proof + final worktree evidence; awaiting human re-review
+last_activity_desc: P12-REVIEW-R2 documentary corrections; human REVIEW/re-REVIEW PASS; awaiting separate CLOSURE authorization
 progress:
   total_phases: 12
   completed_phases: 11
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-20)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 — Ops, Audit & Critical Tests. Plans 12-01..12-06 executed; P12-REVIEW-R1 corrections complete; awaiting human re-review. Phase 12 not closed; CLOSURE not started.
+**Current focus:** Phase 12 — Ops, Audit & Critical Tests. Plans 12-01..12-06 executed; human REVIEW/re-REVIEW PASS (P12-REVIEW-R2). Phase 12 not closed; CLOSURE not started; Phase 13 not started.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Plans 12-01..12-06 executed (12-06 PASS via P12-12-06-R1). P12-REVIEW-R1 corrections complete. Next permitted step: human **REVIEW** only. Do not start CLOSURE or Phase 13 without explicit authorization. Phase 12 is not closed. `completed_phases: 11`; `completed_plans: 56`.
+**Current gate:** Plans 12-01..12-06 executed (12-06 PASS via P12-12-06-R1). Human REVIEW/re-REVIEW PASS (P12-REVIEW-R2). Next permitted step: separately authorized Phase 12 **CLOSURE** only. Do not start CLOSURE or Phase 13 without explicit authorization. Phase 12 is not closed. `completed_phases: 11`; `completed_plans: 56`; `percent: 100`.
 
 ```text
 Phase 12 CONTEXT approved
@@ -55,14 +55,17 @@ Phase 12 SPEC/SDD complete
 12-05 PASS (R1 included)
 12-06 PASS (P12-12-06-R1 composite gate)
 P12-REVIEW-R1 corrections complete
+P12-REVIEW-R2 human re-REVIEW PASS
 TEST-01 complete
 OPS-01 complete
 OPS-02 complete
 completed_phases: 11
 completed_plans: 56
+percent: 100
 Phase 12 not closed
-awaiting human re-review
-next permitted step: human REVIEW
+CLOSURE not started
+Phase 13 not started
+next permitted step: separately authorized CLOSURE only
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -84,12 +87,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — six plans executed; P12-REVIEW-R1 complete; awaiting human re-review
-Plan: 56/56 complete (milestone plans); Phase 12 plans: 6/6 executed (awaiting REVIEW; not closed)
-Status: phase-12-review-corrections-complete-awaiting-human-rereview
-Last activity: 2026-07-23 - P12-REVIEW-R1 corrections (INV-4 distinct events + final worktree evidence)
+Phase: 12 (Ops, Audit & Critical Tests) — six plans executed; human REVIEW/re-REVIEW PASS; awaiting separate CLOSURE authorization
+Plan: 56/56 complete (milestone plans); Phase 12 plans: 6/6 executed (human REVIEW PASS; not closed)
+Status: phase-12-human-review-passed-awaiting-closure-authorization
+Last activity: 2026-07-23 - P12-REVIEW-R2 documentary corrections; human re-REVIEW PASS
 
-Progress: [██████████] 100% plans (56/56); Phase 12 plans are 6 executed / awaiting human re-review (not closed)
+Progress: [██████████] 100% plans (56/56); Phase 12 plans are 6 executed / human REVIEW PASS / not closed (CLOSURE not started)
 
 ## Performance Metrics
 
@@ -114,7 +117,7 @@ Progress: [██████████] 100% plans (56/56); Phase 12 plans ar
 | 09. Gelato Fulfillment & Webhook | 5 executed / 5 planned | Complete / Closed | — |
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
-| 12. Ops, Audit & Critical Tests | 6 executed / 6 planned | P12-REVIEW-R1 corrections complete; awaiting human re-review (not closed) | — |
+| 12. Ops, Audit & Critical Tests | 6 executed / 6 planned | Human REVIEW/re-REVIEW PASS; awaiting separately authorized CLOSURE (not closed) | — |
 
 **Recent Trend:**
 
@@ -233,10 +236,19 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-21
-Stopped at: Phase 12 implementation prompt complete; checker PASS with 0 blockers / 0 warnings; 6 planned / 0 executed; awaiting human review; execution not started.
-Resume file: `.planning/phases/12-ops-audit-critical-tests/12-DISCUSSION-LOG.md`
-Next permitted step: explicit human authorization of `12-01`. Do not start it automatically.
+Last session: 2026-07-23
+
+Stopped at: Phase 12 human re-REVIEW PASS after P12-REVIEW-R2 documentary
+corrections. Plans 12-01..12-06 remain executed. TEST-01, OPS-01 and OPS-02
+remain technically complete.
+
+Resume file:
+`.planning/phases/12-ops-audit-critical-tests/12-DISCUSSION-LOG.md`
+
+Next permitted step: a separately authorized Phase 12 CLOSURE gate.
+
+Do not start CLOSURE automatically.
+Do not start Phase 13.
 
 ## Quick Tasks Completed
 

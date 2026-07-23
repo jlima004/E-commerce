@@ -644,22 +644,29 @@ Negativas: `git diff --check` limpo; config/lockfile/jest/medusa-config sem diff
 
 - `P12_REVIEW_R1_BASE_SHA`: `30c8612515832a181d80f1313ee26e7cf56624e6`
 - Commit técnico: `7609d8473b252b7545bb272b189438a416c96b0e` — `test(invariants): prove distinct webhook events share one order claim`
-- Commit documental: `7ca69486462cc9816bcb1708a674fc15d19214a2` — `docs(12): record invariant review corrections`
-- `origin/main...HEAD`: `0 32`
+- First documentary correction commit: `e06249ee05f00380368383949ac227e3356c1159` — `docs(12): record invariant review corrections` (P12-REVIEW-R1 first attempt; remains in Git history; corrected by P12-REVIEW-R2)
+- `origin/main...HEAD` after first documentary correction: `0 32`
 - worktree: vazio após commit documental (`git status --short --untracked-files=all` vazio)
 - `git diff --check`: vazio
 - Push/deploy: não executados
 
-### Post-commit Git evidence
+### Final Git evidence
 
-```text
-HEAD=7ca69486462cc9816bcb1708a674fc15d19214a2
-origin/main...HEAD=0 32
-git status --short --untracked-files=all=(empty)
-git diff --check=(empty)
-```
+O commit documental deste gate não registra o próprio SHA dentro de seu
+conteúdo. O HEAD autoritativo deve ser obtido após o commit por:
 
-Authoritative tip after documentary commit: `7ca69486462cc9816bcb1708a674fc15d19214a2` via `git rev-parse HEAD`.
+`git rev-parse HEAD`
+
+A evidência pós-commit será registrada no resultado externo do gate.
+
+Estado esperado após o commit:
+
+- `origin/main...HEAD`: `0 33`
+- `git status --short --untracked-files=all`: vazio
+- `git diff --check`: vazio
+- push/deploy: não executados
+- CLOSURE: não iniciado
+- Phase 13: não iniciada
 
 ### Decisão de parada
 
@@ -669,3 +676,48 @@ CLOSURE: not started
 Phase 13: not started
 next permitted step: human REVIEW only
 ```
+
+## P12-REVIEW-R2 — human re-REVIEW PASS
+
+### Escopo
+
+Gate exclusivamente documental para corrigir:
+
+1. SHA pós-commit incorreto registrado em P12-REVIEW-R1;
+2. Session Continuity obsoleta em STATE.md.
+
+Nenhum runtime, teste, migration, manifesto, configuração, provider ou
+comportamento de produto foi alterado.
+
+### Resultado do re-REVIEW
+
+Os dois blockers originais do REVIEW estão resolvidos:
+
+- INV-4 prova dois eventos `payment_intent.succeeded` distintos para o mesmo
+  `payment_intent`, com dois WebhookEventLogs, um claim canônico e uma Order.
+- O estado final do Git é verificado externamente após o commit documental,
+  sem tentar registrar o SHA do próprio commit dentro dele.
+
+As inconsistências documentais posteriores também foram corrigidas:
+
+- SHA fictício `7ca6948...` removido;
+- Session Continuity sincronizada com o gate atual.
+
+### Decisão humana
+
+`Phase 12 human REVIEW/re-REVIEW: PASS`
+
+Esta decisão aprova REVIEW somente.
+
+Não constitui autorização para:
+
+- CLOSURE;
+- Phase 13;
+- push;
+- deploy;
+- merge;
+- tag.
+
+### Próximo gate permitido
+
+Phase 12 CLOSURE somente mediante autorização humana separada.

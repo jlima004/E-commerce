@@ -289,21 +289,52 @@ Commit técnico: `7609d8473b252b7545bb272b189438a416c96b0e`
 - Diff `package.json` / `package-lock.json` / `jest.config.js` / `medusa-config.ts` vs `P12_REVIEW_R1_BASE_SHA`: vazio
 - rg external providers no spec INV-3/4: sem matches
 
-### Final repository state
+### Final Git evidence
 
-Verified immediately after the documentary commit of this gate (gate step 9). A git commit cannot cryptographically contain its own tip SHA; the authoritative tip is `git rev-parse HEAD` after `docs(12): record invariant review corrections`.
+O commit documental deste gate não registra o próprio SHA dentro de seu
+conteúdo. O HEAD autoritativo deve ser obtido após o commit por:
 
-- HEAD: `7ca69486462cc9816bcb1708a674fc15d19214a2`
-- Authoritative tip: `git rev-parse HEAD` (worktree must be empty)
-- `origin/main...HEAD`: `0 32`
+`git rev-parse HEAD`
+
+A evidência pós-commit será registrada no resultado externo do gate.
+
+Estado esperado após o commit:
+
+- `origin/main...HEAD`: `0 33`
 - `git status --short --untracked-files=all`: vazio
 - `git diff --check`: vazio
-- Push/deploy: não executados
+- push/deploy: não executados
 - CLOSURE: não iniciado
 - Phase 13: não iniciada
 
 ```text
 P12_REVIEW_R1_BASE_SHA=30c8612515832a181d80f1313ee26e7cf56624e6
 technical=7609d8473b252b7545bb272b189438a416c96b0e
-awaiting human re-review
+first documentary correction=e06249ee05f00380368383949ac227e3356c1159
 ```
+
+Historical note: `e06249e` (`docs(12): record invariant review corrections`) is the first
+P12-REVIEW-R1 documentary attempt; it remains in Git history and is corrected by
+P12-REVIEW-R2 (this gate). It is not invalid or removed.
+
+## Human re-REVIEW — P12-REVIEW-R2
+
+Resultado: **PASS**
+
+O re-REVIEW confirma:
+
+- INV-4 distinct-event proof: PASS;
+- dois WebhookEventLogs para dois Stripe event IDs distintos;
+- mesmo `payment_intent_id`;
+- um único CheckoutCompletionLog/claim;
+- uma única Order;
+- validações HTTP previamente executadas permanecem válidas;
+- nenhuma alteração técnica foi realizada neste gate;
+- SHA autorreferencial incorreto removido;
+- evidência autoritativa do HEAD obtida externamente após o commit;
+- Session Continuity corrigida.
+
+Phase 12 ainda não está closed.
+
+Next permitted step:
+separately authorized CLOSURE gate only.
