@@ -452,6 +452,10 @@ Plans:
 PASS; refund replay audit, exchange reconciliation and alert scanner pagination corrected.
 Phase 12 closure reaffirmed. Phase 12.1 remains not started.
 
+**Post-closure PR7 correction gate P12-POST-CLOSURE-PR7-R2:**
+PASS; disposable PostgreSQL harness now invokes `docker` directly (no runtime `rtk` dependency); Cursor/WSL2 Docker proven; serial disposable PostgreSQL 5/5 PASS.
+P1 Admin-auth finding classified false positive by PM (no runtime change). Phase 12 closure reaffirmed again. Phase 12.1 remains not started.
+
 **Boundary preserved:** Phase 09 `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the local fulfillment truth and closes FUL-04. Phase 12 OPS-01 adds the promotion of that condition to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
 
 **Known PRD divergence:** OperationalAlert email delivery via Resend is outside the Phase 12 MVP, is a known divergence from the PRD, and is not a blocker for OPS-01.

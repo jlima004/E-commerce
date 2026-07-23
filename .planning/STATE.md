@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-closed-post-closure-pr7-r1-pass-awaiting-pr-update
-stopped_at: P12-POST-CLOSURE-PR7-R1 PASS; awaiting separate push and Codex re-review authorization
+status: phase-12-closed-post-closure-pr7-r2-pass-awaiting-pr-update
+stopped_at: P12-POST-CLOSURE-PR7-R2 PASS; awaiting push, PR replies and Codex re-review authorization
 last_updated: "2026-07-23"
 last_activity: 2026-07-23
-last_activity_desc: P12-POST-CLOSURE-PR7-R1 PASS; Phase 12 closure reaffirmed; awaiting PR update authorization
+last_activity_desc: P12-POST-CLOSURE-PR7-R2 PASS; Docker harness portability fixed; Phase 12 closure reaffirmed
 progress:
   total_phases: 12
   completed_phases: 12
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-20)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 closed and reaffirmed by P12-POST-CLOSURE-PR7-R1 PASS. Phase 12.1 not started / blocked until separate push + Codex re-review on PR 7. Awaiting separate authorization for PR update.
+**Current focus:** Phase 12 closed and reaffirmed by P12-POST-CLOSURE-PR7-R2 PASS. Phase 12.1 not started / blocked until separate push, PR replies, and Codex re-review on PR 7.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** P12-POST-CLOSURE-PR7-R1 PASS. `completed_phases: 12`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 closed and reaffirmed by post-closure addendum. Phase 12.1 not started / blocked until separate push and Codex re-review authorization. Do not start Phase 12.1, Phase 13, milestone closeout, push, deploy, or frontend automatically.
+**Current gate:** P12-POST-CLOSURE-PR7-R2 PASS. `completed_phases: 12`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 closed and reaffirmed by second post-closure addendum. Phase 12.1 not started / blocked until separate push, PR replies, and Codex re-review authorization. Do not start Phase 12.1, Phase 13, milestone closeout, push, deploy, or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -63,14 +63,15 @@ OPS-02 complete
 completed_phases: 12
 completed_plans: 56
 percent: 100
-Phase 12 closed; reaffirmed by P12-POST-CLOSURE-PR7-R1 PASS
+Phase 12 closed; reaffirmed by P12-POST-CLOSURE-PR7-R1 and P12-POST-CLOSURE-PR7-R2 PASS
 P12-POST-CLOSURE-PR7-R1 PASS
-PR 7 open; three Codex findings corrected locally; awaiting push authorization
+P12-POST-CLOSURE-PR7-R2 PASS
+PR 7 open; P2 Docker harness portability corrected locally; P1 false positive (no runtime change); awaiting push + PR reply authorization
 Phase 12.1 not started / blocked until PR re-review
 milestone phases: 12/12 closed
 milestone closed/archived: no
 Phase 13 not started / not authorized
-next permitted step: separate authorization to push the two commits and request Codex re-review on PR 7
+next permitted step: separate authorization to push, reply to the P1/P2 threads and request Codex re-review on PR 7
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -92,12 +93,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — closed; post-closure PR7-R1 PASS; awaiting PR update authorization
+Phase: 12 (Ops, Audit & Critical Tests) — closed; post-closure PR7-R2 PASS; awaiting PR update authorization
 Plan: 56/56 complete (milestone plans); Phase 12 plans: 6/6 executed and closed
-Status: phase-12-closed-post-closure-pr7-r1-pass-awaiting-pr-update
-Last activity: 2026-07-23 - P12-POST-CLOSURE-PR7-R1 PASS; Phase 12 closure reaffirmed
+Status: phase-12-closed-post-closure-pr7-r2-pass-awaiting-pr-update
+Last activity: 2026-07-23 - P12-POST-CLOSURE-PR7-R2 PASS; Phase 12 closure reaffirmed
 
-Progress: [██████████] 100% plans (56/56); Phase 12 complete / closed 2026-07-23; PR7-R1 post-closure PASS
+Progress: [██████████] 100% plans (56/56); Phase 12 complete / closed 2026-07-23; PR7-R2 post-closure PASS
 
 ## Performance Metrics
 
@@ -135,6 +136,7 @@ Progress: [██████████] 100% plans (56/56); Phase 12 complete
 
 ### Decisions
 
+- [P12-POST-CLOSURE-PR7-R2]: Disposable PostgreSQL harness invokes `docker` directly; `rtk` is an optional Codex agent wrapper only (`RTK.md`), never a versioned runtime dependency. Cursor/WSL2 proven with direct Docker.
 - [P12-12-06-R1]: Final Plan 12-06 gate is composite — serial disposable PostgreSQL (one process per spec) + normal Modules suite. Stacked `medusaIntegrationTestRunner` `Map.prototype.set` remains a known Jest/test-utils stacking limitation; not required for PASS; not corrected in Phase 12.
 - [Phase 12 closure]: Phase 12 closed after 6/6 plans, technical requirements OPS-01/OPS-02/TEST-01 complete, P12-REVIEW-R2 PASS and P12-CLOSURE PASS. PostgreSQL serial disposable + normal Modules formed the accepted final gate. Cross-dyno real and stacked runner PASS are not claimed.
 
@@ -244,20 +246,21 @@ Items acknowledged and carried forward from previous milestone close:
 
 Last session: 2026-07-23
 
-Stopped at: P12-POST-CLOSURE-PR7-R1 PASS; awaiting separate push and Codex
-re-review authorization.
+Stopped at: P12-POST-CLOSURE-PR7-R2 PASS; awaiting separate push, PR replies
+and Codex re-review authorization.
 
 Resume file:
-`.planning/phases/12-ops-audit-critical-tests/12-POST-CLOSURE-PR7-R1-SUMMARY.md`
+`.planning/phases/12-ops-audit-critical-tests/12-POST-CLOSURE-PR7-R2-SUMMARY.md`
 
-Next permitted step: separate authorization to push the two local commits and
-request Codex re-review on PR 7. Do not start Phase 12.1, Phase 13, milestone
-closeout, or frontend automatically.
+Next permitted step: separate authorization to push, reply to the P1/P2 threads
+and request Codex re-review on PR 7. Do not start Phase 12.1, Phase 13,
+milestone closeout, or frontend automatically.
 
 ## Quick Tasks Completed
 
 | Date | Task | Summary |
 |------|------|---------|
+| 2026-07-23 | P12-POST-CLOSURE-PR7-R2 | Removed runtime `rtk` dependency from disposable PostgreSQL Docker harness; Cursor/WSL2 Docker proven; serial PG 5/5 + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R1 | Corrected three Codex PR7 findings (refund replay audit, exchange reconciliation, alert scanner pagination); focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | phase-12-closure | Closed Phase 12 documentally after accepted execution, validation and human REVIEW; all 12 backend MVP phases closed; no Phase 13, milestone closeout, push or deploy. |
 | 2026-07-16 | 260716-p3o-encerrar-formalmente-a-estabiliza-o-no-s | Estabilização formalmente encerrada; incidente monetário, versionamento automático e TLS do cache Redis resolvidos; fallbacks classificados e isolados; produção saudável; próximos passos obsoletos removidos. |
@@ -270,7 +273,7 @@ closeout, or frontend automatically.
 | 2026-06-27 | phase-02-closure | Closed Phase 02 documentally after reconciling validation, UAT, requirements, and the accepted plan summaries; Phase 03 remains not started. |
 | 2026-06-27 | phase-03-verification | Automated UAT/validation for Phase 03 — 64 tests green, negative grep clean, build passing; manual closeout gate recorded in `03-UAT.md`. |
 | 2026-06-27 | phase-03-closure | Closed Phase 03 documentally; CART-01..CART-04 complete; Phase 04 planning only as next permitted step. |
-| 2026-06-29 | phase-04-planning | Planned Phase 04 into 6 manual-review-gated slices plus `04-VALIDATION.md`; no code, migrations, Stripe config, webhook, Order, purchase event, deploy, secrets/config, or Gelato work started. |
+| 2026-06-29 | phase-04-planning | Planned Phase 04 into 6 manual-review-gated plans plus `04-VALIDATION.md`; no code, migrations, Stripe config, webhook, Order, purchase event, deploy, secrets/config, or Gelato work started. |
 | 2026-06-29 | phase-04-closure | Closed Phase 04 documentally as pre-Order card/Pix PaymentAttempt implementation/test scope; production activation remains blocked by migration and real Stripe layer/config gates; Phase 05 not started. |
 | 2026-06-30 | phase-05-validation-closeout | Closed Phase 05 at `05-04-SUMMARY.md` with green unit/integration/build, negative runtime proofs, documented future Stripe CLI smoke, and explicit manual gate before Phase 06. |
 | 2026-06-30 | phase-05-closure | Human review accepted Phase 05 at manual gate; `05-CLOSURE.md` recorded; Phase 06 planning permitted with hard Order-creation constraint; execution not started. |

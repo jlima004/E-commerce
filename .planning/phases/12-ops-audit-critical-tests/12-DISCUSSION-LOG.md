@@ -832,3 +832,84 @@ Separate authorization may permit:
 ```text
 push → PR 7 update → Codex re-review → thread resolution after confirmation
 ```
+
+---
+
+## P12-POST-CLOSURE-PR7-R2 — Docker harness portability
+
+### Authorization
+
+Human authorization covered exclusively:
+
+```text
+P12-POST-CLOSURE-PR7-R2
+```
+
+Local technical + documentary gate only. No push, deploy, GitHub write,
+Phase 12.1, Phase 13, or milestone closeout.
+
+### Findings
+
+Reviewer `chatgpt-codex-connector` on commit
+`4ed9fc86be9833f85716c1df3a3ef8d66942e231` (PR 7):
+
+1. **P1 Admin authentication** — Product Manager classified as **false
+   positive**; out of technical scope; no runtime changes.
+2. **P2 Use one portable Docker invocation strategy in the disposable
+   PostgreSQL harness** — confirmed and corrected.
+
+### Binding distinction (rtk vs docker)
+
+```text
+rtk: optional external Codex agent wrapper (RTK.md)
+docker: canonical runtime dependency of the versioned harness
+Cursor: executes the runner directly without rtk
+Codex: may prefix outer shell commands with rtk; script still calls docker
+```
+
+Historical PLAN/SUMMARY command lines that show Codex using `rtk` remain
+historical execution records only.
+
+### Technical decision
+
+Replace `run("rtk", ["docker", …])` with `run("docker", …)` in
+`apps/backend/scripts/run-disposable-postgres-tests.mjs`. Keep `spawn` without
+`shell: true`, argv separation, redaction, cleanup, signals, loopback-only
+guards, and existing error codes. No `P12_DOCKER_BIN` override.
+
+### Files changed
+
+Technical allowlist only (2 files) plus documentary allowlist
+(`12-POST-CLOSURE-PR7-R2-SUMMARY.md`, `12-DISCUSSION-LOG.md`, `12-CLOSURE.md`,
+`ROADMAP.md`, `STATE.md`). Adapter
+`disposable-postgres-harness.ts` unchanged.
+
+### Tests
+
+```text
+Focused harness unit PASS (24)
+Disposable smoke PASS (direct docker, no rtk)
+PostgreSQL serial 5/5 PASS; residual containers 0
+Full Unit PASS (890)
+Full Modules PASS (511)
+Full HTTP PASS (236)
+Lint PASS (0 errors)
+Build PASS
+```
+
+### Result
+
+```text
+P12-POST-CLOSURE-PR7-R2: PASS
+Phase 12 closure: reaffirmed by second post-closure addendum
+Phase 12.1: not started / blocked until PR update + re-review
+Push/deploy/GitHub replies: not executed
+```
+
+### Next gates
+
+Separate authorization may permit:
+
+```text
+push → reply to P1/P2 threads → Codex re-review → thread resolution after confirmation
+```

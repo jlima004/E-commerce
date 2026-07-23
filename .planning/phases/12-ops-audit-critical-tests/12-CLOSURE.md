@@ -348,3 +348,46 @@ documentary: docs(12): record PR7 post-closure corrections
 Phase 12 closure is reaffirmed after this PASS. Phase 12.1 remains not started
 and blocked until separate authorization to push and request Codex re-review on
 PR 7.
+
+## Post-closure addendum — P12-POST-CLOSURE-PR7-R2
+
+```text
+date: 2026-07-23
+PR: https://github.com/jlima004/E-commerce/pull/7
+reviewer: chatgpt-codex-connector
+reviewed commit: 4ed9fc86be9833f85716c1df3a3ef8d66942e231
+gate: P12-POST-CLOSURE-PR7-R2 PASS
+```
+
+### Review triage
+
+- **P1 (Admin authentication):** classified by Product Manager as **false
+  positive** — out of technical scope; no runtime changes.
+- **P2 (portable Docker invocation):** confirmed valid and corrected.
+
+### Technical cause
+
+Versioned disposable PostgreSQL harness called `run("rtk", ["docker", …])`,
+making the Codex agent wrapper a runtime dependency. With Docker present and
+`rtk` absent (Cursor/WSL2, CI, ordinary developer machines), disposable Postgres
+failed to start.
+
+### Correction
+
+- Internal invocation: `rtk docker` → `docker`
+- No `shell: true`; argv arrays preserved
+- No override env required; default executable `docker`
+- Unit regression proves no `rtk` / no `shell: true` / direct `docker`
+- Cursor/WSL2 Docker CLI + daemon proven; smoke + 5/5 serial PostgreSQL PASS;
+  residual `p12-pg-*` containers = 0
+
+### Limits
+
+No push, deploy, GitHub replies, thread resolution, Codex re-review request,
+Phase 12.1, Phase 13, milestone closeout, or frontend.
+
+### Closure reaffirmation
+
+Phase 12 closure is reaffirmed after P12-POST-CLOSURE-PR7-R2 PASS. Phase 12.1
+remains not started and blocked until separate authorization to push, reply to
+P1/P2 threads, and request Codex re-review on PR 7.
