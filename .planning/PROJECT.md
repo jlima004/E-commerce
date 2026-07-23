@@ -43,10 +43,10 @@ Um pedido (Order) só existe e só é enviado à produção (Gelato) após confi
 - [x] TrackingAccessToken seguro (nunca em texto puro) para acesso de convidados
 - [x] Reembolso via Admin confirmado por webhook Stripe
 - [x] Trocas operacionais no Admin e fluxo Correios manual/semiautomático
-- [ ] OperationalAlert persistido e consultável para falhas operacionais (OPS-01, Phase 12 incompleta)
-- [ ] AdminActionLog para ações administrativas de dinheiro/pedido/fulfillment (OPS-02, Phase 12 incompleta)
+- [x] OperationalAlert persistido e consultável para falhas operacionais (OPS-01, Phase 12 complete/closed)
+- [x] AdminActionLog para ações administrativas de dinheiro/pedido/fulfillment (OPS-02, Phase 12 complete/closed)
 - [x] Observabilidade: Sentry backend, logs estruturados, health check
-- [ ] Testes críticos cobrindo invariantes de pagamento/Order/fulfillment (TEST-01, Phase 12 incompleta)
+- [x] Testes críticos cobrindo invariantes de pagamento/Order/fulfillment (TEST-01, Phase 12 complete/closed)
 
 ### Out of Scope
 
@@ -116,4 +116,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-20 during the approved Phase 12 pre-PLAN documentary synchronization; Phases 01–11 reconciled and OPS-01/OPS-02/TEST-01 left incomplete*
+*Last updated: 2026-07-23 during Phase 12 CLOSURE; OPS-01/OPS-02/TEST-01 complete; Phase 12 closed; awaiting separate Product Manager milestone decision*

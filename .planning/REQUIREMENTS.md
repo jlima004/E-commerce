@@ -86,8 +86,8 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Operations & Audit
 
-- [ ] **OPS-01**: Failed fulfillments and stuck payments surface as persisted OperationalAlerts
-- [ ] **OPS-02**: Admin actions on money/order/fulfillment are recorded in AdminActionLog for audit
+- [x] **OPS-01**: Failed fulfillments and stuck payments surface as persisted OperationalAlerts. Complete via Phase 12 closure: OperationalAlert persistence, atomic upsert, factual detection/scanner, and Admin GET list/detail (`12-02`/`12-03`; `12-06-SUMMARY.md`, `12-CLOSURE.md`).
+- [x] **OPS-02**: Admin actions on money/order/fulfillment are recorded in AdminActionLog for audit. Complete via Phase 12 closure: append-only AdminActionLog, user-only actor, terminal dedupe, reconciliation, and Strategy B instrumentation on custom Admin refund/exchange routes (`12-04`/`12-05`; `12-06-SUMMARY.md`, `12-CLOSURE.md`).
 
 ### Observability
 
@@ -97,7 +97,7 @@ Requirements for the initial backend release. Each maps to a roadmap phase.
 
 ### Critical Tests
 
-- [ ] **TEST-01**: Automated tests guard the payment→order→fulfillment invariants: no Order without confirmed payment (INV-1/2), webhook idempotency (INV-3/4), single active Gelato order (INV-8), and refund/order-status decoupling (INV-9/10)
+- [x] **TEST-01**: Automated tests guard the payment→order→fulfillment invariants: no Order without confirmed payment (INV-1/2), webhook idempotency (INV-3/4), single active Gelato order (INV-8), and refund/order-status decoupling (INV-9/10). Complete via Phase 12 closure: named HTTP invariant suites plus serial disposable PostgreSQL constraint/concurrency proofs under P12-12-06-R1 (`12-06-SUMMARY.md`, `12-CLOSURE.md`).
 
 ## v2 Requirements
 
@@ -176,18 +176,19 @@ Which phases cover which requirements. Phases are assigned during roadmap creati
 | REF-02 | Phase 11 | Complete (Phase 11 closure: financial recomputation without automatic order cancellation) |
 | EXC-01 | Phase 11 | Complete (Phase 11 closure: operational ExchangeRequest Admin flow without financial effects) |
 | EXC-02 | Phase 11 | Complete (Phase 11 closure: manual/semi-automatic Correios reverse flow, no API) |
-| OPS-01 | Phase 12 | Pending |
-| OPS-02 | Phase 12 | Pending |
+| OPS-01 | Phase 12 | Complete (Phase 12 closure: OperationalAlert persistence, detection, Admin surface) |
+| OPS-02 | Phase 12 | Complete (Phase 12 closure: AdminActionLog append-only audit on custom Admin surfaces) |
 | OBS-01 | Phase 1 | Complete (Phase 01 Sentry backend integration) |
 | OBS-02 | Phase 1 | Complete (Phase 01 structured redacted logs) |
 | OBS-03 | Phase 1 | Complete (Phase 01 health endpoints validated: live/ready 200, Postgres/Redis up) |
-| TEST-01 | Phase 12 | Pending |
+| TEST-01 | Phase 12 | Complete (Phase 12 closure: INV HTTP suites + disposable PostgreSQL proofs; P12-12-06-R1) |
 
 **Coverage:**
 - v1 requirements: 45 total (corrected from "44"; the v1 list contains 45 distinct REQ-IDs)
 - Mapped to phases: 45 ✓
 - Unmapped: 0 ✓
+- **45/45 requirements complete**
 
 ---
 *Requirements defined: 2026-06-22*
-*Last updated: 2026-07-20 during the approved pre-PLAN documentary synchronization after Phase 09–11 closures; OPS-01, OPS-02, and TEST-01 remain incomplete*
+*Last updated: 2026-07-23 during Phase 12 CLOSURE; OPS-01, OPS-02, and TEST-01 complete (45/45)*

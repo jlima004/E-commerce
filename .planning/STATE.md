@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-human-review-passed-awaiting-closure-authorization
-stopped_at: Phase 12 human re-REVIEW PASS; awaiting separate CLOSURE authorization
+status: phase-12-closed-awaiting-product-manager-milestone-decision
+stopped_at: Phase 12 closed; awaiting separate Product Manager milestone decision
 last_updated: "2026-07-23"
 last_activity: 2026-07-23
-last_activity_desc: P12-REVIEW-R2 documentary corrections; human REVIEW/re-REVIEW PASS; awaiting separate CLOSURE authorization
+last_activity_desc: Phase 12 CLOSURE PASS; backend MVP phases 12/12 closed
 progress:
   total_phases: 12
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 56
   completed_plans: 56
   percent: 100
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-20)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 — Ops, Audit & Critical Tests. Plans 12-01..12-06 executed; human REVIEW/re-REVIEW PASS (P12-REVIEW-R2). Phase 12 not closed; CLOSURE not started; Phase 13 not started.
+**Current focus:** Phase 12 complete and closed. All 12 backend MVP phases are formally closed. No next phase or milestone is authorized automatically.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Plans 12-01..12-06 executed (12-06 PASS via P12-12-06-R1). Human REVIEW/re-REVIEW PASS (P12-REVIEW-R2). Next permitted step: separately authorized Phase 12 **CLOSURE** only. Do not start CLOSURE or Phase 13 without explicit authorization. Phase 12 is not closed. `completed_phases: 11`; `completed_plans: 56`; `percent: 100`.
+**Current gate:** Phase 12 CLOSURE PASS. `completed_phases: 12`; `completed_plans: 56`; milestone phases 12/12 closed. Next step: separate Product Manager decision. Do not start Phase 13, milestone closeout, push, deploy, or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -56,16 +56,18 @@ Phase 12 SPEC/SDD complete
 12-06 PASS (P12-12-06-R1 composite gate)
 P12-REVIEW-R1 corrections complete
 P12-REVIEW-R2 human re-REVIEW PASS
+P12-CLOSURE PASS
 TEST-01 complete
 OPS-01 complete
 OPS-02 complete
-completed_phases: 11
+completed_phases: 12
 completed_plans: 56
 percent: 100
-Phase 12 not closed
-CLOSURE not started
-Phase 13 not started
-next permitted step: separately authorized CLOSURE only
+Phase 12 closed
+milestone phases: 12/12 closed
+milestone closed/archived: no
+Phase 13 not started / not authorized
+next permitted step: separate Product Manager milestone decision only
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -87,12 +89,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — six plans executed; human REVIEW/re-REVIEW PASS; awaiting separate CLOSURE authorization
-Plan: 56/56 complete (milestone plans); Phase 12 plans: 6/6 executed (human REVIEW PASS; not closed)
-Status: phase-12-human-review-passed-awaiting-closure-authorization
-Last activity: 2026-07-23 - P12-REVIEW-R2 documentary corrections; human re-REVIEW PASS
+Phase: 12 (Ops, Audit & Critical Tests) — complete and closed; awaiting separate Product Manager milestone decision
+Plan: 56/56 complete (milestone plans); Phase 12 plans: 6/6 executed and closed
+Status: phase-12-closed-awaiting-product-manager-milestone-decision
+Last activity: 2026-07-23 - Phase 12 CLOSURE PASS; backend MVP phases 12/12 closed
 
-Progress: [██████████] 100% plans (56/56); Phase 12 plans are 6 executed / human REVIEW PASS / not closed (CLOSURE not started)
+Progress: [██████████] 100% plans (56/56); Phase 12 complete / closed 2026-07-23
 
 ## Performance Metrics
 
@@ -117,7 +119,7 @@ Progress: [██████████] 100% plans (56/56); Phase 12 plans ar
 | 09. Gelato Fulfillment & Webhook | 5 executed / 5 planned | Complete / Closed | — |
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
-| 12. Ops, Audit & Critical Tests | 6 executed / 6 planned | Human REVIEW/re-REVIEW PASS; awaiting separately authorized CLOSURE (not closed) | — |
+| 12. Ops, Audit & Critical Tests | 6 executed / 6 planned | Complete / Closed | — |
 
 **Recent Trend:**
 
@@ -131,6 +133,7 @@ Progress: [██████████] 100% plans (56/56); Phase 12 plans ar
 ### Decisions
 
 - [P12-12-06-R1]: Final Plan 12-06 gate is composite — serial disposable PostgreSQL (one process per spec) + normal Modules suite. Stacked `medusaIntegrationTestRunner` `Map.prototype.set` remains a known Jest/test-utils stacking limitation; not required for PASS; not corrected in Phase 12.
+- [Phase 12 closure]: Phase 12 closed after 6/6 plans, technical requirements OPS-01/OPS-02/TEST-01 complete, P12-REVIEW-R2 PASS and P12-CLOSURE PASS. PostgreSQL serial disposable + normal Modules formed the accepted final gate. Cross-dyno real and stacked runner PASS are not claimed.
 
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
@@ -238,22 +241,25 @@ Items acknowledged and carried forward from previous milestone close:
 
 Last session: 2026-07-23
 
-Stopped at: Phase 12 human re-REVIEW PASS after P12-REVIEW-R2 documentary
-corrections. Plans 12-01..12-06 remain executed. TEST-01, OPS-01 and OPS-02
-remain technically complete.
+Stopped at: Phase 12 CLOSURE PASS. Plans 12-01..12-06, OPS-01, OPS-02
+and TEST-01 are complete. All 12 backend MVP phases are formally closed.
 
 Resume file:
-`.planning/phases/12-ops-audit-critical-tests/12-DISCUSSION-LOG.md`
+`.planning/phases/12-ops-audit-critical-tests/12-CLOSURE.md`
 
-Next permitted step: a separately authorized Phase 12 CLOSURE gate.
+Next permitted step: a separate Product Manager decision among milestone
+v1.0 closeout, release-readiness/production-validation work, or planning a
+new milestone.
 
-Do not start CLOSURE automatically.
-Do not start Phase 13.
+Do not start Phase 13 automatically.
+Do not start a new milestone automatically.
+Do not start frontend/storefront work automatically.
 
 ## Quick Tasks Completed
 
 | Date | Task | Summary |
 |------|------|---------|
+| 2026-07-23 | phase-12-closure | Closed Phase 12 documentally after accepted execution, validation and human REVIEW; all 12 backend MVP phases closed; no Phase 13, milestone closeout, push or deploy. |
 | 2026-07-16 | 260716-p3o-encerrar-formalmente-a-estabiliza-o-no-s | Estabilização formalmente encerrada; incidente monetário, versionamento automático e TLS do cache Redis resolvidos; fallbacks classificados e isolados; produção saudável; próximos passos obsoletos removidos. |
 | 2026-07-16 | 260715-infra01-release-infrastructure | INFRA-01 PASS: release DB-only isolation and Redis production fail-fast; Unit 766/766, Modules 463/463, HTTP 172/172, lint 0/207, build PASS; CACHE-01A/B PASS; two local commits; no push/deploy. |
 | 2026-06-25 | 260625-i9n-remover-canary-de-stripe-com-formato-rea | Removed a Stripe-shaped test canary from observability tests and rewrote the local 01-04 commit with autosquash so GitHub Push Protection can accept the branch push. |
