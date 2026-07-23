@@ -164,9 +164,24 @@ function createCheckoutCompletionModule(
 ) {
   const store = [...records]
   return {
-    listCheckoutCompletionLogs: jest.fn(async () => store),
+    listCheckoutCompletionLogs: jest.fn(async (filters?: Record<string, unknown>) =>
+      store.filter((record) => {
+        return (
+          (!filters?.idempotency_key ||
+            record.idempotency_key === filters.idempotency_key) &&
+          (!filters?.payment_intent_id ||
+            record.payment_intent_id === filters.payment_intent_id)
+        )
+      })
+    ),
     createCheckoutCompletionLogs: jest.fn(async (input) => {
       const row = Array.isArray(input) ? input[0] : input
+      const duplicate = store.find(
+        (record) => record.idempotency_key === row.idempotency_key
+      )
+      if (duplicate) {
+        throw new Error("duplicate key value violates unique constraint")
+      }
       const created = {
         ...row,
         id: `chkcpl_inv03_${store.length + 1}`,
@@ -439,19 +454,147 @@ describe("INV-4 Webhook idempotency and recoverable intermediate failure", () =>
     expect(harness.orderCount).toBe(1)
   })
 
-  it("INV-4: replay of the same payment_intent keeps a single claim/Order effect", async () => {
-    const harness = createIdempotentHarness()
-    const first = await harness.dispatch()
-    const second = await harness.dispatch()
+  it("INV-4: distinct Stripe succeeded events for the same payment_intent keep a single claim/Order", async () => {
+    const webhookService = createWebhookService()
+    const paymentAttemptModule = createPaymentAttemptModule([buildAttempt()])
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const orders: string[] = []
+    const paymentIntentId = "pi_inv03_123"
 
+    const runOrderEntrypoint = jest.fn(async (_scope, input) => {
+      const existing = (
+        await checkoutCompletionModule.listCheckoutCompletionLogs({
+          payment_intent_id: paymentIntentId,
+        })
+      ).find((record) => record.status === "completed" && record.order_id)
+
+      if (existing?.order_id) {
+        return {
+          status: "reused_existing_order",
+          payment_attempt_id: "payatt_inv03_01",
+          payment_intent_id: paymentIntentId,
+          order_id: existing.order_id,
+          stripe_event_id: input.stripe_event_id ?? null,
+          correlation_id: "corr_inv04_distinct",
+          checkout_completion_status: "completed",
+          order_status: "confirmed",
+          payment_status: "captured",
+        }
+      }
+
+      const orderId = `order_inv04_${orders.length + 1}`
+      orders.push(orderId)
+      await checkoutCompletionModule.createCheckoutCompletionLogs({
+        idempotency_key: paymentIntentId,
+        cart_id: "cart_inv03_01",
+        payment_intent_id: paymentIntentId,
+        payment_attempt_id: "payatt_inv03_01",
+        order_id: orderId,
+        status: "completed",
+      })
+
+      return {
+        status: "created",
+        payment_attempt_id: "payatt_inv03_01",
+        payment_intent_id: paymentIntentId,
+        order_id: orderId,
+        stripe_event_id: input.stripe_event_id ?? null,
+        correlation_id: "corr_inv04_distinct",
+        checkout_completion_status: "completed",
+        order_status: "confirmed",
+        payment_status: "captured",
+      }
+    })
+
+    async function dispatch(eventId: string) {
+      const event = succeededEvent(eventId)
+      const handler = createStripeWebhookPostHandler({
+        appEnv: {
+          STRIPE_WEBHOOK_INGESTION_ENABLED: true,
+          STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
+        } as never,
+        stripe: {
+          webhooks: {
+            constructEvent: jest.fn(() => event),
+          },
+        },
+        now: () => new Date("2026-07-22T12:00:00.000Z"),
+        runOrderEntrypoint,
+      })
+      const res = createResponse()
+      await handler(
+        {
+          headers: { "stripe-signature": "t=1,v1=synthetic_test_signature" },
+          scope: {
+            resolve: jest.fn((key: string) => {
+              if (key === WEBHOOKS_MODULE) return webhookService
+              if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttemptModule
+              if (key === CHECKOUT_COMPLETION_MODULE) {
+                return checkoutCompletionModule
+              }
+              return undefined
+            }),
+          },
+          rawBody: Buffer.from(JSON.stringify(event)),
+          correlationId: "corr_inv04_distinct",
+        } as RequestWithRawBody,
+        res
+      )
+      return {
+        res,
+        body: res.json.mock.calls.at(-1)?.[0] as Record<string, unknown>,
+      }
+    }
+
+    const first = await dispatch("evt_inv04_success_a")
+    const second = await dispatch("evt_inv04_success_b")
+
+    expect(first.body.status).toBe("processed")
     expect(first.body.duplicate).toBe(false)
-    expect(second.body.duplicate).toBe(true)
-    expect(harness.webhookService.records).toHaveLength(1)
-    expect(harness.orderCount).toBe(1)
-    expect(harness.runOrderEntrypoint).toHaveBeenCalledTimes(1)
-    expect(harness.paymentAttemptModule.attempts[0]?.provider_payment_intent_id).toBe(
-      "pi_inv03_123"
+    expect(second.body.status).toBe("processed")
+    expect(second.body.duplicate).toBe(false)
+
+    expect(webhookService.records).toHaveLength(2)
+    expect(
+      new Set(
+        webhookService.records.map((record) => record.deduplication_key)
+      ).size
+    ).toBe(2)
+    expect(
+      new Set(
+        webhookService.records.map((record) => record.external_event_id)
+      )
+    ).toEqual(new Set(["evt_inv04_success_a", "evt_inv04_success_b"]))
+
+    expect(runOrderEntrypoint).toHaveBeenCalledTimes(2)
+    await expect(runOrderEntrypoint.mock.results[0]?.value).resolves.toEqual(
+      expect.objectContaining({
+        status: "created",
+        order_id: "order_inv04_1",
+        payment_intent_id: paymentIntentId,
+      })
     )
+    await expect(runOrderEntrypoint.mock.results[1]?.value).resolves.toEqual(
+      expect.objectContaining({
+        status: "reused_existing_order",
+        order_id: "order_inv04_1",
+        payment_intent_id: paymentIntentId,
+      })
+    )
+
+    expect(orders).toEqual(["order_inv04_1"])
+    expect(checkoutCompletionModule.store).toHaveLength(1)
+    expect(checkoutCompletionModule.store[0]).toEqual(
+      expect.objectContaining({
+        idempotency_key: paymentIntentId,
+        payment_intent_id: paymentIntentId,
+        order_id: "order_inv04_1",
+        status: "completed",
+      })
+    )
+    expect(
+      paymentAttemptModule.attempts[0]?.provider_payment_intent_id
+    ).toBe(paymentIntentId)
   })
 
   it("INV-4: recoverable intermediate failure allows retry without duplicating Order", async () => {
