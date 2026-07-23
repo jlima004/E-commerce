@@ -654,6 +654,7 @@ describe("admin refunds request route", () => {
     const res = createResponse()
     const idempotencyKey = "admin-refund/order_admin_refund_01/replay"
     let attempt = 0
+    let generatedId = 0
 
     const bodyInput = {
       order_id: ORDER_ID,
@@ -664,12 +665,19 @@ describe("admin refunds request route", () => {
 
     const deps = {
       ...baseDeps(harness),
+      generateId: () => `refreq_generated_${++generatedId}`,
       generateActionAttemptId: () => `attempt_replay_${++attempt}`,
       generateCorrelationId: () => "corr_replay_shared",
     }
 
     harness.req.body = bodyInput
-    await handleAdminCreateRefundRequest(harness.req, createResponse(), deps)
+    const firstRes = createResponse()
+    await handleAdminCreateRefundRequest(harness.req, firstRes, deps)
+
+    expect(firstRes.statusCode).toBe(201)
+    const firstBody = firstRes.json.mock.calls[0]?.[0]
+    const canonicalId = firstBody.refund_request.id as string
+    expect(canonicalId).toBe("refreq_generated_1")
 
     harness.req.body = bodyInput
     await handleAdminCreateRefundRequest(harness.req, res, deps)
@@ -679,7 +687,11 @@ describe("admin refunds request route", () => {
 
     const body = res.json.mock.calls[0]?.[0]
     expect(body.reused_idempotency).toBe(true)
+    expect(body.refund_request.id).toBe(canonicalId)
 
+    const intentPayloads = harness.auditCalls.filter(
+      (call) => call.stage === "intent"
+    )
     const outcomePayloads = harness.auditCalls.filter(
       (call) => call.stage === "outcome"
     )
@@ -687,9 +699,116 @@ describe("admin refunds request route", () => {
     expect(outcomePayloads[0]?.payload.action_attempt_id).not.toBe(
       outcomePayloads[1]?.payload.action_attempt_id
     )
-    expect(outcomePayloads[1]?.payload.metadata).toMatchObject({
-      reused_idempotency: true,
+    expect(outcomePayloads[0]?.payload).toMatchObject({
+      entity_id: canonicalId,
     })
+    expect(outcomePayloads[1]?.payload).toMatchObject({
+      entity_id: canonicalId,
+      metadata: expect.objectContaining({
+        reused_idempotency: true,
+        request_id: canonicalId,
+      }),
+    })
+    expect(intentPayloads[1]?.payload).toMatchObject({
+      entity_id: canonicalId,
+    })
+    expect(JSON.stringify(harness.auditCalls)).not.toContain(
+      "refreq_generated_2"
+    )
+  })
+
+  it("keeps replay domain success when outcome fails and reconciler can resolve by idempotency_key", async () => {
+    const harness = createInMemoryAdminRefundHarness()
+    const idempotencyKey = "admin-refund/order_admin_refund_01/orphan-replay"
+    let generatedId = 0
+    let attempt = 0
+
+    const bodyInput = {
+      order_id: ORDER_ID,
+      amount: 2500,
+      currency_code: "brl",
+      idempotency_key: idempotencyKey,
+    }
+
+    const firstDeps = {
+      ...baseDeps(harness),
+      generateId: () => `refreq_orphan_${++generatedId}`,
+      generateActionAttemptId: () => `attempt_orphan_${++attempt}`,
+    }
+
+    harness.req.body = bodyInput
+    const firstRes = createResponse()
+    await handleAdminCreateRefundRequest(harness.req, firstRes, firstDeps)
+    const canonicalId = firstRes.json.mock.calls[0]?.[0].refund_request
+      .id as string
+
+    const failing = createAuditDouble({
+      outcomeError: new Error("outcome unavailable"),
+    })
+    const replayRes = createResponse()
+    await handleAdminCreateRefundRequest(harness.req, replayRes, {
+      ...firstDeps,
+      resolveAdminActionLogModule: () => failing.audit,
+    })
+
+    expect(replayRes.statusCode).toBe(200)
+    expect(harness.refundRequests).toHaveLength(1)
+    expect(failing.calls).toHaveLength(1)
+    expect(failing.calls[0]?.stage).toBe("intent")
+    expect(failing.calls[0]?.payload).toMatchObject({
+      entity_id: canonicalId,
+      idempotency_key: idempotencyKey,
+    })
+
+    const { runAdminActionLogReconciliation } = await import(
+      "../../src/jobs/admin-action-log-reconciliation"
+    )
+    const appendReconciliation = jest.fn(async (input) =>
+      buildFact({
+        audit_stage: "reconciliation",
+        result: input.result,
+        entity_id: String(input.entity_id),
+      })
+    )
+
+    const reconciliation = await runAdminActionLogReconciliation({
+      audit: {
+        listOrphanIntents: jest.fn(async () => [
+          buildFact({
+            action_attempt_id: String(
+              failing.calls[0]?.payload.action_attempt_id
+            ),
+            correlation_id: String(failing.calls[0]?.payload.correlation_id),
+            entity_id: "refreq_fictitious_unused",
+            idempotency_key: idempotencyKey,
+            created_at: "2026-07-20T10:00:00.000Z",
+          }),
+        ]),
+        retrieveTerminalFact: jest.fn(async () => null),
+        appendReconciliation,
+      },
+      refundRequest: {
+        retrieveRefundRequest: jest.fn(async () => null),
+        listRefundRequests: jest.fn(async (filters?: {
+          idempotency_key?: string
+        }) => {
+          if (filters?.idempotency_key === idempotencyKey) {
+            return harness.refundRequests
+          }
+          return []
+        }),
+      },
+      isWorker: () => true,
+      isReleaseMigration: () => false,
+    })
+
+    expect(reconciliation.reconciled).toBe(1)
+    expect(appendReconciliation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entity_id: canonicalId,
+        result: "requested",
+      })
+    )
   })
 
   it("preserves RefundRequest service method context across creation and replay", async () => {

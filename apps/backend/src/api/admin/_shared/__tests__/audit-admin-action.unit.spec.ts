@@ -340,4 +340,64 @@ describe("auditAdminAction Strategy B", () => {
       correlation_id: "corr_preserve",
     })
   })
+
+  it("uses resolveOutcomeEntityId for success outcome without re-running domain", async () => {
+    const domain = jest.fn(async () => ({
+      refund_request: { id: "refreq_canonical" },
+    }))
+    const { audit, calls } = createAuditDouble()
+
+    const result = await auditAdminAction({
+      audit,
+      descriptor: {
+        ...baseDescriptor,
+        entity_id: "refreq_generated_unused",
+        resolveOutcomeEntityId: (domainResult) =>
+          domainResult.refund_request.id,
+        classifySuccess: () => ({
+          result: "requested" as const,
+          metadata: { request_id: "refreq_canonical" },
+        }),
+      },
+      executeDomain: domain,
+    })
+
+    expect(result).toEqual({
+      refund_request: { id: "refreq_canonical" },
+    })
+    expect(domain).toHaveBeenCalledTimes(1)
+    expect(calls[0].payload).toMatchObject({
+      entity_id: "refreq_generated_unused",
+    })
+    expect(calls[1].payload).toMatchObject({
+      entity_id: "refreq_canonical",
+    })
+  })
+
+  it("keeps error outcomes bound to the original intent entity_id", async () => {
+    const { audit, calls } = createAuditDouble()
+
+    await expect(
+      auditAdminAction({
+        audit,
+        descriptor: {
+          ...baseDescriptor,
+          entity_id: "refreq_intent_original",
+          resolveOutcomeEntityId: () => "refreq_should_not_apply",
+          classifyDomainError: () => "blocked",
+        },
+        executeDomain: async () => {
+          throw new MedusaError(
+            MedusaError.Types.INVALID_DATA,
+            "REFUND_REQUEST_AMOUNT_INVALID"
+          )
+        },
+      })
+    ).rejects.toThrow("REFUND_REQUEST_AMOUNT_INVALID")
+
+    expect(calls[1].payload).toMatchObject({
+      entity_id: "refreq_intent_original",
+      result: "blocked",
+    })
+  })
 })

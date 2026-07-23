@@ -360,6 +360,9 @@ export async function handleAdminCreateExchangeRequest(
       action: "update_exchange",
       entity_type: "exchange_request",
       entity_id: exchangeRequestId,
+      intent_metadata: {
+        exchange_operation: "create",
+      },
       classifySuccess: (result) => ({
         result: "succeeded",
         previous_state: {},
@@ -368,6 +371,7 @@ export async function handleAdminCreateExchangeRequest(
           order_id: result.order_id,
           request_id: result.id,
           actor_type: actor.actor_type,
+          exchange_operation: "create",
         },
       }),
       classifyDomainError: classifyExchangeDomainError,

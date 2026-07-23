@@ -221,6 +221,88 @@ describe("admin-action-log-reconciliation", () => {
     )
   })
 
+  it("resolves refund replay orphans by idempotency_key to the canonical entity_id", async () => {
+    const appendReconciliation = jest.fn(async (input) =>
+      buildIntent({
+        audit_stage: "reconciliation",
+        result: input.result,
+        entity_id: input.entity_id,
+      })
+    )
+    const retrieveRefundRequest = jest.fn(async () => null)
+    const listRefundRequests = jest.fn(async (filters?: {
+      id?: string
+      idempotency_key?: string
+    }) => {
+      if (filters?.idempotency_key === "idem_replay_01") {
+        return [{ id: "refreq_canonical", status: "requested" }]
+      }
+      return []
+    })
+
+    const result = await runAdminActionLogReconciliation({
+      audit: {
+        listOrphanIntents: jest.fn(async () => [
+          buildIntent({
+            entity_id: "refreq_generated_unused",
+            idempotency_key: "idem_replay_01",
+          }),
+        ]),
+        retrieveTerminalFact: jest.fn(async () => null),
+        appendReconciliation,
+      },
+      refundRequest: {
+        retrieveRefundRequest,
+        listRefundRequests,
+      },
+      isWorker: () => true,
+      isReleaseMigration: () => false,
+    })
+
+    expect(result.reconciled).toBe(1)
+    expect(retrieveRefundRequest).toHaveBeenCalledWith(
+      "refreq_generated_unused"
+    )
+    expect(listRefundRequests).toHaveBeenCalledWith({
+      idempotency_key: "idem_replay_01",
+    })
+    expect(appendReconciliation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        result: "requested",
+        entity_id: "refreq_canonical",
+        idempotency_key: "idem_replay_01",
+      })
+    )
+  })
+
+  it("keeps refund orphans when idempotency_key matches are ambiguous", async () => {
+    const appendReconciliation = jest.fn()
+    const result = await runAdminActionLogReconciliation({
+      audit: {
+        listOrphanIntents: jest.fn(async () => [
+          buildIntent({
+            entity_id: "refreq_missing",
+            idempotency_key: "idem_ambiguous",
+          }),
+        ]),
+        retrieveTerminalFact: jest.fn(async () => null),
+        appendReconciliation,
+      },
+      refundRequest: {
+        retrieveRefundRequest: jest.fn(async () => null),
+        listRefundRequests: jest.fn(async () => [
+          { id: "refreq_a" },
+          { id: "refreq_b" },
+        ]),
+      },
+      isWorker: () => true,
+      isReleaseMigration: () => false,
+    })
+
+    expect(result.left_orphan).toBe(1)
+    expect(appendReconciliation).not.toHaveBeenCalled()
+  })
+
   it("keeps RefundRequest absence as an orphan and never infers failed", async () => {
     const appendReconciliation = jest.fn()
     const result = await runAdminActionLogReconciliation({
@@ -240,7 +322,7 @@ describe("admin-action-log-reconciliation", () => {
     expect(appendReconciliation).not.toHaveBeenCalled()
   })
 
-  it("reconciles exchange create existence as succeeded", async () => {
+  it("reconciles exchange create existence as succeeded when exchange_operation=create", async () => {
     const appendReconciliation = jest.fn(async (input) =>
       buildIntent({
         audit_stage: "reconciliation",
@@ -256,6 +338,7 @@ describe("admin-action-log-reconciliation", () => {
             entity_type: "exchange_request",
             entity_id: "excreq_01",
             new_state: null,
+            metadata: { exchange_operation: "create" },
           }),
         ]),
         retrieveTerminalFact: jest.fn(async () => null),
@@ -277,13 +360,181 @@ describe("admin-action-log-reconciliation", () => {
     )
   })
 
+  it("does not reconcile update_exchange existence alone as create success", async () => {
+    const appendReconciliation = jest.fn()
+    const result = await runAdminActionLogReconciliation({
+      audit: {
+        listOrphanIntents: jest.fn(async () => [
+          buildIntent({
+            action: "update_exchange",
+            entity_type: "exchange_request",
+            entity_id: "excreq_preexisting",
+            new_state: null,
+            metadata: { exchange_operation: "update" },
+          }),
+        ]),
+        retrieveTerminalFact: jest.fn(async () => null),
+        appendReconciliation,
+      },
+      exchangeRequest: {
+        retrieveExchangeRequest: jest.fn(async () => ({
+          id: "excreq_preexisting",
+          status: "opened",
+        })),
+      },
+      isWorker: () => true,
+      isReleaseMigration: () => false,
+    })
+
+    expect(result.left_orphan).toBe(1)
+    expect(appendReconciliation).not.toHaveBeenCalled()
+  })
+
+  it("keeps update_exchange without discriminator as orphan", async () => {
+    const appendReconciliation = jest.fn()
+    const result = await runAdminActionLogReconciliation({
+      audit: {
+        listOrphanIntents: jest.fn(async () => [
+          buildIntent({
+            action: "update_exchange",
+            entity_type: "exchange_request",
+            entity_id: "excreq_no_op",
+            new_state: { status: "opened" },
+            metadata: null,
+          }),
+        ]),
+        retrieveTerminalFact: jest.fn(async () => null),
+        appendReconciliation,
+      },
+      exchangeRequest: {
+        retrieveExchangeRequest: jest.fn(async () => ({
+          id: "excreq_no_op",
+          status: "opened",
+        })),
+      },
+      isWorker: () => true,
+      isReleaseMigration: () => false,
+    })
+
+    expect(result.left_orphan).toBe(1)
+    expect(appendReconciliation).not.toHaveBeenCalled()
+  })
+
+  it("keeps update_exchange without intended state as orphan even when entity exists", async () => {
+    const appendReconciliation = jest.fn()
+    const result = await runAdminActionLogReconciliation({
+      audit: {
+        listOrphanIntents: jest.fn(async () => [
+          buildIntent({
+            action: "update_exchange",
+            entity_type: "exchange_request",
+            entity_id: "excreq_no_state",
+            new_state: null,
+            metadata: { exchange_operation: "update" },
+          }),
+        ]),
+        retrieveTerminalFact: jest.fn(async () => null),
+        appendReconciliation,
+      },
+      exchangeRequest: {
+        retrieveExchangeRequest: jest.fn(async () => ({
+          id: "excreq_no_state",
+          status: "opened",
+        })),
+      },
+      isWorker: () => true,
+      isReleaseMigration: () => false,
+    })
+
+    expect(result.left_orphan).toBe(1)
+    expect(appendReconciliation).not.toHaveBeenCalled()
+  })
+
+  it("reconciles update when actual state matches intended state", async () => {
+    const appendReconciliation = jest.fn(async (input) =>
+      buildIntent({
+        audit_stage: "reconciliation",
+        result: input.result,
+      })
+    )
+
+    const result = await runAdminActionLogReconciliation({
+      audit: {
+        listOrphanIntents: jest.fn(async () => [
+          buildIntent({
+            action: "update_exchange",
+            entity_type: "exchange_request",
+            entity_id: "excreq_update_ok",
+            new_state: {
+              status: "return_in_transit",
+              reverse_tracking_code: "BR123",
+            },
+            metadata: { exchange_operation: "update" },
+          }),
+        ]),
+        retrieveTerminalFact: jest.fn(async () => null),
+        appendReconciliation,
+      },
+      exchangeRequest: {
+        retrieveExchangeRequest: jest.fn(async () => ({
+          id: "excreq_update_ok",
+          status: "return_in_transit",
+          reverse_tracking_code: "BR123",
+        })),
+      },
+      isWorker: () => true,
+      isReleaseMigration: () => false,
+    })
+
+    expect(result.reconciled).toBe(1)
+    expect(appendReconciliation).toHaveBeenCalledWith(
+      expect.objectContaining({ result: "succeeded" })
+    )
+  })
+
+  it("keeps failed update with preexisting prior state as orphan", async () => {
+    const appendReconciliation = jest.fn()
+    const result = await runAdminActionLogReconciliation({
+      audit: {
+        listOrphanIntents: jest.fn(async () => [
+          buildIntent({
+            action: "update_exchange",
+            entity_type: "exchange_request",
+            entity_id: "excreq_failed_update",
+            previous_state: { status: "opened" },
+            new_state: { status: "return_in_transit" },
+            metadata: { exchange_operation: "update" },
+          }),
+        ]),
+        retrieveTerminalFact: jest.fn(async () => null),
+        appendReconciliation,
+      },
+      exchangeRequest: {
+        retrieveExchangeRequest: jest.fn(async () => ({
+          id: "excreq_failed_update",
+          status: "opened",
+        })),
+      },
+      isWorker: () => true,
+      isReleaseMigration: () => false,
+    })
+
+    expect(result.left_orphan).toBe(1)
+    expect(appendReconciliation).not.toHaveBeenCalled()
+  })
+
   it.each([
-    ["update_exchange", "opened", { status: "opened" }],
-    ["reject_exchange", "rejected", { status: "rejected" }],
-    ["cancel_exchange", "canceled", { status: "canceled" }],
+    [
+      "update_exchange",
+      "opened",
+      { status: "opened" },
+      { exchange_operation: "update" },
+    ],
+    ["reject_exchange", "rejected", { status: "rejected" }, null],
+    ["cancel_exchange", "canceled", { status: "canceled" }, null],
   ] as const)(
     "reconciles proven %s transitions",
-    async (action, status, newState) => {
+    async (action, status, newState, metadata) => {
       const appendReconciliation = jest.fn(async (input) =>
         buildIntent({
           audit_stage: "reconciliation",
@@ -299,6 +550,7 @@ describe("admin-action-log-reconciliation", () => {
               entity_type: "exchange_request",
               entity_id: "excreq_transition",
               new_state: newState,
+              metadata,
             }),
           ]),
           retrieveTerminalFact: jest.fn(async () => null),

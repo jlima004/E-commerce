@@ -348,10 +348,16 @@ describe("admin exchanges routes", () => {
       action_attempt_id: "attempt_create_01",
       correlation_id: "corr_create_01",
       admin_id: ADMIN_ACTOR_ID,
+      metadata: expect.objectContaining({
+        exchange_operation: "create",
+      }),
     })
     expect(harness.auditCalls[1]?.payload).toMatchObject({
       result: "succeeded",
       new_state: expect.objectContaining({ status: "opened" }),
+      metadata: expect.objectContaining({
+        exchange_operation: "create",
+      }),
     })
     expect(JSON.stringify(harness.auditCalls)).not.toContain("approve_exchange")
     expectNoCanaries(res.json.mock.calls[0]?.[0])
@@ -600,12 +606,31 @@ describe("admin exchanges routes", () => {
         (call.payload.new_state as { status?: string } | null)?.status ===
           "awaiting_customer_return"
     )
+    const updateIntent = harness.auditCalls.find(
+      (call) =>
+        call.stage === "intent" &&
+        call.payload.entity_id === exchangeId &&
+        call.payload.action === "update_exchange" &&
+        String(call.payload.action_attempt_id).startsWith("attempt_update_")
+    )
+    expect(updateIntent?.payload).toMatchObject({
+      metadata: expect.objectContaining({
+        exchange_operation: "update",
+      }),
+      new_state: expect.objectContaining({
+        status: "awaiting_customer_return",
+        reverse_tracking_code: "BR555666777BR",
+      }),
+    })
     expect(updateOutcome[0]?.payload).toMatchObject({
       result: "succeeded",
       previous_state: expect.objectContaining({ status: "opened" }),
       new_state: expect.objectContaining({
         status: "awaiting_customer_return",
         reverse_tracking_code: "BR555666777BR",
+      }),
+      metadata: expect.objectContaining({
+        exchange_operation: "update",
       }),
     })
     expect(JSON.stringify(updateOutcome[0]?.payload)).not.toContain(
@@ -645,6 +670,13 @@ describe("admin exchanges routes", () => {
       const outcome = local.auditCalls.find(
         (call) => call.stage === "outcome" && call.payload.action === action
       )
+      const intent = local.auditCalls.find(
+        (call) => call.stage === "intent" && call.payload.action === action
+      )
+      expect(intent?.payload).toMatchObject({
+        action,
+        new_state: expect.objectContaining({ status }),
+      })
       expect(outcome?.payload).toMatchObject({
         action,
         result: "succeeded",

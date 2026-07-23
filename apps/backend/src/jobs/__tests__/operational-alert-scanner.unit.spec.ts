@@ -93,6 +93,184 @@ describe("operational-alert-scanner", () => {
     expect(upsertAlert).toHaveBeenCalledTimes(4)
   })
 
+  it("processes all fulfillment ids exactly once when timestamps are out of id order", async () => {
+    const rows = [
+      { id: "id_01", status: "dead_letter", updated_at: "2026-07-22T15:00:00.000Z" },
+      { id: "id_02", status: "dead_letter", updated_at: "2026-07-22T10:00:00.000Z" },
+      { id: "id_03", status: "dead_letter", updated_at: "2026-07-22T14:00:00.000Z" },
+      { id: "id_04", status: "dead_letter", updated_at: "2026-07-22T11:00:00.000Z" },
+      { id: "id_05", status: "dead_letter", updated_at: "2026-07-22T13:00:00.000Z" },
+      { id: "id_06", status: "dead_letter", updated_at: "2026-07-22T12:00:00.000Z" },
+    ]
+    const listGelatoFulfillments = jest.fn(
+      async (
+        _filters?: Record<string, unknown>,
+        config?: Record<string, unknown>
+      ) => {
+        expect(config?.order).toEqual({ id: "ASC" })
+        const skip = Number(config?.skip ?? 0)
+        const take = Number(config?.take ?? rows.length)
+        return rows.slice(skip, skip + take)
+      }
+    )
+    const upsertAlert = jest.fn(
+      async (_input: UpsertAlertInput) => ({ id: "opalert" })
+    )
+
+    const result = await runOperationalAlertScanner({
+      operationalAlert: { upsertAlert },
+      gelatoFulfillment: { listGelatoFulfillments },
+      isWorker: () => true,
+      isReleaseMigration: () => false,
+      now: () => NOW,
+      batchSize: 2,
+      maxPages: 20,
+    })
+
+    const processedIds = upsertAlert.mock.calls.map((call) => call[0].entity_id)
+    // 3 full pages of data + 1 empty terminator when N % batchSize === 0
+    expect(result.pages).toBe(4)
+    expect(listGelatoFulfillments).toHaveBeenCalledTimes(4)
+    expect(processedIds).toEqual([
+      "id_01",
+      "id_02",
+      "id_03",
+      "id_04",
+      "id_05",
+      "id_06",
+    ])
+    expect(new Set(processedIds).size).toBe(6)
+  })
+
+  it("processes all payment attempt ids exactly once when timestamps are out of id order", async () => {
+    const rows = [
+      {
+        id: "id_01",
+        status: "awaiting_pix_payment",
+        payment_method_type: "pix",
+        order_id: null,
+        expires_at: new Date(NOW.getTime() - 1).toISOString(),
+        updated_at: "2026-07-22T15:00:00.000Z",
+      },
+      {
+        id: "id_02",
+        status: "awaiting_pix_payment",
+        payment_method_type: "pix",
+        order_id: null,
+        expires_at: new Date(NOW.getTime() - 1).toISOString(),
+        updated_at: "2026-07-22T10:00:00.000Z",
+      },
+      {
+        id: "id_03",
+        status: "awaiting_pix_payment",
+        payment_method_type: "pix",
+        order_id: null,
+        expires_at: new Date(NOW.getTime() - 1).toISOString(),
+        updated_at: "2026-07-22T14:00:00.000Z",
+      },
+      {
+        id: "id_04",
+        status: "awaiting_pix_payment",
+        payment_method_type: "pix",
+        order_id: null,
+        expires_at: new Date(NOW.getTime() - 1).toISOString(),
+        updated_at: "2026-07-22T11:00:00.000Z",
+      },
+      {
+        id: "id_05",
+        status: "awaiting_pix_payment",
+        payment_method_type: "pix",
+        order_id: null,
+        expires_at: new Date(NOW.getTime() - 1).toISOString(),
+        updated_at: "2026-07-22T13:00:00.000Z",
+      },
+      {
+        id: "id_06",
+        status: "awaiting_pix_payment",
+        payment_method_type: "pix",
+        order_id: null,
+        expires_at: new Date(NOW.getTime() - 1).toISOString(),
+        updated_at: "2026-07-22T12:00:00.000Z",
+      },
+    ]
+    const listPaymentAttempts = jest.fn(
+      async (
+        _filters?: Record<string, unknown>,
+        config?: Record<string, unknown>
+      ) => {
+        expect(config?.order).toEqual({ id: "ASC" })
+        const skip = Number(config?.skip ?? 0)
+        const take = Number(config?.take ?? rows.length)
+        return rows.slice(skip, skip + take)
+      }
+    )
+    const upsertAlert = jest.fn(
+      async (_input: UpsertAlertInput) => ({ id: "opalert" })
+    )
+
+    const result = await runOperationalAlertScanner({
+      operationalAlert: { upsertAlert },
+      paymentAttempt: { listPaymentAttempts },
+      isWorker: () => true,
+      isReleaseMigration: () => false,
+      now: () => NOW,
+      batchSize: 2,
+      maxPages: 20,
+    })
+
+    const processedIds = upsertAlert.mock.calls.map((call) => call[0].entity_id)
+    // 3 full pages of data + 1 empty terminator when N % batchSize === 0
+    expect(result.pages).toBe(4)
+    expect(listPaymentAttempts).toHaveBeenCalledTimes(4)
+    expect(processedIds).toEqual([
+      "id_01",
+      "id_02",
+      "id_03",
+      "id_04",
+      "id_05",
+      "id_06",
+    ])
+    expect(new Set(processedIds).size).toBe(6)
+    expect(result.by_source.pix_expired).toBe(6)
+  })
+
+  it("stops when a full page does not advance by id", async () => {
+    const logger = createLogger()
+    const listGelatoFulfillments = jest.fn(async () => [
+      {
+        id: "gelful_same_a",
+        status: "dead_letter",
+        updated_at: "2026-07-22T11:00:00.000Z",
+      },
+      {
+        id: "gelful_same_b",
+        status: "dead_letter",
+        updated_at: "2026-07-22T11:01:00.000Z",
+      },
+    ])
+
+    const result = await runOperationalAlertScanner({
+      operationalAlert: { upsertAlert: jest.fn(async () => ({ id: "x" })) },
+      gelatoFulfillment: { listGelatoFulfillments },
+      logger,
+      isWorker: () => true,
+      isReleaseMigration: () => false,
+      now: () => NOW,
+      batchSize: 2,
+      maxPages: 5,
+    })
+
+    expect(listGelatoFulfillments).toHaveBeenCalledTimes(2)
+    expect(result.pages).toBe(2)
+    expect(logger.warn).toHaveBeenCalledWith(
+      "OPERATIONAL_ALERT_SCANNER_PAGINATION_STALLED",
+      expect.objectContaining({
+        source: "fulfillment",
+        page: 2,
+      })
+    )
+  })
+
   it("upserts fulfillment dead_letter and operator-attention candidates", async () => {
     const upsertAlert = jest.fn(
       async (_input: UpsertAlertInput) => ({ id: "opalert" })

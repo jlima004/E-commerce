@@ -38,6 +38,7 @@ type RefundRequestModuleLike = {
   retrieveRefundRequest?: (id: string) => Promise<RefundRequestLike | null>
   listRefundRequests?: (filters?: {
     id?: string
+    idempotency_key?: string
   }) => Promise<RefundRequestLike[]>
 }
 
@@ -85,6 +86,8 @@ const STATE_COMPARE_KEYS = [
   "reverse_label_reference",
 ] as const
 
+const EXCHANGE_OPERATIONS = new Set(["create", "update"])
+
 function logSafe(
   logger: SanitizedJobLogger | undefined,
   level: "info" | "warn" | "error",
@@ -128,6 +131,26 @@ async function loadRefundRequest(
     return rows[0] ?? null
   }
   return null
+}
+
+async function loadRefundRequestByIdempotencyKey(
+  module: RefundRequestModuleLike | null | undefined,
+  idempotencyKey: string
+): Promise<RefundRequestLike | null> {
+  if (!module || typeof module.listRefundRequests !== "function") {
+    return null
+  }
+  const rows = await module.listRefundRequests({
+    idempotency_key: idempotencyKey,
+  })
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    return null
+  }
+  const candidate = rows[0]
+  if (!candidate?.id || typeof candidate.id !== "string") {
+    return null
+  }
+  return candidate
 }
 
 async function loadExchangeRequest(
@@ -188,25 +211,49 @@ function statesMatchUnequivocally(
   return compared > 0
 }
 
+function readExchangeOperation(
+  intent: AdminActionFact
+): "create" | "update" | null {
+  const raw = intent.metadata?.exchange_operation
+  if (typeof raw !== "string" || !EXCHANGE_OPERATIONS.has(raw)) {
+    return null
+  }
+  return raw as "create" | "update"
+}
+
 async function resolveReconciliationFact(
   intent: AdminActionFact,
   deps: AdminActionLogReconciliationDeps
 ): Promise<{
   result: "requested" | "succeeded"
+  entity_id: string
   new_state?: AdminActionState | null
 } | null> {
   if (intent.entity_type === "refund_request") {
     if (intent.action !== "refund_order") {
       return null
     }
-    const entity = await loadRefundRequest(
+
+    let entity = await loadRefundRequest(
       deps.refundRequest,
       intent.entity_id
     )
+
+    if (!entity && intent.idempotency_key) {
+      entity = await loadRefundRequestByIdempotencyKey(
+        deps.refundRequest,
+        intent.idempotency_key
+      )
+    }
+
     if (!entity) {
       return null
     }
-    return { result: "requested" }
+
+    return {
+      result: "requested",
+      entity_id: entity.id,
+    }
   }
 
   if (intent.entity_type !== "exchange_request") {
@@ -221,27 +268,52 @@ async function resolveReconciliationFact(
     return null
   }
 
-  // Exchange create: action=update_exchange without comparable new_state.
-  // Existence of the pre-generated entity is the only local proof allowed.
-  if (
-    intent.action === "update_exchange" &&
-    !hasComparableState(intent.new_state)
-  ) {
+  if (intent.action === "update_exchange") {
+    const operation = readExchangeOperation(intent)
+    if (operation === null) {
+      return null
+    }
+
+    if (operation === "create") {
+      // Create proof is existence of the pre-generated entity id only.
+      return {
+        result: "succeeded",
+        entity_id: intent.entity_id,
+        new_state: snapshotFromExchange(entity),
+      }
+    }
+
+    // Updates require an unequivocal intended-state match. Existence alone
+    // must never reconcile a failed/blocked update as succeeded.
+    const actual = snapshotFromExchange(entity)
+    if (!statesMatchUnequivocally(intent.new_state, actual)) {
+      return null
+    }
+
     return {
       result: "succeeded",
-      new_state: snapshotFromExchange(entity),
+      entity_id: intent.entity_id,
+      new_state: actual,
     }
   }
 
-  const actual = snapshotFromExchange(entity)
-  if (!statesMatchUnequivocally(intent.new_state, actual)) {
-    return null
+  if (
+    intent.action === "reject_exchange" ||
+    intent.action === "cancel_exchange"
+  ) {
+    const actual = snapshotFromExchange(entity)
+    if (!statesMatchUnequivocally(intent.new_state, actual)) {
+      return null
+    }
+
+    return {
+      result: "succeeded",
+      entity_id: intent.entity_id,
+      new_state: actual,
+    }
   }
 
-  return {
-    result: "succeeded",
-    new_state: actual,
-  }
+  return null
 }
 
 export async function runAdminActionLogReconciliation(
@@ -346,7 +418,7 @@ export async function runAdminActionLogReconciliation(
           admin_email: intent.admin_email,
           action: intent.action,
           entity_type: intent.entity_type,
-          entity_id: intent.entity_id,
+          entity_id: fact.entity_id,
           result: fact.result,
           severity: "info",
           previous_state: intent.previous_state,

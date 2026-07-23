@@ -372,6 +372,22 @@ export async function handleAdminUpdateExchangeRequest(
   const correlationId =
     deps.generateCorrelationId?.() ?? defaultGenerateCorrelationId()
 
+  // Compute the intended allowlisted state once before the audit descriptor
+  // and reuse that exact record in the domain persistence path.
+  let intendedRecord: ExchangeRequestRecord | null = null
+  let intendedState: AdminActionState | undefined
+  try {
+    const computed = updateAdminExchangeRequest({
+      existing,
+      update: updateInput,
+    })
+    intendedRecord = computed.exchange_request
+    intendedState = allowlistedExchangeState(intendedRecord)
+  } catch {
+    // Invalid/blocked transitions keep no comparable intent_new_state;
+    // executeDomain will re-throw the same domain error classification.
+  }
+
   const persisted = await auditAdminAction({
     audit,
     logger,
@@ -383,6 +399,11 @@ export async function handleAdminUpdateExchangeRequest(
       entity_type: "exchange_request",
       entity_id: exchangeRequestId,
       intent_previous_state: previousState,
+      intent_new_state: intendedState,
+      intent_metadata:
+        action === "update_exchange"
+          ? { exchange_operation: "update" }
+          : undefined,
       classifySuccess: (result) => ({
         result: "succeeded",
         previous_state: previousState,
@@ -391,16 +412,22 @@ export async function handleAdminUpdateExchangeRequest(
           order_id: result.order_id,
           request_id: result.id,
           actor_type: actor.actor_type,
+          ...(action === "update_exchange"
+            ? { exchange_operation: "update" }
+            : {}),
         },
       }),
       classifyDomainError: classifyExchangeDomainError,
     },
     executeDomain: async () => {
       try {
-        const result = updateAdminExchangeRequest({
-          existing,
-          update: updateInput,
-        })
+        const result =
+          intendedRecord !== null
+            ? { exchange_request: intendedRecord }
+            : updateAdminExchangeRequest({
+                existing,
+                update: updateInput,
+              })
 
         const updated = await exchangeRequestModule.updateExchangeRequests!(
           result.exchange_request

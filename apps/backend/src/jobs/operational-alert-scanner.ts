@@ -30,11 +30,6 @@ type SanitizedJobLogger = {
   info?: (message: string, meta?: Record<string, unknown>) => void
 }
 
-type ListPageInput = {
-  after?: { cursor_at: string; id: string }
-  limit: number
-}
-
 type OperationalAlertModuleLike = {
   upsertAlert: (input: UpsertAlertInput) => Promise<unknown>
 }
@@ -133,82 +128,12 @@ function asPlainRecord<T extends Record<string, unknown>>(value: unknown): T {
   return { ...(value as object) } as T
 }
 
-function rowCursorAt(row: Record<string, unknown>): string {
-  const updated =
-    typeof row.updated_at === "string"
-      ? row.updated_at
-      : row.updated_at instanceof Date
-        ? row.updated_at.toISOString()
-        : null
-  const created =
-    typeof row.created_at === "string"
-      ? row.created_at
-      : row.created_at instanceof Date
-        ? row.created_at.toISOString()
-        : null
-  return updated ?? created ?? "1970-01-01T00:00:00.000Z"
-}
-
-function compareCursor(
-  left: { cursor_at: string; id: string },
-  right: { cursor_at: string; id: string }
-): number {
-  if (left.cursor_at < right.cursor_at) return -1
-  if (left.cursor_at > right.cursor_at) return 1
-  if (left.id < right.id) return -1
-  if (left.id > right.id) return 1
-  return 0
-}
-
-function advancePage<T extends { id?: string | null }>(
-  rows: T[],
-  after: ListPageInput["after"],
-  limit: number
-): T[] {
-  const sorted = [...rows].sort((left, right) => {
-    const leftPlain = asPlainRecord(left)
-    const rightPlain = asPlainRecord(right)
-    return compareCursor(
-      {
-        cursor_at: rowCursorAt(leftPlain),
-        id: String(left.id ?? ""),
-      },
-      {
-        cursor_at: rowCursorAt(rightPlain),
-        id: String(right.id ?? ""),
-      }
-    )
-  })
-
-  const filtered = after
-    ? sorted.filter((row) => {
-        const plain = asPlainRecord(row)
-        return (
-          compareCursor(
-            {
-              cursor_at: rowCursorAt(plain),
-              id: String(row.id ?? ""),
-            },
-            after
-          ) > 0
-        )
-      })
-    : sorted
-
-  return filtered.slice(0, limit)
-}
-
-function nextCursor(
-  rows: Array<{ id?: string | null }>
-): ListPageInput["after"] | undefined {
+function lastPageId(rows: Array<{ id?: string | null }>): string | null {
   const last = rows[rows.length - 1]
-  if (!last?.id) {
-    return undefined
+  if (!last?.id || typeof last.id !== "string" || last.id.trim() === "") {
+    return null
   }
-  return {
-    cursor_at: rowCursorAt(asPlainRecord(last)),
-    id: String(last.id),
-  }
+  return last.id
 }
 
 async function upsertPositive(
@@ -253,9 +178,9 @@ async function scanFulfillments(
     OPERATIONAL_ALERT_SCANNER_MAX_CANDIDATES_PER_SOURCE
   const timeoutMs = deps.timeoutMs ?? OPERATIONAL_ALERT_SCANNER_TIMEOUT_MS
 
-  let after: ListPageInput["after"]
   let sourcePages = 0
   let sourceCandidates = 0
+  let previousLastId: string | null = null
 
   while (sourcePages < maxPages && sourceCandidates < maxCandidates) {
     if (nowFn().getTime() - startedAt >= timeoutMs) {
@@ -273,11 +198,7 @@ async function scanFulfillments(
           order: { id: "ASC" },
         }
       )
-      page = advancePage(
-        listed.map((row) => asPlainRecord(row)),
-        after,
-        batchSize
-      )
+      page = listed.map((row) => asPlainRecord(row))
     } catch {
       logSafe(deps.logger, "error", "OPERATIONAL_ALERT_SCANNER_PAGE_FAILED", {
         source: "fulfillment",
@@ -290,6 +211,21 @@ async function scanFulfillments(
     counters.pages += 1
 
     if (page.length === 0) {
+      break
+    }
+
+    const pageLastId = lastPageId(page)
+    if (
+      page.length === batchSize &&
+      previousLastId !== null &&
+      (pageLastId === null || pageLastId <= previousLastId)
+    ) {
+      logSafe(
+        deps.logger,
+        "warn",
+        "OPERATIONAL_ALERT_SCANNER_PAGINATION_STALLED",
+        { source: "fulfillment", page: sourcePages }
+      )
       break
     }
 
@@ -317,17 +253,7 @@ async function scanFulfillments(
       break
     }
 
-    const cursor = nextCursor(page)
-    if (!cursor || (after && compareCursor(cursor, after) <= 0)) {
-      logSafe(
-        deps.logger,
-        "warn",
-        "OPERATIONAL_ALERT_SCANNER_PAGINATION_STALLED",
-        { source: "fulfillment", page: sourcePages }
-      )
-      break
-    }
-    after = cursor
+    previousLastId = pageLastId
   }
 }
 
@@ -349,9 +275,9 @@ async function scanPaymentAttempts(
     OPERATIONAL_ALERT_SCANNER_MAX_CANDIDATES_PER_SOURCE
   const timeoutMs = deps.timeoutMs ?? OPERATIONAL_ALERT_SCANNER_TIMEOUT_MS
 
-  let after: ListPageInput["after"]
   let sourcePages = 0
   let sourceCandidates = 0
+  let previousLastId: string | null = null
 
   while (sourcePages < maxPages && sourceCandidates < maxCandidates) {
     if (nowFn().getTime() - startedAt >= timeoutMs) {
@@ -369,11 +295,7 @@ async function scanPaymentAttempts(
           order: { id: "ASC" },
         }
       )
-      page = advancePage(
-        listed.map((row) => asPlainRecord(row)),
-        after,
-        batchSize
-      )
+      page = listed.map((row) => asPlainRecord(row))
     } catch {
       logSafe(deps.logger, "error", "OPERATIONAL_ALERT_SCANNER_PAGE_FAILED", {
         source: "payment_attempt",
@@ -386,6 +308,21 @@ async function scanPaymentAttempts(
     counters.pages += 1
 
     if (page.length === 0) {
+      break
+    }
+
+    const pageLastId = lastPageId(page)
+    if (
+      page.length === batchSize &&
+      previousLastId !== null &&
+      (pageLastId === null || pageLastId <= previousLastId)
+    ) {
+      logSafe(
+        deps.logger,
+        "warn",
+        "OPERATIONAL_ALERT_SCANNER_PAGINATION_STALLED",
+        { source: "payment_attempt", page: sourcePages }
+      )
       break
     }
 
@@ -432,17 +369,7 @@ async function scanPaymentAttempts(
       break
     }
 
-    const cursor = nextCursor(page)
-    if (!cursor || (after && compareCursor(cursor, after) <= 0)) {
-      logSafe(
-        deps.logger,
-        "warn",
-        "OPERATIONAL_ALERT_SCANNER_PAGINATION_STALLED",
-        { source: "payment_attempt", page: sourcePages }
-      )
-      break
-    }
-    after = cursor
+    previousLastId = pageLastId
   }
 }
 

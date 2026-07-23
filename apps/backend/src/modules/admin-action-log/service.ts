@@ -37,6 +37,7 @@ export const ADMIN_ACTION_METADATA_KEYS = [
   "actor_type",
   "reused_idempotency",
   "error_code",
+  "exchange_operation",
 ] as const
 
 type StateKey = (typeof ADMIN_ACTION_STATE_KEYS)[number]
@@ -582,7 +583,6 @@ export class AdminActionLogModuleService extends BaseAdminActionLogService {
       (input.admin_id && input.admin_id.trim() !== intent.admin_id) ||
       (input.action && input.action !== intent.action) ||
       (input.entity_type && input.entity_type !== intent.entity_type) ||
-      (input.entity_id && input.entity_id.trim() !== intent.entity_id) ||
       (input.correlation_id &&
         input.correlation_id.trim() !== intent.correlation_id)
     ) {
@@ -592,6 +592,13 @@ export class AdminActionLogModuleService extends BaseAdminActionLogService {
       )
     }
 
+    // Factual entity_id override is allowed for reconciliation (e.g. refund
+    // replay orphans whose intent pointed at a pre-generated unused id).
+    const reconciledEntityId =
+      typeof input.entity_id === "string" && input.entity_id.trim() !== ""
+        ? input.entity_id
+        : intent.entity_id
+
     const common = this.normalizeCommon({
       ...input,
       action_attempt_id: intent.action_attempt_id,
@@ -600,7 +607,7 @@ export class AdminActionLogModuleService extends BaseAdminActionLogService {
       admin_email: intent.admin_email,
       action: intent.action,
       entity_type: intent.entity_type,
-      entity_id: intent.entity_id,
+      entity_id: reconciledEntityId,
       idempotency_key: input.idempotency_key ?? intent.idempotency_key,
     })
 

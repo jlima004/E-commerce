@@ -355,6 +355,14 @@ export async function handleAdminCreateRefundRequest(
   const correlationId =
     deps.generateCorrelationId?.() ?? defaultGenerateCorrelationId()
 
+  // Pre-resolve replay so intent/outcome never index a generated unused id.
+  // Authoritative lookup still runs again inside the reservation claim.
+  const preResolvedByIdempotency = await refundRequestModule.listRefundRequests({
+    idempotency_key: requestInput.idempotency_key,
+  })
+  const preResolvedRecord = preResolvedByIdempotency[0] ?? null
+  const auditEntityId = preResolvedRecord?.id ?? refundRequestId
+
   const claim =
     deps.withOrderRefundReservationClaim ?? withOrderRefundReservationClaim
 
@@ -368,7 +376,7 @@ export async function handleAdminCreateRefundRequest(
       actor,
       action: "refund_order",
       entity_type: "refund_request",
-      entity_id: refundRequestId,
+      entity_id: auditEntityId,
       intent_previous_state: {},
       classifySuccess: (result) => ({
         result: "requested",
@@ -387,6 +395,7 @@ export async function handleAdminCreateRefundRequest(
         },
       }),
       classifyDomainError: classifyRefundDomainError,
+      resolveOutcomeEntityId: (result) => result.refund_request.id,
     },
     executeDomain: async () => {
       try {

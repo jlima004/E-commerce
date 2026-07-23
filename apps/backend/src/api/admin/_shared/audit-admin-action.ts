@@ -69,6 +69,12 @@ export type AuditActionDescriptor<TDomain> = {
     reason?: string | null
   }
   classifyDomainError: (error: unknown) => "failed" | "blocked"
+  /**
+   * Optional: map a successful domain result to the canonical entity id
+   * used by the success outcome. Intent always uses descriptor.entity_id.
+   * Error outcomes remain bound to the original intent entity_id.
+   */
+  resolveOutcomeEntityId?: (result: TDomain) => string
 }
 
 function logAuditFailure(
@@ -186,6 +192,13 @@ export async function auditAdminAction<TDomain>(input: {
   }
 
   const success = descriptor.classifySuccess(domainResult)
+  let outcomeEntityId = descriptor.entity_id
+  if (typeof descriptor.resolveOutcomeEntityId === "function") {
+    const resolved = descriptor.resolveOutcomeEntityId(domainResult)
+    if (typeof resolved === "string" && resolved.trim() !== "") {
+      outcomeEntityId = resolved.trim()
+    }
+  }
   try {
     await audit.appendOutcome({
       action_attempt_id: descriptor.action_attempt_id,
@@ -193,7 +206,7 @@ export async function auditAdminAction<TDomain>(input: {
       admin_id: descriptor.actor.actor_id,
       action: descriptor.action,
       entity_type: descriptor.entity_type,
-      entity_id: descriptor.entity_id,
+      entity_id: outcomeEntityId,
       result: success.result,
       audit_stage: "outcome",
       severity: "info",
@@ -208,7 +221,7 @@ export async function auditAdminAction<TDomain>(input: {
       action_attempt_id: descriptor.action_attempt_id,
       correlation_id: descriptor.correlation_id,
       entity_type: descriptor.entity_type,
-      entity_id: descriptor.entity_id,
+      entity_id: outcomeEntityId,
       orphan: true,
       domain_succeeded: true,
     })
