@@ -439,9 +439,16 @@ export function createAdminRefundRequest(input: {
   existing_refund_requests: RefundRequestRecord[]
   existing_by_idempotency_key?: RefundRequestRecord | null
   id: string
+  /**
+   * Authenticated Admin actor_id only. Never accept client-supplied operator IDs.
+   */
+  requested_by_operator_id?: string | null
   at?: Date
 }): AdminCreateRefundRequestResult {
-  const normalized = normalizeCreateRefundRequestInput(input.request)
+  const normalized = normalizeCreateRefundRequestInput({
+    ...input.request,
+    requested_by_operator_id: undefined,
+  })
 
   if (input.existing_by_idempotency_key) {
     const captured = resolveOrderCapturedPaymentTruth({
@@ -489,7 +496,7 @@ export function createAdminRefundRequest(input: {
       currency_code: captured.currency_code,
       reason: normalized.reason,
       operator_note: normalized.operator_note,
-      requested_by_operator_id: normalized.requested_by_operator_id,
+      requested_by_operator_id: input.requested_by_operator_id ?? null,
       metadata: normalized.metadata,
     },
     input.at

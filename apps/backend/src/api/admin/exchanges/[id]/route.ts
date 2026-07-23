@@ -1,6 +1,11 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError } from "@medusajs/framework/utils"
 import { env } from "../../../../config/env"
+import {
+  ADMIN_ACTION_LOG_MODULE,
+  type AdminAction,
+  type AdminActionState,
+} from "../../../../modules/admin-action-log"
 import { EXCHANGE_REQUEST_MODULE } from "../../../../modules/exchange-request"
 import {
   assertExchangeRequestUpdateBodyAllowed,
@@ -8,11 +13,18 @@ import {
   updateAdminExchangeRequest,
 } from "../../../../modules/exchange-request/service"
 import {
+  EXCHANGE_REQUEST_STATUS,
   EXCHANGE_REQUEST_STATUSES,
   REVERSE_LOGISTICS_PROVIDERS,
   type ExchangeRequestRecord,
   type UpdateExchangeRequestInput,
 } from "../../../../modules/exchange-request/types"
+import {
+  auditAdminAction,
+  type AdminActionLogAppendService,
+  type SanitizedAuditLogger,
+} from "../../_shared/audit-admin-action"
+import { requireAdminActor } from "../../_shared/require-admin-actor"
 
 type ExchangeRequestModuleLike = {
   retrieveExchangeRequest?: (id: string) => Promise<ExchangeRequestRecord | null>
@@ -28,6 +40,12 @@ type RouteDeps = {
   resolveExchangeRequestModule: (
     req: MedusaRequest
   ) => ExchangeRequestModuleLike | null
+  resolveAdminActionLogModule: (
+    req: MedusaRequest
+  ) => AdminActionLogAppendService | null
+  resolveLogger?: (req: MedusaRequest) => SanitizedAuditLogger | undefined
+  generateActionAttemptId?: () => string
+  generateCorrelationId?: () => string
   isEnabled?: () => boolean
 }
 
@@ -43,6 +61,34 @@ function defaultResolveExchangeRequestModule(
   }
 }
 
+function defaultResolveAdminActionLogModule(
+  req: MedusaRequest
+): AdminActionLogAppendService | null {
+  try {
+    return req.scope.resolve(
+      ADMIN_ACTION_LOG_MODULE
+    ) as unknown as AdminActionLogAppendService
+  } catch {
+    return null
+  }
+}
+
+function defaultResolveLogger(req: MedusaRequest): SanitizedAuditLogger | undefined {
+  try {
+    return req.scope.resolve("logger") as SanitizedAuditLogger
+  } catch {
+    return undefined
+  }
+}
+
+function defaultGenerateActionAttemptId(): string {
+  return `admatt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+}
+
+function defaultGenerateCorrelationId(): string {
+  return `admcorr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+}
+
 function parseUpdateExchangeRequestBody(body: unknown): UpdateExchangeRequestInput {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new MedusaError(
@@ -52,6 +98,19 @@ function parseUpdateExchangeRequestBody(body: unknown): UpdateExchangeRequestInp
   }
 
   const record = body as Record<string, unknown>
+
+  if (
+    "created_by_operator_id" in record ||
+    "admin_id" in record ||
+    "actor_id" in record ||
+    "admin_email" in record
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "EXCHANGE_REQUEST_BODY_INVALID"
+    )
+  }
+
   const update: UpdateExchangeRequestInput = {}
 
   if (record.status !== undefined) {
@@ -159,10 +218,51 @@ function mapExchangeRequestError(error: unknown): never {
     throw new MedusaError(MedusaError.Types.INVALID_DATA, sanitized.error_code)
   }
 
+  if (error instanceof MedusaError) {
+    throw error
+  }
+
   throw new MedusaError(
     MedusaError.Types.UNEXPECTED_STATE,
     sanitized.error_code
   )
+}
+
+function classifyExchangeDomainError(error: unknown): "failed" | "blocked" {
+  if (error instanceof MedusaError) {
+    if (
+      error.type === MedusaError.Types.INVALID_DATA ||
+      error.type === MedusaError.Types.NOT_FOUND ||
+      error.type === MedusaError.Types.NOT_ALLOWED
+    ) {
+      return "blocked"
+    }
+  }
+  return "failed"
+}
+
+function resolveExchangeAuditAction(
+  update: UpdateExchangeRequestInput
+): AdminAction {
+  if (update.status === EXCHANGE_REQUEST_STATUS.REJECTED) {
+    return "reject_exchange"
+  }
+  if (update.status === EXCHANGE_REQUEST_STATUS.CANCELED) {
+    return "cancel_exchange"
+  }
+  return "update_exchange"
+}
+
+function allowlistedExchangeState(
+  record: ExchangeRequestRecord
+): AdminActionState {
+  return {
+    status: record.status,
+    reverse_logistics_provider: record.reverse_logistics_provider,
+    reverse_tracking_code: record.reverse_tracking_code,
+    reverse_authorization_code: record.reverse_authorization_code,
+    reverse_label_reference: record.reverse_label_reference,
+  }
 }
 
 function serializeExchangeRequestResponse(
@@ -195,8 +295,18 @@ export async function handleAdminUpdateExchangeRequest(
   res: MedusaResponse,
   deps: RouteDeps = {
     resolveExchangeRequestModule: defaultResolveExchangeRequestModule,
+    resolveAdminActionLogModule: defaultResolveAdminActionLogModule,
+    resolveLogger: defaultResolveLogger,
   }
 ): Promise<void> {
+  const logger = deps.resolveLogger?.(req) ?? defaultResolveLogger(req)
+  const actor = requireAdminActor(
+    req as MedusaRequest & {
+      auth_context?: { actor_id?: unknown; actor_type?: unknown }
+    },
+    logger
+  )
+
   if (!(deps.isEnabled?.() ?? env.ADMIN_EXCHANGE_REQUEST_ENABLED)) {
     throw new MedusaError(
       MedusaError.Types.NOT_ALLOWED,
@@ -215,6 +325,7 @@ export async function handleAdminUpdateExchangeRequest(
   }
 
   const exchangeRequestModule = deps.resolveExchangeRequestModule(req)
+  const audit = deps.resolveAdminActionLogModule(req)
 
   if (
     !exchangeRequestModule?.listExchangeRequests ||
@@ -223,6 +334,13 @@ export async function handleAdminUpdateExchangeRequest(
     throw new MedusaError(
       MedusaError.Types.UNEXPECTED_STATE,
       "EXCHANGE_REQUEST_MODULE_UNAVAILABLE"
+    )
+  }
+
+  if (!audit?.appendIntent || !audit.appendOutcome) {
+    throw new MedusaError(
+      MedusaError.Types.UNEXPECTED_STATE,
+      "ADMIN_ACTION_LOG_MODULE_UNAVAILABLE"
     )
   }
 
@@ -247,23 +365,55 @@ export async function handleAdminUpdateExchangeRequest(
     )
   }
 
-  try {
-    const result = updateAdminExchangeRequest({
-      existing,
-      update: updateInput,
-    })
+  const previousState = allowlistedExchangeState(existing)
+  const action = resolveExchangeAuditAction(updateInput)
+  const actionAttemptId =
+    deps.generateActionAttemptId?.() ?? defaultGenerateActionAttemptId()
+  const correlationId =
+    deps.generateCorrelationId?.() ?? defaultGenerateCorrelationId()
 
-    const updated = await exchangeRequestModule.updateExchangeRequests(
-      result.exchange_request
-    )
-    const persisted = Array.isArray(updated) ? updated[0] : updated
+  const persisted = await auditAdminAction({
+    audit,
+    logger,
+    descriptor: {
+      action_attempt_id: actionAttemptId,
+      correlation_id: correlationId,
+      actor,
+      action,
+      entity_type: "exchange_request",
+      entity_id: exchangeRequestId,
+      intent_previous_state: previousState,
+      classifySuccess: (result) => ({
+        result: "succeeded",
+        previous_state: previousState,
+        new_state: allowlistedExchangeState(result),
+        metadata: {
+          order_id: result.order_id,
+          request_id: result.id,
+          actor_type: actor.actor_type,
+        },
+      }),
+      classifyDomainError: classifyExchangeDomainError,
+    },
+    executeDomain: async () => {
+      try {
+        const result = updateAdminExchangeRequest({
+          existing,
+          update: updateInput,
+        })
 
-    res.status(200).json(
-      serializeExchangeRequestResponse(persisted ?? result.exchange_request)
-    )
-  } catch (error) {
-    mapExchangeRequestError(error)
-  }
+        const updated = await exchangeRequestModule.updateExchangeRequests!(
+          result.exchange_request
+        )
+        const next = Array.isArray(updated) ? updated[0] : updated
+        return next ?? result.exchange_request
+      } catch (error) {
+        mapExchangeRequestError(error)
+      }
+    },
+  })
+
+  res.status(200).json(serializeExchangeRequestResponse(persisted))
 }
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {

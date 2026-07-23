@@ -88,7 +88,6 @@ const CREATE_BODY_ALLOWED_KEYS = new Set([
   "reverse_tracking_code",
   "reverse_authorization_code",
   "reverse_label_reference",
-  "created_by_operator_id",
 ])
 
 const UPDATE_BODY_ALLOWED_KEYS = new Set([
@@ -649,9 +648,16 @@ export function createAdminExchangeRequest(input: {
   request: CreateExchangeRequestInput
   order_metadata: Record<string, unknown> | null | undefined
   id: string
+  /**
+   * Authenticated Admin actor_id only. Never accept client-supplied operator IDs.
+   */
+  created_by_operator_id?: string | null
   at?: Date
 }): AdminCreateExchangeRequestResult {
-  const normalized = normalizeCreateExchangeRequestInput(input.request)
+  const normalized = normalizeCreateExchangeRequestInput({
+    ...input.request,
+    created_by_operator_id: undefined,
+  })
 
   assertOrderEligibleForExchange({
     order_id: normalized.order_id,
@@ -670,7 +676,7 @@ export function createAdminExchangeRequest(input: {
       reverse_tracking_code: normalized.reverse_tracking_code,
       reverse_authorization_code: normalized.reverse_authorization_code,
       reverse_label_reference: normalized.reverse_label_reference,
-      created_by_operator_id: normalized.created_by_operator_id,
+      created_by_operator_id: input.created_by_operator_id ?? null,
     },
     input.at
   )

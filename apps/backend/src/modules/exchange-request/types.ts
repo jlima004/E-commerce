@@ -98,6 +98,10 @@ export type CreateExchangeRequestInput = {
   reverse_tracking_code?: string | null
   reverse_authorization_code?: string | null
   reverse_label_reference?: string | null
+  /**
+   * Domain-only optional field. HTTP routes must never accept this from the
+   * client body; pass authenticated actor via createAdminExchangeRequest.
+   */
   created_by_operator_id?: string | null
 }
 
