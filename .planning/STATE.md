@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-implementation-prompt-complete-checker-passed-awaiting-human-review
-stopped_at: Phase 12 implementation prompt complete; checker PASS with 0 blockers and 0 warnings; awaiting human review; 6 planned / 0 executed; execution not started; next permitted step explicit authorization of 12-01
-last_updated: "2026-07-21"
-last_activity: 2026-07-21
-last_activity_desc: Phase 12 implementation prompt complete; checker PASS with 0 blockers and 0 warnings; awaiting human review
+status: phase-12-plan-05-passed-awaiting-human-review
+stopped_at: Plan 12-05 PASS (incl. P12-12-05-R1); awaiting human review; 12-06 blocked until explicit authorization
+last_updated: "2026-07-22"
+last_activity: 2026-07-22
+last_activity_desc: Plan 12-05 Admin Action instrumentation PASS with R1 idempotent postgres registration
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 56
-  completed_plans: 50
-  percent: 92
+  completed_plans: 55
+  percent: 98
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-20)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 — Ops, Audit & Critical Tests. Implementation prompt complete, checker PASS with 0 blockers / 0 warnings, awaiting human review. PLAN remains 6 planned / 0 executed. Execution not started.
+**Current focus:** Phase 12 — Ops, Audit & Critical Tests. Plans 12-01..12-05 executed and passed; Plan 12-06 blocked pending human review of 12-05.
 
 ## Execution Policy
 
@@ -41,20 +41,19 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-Phase 01 was executed under supervision on branch `gsd/phase-01-foundation-observability` and is now closed. CONTEXT, RESEARCH, PLAN, SPEC/SDD, execution, verification, smoke, and closure were completed under manual-review gating.
-
-**Current gate:** Phase 12 implementation prompt complete. O checker documental retornou PASS com 0 blockers e 0 warnings. Next permitted step: human review e autorização explícita somente do `12-01`. Todos os 6 planos permanecem não executados; OPS-01, OPS-02 e TEST-01 permanecem incompletos.
+**Current gate:** Plan 12-05 PASS absoluto (incl. P12-12-05-R1). Next permitted step: human review of `12-05-SUMMARY.md`. Do not start `12-06` without explicit authorization.
 
 ```text
 Phase 12 CONTEXT approved
 Phase 12 RESEARCH approved
-Phase 12 PLAN revised: 6 planned / 0 executed
+Phase 12 PLAN: 6 planned
 Phase 12 SPEC/SDD complete
-Phase 12 implementation prompt complete
-checker PASS: 0 blockers / 0 warnings
-human review pending
-execution not started
-next permitted step: explicit human authorization of 12-01
+12-01 PASS
+12-02 PASS
+12-03 PASS
+12-04 PASS
+12-05 PASS (R1 included)
+12-06 blocked until human review of 12-05
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -76,18 +75,18 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — implementation prompt complete; checker PASS; awaiting human review; execution not started
-Plan: 50/56 complete (milestone plans); Phase 12 plans: 6 planned / 0 executed
-Status: phase-12-implementation-prompt-complete-checker-passed-awaiting-human-review
-Last activity: 2026-07-21 - Phase 12 implementation prompt complete; checker PASS with 0 blockers and 0 warnings; awaiting human review
+Phase: 12 (Ops, Audit & Critical Tests) — Plan 12-05 passed; awaiting human review before 12-06
+Plan: 55/56 complete (milestone plans); Phase 12 plans: 5/6 executed (12-06 pending)
+Status: phase-12-plan-05-passed-awaiting-human-review
+Last activity: 2026-07-22 - Plan 12-05 Admin Action instrumentation PASS with P12-12-05-R1
 
-Progress: [██████████] 92% phases (11/12 complete); 50/56 milestone plans complete; Phase 12 plans are 6 planned / 0 executed
+Progress: [██████████] 98% plans (55/56); Phase 12 plans are 5 executed / 1 pending (12-06)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 50 / 56 planned
+- Total plans completed: 55 / 56 planned
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -106,7 +105,7 @@ Progress: [██████████] 92% phases (11/12 complete); 50/56 mi
 | 09. Gelato Fulfillment & Webhook | 5 executed / 5 planned | Complete / Closed | — |
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
-| 12. Ops, Audit & Critical Tests | 0 executed / 6 planned | Implementation prompt complete / checker PASS / awaiting human review / execution not started | — |
+| 12. Ops, Audit & Critical Tests | 5 executed / 6 planned | 12-05 PASS; 12-06 blocked pending human review | — |
 
 **Recent Trend:**
 

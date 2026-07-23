@@ -470,6 +470,7 @@ apps/backend/src/modules/exchange-request/service.ts
 apps/backend/src/modules/exchange-request/types.ts
 apps/backend/integration-tests/http/admin-refunds.spec.ts
 apps/backend/integration-tests/http/admin-exchanges.spec.ts
+apps/backend/src/modules/admin-action-log/__tests__/admin-action-log.postgres.spec.ts
 ```
 
 ### Gate and evidence
