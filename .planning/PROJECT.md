@@ -95,6 +95,7 @@ Um pedido (Order) só existe e só é enviado à produção (Gelato) após confi
 | Backend-only MVP com contratos de API para storefront futura | Frontend é milestone posterior | — Pending |
 | PRD Backend v1.1 + DB_MODEL v1.21 sobrepõem a redação mais antiga da SRS que sugere Order/awaiting_payment antes do pagamento confirmado | Estado pré-pagamento vive em Cart, PaymentCollection, PaymentSession e PaymentAttempt; Order só existe após confirmação canônica do webhook Stripe | — Decided (must be honored by all future planning) |
 | Heroku é o runtime de produção atual para o checkpoint da Fase 01 | A rota VPS/PM2/Nginx planejada foi substituída neste ciclo por Heroku/Supabase/Heroku Redis já estabilizados | — Decided (current production target) |
+| Phase 12.1 selected as an inserted release-readiness and production-validation phase for the merged backend MVP | It adds no product feature and does not start the storefront milestone | — Decided (CONTEXT complete; awaiting human review) |
 
 > **Decision (SRS wording override):** For implementation, PRD Backend v1.1 + DB_MODEL v1.21 override older SRS wording that suggests Order/awaiting_payment before confirmed payment. Pre-payment state lives in Cart, PaymentCollection, PaymentSession, and PaymentAttempt. Order exists only after canonical Stripe webhook payment confirmation. This decision must be visible to and honored by future planning agents.
 
@@ -116,4 +117,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-23 during Phase 12 CLOSURE; OPS-01/OPS-02/TEST-01 complete; Phase 12 closed; awaiting separate Product Manager milestone decision*
+*Last updated: 2026-07-24 during Phase 12.1 CONTEXT; PR 7 merged; Phase 12 remains closed; 45/45 requirements and 56/56 existing plans complete; milestone not archived; frontend not started*

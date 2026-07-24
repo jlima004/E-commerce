@@ -1056,3 +1056,11 @@ Separate authorization may permit:
 ```text
 push → reply to Codex finding → request new Codex review
 ```
+
+## Post-merge transition to Phase 12.1
+
+```text
+PR7 merged
+post-closure correction loop ended
+Phase 12.1 authorized for CONTEXT
+```

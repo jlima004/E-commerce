@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 12
-current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-closed-post-closure-pr7-r4-pass-awaiting-pr-update
-stopped_at: P12-POST-CLOSURE-PR7-R4 PASS; awaiting push, PR reply and Codex re-review authorization
-last_updated: "2026-07-23"
-last_activity: 2026-07-23
-last_activity_desc: P12-POST-CLOSURE-PR7-R4 PASS; checkout-completion owns stale policy; Phase 12 closure reaffirmed
+current_phase: 12.1
+current_phase_name: Backend MVP Release Readiness & Production Validation
+status: phase-12-1-context-complete-awaiting-human-review
+stopped_at: Phase 12.1 CONTEXT complete; awaiting human review before RESEARCH
+last_updated: "2026-07-24"
+last_activity: 2026-07-24
+last_activity_desc: Phase 12.1 CONTEXT complete; awaiting human review before RESEARCH
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 12
   total_plans: 56
   completed_plans: 56
-  percent: 100
+  percent: 92
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-20)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 closed and reaffirmed by P12-POST-CLOSURE-PR7-R4 PASS. Phase 12.1 not started / blocked until separate push, PR reply, and Codex re-review on PR 7.
+**Current focus:** Phase 12.1 CONTEXT is complete and awaiting human review. PR 7 is accepted, closed, and merged into `main`; no additional Codex re-review is required. RESEARCH, PLAN, execution, deploy, providers, milestone closeout, Phase 13, and frontend remain blocked.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** P12-POST-CLOSURE-PR7-R4 PASS. `completed_phases: 12`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 closed and reaffirmed by fourth post-closure addendum. Phase 12.1 not started / blocked until separate push, PR reply, and Codex re-review authorization. Do not start Phase 12.1, Phase 13, milestone closeout, push, deploy, or frontend automatically.
+**Current gate:** Phase 12.1 CONTEXT complete / awaiting human review. `completed_phases: 12`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 stays closed. Do not start RESEARCH, PLAN, execution, deploy, provider validation, milestone closeout, Phase 13, or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -62,18 +62,20 @@ OPS-01 complete
 OPS-02 complete
 completed_phases: 12
 completed_plans: 56
-percent: 100
+percent: 92
 Phase 12 closed; reaffirmed by P12-POST-CLOSURE-PR7-R1, R2, R3, and R4 PASS
 P12-POST-CLOSURE-PR7-R1 PASS
 P12-POST-CLOSURE-PR7-R2 PASS
 P12-POST-CLOSURE-PR7-R3 PASS
 P12-POST-CLOSURE-PR7-R4 PASS
-PR 7 open; checkout-completion owns stale/reclaim policy locally; awaiting push + PR reply + Codex re-review authorization
-Phase 12.1 not started / blocked until PR re-review
-milestone phases: 12/12 closed
+PR 7 closed and merged into main; final head 5289d20a1169ca35b3db161fc0697c19671ae769; merge commit b4c1ee954c5d8337bff80a945eadec57ad2a0e0a
+additional PR7 review required: no
+Phase 12.1 CONTEXT complete / awaiting human review
+milestone phases: 12/13 closed
 milestone closed/archived: no
 Phase 13 not started / not authorized
-next permitted step: separate authorization to push, reply to the Codex finding and request a new Codex review on PR 7
+frontend not started
+next permitted step: human review of Phase 12.1 CONTEXT; RESEARCH remains blocked
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -91,16 +93,16 @@ Produção: saudável
 
 **Branch policy:**
 
-`git.branching_strategy` is `phase` (GSD-supported). Phase 12 CONTEXT branch: `gsd/phase-12-ops-audit-critical-tests` (`phase_branch_template`: `gsd/phase-{phase}-{slug}`). Phase 11 execution branch remains historical: `gsd/phase-11-refunds-exchanges-admin`. Historical Phase 09 branch decision remains preserved in `09-CONTEXT.md` and Phase 09 closure records.
+`git.branching_strategy` is `phase` (GSD-supported). Phase 12.1 branch: `gsd/phase-12.1-mvp-release-readiness-production-validation`, created from merged `main` at `b4c1ee954c5d8337bff80a945eadec57ad2a0e0a`. Phase 12 CONTEXT branch remains historical: `gsd/phase-12-ops-audit-critical-tests` (`phase_branch_template`: `gsd/phase-{phase}-{slug}`). Phase 11 execution branch remains historical: `gsd/phase-11-refunds-exchanges-admin`. Historical Phase 09 branch decision remains preserved in `09-CONTEXT.md` and Phase 09 closure records.
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — closed; post-closure PR7-R4 PASS; awaiting PR update authorization
-Plan: 56/56 complete (milestone plans); Phase 12 plans: 6/6 executed and closed
-Status: phase-12-closed-post-closure-pr7-r4-pass-awaiting-pr-update
-Last activity: 2026-07-23 - P12-POST-CLOSURE-PR7-R4 PASS; Phase 12 closure reaffirmed
+Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — CONTEXT complete / awaiting human review
+Plan: 56/56 completed milestone plans; Phase 12.1 has 0 plans defined
+Status: phase-12-1-context-complete-awaiting-human-review
+Last activity: 2026-07-24 - Phase 12.1 CONTEXT complete; awaiting human review before RESEARCH
 
-Progress: [██████████] 100% plans (56/56); Phase 12 complete / closed 2026-07-23; PR7-R4 post-closure PASS
+Progress: [█████████░] 92% phases (12/13); 56/56 existing plans complete; Phase 12.1 CONTEXT complete / RESEARCH not started
 
 ## Performance Metrics
 
@@ -126,6 +128,7 @@ Progress: [██████████] 100% plans (56/56); Phase 12 complete
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
 | 12. Ops, Audit & Critical Tests | 6 executed / 6 planned | Complete / Closed | — |
+| 12.1. Backend MVP Release Readiness & Production Validation | 0 plans defined | CONTEXT / awaiting human review | — |
 
 **Recent Trend:**
 
@@ -212,6 +215,7 @@ Recent decisions affecting current work:
 - [Phase 12 PLAN]: Planning-only gate P12-PLAN-01 created exactly six manual-review-gated plans across four waves plus `12-VALIDATION.md`. Wave 1 establishes local disposable PostgreSQL proof; Wave 2 builds OperationalAlert/Admin GET and AdminActionLog primitives; Wave 3 connects factual detections and explicit refund/exchange audit wrappers; Wave 4 adds named INV-1/2, INV-3/4, INV-8 and INV-9/10 suites with PostgreSQL constraint/concurrency proofs. All D12-01..D12-15, H12-01..H12-06 and P12-PLAN-01 are covered. No runtime, tests, migration execution, provider, deploy, push or commit occurred.
 - [Phase 12 PLAN checker R1]: Revision iteration 1/3 corrected 8 BLOCKERs and 1 WARNING documentally: XML/task references, discoverable Gelato migration planning in 12-01, CCL-absent 15m/`received_at` gate, factual native Admin route inventory, INV-2/3/4 contracts, disposable-runner full modules command, evidence-strength classification and file/rollback counts. Recheck remains pending; no PASS is claimed. No runtime, product test, build, lint, migration, provider, deploy, push or commit occurred.
 - [Phase 12 implementation prompt]: Pacote consolidado criado para execução manual estritamente sequencial `12-01 → 12-02 → 12-04 → 12-03 → 12-05 → 12-06`, com gate humano entre planos, SHA-base futuro, allowlists exatas, summaries/commits separados, stop conditions e negativas. Checker documental PASS com 0 blockers e 0 warnings. Nenhum plano, runtime, teste, migration, Docker/PostgreSQL, provider, deploy ou push foi executado.
+- [Phase 12.1 CONTEXT]: Inserted operational phase selected after PR 7 was accepted, closed, and merged into `main`. Baseline is merged `main` at `b4c1ee954c5d8337bff80a945eadec57ad2a0e0a`. Scope is release readiness and production validation only, with no new product requirements and no provider or production mutation authorized. CONTEXT complete; RESEARCH not started.
 
 ### Pending Todos
 
@@ -236,6 +240,10 @@ None yet.
 - [Release stabilization closure]: incidente monetário resolvido; versionamento automático resolvido; cache Redis TLS resolvido; CACHE-01A/B e INFRA-01 PASS; cache Redis ativo em `web.1` e `worker.1`; fallbacks do release classificados e isolados; produção saudável. Não restam próximos passos para investigar `APP_VERSION`, reativar cache Redis, provar Redis em `web.1`/`worker.1` ou revisar fallbacks do release.
 - [Phase 12 — historical pre-P12-PLAN-R1 snapshot]: CONTEXT and RESEARCH were approved and the earlier PLAN had 6 plans / 0 executed with `12-VALIDATION.md`; its checker passed with 0 blockers and 0 warnings, and human review remained required. That earlier PASS was superseded/invalidated when P12-PLAN-R1 reopened and revised PLAN/VALIDATION. P12-PLAN-R1 later passed its checker. The separately authorized SPEC/SDD gate initially found two transient documentary blockers, resolved by P12-SPEC-SDD-R1. The implementation prompt gate later completed with checker PASS; the current authority is recorded at the top.
 
+### Roadmap Evolution
+
+- Phase 12.1 inserted after Phase 12: Backend MVP Release Readiness & Production Validation (URGENT)
+
 ## Deferred Items
 
 Items acknowledged and carried forward from previous milestone close:
@@ -246,17 +254,16 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-23
+Last session: 2026-07-24
 
-Stopped at: P12-POST-CLOSURE-PR7-R4 PASS; awaiting separate push, PR reply
-and Codex re-review authorization.
+Stopped at: Phase 12.1 CONTEXT complete; awaiting human review before RESEARCH.
 
 Resume file:
-`.planning/phases/12-ops-audit-critical-tests/12-POST-CLOSURE-PR7-R4-SUMMARY.md`
+`.planning/phases/12.1-mvp-release-readiness-production-validation/12.1-CONTEXT.md`
 
-Next permitted step: separate authorization to push, reply to the Codex finding
-and request a new Codex review on PR 7. Do not start Phase 12.1, Phase 13,
-milestone closeout, or frontend automatically.
+Next permitted step: human review of Phase 12.1 CONTEXT; RESEARCH remains
+blocked. Do not start PLAN, execution, Phase 13, milestone closeout, deploy,
+providers, or frontend automatically.
 
 ## Quick Tasks Completed
 
