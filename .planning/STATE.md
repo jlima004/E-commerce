@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 12.1
 current_phase_name: Backend MVP Release Readiness & Production Validation
 status: phase-12-1-plan-complete-awaiting-human-review
-stopped_at: Phase 12.1 PLAN PASS after documentary correction R4; awaiting human review before SPEC/SDD or implementation-prompt decision
+stopped_at: Phase 12.1 PLAN PASS after documentary correction R5; awaiting human review before implementation-prompt decision
 last_updated: "2026-07-24"
 last_activity: 2026-07-24
-last_activity_desc: Phase 12.1 PLAN PASS after documentary correction R4; awaiting human review; execution blocked
+last_activity_desc: Phase 12.1 PLAN PASS after documentary correction R5; awaiting human review; execution blocked
 progress:
   total_phases: 13
   completed_phases: 12
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-24)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12.1 PLAN PASS after documentary correction R4; awaiting human review before SPEC/SDD or implementation-prompt decision. PR 7 is accepted, closed, and merged into `main`. Execution, deploy, providers, rollback, milestone closeout, Phase 13, and frontend remain blocked.
+**Current focus:** Phase 12.1 PLAN PASS after documentary correction R5; awaiting human review before implementation-prompt decision. PR 7 is accepted, closed, and merged into `main`. Execution, deploy, providers, rollback, milestone closeout, Phase 13, and frontend remain blocked.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 12.1 PLAN complete / awaiting human review after documentary correction R4. `completed_phases: 12`; `total_plans: 62`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 stays closed. Do not start execution, deploy, provider validation, rollback, milestone closeout, Phase 13, or frontend automatically.
+**Current gate:** Phase 12.1 PLAN PASS after documentary correction R5. `completed_phases: 12`; `total_plans: 62`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 stays closed. Do not start execution, deploy, provider validation, rollback, milestone closeout, Phase 13, or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -74,8 +74,8 @@ Phase 12.1 CONTEXT approved
 Phase 12.1 RESEARCH complete / awaiting human review
 Phase 12.1 PLAN BLOCKED after checker R3 (historical)
 Phase 12.1 PLAN checker R3 result: 2 blockers / 0 warnings (historical)
-Phase 12.1 PLAN PASS after documentary correction R4
-Phase 12.1 PLAN checker R4 result: 0 blockers / 0 warnings
+Phase 12.1 PLAN PASS after documentary correction R5
+Phase 12.1 PLAN checker R5 result: 0 blockers / 0 warnings
 Phase 12.1: 6 planned / 0 executed
 milestone phases: 12/13 closed
 milestone closed/archived: no
@@ -103,10 +103,10 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — PLAN PASS after documentary correction R4
+Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — PLAN PASS after documentary correction R5
 Plan: 56/62 completed milestone plans; Phase 12.1 has 6 planned / 0 executed
 Status: phase-12-1-plan-complete-awaiting-human-review
-Last activity: 2026-07-24 - Phase 12.1 PLAN PASS after documentary correction R4; awaiting human review
+Last activity: 2026-07-24 - Phase 12.1 PLAN PASS after documentary correction R5; awaiting human review
 
 Progress: [█████████░] 92% phases (12/13); 56/62 plans complete; Phase 12.1 PLAN complete / execution not started
 
@@ -134,7 +134,7 @@ Progress: [█████████░] 92% phases (12/13); 56/62 plans compl
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
 | 12. Ops, Audit & Critical Tests | 6 executed / 6 planned | Complete / Closed | — |
-| 12.1. Backend MVP Release Readiness & Production Validation | 0 executed / 6 planned | PLAN PASS after documentary correction R4 | — |
+| 12.1. Backend MVP Release Readiness & Production Validation | 0 executed / 6 planned | PLAN PASS after documentary correction R5 | — |
 
 **Recent Trend:**
 
@@ -224,7 +224,7 @@ Recent decisions affecting current work:
 - [Phase 12.1 CONTEXT]: Inserted operational phase selected after PR 7 was accepted, closed, and merged into `main`. Baseline is merged `main` at `b4c1ee954c5d8337bff80a945eadec57ad2a0e0a`. Scope is release readiness and production validation only, with no new product requirements and no provider or production mutation authorized. CONTEXT approved.
 - [Phase 12.1 RESEARCH]: Research-only gate completed on 2026-07-24. Consolidated the factual release/web/worker topology, the 11-migration inventory and Gelato identity risk, pooled versus direct/session connections, dynamic SHA, live/ready and public read-only smoke contracts, Admin fail-closed authentication, sanitized evidence, current/previous release discovery, rollback criteria, dynamic monitoring, evidence matrix, and recommended future PLAN decomposition. No tests, build, migration, production/provider access, deploy, rollback, PLAN, commit, or push occurred. Awaiting human review; PLAN remains blocked.
 - [Phase 12.1 PLAN]: Planning-only gate created exactly six sequential manual-review-gated plans across six waves plus `12.1-VALIDATION.md`. Checker revision 1 corrected the factual PLAN baseline/fish variables, disposable migration/catalog invocation, child-command `rtk` misuse, safe config/migration preflight, fish status test, complete three-sample production procedure, optional provider branches, the 12.1-06 external-read checkpoint, and operational disposition of all four RESEARCH open questions while keeping `12.1-RESEARCH.md` read-only. The plan covers C01–C18 and D12.1-01..D12.1-15; execution and independent recheck remain blocked behind the next manual gate. No plan execution, tests, build, npm install, Docker/PostgreSQL operation, production/provider access, migration, deploy, rollback, commit or push occurred.
-- [Phase 12.1 PLAN documentary correction R4]: Human-authorized corrective gate fixed the two R3 documentary blockers without changing the six-plan/six-wave decomposition. Introduced `P12_RELEASE_CONTRACT_V1` (rollback target = predeploy current release; previous eligible = historical fallback; SHA-based compatibility `rollback_target_sha...candidate_sha`; exact cross-check 02→03→06) and fail-closed raw-log scan before sanitized projection (`sensitive_match_count = 0`, raw file 0600 ≤200 lines, cleanup in finally). Checker R4 PASS with 0 blockers / 0 warnings. Plans 01 and 05 remained byte-identical. No execution, deploy, provider, migration, SPEC/SDD, implementation prompt, push, or PR.
+- [Phase 12.1 PLAN documentary correction R5]: Human-authorized corrective gate fixed the candidate SHA deployment deadlock without changing the six-plan/six-wave decomposition. Deploy uses exact candidate refspec `$P12_CANDIDATE_SHA`:refs/heads/main`; documentary HEAD may descend only by SUMMARYs 01/02; `previous_eligible_release` is historical evidence only (no automatic rollback substitution). Checker R5 PASS with 0 blockers / 0 warnings. No execution, deploy, provider, migration, SPEC/SDD, implementation prompt, push, or PR.
 
 ### Pending Todos
 
@@ -265,7 +265,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 Last session: 2026-07-24
 
-Stopped at: Phase 12.1 PLAN PASS after documentary correction R4; awaiting human review before SPEC/SDD or implementation-prompt decision.
+Stopped at: Phase 12.1 PLAN PASS after documentary correction R5; awaiting human review before implementation-prompt decision.
 
 Resume file:
 `.planning/phases/12.1-mvp-release-readiness-production-validation/12.1-VALIDATION.md`
