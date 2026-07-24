@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12.1
 current_phase_name: Backend MVP Release Readiness & Production Validation
-status: phase-12-1-context-complete-awaiting-human-review
-stopped_at: Phase 12.1 CONTEXT complete; awaiting human review before RESEARCH
+status: phase-12-1-research-complete-awaiting-human-review
+stopped_at: Phase 12.1 RESEARCH complete; awaiting human review before PLAN
 last_updated: "2026-07-24"
 last_activity: 2026-07-24
-last_activity_desc: Phase 12.1 CONTEXT complete; awaiting human review before RESEARCH
+last_activity_desc: Phase 12.1 RESEARCH complete; awaiting human review before PLAN
 progress:
   total_phases: 13
   completed_phases: 12
@@ -21,10 +21,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-20)
+See: .planning/PROJECT.md (updated 2026-07-24)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12.1 CONTEXT is complete and awaiting human review. PR 7 is accepted, closed, and merged into `main`; no additional Codex re-review is required. RESEARCH, PLAN, execution, deploy, providers, milestone closeout, Phase 13, and frontend remain blocked.
+**Current focus:** Phase 12.1 RESEARCH is complete and awaiting human review. PR 7 is accepted, closed, and merged into `main`; no additional Codex re-review is required. PLAN, execution, deploy, providers, milestone closeout, Phase 13, and frontend remain blocked.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 12.1 CONTEXT complete / awaiting human review. `completed_phases: 12`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 stays closed. Do not start RESEARCH, PLAN, execution, deploy, provider validation, milestone closeout, Phase 13, or frontend automatically.
+**Current gate:** Phase 12.1 RESEARCH complete / awaiting human review. `completed_phases: 12`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 stays closed. Do not start PLAN, execution, deploy, provider validation, milestone closeout, Phase 13, or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -70,12 +70,13 @@ P12-POST-CLOSURE-PR7-R3 PASS
 P12-POST-CLOSURE-PR7-R4 PASS
 PR 7 closed and merged into main; final head 5289d20a1169ca35b3db161fc0697c19671ae769; merge commit b4c1ee954c5d8337bff80a945eadec57ad2a0e0a
 additional PR7 review required: no
-Phase 12.1 CONTEXT complete / awaiting human review
+Phase 12.1 CONTEXT approved
+Phase 12.1 RESEARCH complete / awaiting human review
 milestone phases: 12/13 closed
 milestone closed/archived: no
 Phase 13 not started / not authorized
 frontend not started
-next permitted step: human review of Phase 12.1 CONTEXT; RESEARCH remains blocked
+next permitted step: human review of Phase 12.1 RESEARCH; PLAN remains blocked
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -97,12 +98,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — CONTEXT complete / awaiting human review
+Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — RESEARCH complete / awaiting human review
 Plan: 56/56 completed milestone plans; Phase 12.1 has 0 plans defined
-Status: phase-12-1-context-complete-awaiting-human-review
-Last activity: 2026-07-24 - Phase 12.1 CONTEXT complete; awaiting human review before RESEARCH
+Status: phase-12-1-research-complete-awaiting-human-review
+Last activity: 2026-07-24 - Phase 12.1 RESEARCH complete; awaiting human review before PLAN
 
-Progress: [█████████░] 92% phases (12/13); 56/56 existing plans complete; Phase 12.1 CONTEXT complete / RESEARCH not started
+Progress: [█████████░] 92% phases (12/13); 56/56 existing plans complete; Phase 12.1 RESEARCH complete / PLAN not started
 
 ## Performance Metrics
 
@@ -128,7 +129,7 @@ Progress: [█████████░] 92% phases (12/13); 56/56 existing pl
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
 | 12. Ops, Audit & Critical Tests | 6 executed / 6 planned | Complete / Closed | — |
-| 12.1. Backend MVP Release Readiness & Production Validation | 0 plans defined | CONTEXT / awaiting human review | — |
+| 12.1. Backend MVP Release Readiness & Production Validation | 0 plans defined | RESEARCH / awaiting human review | — |
 
 **Recent Trend:**
 
@@ -215,7 +216,8 @@ Recent decisions affecting current work:
 - [Phase 12 PLAN]: Planning-only gate P12-PLAN-01 created exactly six manual-review-gated plans across four waves plus `12-VALIDATION.md`. Wave 1 establishes local disposable PostgreSQL proof; Wave 2 builds OperationalAlert/Admin GET and AdminActionLog primitives; Wave 3 connects factual detections and explicit refund/exchange audit wrappers; Wave 4 adds named INV-1/2, INV-3/4, INV-8 and INV-9/10 suites with PostgreSQL constraint/concurrency proofs. All D12-01..D12-15, H12-01..H12-06 and P12-PLAN-01 are covered. No runtime, tests, migration execution, provider, deploy, push or commit occurred.
 - [Phase 12 PLAN checker R1]: Revision iteration 1/3 corrected 8 BLOCKERs and 1 WARNING documentally: XML/task references, discoverable Gelato migration planning in 12-01, CCL-absent 15m/`received_at` gate, factual native Admin route inventory, INV-2/3/4 contracts, disposable-runner full modules command, evidence-strength classification and file/rollback counts. Recheck remains pending; no PASS is claimed. No runtime, product test, build, lint, migration, provider, deploy, push or commit occurred.
 - [Phase 12 implementation prompt]: Pacote consolidado criado para execução manual estritamente sequencial `12-01 → 12-02 → 12-04 → 12-03 → 12-05 → 12-06`, com gate humano entre planos, SHA-base futuro, allowlists exatas, summaries/commits separados, stop conditions e negativas. Checker documental PASS com 0 blockers e 0 warnings. Nenhum plano, runtime, teste, migration, Docker/PostgreSQL, provider, deploy ou push foi executado.
-- [Phase 12.1 CONTEXT]: Inserted operational phase selected after PR 7 was accepted, closed, and merged into `main`. Baseline is merged `main` at `b4c1ee954c5d8337bff80a945eadec57ad2a0e0a`. Scope is release readiness and production validation only, with no new product requirements and no provider or production mutation authorized. CONTEXT complete; RESEARCH not started.
+- [Phase 12.1 CONTEXT]: Inserted operational phase selected after PR 7 was accepted, closed, and merged into `main`. Baseline is merged `main` at `b4c1ee954c5d8337bff80a945eadec57ad2a0e0a`. Scope is release readiness and production validation only, with no new product requirements and no provider or production mutation authorized. CONTEXT approved.
+- [Phase 12.1 RESEARCH]: Research-only gate completed on 2026-07-24. Consolidated the factual release/web/worker topology, the 11-migration inventory and Gelato identity risk, pooled versus direct/session connections, dynamic SHA, live/ready and public read-only smoke contracts, Admin fail-closed authentication, sanitized evidence, current/previous release discovery, rollback criteria, dynamic monitoring, evidence matrix, and recommended future PLAN decomposition. No tests, build, migration, production/provider access, deploy, rollback, PLAN, commit, or push occurred. Awaiting human review; PLAN remains blocked.
 
 ### Pending Todos
 
@@ -256,13 +258,13 @@ Items acknowledged and carried forward from previous milestone close:
 
 Last session: 2026-07-24
 
-Stopped at: Phase 12.1 CONTEXT complete; awaiting human review before RESEARCH.
+Stopped at: Phase 12.1 RESEARCH complete; awaiting human review before PLAN.
 
 Resume file:
-`.planning/phases/12.1-mvp-release-readiness-production-validation/12.1-CONTEXT.md`
+`.planning/phases/12.1-mvp-release-readiness-production-validation/12.1-RESEARCH.md`
 
-Next permitted step: human review of Phase 12.1 CONTEXT; RESEARCH remains
-blocked. Do not start PLAN, execution, Phase 13, milestone closeout, deploy,
+Next permitted step: human review of Phase 12.1 RESEARCH; PLAN remains
+blocked. Do not start execution, Phase 13, milestone closeout, deploy,
 providers, or frontend automatically.
 
 ## Quick Tasks Completed
