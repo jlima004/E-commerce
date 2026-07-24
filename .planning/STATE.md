@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-closed-post-closure-pr7-r2-pass-awaiting-pr-update
-stopped_at: P12-POST-CLOSURE-PR7-R2 PASS; awaiting push, PR replies and Codex re-review authorization
+status: phase-12-closed-post-closure-pr7-r3-pass-awaiting-pr-update
+stopped_at: P12-POST-CLOSURE-PR7-R3 PASS; awaiting push, PR reply and Codex re-review authorization
 last_updated: "2026-07-23"
 last_activity: 2026-07-23
-last_activity_desc: P12-POST-CLOSURE-PR7-R2 PASS; Docker harness portability fixed; Phase 12 closure reaffirmed
+last_activity_desc: P12-POST-CLOSURE-PR7-R3 PASS; OperationalAlert user-only reads; Phase 12 closure reaffirmed
 progress:
   total_phases: 12
   completed_phases: 12
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-20)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 closed and reaffirmed by P12-POST-CLOSURE-PR7-R2 PASS. Phase 12.1 not started / blocked until separate push, PR replies, and Codex re-review on PR 7.
+**Current focus:** Phase 12 closed and reaffirmed by P12-POST-CLOSURE-PR7-R3 PASS. Phase 12.1 not started / blocked until separate push, PR reply, and Codex re-review on PR 7.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** P12-POST-CLOSURE-PR7-R2 PASS. `completed_phases: 12`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 closed and reaffirmed by second post-closure addendum. Phase 12.1 not started / blocked until separate push, PR replies, and Codex re-review authorization. Do not start Phase 12.1, Phase 13, milestone closeout, push, deploy, or frontend automatically.
+**Current gate:** P12-POST-CLOSURE-PR7-R3 PASS. `completed_phases: 12`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 closed and reaffirmed by third post-closure addendum. Phase 12.1 not started / blocked until separate push, PR reply, and Codex re-review authorization. Do not start Phase 12.1, Phase 13, milestone closeout, push, deploy, or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -63,15 +63,16 @@ OPS-02 complete
 completed_phases: 12
 completed_plans: 56
 percent: 100
-Phase 12 closed; reaffirmed by P12-POST-CLOSURE-PR7-R1 and P12-POST-CLOSURE-PR7-R2 PASS
+Phase 12 closed; reaffirmed by P12-POST-CLOSURE-PR7-R1, R2, and R3 PASS
 P12-POST-CLOSURE-PR7-R1 PASS
 P12-POST-CLOSURE-PR7-R2 PASS
-PR 7 open; P2 Docker harness portability corrected locally; P1 false positive (no runtime change); awaiting push + PR reply authorization
+P12-POST-CLOSURE-PR7-R3 PASS
+PR 7 open; OperationalAlert reads restricted to user actors locally; awaiting push + PR reply + Codex re-review authorization
 Phase 12.1 not started / blocked until PR re-review
 milestone phases: 12/12 closed
 milestone closed/archived: no
 Phase 13 not started / not authorized
-next permitted step: separate authorization to push, reply to the P1/P2 threads and request Codex re-review on PR 7
+next permitted step: separate authorization to push, reply to the Codex finding and request a new Codex review on PR 7
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -93,12 +94,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — closed; post-closure PR7-R2 PASS; awaiting PR update authorization
+Phase: 12 (Ops, Audit & Critical Tests) — closed; post-closure PR7-R3 PASS; awaiting PR update authorization
 Plan: 56/56 complete (milestone plans); Phase 12 plans: 6/6 executed and closed
-Status: phase-12-closed-post-closure-pr7-r2-pass-awaiting-pr-update
-Last activity: 2026-07-23 - P12-POST-CLOSURE-PR7-R2 PASS; Phase 12 closure reaffirmed
+Status: phase-12-closed-post-closure-pr7-r3-pass-awaiting-pr-update
+Last activity: 2026-07-23 - P12-POST-CLOSURE-PR7-R3 PASS; Phase 12 closure reaffirmed
 
-Progress: [██████████] 100% plans (56/56); Phase 12 complete / closed 2026-07-23; PR7-R2 post-closure PASS
+Progress: [██████████] 100% plans (56/56); Phase 12 complete / closed 2026-07-23; PR7-R3 post-closure PASS
 
 ## Performance Metrics
 

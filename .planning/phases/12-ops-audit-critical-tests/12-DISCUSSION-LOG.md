@@ -913,3 +913,74 @@ Separate authorization may permit:
 ```text
 push → reply to P1/P2 threads → Codex re-review → thread resolution after confirmation
 ```
+
+## P12-POST-CLOSURE-PR7-R3 — OperationalAlert user-only read policy
+
+### Authorization
+
+Human authorization covered exclusively:
+
+```text
+P12-POST-CLOSURE-PR7-R3
+```
+
+Local technical + documentary gate only. No push, deploy, GitHub write,
+Phase 12.1, Phase 13, or milestone closeout.
+
+### Finding
+
+Reviewer `chatgpt-codex-connector` on commit
+`e7b94737a24c9715214ea62beee263e68162471d` (PR 7):
+
+```text
+Require user actors for alert reads — P2 — classified valid
+```
+
+### Diagnosis
+
+Partial guard `assertOperationalAlertAdminAuthenticated` accepted any non-empty
+`actor_id`, so secret API-key auth contexts could read OperationalAlert
+list/detail. Refund/exchange already use `requireAdminActor` (user-only).
+
+### Decision
+
+Reuse `requireAdminActor` on both read routes; reject API-key / missing / empty
+actors before module resolution. Do not add manual `authenticate(...)` to
+`middlewares.ts`. Do not alter the shared helper.
+
+### Files
+
+```text
+apps/backend/src/api/admin/operational-alerts/route.ts
+apps/backend/src/api/admin/operational-alerts/[id]/route.ts
+apps/backend/integration-tests/http/admin-operational-alerts.spec.ts
++ documentary allowlist (R3 summary, CLOSURE, DISCUSSION-LOG, ROADMAP, STATE)
+```
+
+### Tests
+
+```text
+Focused HTTP: PASS (27)
+Focused Unit (requireAdminActor suite): PASS (17)
+Full Unit: PASS (890)
+Full HTTP: PASS (240)
+Lint: PASS (0 errors)
+Build: PASS
+```
+
+### Result
+
+```text
+P12-POST-CLOSURE-PR7-R3: PASS
+Phase 12 closure: reaffirmed by third post-closure addendum
+Phase 12.1: not started / blocked until PR update + re-review
+Push/deploy/GitHub replies: not executed
+```
+
+### Next gates
+
+Separate authorization may permit:
+
+```text
+push → reply to Codex finding → request new Codex review
+```

@@ -391,3 +391,48 @@ Phase 12.1, Phase 13, milestone closeout, or frontend.
 Phase 12 closure is reaffirmed after P12-POST-CLOSURE-PR7-R2 PASS. Phase 12.1
 remains not started and blocked until separate authorization to push, reply to
 P1/P2 threads, and request Codex re-review on PR 7.
+
+## Post-closure addendum — P12-POST-CLOSURE-PR7-R3
+
+```text
+date: 2026-07-23
+PR: https://github.com/jlima004/E-commerce/pull/7
+reviewer: chatgpt-codex-connector
+reviewed commit: e7b94737a24c9715214ea62beee263e68162471d
+gate: P12-POST-CLOSURE-PR7-R3 PASS
+finding: Require user actors for alert reads (P2, valid)
+```
+
+### Vulnerability
+
+OperationalAlert list/detail used a partial local guard that accepted any
+non-empty `actor_id`, including secret API-key actors (`actor_type: "api-key"`).
+That violated the user-only Admin operator policy already enforced for refund
+and exchange actions.
+
+### Correction
+
+- Removed `assertOperationalAlertAdminAuthenticated`.
+- List and detail call shared `requireAdminActor` before query/ID validation
+  and before `scope.resolve` / service consultation.
+- API-key actors → `ADMIN_ACTOR_TYPE_FORBIDDEN` (NOT_ALLOWED).
+- Missing/empty actor → `ADMIN_ACTOR_REQUIRED` (UNAUTHORIZED).
+- Valid Admin user actors remain accepted.
+- Global middleware, schema, migrations, providers, and package/config
+  unchanged.
+
+### Tests
+
+Focused HTTP (27) and focused Unit for `requireAdminActor` (17) PASS.
+Full Unit 890 PASS. Full HTTP 240 PASS. Lint 0 errors. Build PASS.
+
+### Limits
+
+No push, deploy, GitHub replies, thread resolution, Codex re-review request,
+Phase 12.1, Phase 13, milestone closeout, or frontend.
+
+### Closure reaffirmation
+
+Phase 12 closure is reaffirmed after P12-POST-CLOSURE-PR7-R3 PASS. Phase 12.1
+remains not started and blocked until separate authorization to push, reply to
+the Codex finding, and request Codex re-review on PR 7.
