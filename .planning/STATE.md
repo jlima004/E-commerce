@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12.1
 current_phase_name: Backend MVP Release Readiness & Production Validation
-status: phase-12-1-plan-complete-awaiting-human-review
-stopped_at: Phase 12.1 PLAN PASS after documentary correction R5; awaiting human review before implementation-prompt decision
+status: phase-12-1-implementation-prompt-complete-awaiting-human-review
+stopped_at: Phase 12.1 IMPLEMENTATION PROMPT complete; awaiting human review before execution of 12.1-01
 last_updated: "2026-07-24"
 last_activity: 2026-07-24
-last_activity_desc: Phase 12.1 PLAN PASS after documentary correction R5; awaiting human review; execution blocked
+last_activity_desc: Phase 12.1 IMPLEMENTATION PROMPT complete; awaiting human review; execution not started
 progress:
   total_phases: 13
   completed_phases: 12
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-24)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12.1 PLAN PASS after documentary correction R5; awaiting human review before implementation-prompt decision. PR 7 is accepted, closed, and merged into `main`. Execution, deploy, providers, rollback, milestone closeout, Phase 13, and frontend remain blocked.
+**Current focus:** Phase 12.1 IMPLEMENTATION PROMPT complete; awaiting human review before execution of 12.1-01. PR 7 is accepted, closed, and merged into `main`. Execution, deploy, providers, rollback, milestone closeout, Phase 13, and frontend remain blocked.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 12.1 PLAN PASS after documentary correction R5. `completed_phases: 12`; `total_plans: 62`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 stays closed. Do not start execution, deploy, provider validation, rollback, milestone closeout, Phase 13, or frontend automatically.
+**Current gate:** Phase 12.1 IMPLEMENTATION PROMPT complete / awaiting human review. `completed_phases: 12`; `total_plans: 62`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 stays closed. Do not start 12.1-01 execution, deploy, provider validation, rollback, milestone closeout, Phase 13, or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -76,12 +76,15 @@ Phase 12.1 PLAN BLOCKED after checker R3 (historical)
 Phase 12.1 PLAN checker R3 result: 2 blockers / 0 warnings (historical)
 Phase 12.1 PLAN PASS after documentary correction R5
 Phase 12.1 PLAN checker R5 result: 0 blockers / 0 warnings
+Phase 12.1 SPEC/SDD skipped by explicit human decision
+Phase 12.1 IMPLEMENTATION PROMPT complete / awaiting human review
+Phase 12.1 execution not started
 Phase 12.1: 6 planned / 0 executed
 milestone phases: 12/13 closed
 milestone closed/archived: no
 Phase 13 not started / not authorized
 frontend not started
-next permitted step: human review of Phase 12.1 PLAN/VALIDATION; execution remains blocked
+next permitted step: human review of the Phase 12.1 implementation prompt; execution of 12.1-01 remains blocked
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -103,12 +106,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — PLAN PASS after documentary correction R5
+Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — IMPLEMENTATION PROMPT complete / awaiting human review
 Plan: 56/62 completed milestone plans; Phase 12.1 has 6 planned / 0 executed
-Status: phase-12-1-plan-complete-awaiting-human-review
-Last activity: 2026-07-24 - Phase 12.1 PLAN PASS after documentary correction R5; awaiting human review
+Status: phase-12-1-implementation-prompt-complete-awaiting-human-review
+Last activity: 2026-07-24 - Phase 12.1 IMPLEMENTATION PROMPT complete; awaiting human review
 
-Progress: [█████████░] 92% phases (12/13); 56/62 plans complete; Phase 12.1 PLAN complete / execution not started
+Progress: [█████████░] 92% phases (12/13); 56/62 plans complete; Phase 12.1 IMPLEMENTATION PROMPT complete / execution not started
 
 ## Performance Metrics
 
@@ -134,7 +137,7 @@ Progress: [█████████░] 92% phases (12/13); 56/62 plans compl
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
 | 12. Ops, Audit & Critical Tests | 6 executed / 6 planned | Complete / Closed | — |
-| 12.1. Backend MVP Release Readiness & Production Validation | 0 executed / 6 planned | PLAN PASS after documentary correction R5 | — |
+| 12.1. Backend MVP Release Readiness & Production Validation | 0 executed / 6 planned | IMPLEMENTATION PROMPT complete / awaiting human review | — |
 
 **Recent Trend:**
 
@@ -265,14 +268,14 @@ Items acknowledged and carried forward from previous milestone close:
 
 Last session: 2026-07-24
 
-Stopped at: Phase 12.1 PLAN PASS after documentary correction R5; awaiting human review before implementation-prompt decision.
+Stopped at: Phase 12.1 IMPLEMENTATION PROMPT complete; awaiting human review before execution of 12.1-01.
 
 Resume file:
-`.planning/phases/12.1-mvp-release-readiness-production-validation/12.1-VALIDATION.md`
+`.planning/phases/12.1-mvp-release-readiness-production-validation/12.1-IMPLEMENTATION-PROMPT.md`
 
-Next permitted step: human review of Phase 12.1 PLAN/VALIDATION; execution
-remains blocked. Do not start Phase 13, milestone closeout, deploy, providers,
-or frontend automatically.
+Next permitted step: human review of the Phase 12.1 implementation prompt;
+execution of 12.1-01 remains blocked. Do not start Phase 13, milestone closeout,
+deploy, providers, or frontend automatically.
 
 ## Quick Tasks Completed
 
