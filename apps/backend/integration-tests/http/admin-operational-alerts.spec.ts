@@ -53,11 +53,18 @@ function createResponse() {
   }
 }
 
-function createRequest(input: {
-  query?: Record<string, unknown>
-  id?: string
-  authenticated?: boolean
-} = {}) {
+function createRequest(
+  input: {
+    query?: Record<string, unknown>
+    id?: string
+    authContext?:
+      | {
+          actor_id?: unknown
+          actor_type?: unknown
+        }
+      | null
+  } = {}
+) {
   const service = {
     listSafe: jest.fn(async (_filters: ListSafeInput) => ({
       rows: [SAFE_ALERT],
@@ -67,13 +74,16 @@ function createRequest(input: {
       id === SAFE_ALERT.id ? SAFE_ALERT : null
     ),
   }
+
+  const authContext =
+    "authContext" in input
+      ? input.authContext
+      : { actor_id: "usr_admin_01", actor_type: "user" }
+
   const req = {
     query: input.query ?? {},
     params: { id: input.id ?? SAFE_ALERT.id },
-    auth_context:
-      input.authenticated === false
-        ? undefined
-        : { actor_id: "usr_admin_01", actor_type: "user" },
+    auth_context: authContext === undefined ? undefined : authContext,
     scope: {
       resolve: jest.fn(() => service),
     },
@@ -90,7 +100,7 @@ function expectInvalidData(promise: Promise<void>, code: string) {
 }
 
 describe("Admin OperationalAlert read-only API", () => {
-  it("lists for an authenticated Admin with default pagination and envelope", async () => {
+  it("lists for an authenticated Admin user with default pagination and envelope", async () => {
     const { req, service } = createRequest()
     const res = createResponse()
 
@@ -106,13 +116,47 @@ describe("Admin OperationalAlert read-only API", () => {
     })
   })
 
-  it("rejects unauthenticated list before resolving or consulting the service", async () => {
-    const { req, service } = createRequest({ authenticated: false })
+  it("rejects missing auth on list before resolving or consulting the service", async () => {
+    const { req, service } = createRequest({ authContext: null })
     const res = createResponse()
 
     await expect(handleAdminListOperationalAlerts(req, res)).rejects.toMatchObject({
       type: MedusaError.Types.UNAUTHORIZED,
-      message: "UNAUTHORIZED",
+      message: "ADMIN_ACTOR_REQUIRED",
+    })
+    expect(req.scope.resolve).not.toHaveBeenCalled()
+    expect(service.listSafe).not.toHaveBeenCalled()
+  })
+
+  it("rejects secret API-key actors on list before service resolution", async () => {
+    const { req, service } = createRequest({
+      authContext: {
+        actor_id: "api_key_admin_01",
+        actor_type: "api-key",
+      },
+    })
+    const res = createResponse()
+
+    await expect(handleAdminListOperationalAlerts(req, res)).rejects.toMatchObject({
+      type: MedusaError.Types.NOT_ALLOWED,
+      message: "ADMIN_ACTOR_TYPE_FORBIDDEN",
+    })
+    expect(req.scope.resolve).not.toHaveBeenCalled()
+    expect(service.listSafe).not.toHaveBeenCalled()
+  })
+
+  it("rejects empty user actor_id on list before service consultation", async () => {
+    const { req, service } = createRequest({
+      authContext: {
+        actor_id: "   ",
+        actor_type: "user",
+      },
+    })
+    const res = createResponse()
+
+    await expect(handleAdminListOperationalAlerts(req, res)).rejects.toMatchObject({
+      type: MedusaError.Types.UNAUTHORIZED,
+      message: "ADMIN_ACTOR_REQUIRED",
     })
     expect(req.scope.resolve).not.toHaveBeenCalled()
     expect(service.listSafe).not.toHaveBeenCalled()
@@ -190,13 +234,14 @@ describe("Admin OperationalAlert read-only API", () => {
     })
   })
 
-  it("returns detail for an authenticated Admin", async () => {
-    const { req } = createRequest({ id: SAFE_ALERT.id })
+  it("returns detail for an authenticated Admin user", async () => {
+    const { req, service } = createRequest({ id: SAFE_ALERT.id })
     const res = createResponse()
 
     await handleAdminRetrieveOperationalAlert(req, res)
 
     expect(res.statusCode).toBe(200)
+    expect(service.retrieveSafe).toHaveBeenCalledWith(SAFE_ALERT.id)
     expect(res.json).toHaveBeenCalledWith({ operational_alert: SAFE_ALERT })
   })
 
@@ -224,13 +269,49 @@ describe("Admin OperationalAlert read-only API", () => {
     }
   )
 
-  it("rejects unauthenticated detail before service lookup", async () => {
-    const { req, service } = createRequest({ authenticated: false })
+  it("rejects missing auth on detail before service lookup", async () => {
+    const { req, service } = createRequest({ authContext: null })
     const res = createResponse()
 
     await expect(handleAdminRetrieveOperationalAlert(req, res)).rejects.toMatchObject({
       type: MedusaError.Types.UNAUTHORIZED,
-      message: "UNAUTHORIZED",
+      message: "ADMIN_ACTOR_REQUIRED",
+    })
+    expect(req.scope.resolve).not.toHaveBeenCalled()
+    expect(service.retrieveSafe).not.toHaveBeenCalled()
+  })
+
+  it("rejects secret API-key actors on detail before service resolution", async () => {
+    const { req, service } = createRequest({
+      id: SAFE_ALERT.id,
+      authContext: {
+        actor_id: "api_key_admin_01",
+        actor_type: "api-key",
+      },
+    })
+    const res = createResponse()
+
+    await expect(handleAdminRetrieveOperationalAlert(req, res)).rejects.toMatchObject({
+      type: MedusaError.Types.NOT_ALLOWED,
+      message: "ADMIN_ACTOR_TYPE_FORBIDDEN",
+    })
+    expect(req.scope.resolve).not.toHaveBeenCalled()
+    expect(service.retrieveSafe).not.toHaveBeenCalled()
+  })
+
+  it("rejects empty user actor_id on detail before service consultation", async () => {
+    const { req, service } = createRequest({
+      id: SAFE_ALERT.id,
+      authContext: {
+        actor_id: "   ",
+        actor_type: "user",
+      },
+    })
+    const res = createResponse()
+
+    await expect(handleAdminRetrieveOperationalAlert(req, res)).rejects.toMatchObject({
+      type: MedusaError.Types.UNAUTHORIZED,
+      message: "ADMIN_ACTOR_REQUIRED",
     })
     expect(req.scope.resolve).not.toHaveBeenCalled()
     expect(service.retrieveSafe).not.toHaveBeenCalled()

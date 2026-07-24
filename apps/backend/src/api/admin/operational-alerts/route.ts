@@ -11,6 +11,7 @@ import {
   OPERATIONAL_ALERT_STATUSES,
   OPERATIONAL_ALERT_TYPES,
 } from "../../../modules/operational-alert/models/operational-alert"
+import { requireAdminActor } from "../_shared/require-admin-actor"
 
 const ALLOWED_QUERY_KEYS = new Set([
   "type",
@@ -23,23 +24,6 @@ const ALLOWED_QUERY_KEYS = new Set([
   "limit",
   "offset",
 ])
-
-export function assertOperationalAlertAdminAuthenticated(
-  req: MedusaRequest
-): void {
-  const authContext = (
-    req as MedusaRequest & {
-      auth_context?: { actor_id?: unknown; actor_type?: unknown }
-    }
-  ).auth_context
-  if (
-    !authContext ||
-    typeof authContext.actor_id !== "string" ||
-    authContext.actor_id.trim() === ""
-  ) {
-    throw new MedusaError(MedusaError.Types.UNAUTHORIZED, "UNAUTHORIZED")
-  }
-}
 
 function invalidQuery(): never {
   throw new MedusaError(
@@ -149,7 +133,11 @@ export async function handleAdminListOperationalAlerts(
   req: MedusaRequest,
   res: MedusaResponse
 ): Promise<void> {
-  assertOperationalAlertAdminAuthenticated(req)
+  requireAdminActor(
+    req as MedusaRequest & {
+      auth_context?: { actor_id?: unknown; actor_type?: unknown }
+    }
+  )
   const input = parseOperationalAlertListQuery(req.query ?? {})
   const service = resolveService(req)
   const result = await service.listSafe(input)

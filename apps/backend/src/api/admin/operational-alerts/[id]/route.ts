@@ -4,7 +4,7 @@ import {
   OPERATIONAL_ALERT_MODULE,
   type OperationalAlertModuleService,
 } from "../../../../modules/operational-alert"
-import { assertOperationalAlertAdminAuthenticated } from "../route"
+import { requireAdminActor } from "../../_shared/require-admin-actor"
 
 function requireOperationalAlertId(value: unknown): string {
   if (
@@ -37,7 +37,11 @@ export async function handleAdminRetrieveOperationalAlert(
   req: MedusaRequest,
   res: MedusaResponse
 ): Promise<void> {
-  assertOperationalAlertAdminAuthenticated(req)
+  requireAdminActor(
+    req as MedusaRequest & {
+      auth_context?: { actor_id?: unknown; actor_type?: unknown }
+    }
+  )
   const id = requireOperationalAlertId(req.params?.id)
   const service = resolveService(req)
   const alert = await service.retrieveSafe(id)
