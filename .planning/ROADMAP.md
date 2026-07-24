@@ -496,10 +496,10 @@ Plans:
 **Type:** inserted operational phase
 **Depends on:** Phase 12 closed and PR 7 merged into `main`
 **Requirements:** None — no new product requirements; the existing 45/45 remain complete
-**Manual gate:** IMPLEMENTATION PROMPT complete / awaiting human review. Exactly
-six sequential plans and six waves are preserved; 0 plans were executed.
-Execution, deploy, provider access, rollback, REVIEW, CLOSURE and milestone
-closeout remain blocked.
+**Manual gate:** 12.1-01 attempt 1 BLOCKED; documentary correction R1 complete /
+awaiting human review. Exactly six sequential plans and six waves are preserved;
+0 plans completed. Retry of 12.1-01, 12.1-02, deploy, provider access, rollback,
+REVIEW, CLOSURE and milestone closeout remain blocked.
 **Boundaries:** Release readiness and production validation only. No storefront,
 new provider, payment method, product feature, unlimited hardening, automatic
 milestone closeout, or reopening of Phases 1–12. Real provider mutations and
@@ -525,17 +525,19 @@ production business mutations require separate explicit human authorization.
   17. Rollback and runbook are documented with objective criteria.
   18. Limitations and providers not exercised are explicitly declared.
 
-**Plans:** 6 planned / 0 executed
+**Plans:** 6 planned / 0 completed
 **Waves:** 6
-**Implementation prompt:** complete / awaiting human review
-**Execution:** not started
-**Status:** IMPLEMENTATION PROMPT complete / awaiting human review
+**12.1-01 attempt 1:** BLOCKED
+**12.1-01 correction R1:** complete / awaiting human review
+**Execution:** retry not started
+**12.1-02:** blocked
+**Status:** 12.1-01 documentary correction R1 complete / awaiting human review
 
 Plans:
 
 **Wave 1**
 
-- [ ] 12.1-01-PLAN.md — Release Candidate Local
+- [ ] 12.1-01-PLAN.md — Release Candidate Local *(attempt 1 BLOCKED; correction R1 complete / awaiting human review; retry not started)*
 
 **Wave 2** *(blocked on 12.1-01 manual gate)*
 
@@ -576,7 +578,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. Secure Guest Tracking | 3/3 | Complete / Closed | 2026-07-02 |
 | 11. Refunds & Exchanges (Admin) | 4/4 | Complete / Closed | 2026-07-03 |
 | 12. Ops, Audit & Critical Tests | 6/6 | Complete / Closed | 2026-07-23 |
-| 12.1. Backend MVP Release Readiness & Production Validation | 0/6 | IMPLEMENTATION PROMPT complete / awaiting human review | — |
+| 12.1. Backend MVP Release Readiness & Production Validation | 0/6 | 12.1-01 correction R1 complete / awaiting human review | — |
 
 ---
 *Roadmap created: 2026-06-22*

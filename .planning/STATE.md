@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12.1
 current_phase_name: Backend MVP Release Readiness & Production Validation
-status: phase-12-1-implementation-prompt-complete-awaiting-human-review
-stopped_at: Phase 12.1 IMPLEMENTATION PROMPT complete; awaiting human review before execution of 12.1-01
+status: phase-12-1-plan-12-1-01-correction-r1-complete-awaiting-human-review
+stopped_at: Phase 12.1 Plan 12.1-01 documentary correction R1 complete; awaiting human review before retry authorization
 last_updated: "2026-07-24"
 last_activity: 2026-07-24
-last_activity_desc: Phase 12.1 IMPLEMENTATION PROMPT complete; awaiting human review; execution not started
+last_activity_desc: Phase 12.1 Plan 12.1-01 documentary correction R1 complete; blocked SUMMARY committed; composite gate documented; retry not started
 progress:
   total_phases: 13
   completed_phases: 12
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-24)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12.1 IMPLEMENTATION PROMPT complete; awaiting human review before execution of 12.1-01. PR 7 is accepted, closed, and merged into `main`. Execution, deploy, providers, rollback, milestone closeout, Phase 13, and frontend remain blocked.
+**Current focus:** Phase 12.1 Plan 12.1-01 documentary correction R1 complete; awaiting human review before retry authorization. Attempt 1 BLOCKED and historically committed. PR 7 is accepted, closed, and merged into `main`. Retry, 12.1-02, deploy, providers, rollback, milestone closeout, Phase 13, and frontend remain blocked.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 12.1 IMPLEMENTATION PROMPT complete / awaiting human review. `completed_phases: 12`; `total_plans: 62`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 stays closed. Do not start 12.1-01 execution, deploy, provider validation, rollback, milestone closeout, Phase 13, or frontend automatically.
+**Current gate:** Phase 12.1 Plan 12.1-01 documentary correction R1 complete / awaiting human review. `completed_phases: 12`; `total_plans: 62`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 stays closed. Do not start 12.1-01 retry, 12.1-02, deploy, provider validation, rollback, milestone closeout, Phase 13, or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -77,14 +77,18 @@ Phase 12.1 PLAN checker R3 result: 2 blockers / 0 warnings (historical)
 Phase 12.1 PLAN PASS after documentary correction R5
 Phase 12.1 PLAN checker R5 result: 0 blockers / 0 warnings
 Phase 12.1 SPEC/SDD skipped by explicit human decision
-Phase 12.1 IMPLEMENTATION PROMPT complete / awaiting human review
-Phase 12.1 execution not started
-Phase 12.1: 6 planned / 0 executed
+Phase 12.1 IMPLEMENTATION PROMPT complete
+Phase 12.1 12.1-01 attempt 1: BLOCKED
+Phase 12.1 12.1-01 blocked SUMMARY: committed
+Phase 12.1 12.1-01 correction R1: documentary PASS
+Phase 12.1 12.1-01 retry: not started
+Phase 12.1 12.1-02: not authorized
+Phase 12.1: 6 planned / 0 completed
 milestone phases: 12/13 closed
 milestone closed/archived: no
 Phase 13 not started / not authorized
 frontend not started
-next permitted step: human review of the Phase 12.1 implementation prompt; execution of 12.1-01 remains blocked
+next permitted step: human review of correction R1; push and retry of 12.1-01 remain blocked
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -106,12 +110,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — IMPLEMENTATION PROMPT complete / awaiting human review
-Plan: 56/62 completed milestone plans; Phase 12.1 has 6 planned / 0 executed
-Status: phase-12-1-implementation-prompt-complete-awaiting-human-review
-Last activity: 2026-07-24 - Phase 12.1 IMPLEMENTATION PROMPT complete; awaiting human review
+Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — 12.1-01 correction R1 complete / awaiting human review
+Plan: 56/62 completed milestone plans; Phase 12.1 has 6 planned / 0 completed
+Status: phase-12-1-plan-12-1-01-correction-r1-complete-awaiting-human-review
+Last activity: 2026-07-24 - Phase 12.1 Plan 12.1-01 documentary correction R1 complete; blocked SUMMARY committed; composite gate documented
 
-Progress: [█████████░] 92% phases (12/13); 56/62 plans complete; Phase 12.1 IMPLEMENTATION PROMPT complete / execution not started
+Progress: [█████████░] 92% phases (12/13); 56/62 plans complete; Phase 12.1 12.1-01 attempt 1 BLOCKED; correction R1 awaiting human review; retry not started
 
 ## Performance Metrics
 
@@ -137,7 +141,7 @@ Progress: [█████████░] 92% phases (12/13); 56/62 plans compl
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
 | 12. Ops, Audit & Critical Tests | 6 executed / 6 planned | Complete / Closed | — |
-| 12.1. Backend MVP Release Readiness & Production Validation | 0 executed / 6 planned | IMPLEMENTATION PROMPT complete / awaiting human review | — |
+| 12.1. Backend MVP Release Readiness & Production Validation | 0 executed / 6 planned | 12.1-01 correction R1 complete / awaiting human review | — |
 
 **Recent Trend:**
 
@@ -228,6 +232,7 @@ Recent decisions affecting current work:
 - [Phase 12.1 RESEARCH]: Research-only gate completed on 2026-07-24. Consolidated the factual release/web/worker topology, the 11-migration inventory and Gelato identity risk, pooled versus direct/session connections, dynamic SHA, live/ready and public read-only smoke contracts, Admin fail-closed authentication, sanitized evidence, current/previous release discovery, rollback criteria, dynamic monitoring, evidence matrix, and recommended future PLAN decomposition. No tests, build, migration, production/provider access, deploy, rollback, PLAN, commit, or push occurred. Awaiting human review; PLAN remains blocked.
 - [Phase 12.1 PLAN]: Planning-only gate created exactly six sequential manual-review-gated plans across six waves plus `12.1-VALIDATION.md`. Checker revision 1 corrected the factual PLAN baseline/fish variables, disposable migration/catalog invocation, child-command `rtk` misuse, safe config/migration preflight, fish status test, complete three-sample production procedure, optional provider branches, the 12.1-06 external-read checkpoint, and operational disposition of all four RESEARCH open questions while keeping `12.1-RESEARCH.md` read-only. The plan covers C01–C18 and D12.1-01..D12.1-15; execution and independent recheck remain blocked behind the next manual gate. No plan execution, tests, build, npm install, Docker/PostgreSQL operation, production/provider access, migration, deploy, rollback, commit or push occurred.
 - [Phase 12.1 PLAN documentary correction R5]: Human-authorized corrective gate fixed the candidate SHA deployment deadlock without changing the six-plan/six-wave decomposition. Deploy uses exact candidate refspec `$P12_CANDIDATE_SHA`:refs/heads/main`; documentary HEAD may descend only by SUMMARYs 01/02; `previous_eligible_release` is historical evidence only (no automatic rollback substitution). Checker R5 PASS with 0 blockers / 0 warnings. No execution, deploy, provider, migration, SPEC/SDD, implementation prompt, push, or PR.
+- [Phase 12.1 Plan 12.1-01 documentary correction R1]: Attempt 1 correctly BLOCKED under stacked Modules+disposable contract (`Map.prototype.set` on five PostgreSQL Medusa suites); Unit/lint/build PASS; HTTP/audit not executed; product/runtime regression not demonstrated. BLOCKED SUMMARY committed historically. Documentary correction replaces stacked Modules gate with composite gate (Modules normal + five isolated PostgreSQL specs + HTTP + exact-set audit). No technical changes. Retry requires separate authorization. 12.1-02 remains blocked.
 
 ### Pending Todos
 
@@ -268,14 +273,14 @@ Items acknowledged and carried forward from previous milestone close:
 
 Last session: 2026-07-24
 
-Stopped at: Phase 12.1 IMPLEMENTATION PROMPT complete; awaiting human review before execution of 12.1-01.
+Stopped at: Phase 12.1 Plan 12.1-01 documentary correction R1 complete; awaiting human review before retry authorization.
 
 Resume file:
-`.planning/phases/12.1-mvp-release-readiness-production-validation/12.1-IMPLEMENTATION-PROMPT.md`
+`.planning/phases/12.1-mvp-release-readiness-production-validation/12.1-01-PLAN.md`
 
-Next permitted step: human review of the Phase 12.1 implementation prompt;
-execution of 12.1-01 remains blocked. Do not start Phase 13, milestone closeout,
-deploy, providers, or frontend automatically.
+Next permitted step: human review of correction R1;
+push and retry of 12.1-01 remain blocked. Do not start 12.1-02, Phase 13,
+milestone closeout, deploy, providers, or frontend automatically.
 
 ## Quick Tasks Completed
 
