@@ -82,6 +82,14 @@ const modules = [
     resolve: "./src/modules/gelato-fulfillment",
   },
   {
+    key: "operational_alert",
+    resolve: "./src/modules/operational-alert",
+  },
+  {
+    key: "admin_action_log",
+    resolve: "./src/modules/admin-action-log",
+  },
+  {
     key: "tracking_access_token",
     resolve: "./src/modules/tracking-access-token",
   },

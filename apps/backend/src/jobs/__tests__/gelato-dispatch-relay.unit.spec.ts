@@ -860,6 +860,168 @@ describe("runGelatoDispatchRelay", () => {
       expect(createOrder).not.toHaveBeenCalled()
     }
   })
+
+  it("persiste dead_letter antes do alert upsert e usa severity critical", async () => {
+    const ctx = buildBaseContext()
+    const upsertOrder: string[] = []
+    const originalUpdate = ctx.gelatoModule.updateGelatoFulfillments
+    ctx.gelatoModule.updateGelatoFulfillments = jest.fn(async (input) => {
+      const result = await originalUpdate(input)
+      const row = Array.isArray(result) ? result[0] : result
+      if (row?.status === "dead_letter") {
+        upsertOrder.push("gelato_persisted")
+      }
+      return result
+    })
+    const upsertOperationalAlert = jest.fn(async () => {
+      upsertOrder.push("alert_upsert")
+      return { id: "opalert_1" }
+    })
+
+    await runGelatoDispatchRelay(ctx.container, {
+      now: () => new Date("2026-07-02T12:15:00.000Z"),
+      config: {
+        enabled: true,
+        apiKey: API_VALUE,
+      },
+      createClient: () => ({
+        createOrder: jest.fn(async () => {
+          throw Object.assign(new Error("http_400"), { statusCode: 400 })
+        }),
+      }),
+      upsertOperationalAlert,
+    })
+
+    expect(ctx.gelatoModule.store[0]?.status).toBe("dead_letter")
+    expect(upsertOperationalAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "fulfillment_failed",
+        severity: "critical",
+        entity_type: "fulfillment",
+        message_code: "FULFILLMENT_DEAD_LETTER",
+      })
+    )
+    expect(upsertOrder.indexOf("gelato_persisted")).toBeGreaterThanOrEqual(0)
+    expect(upsertOrder.indexOf("alert_upsert")).toBeGreaterThan(
+      upsertOrder.indexOf("gelato_persisted")
+    )
+    expect(JSON.stringify(upsertOperationalAlert.mock.calls)).not.toMatch(
+      /client_secret|authorization|payload|stack/i
+    )
+  })
+
+  it("persiste operator attention stale antes do alert upsert", async () => {
+    const analyticsModule = createAnalyticsModule([buildAnalyticsEvent()])
+    const emailModule = createEmailModule([buildEmailLog()])
+    const gelatoModule = createGelatoModule([
+      buildFulfillment({
+        id: "gelful_stale_alert_01",
+        status: "dispatching",
+        queued_at: "2026-07-02T11:00:00.000Z",
+        dispatching_started_at: "2026-07-02T11:05:00.000Z",
+      }),
+    ])
+    const orderModule = createOrderModule([buildOrder()])
+    const container = createContainer({
+      analyticsModule,
+      emailModule,
+      gelatoModule,
+      orderModule,
+    })
+    const upsertOrder: string[] = []
+    const originalUpdate = gelatoModule.updateGelatoFulfillments
+    gelatoModule.updateGelatoFulfillments = jest.fn(async (input) => {
+      const result = await originalUpdate(input)
+      const row = Array.isArray(result) ? result[0] : result
+      if (row?.requires_operator_attention) {
+        upsertOrder.push("gelato_persisted")
+      }
+      return result
+    })
+    const upsertOperationalAlert = jest.fn(async () => {
+      upsertOrder.push("alert_upsert")
+      return { id: "opalert_2" }
+    })
+    const createOrder = jest.fn()
+
+    await runGelatoDispatchRelay(container, {
+      now: () => new Date("2026-07-02T12:30:00.000Z"),
+      config: {
+        enabled: true,
+        apiKey: API_VALUE,
+      },
+      createClient: () => ({ createOrder }),
+      upsertOperationalAlert,
+    })
+
+    expect(gelatoModule.store[0]?.requires_operator_attention).toBe(true)
+    expect(gelatoModule.store[0]?.status).toBe("dead_letter")
+    expect(upsertOperationalAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        severity: "critical",
+        message_code: "FULFILLMENT_DEAD_LETTER",
+      })
+    )
+    expect(createOrder).not.toHaveBeenCalled()
+    expect(upsertOrder.indexOf("alert_upsert")).toBeGreaterThan(
+      upsertOrder.indexOf("gelato_persisted")
+    )
+  })
+
+  it("preserva verdade local e nao chama Gelato de novo quando alert upsert falha", async () => {
+    const ctx = buildBaseContext()
+    const createOrder = jest.fn(async () => {
+      throw Object.assign(new Error("http_401"), { statusCode: 401 })
+    })
+    const logger = { warn: jest.fn() }
+
+    await runGelatoDispatchRelay(ctx.container, {
+      now: () => new Date("2026-07-02T12:15:00.000Z"),
+      config: {
+        enabled: true,
+        apiKey: API_VALUE,
+      },
+      createClient: () => ({ createOrder }),
+      upsertOperationalAlert: jest.fn(async () => {
+        throw new Error("alert unavailable")
+      }),
+      logger,
+    })
+
+    expect(ctx.gelatoModule.store[0]?.status).toBe("dead_letter")
+    expect(ctx.gelatoModule.store[0]?.requires_operator_attention).toBe(true)
+    expect(createOrder).toHaveBeenCalledTimes(1)
+    expect(logger.warn).toHaveBeenCalledWith(
+      "GELATO_DISPATCH_ALERT_UPSERT_FAILED",
+      expect.objectContaining({
+        error_code: "GELATO_DISPATCH_ALERT_UPSERT_FAILED",
+        fulfillment_id: expect.any(String),
+      })
+    )
+  })
+
+  it("nao alerta estado nao elegivel de fulfillment", async () => {
+    const ctx = buildBaseContext()
+    const upsertOperationalAlert = jest.fn()
+
+    await runGelatoDispatchRelay(ctx.container, {
+      now: () => new Date("2026-07-02T12:15:00.000Z"),
+      config: {
+        enabled: true,
+        apiKey: API_VALUE,
+      },
+      createClient: () => ({
+        createOrder: jest.fn(async () => {
+          throw Object.assign(new Error("temporary"), { statusCode: 503 })
+        }),
+      }),
+      upsertOperationalAlert,
+    })
+
+    expect(ctx.gelatoModule.store[0]?.status).toBe("failed")
+    expect(ctx.gelatoModule.store[0]?.requires_operator_attention).toBe(false)
+    expect(upsertOperationalAlert).not.toHaveBeenCalled()
+  })
 })
 
 describe("createGelatoDispatchClient", () => {

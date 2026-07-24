@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError } from "@medusajs/framework/utils"
 import { env } from "../../../../config/env"
+import { ADMIN_ACTION_LOG_MODULE } from "../../../../modules/admin-action-log"
 import { PAYMENT_ATTEMPT_MODULE } from "../../../../modules/payment-attempt"
 import type { PaymentAttemptRecord } from "../../../../modules/payment-attempt/types"
 import { REFUND_REQUEST_MODULE } from "../../../../modules/refund-request"
@@ -13,6 +14,12 @@ import type {
   CreateRefundRequestInput,
   RefundRequestRecord,
 } from "../../../../modules/refund-request/types"
+import {
+  auditAdminAction,
+  type AdminActionLogAppendService,
+  type SanitizedAuditLogger,
+} from "../../_shared/audit-admin-action"
+import { requireAdminActor } from "../../_shared/require-admin-actor"
 
 type OrderModuleLike = {
   retrieveOrder?: (id: string) => Promise<{
@@ -41,7 +48,13 @@ type RouteDeps = {
   resolveOrderModule: (req: MedusaRequest) => OrderModuleLike | null
   resolvePaymentAttemptModule: (req: MedusaRequest) => PaymentAttemptModuleLike | null
   resolveRefundRequestModule: (req: MedusaRequest) => RefundRequestModuleLike | null
+  resolveAdminActionLogModule: (
+    req: MedusaRequest
+  ) => AdminActionLogAppendService | null
+  resolveLogger?: (req: MedusaRequest) => SanitizedAuditLogger | undefined
   generateId: () => string
+  generateActionAttemptId?: () => string
+  generateCorrelationId?: () => string
   withOrderRefundReservationClaim?: <T>(
     orderId: string,
     fn: () => Promise<T>
@@ -76,8 +89,36 @@ function defaultResolveRefundRequestModule(
   }
 }
 
+function defaultResolveAdminActionLogModule(
+  req: MedusaRequest
+): AdminActionLogAppendService | null {
+  try {
+    return req.scope.resolve(
+      ADMIN_ACTION_LOG_MODULE
+    ) as unknown as AdminActionLogAppendService
+  } catch {
+    return null
+  }
+}
+
+function defaultResolveLogger(req: MedusaRequest): SanitizedAuditLogger | undefined {
+  try {
+    return req.scope.resolve("logger") as SanitizedAuditLogger
+  } catch {
+    return undefined
+  }
+}
+
 function defaultGenerateId(): string {
   return `refreq_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+}
+
+function defaultGenerateActionAttemptId(): string {
+  return `admatt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+}
+
+function defaultGenerateCorrelationId(): string {
+  return `admcorr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
 }
 
 function parseCreateRefundRequestBody(body: unknown): CreateRefundRequestInput {
@@ -89,6 +130,18 @@ function parseCreateRefundRequestBody(body: unknown): CreateRefundRequestInput {
   }
 
   const record = body as Record<string, unknown>
+
+  if (
+    "requested_by_operator_id" in record ||
+    "admin_id" in record ||
+    "actor_id" in record ||
+    "admin_email" in record
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "REFUND_REQUEST_BODY_INVALID"
+    )
+  }
 
   if (typeof record.order_id !== "string") {
     throw new MedusaError(
@@ -126,10 +179,6 @@ function parseCreateRefundRequestBody(body: unknown): CreateRefundRequestInput {
     reason: typeof record.reason === "string" ? record.reason : null,
     operator_note:
       typeof record.operator_note === "string" ? record.operator_note : null,
-    requested_by_operator_id:
-      typeof record.requested_by_operator_id === "string"
-        ? record.requested_by_operator_id
-        : null,
     metadata:
       record.metadata && typeof record.metadata === "object" && !Array.isArray(record.metadata)
         ? (record.metadata as CreateRefundRequestInput["metadata"])
@@ -172,10 +221,27 @@ function mapRefundRequestError(error: unknown): never {
     )
   }
 
+  if (error instanceof MedusaError) {
+    throw error
+  }
+
   throw new MedusaError(
     MedusaError.Types.UNEXPECTED_STATE,
     sanitized.error_code
   )
+}
+
+function classifyRefundDomainError(error: unknown): "failed" | "blocked" {
+  if (error instanceof MedusaError) {
+    if (
+      error.type === MedusaError.Types.INVALID_DATA ||
+      error.type === MedusaError.Types.NOT_FOUND ||
+      error.type === MedusaError.Types.NOT_ALLOWED
+    ) {
+      return "blocked"
+    }
+  }
+  return "failed"
 }
 
 function serializeRefundRequestResponse(input: {
@@ -219,9 +285,19 @@ export async function handleAdminCreateRefundRequest(
     resolveOrderModule: defaultResolveOrderModule,
     resolvePaymentAttemptModule: defaultResolvePaymentAttemptModule,
     resolveRefundRequestModule: defaultResolveRefundRequestModule,
+    resolveAdminActionLogModule: defaultResolveAdminActionLogModule,
+    resolveLogger: defaultResolveLogger,
     generateId: defaultGenerateId,
   }
 ): Promise<void> {
+  const logger = deps.resolveLogger?.(req) ?? defaultResolveLogger(req)
+  const actor = requireAdminActor(
+    req as MedusaRequest & {
+      auth_context?: { actor_id?: unknown; actor_type?: unknown }
+    },
+    logger
+  )
+
   if (!env.ADMIN_REFUND_REQUEST_ENABLED) {
     throw new MedusaError(
       MedusaError.Types.NOT_ALLOWED,
@@ -232,6 +308,7 @@ export async function handleAdminCreateRefundRequest(
   const orderModule = deps.resolveOrderModule(req)
   const paymentAttemptModule = deps.resolvePaymentAttemptModule(req)
   const refundRequestModule = deps.resolveRefundRequestModule(req)
+  const audit = deps.resolveAdminActionLogModule(req)
 
   if (!orderModule?.retrieveOrder) {
     throw new MedusaError(
@@ -257,6 +334,13 @@ export async function handleAdminCreateRefundRequest(
     )
   }
 
+  if (!audit?.appendIntent || !audit.appendOutcome) {
+    throw new MedusaError(
+      MedusaError.Types.UNEXPECTED_STATE,
+      "ADMIN_ACTION_LOG_MODULE_UNAVAILABLE"
+    )
+  }
+
   let requestInput: CreateRefundRequestInput
 
   try {
@@ -265,69 +349,120 @@ export async function handleAdminCreateRefundRequest(
     mapRefundRequestError(error)
   }
 
-  const order = await orderModule.retrieveOrder(requestInput.order_id)
+  const refundRequestId = deps.generateId()
+  const actionAttemptId =
+    deps.generateActionAttemptId?.() ?? defaultGenerateActionAttemptId()
+  const correlationId =
+    deps.generateCorrelationId?.() ?? defaultGenerateCorrelationId()
 
-  if (!order) {
-    throw new MedusaError(
-      MedusaError.Types.NOT_FOUND,
-      "REFUND_REQUEST_ORDER_NOT_FOUND"
-    )
-  }
-
-  const paymentAttempts = await paymentAttemptModule.listPaymentAttempts({
-    order_id: order.id,
+  // Pre-resolve replay so intent/outcome never index a generated unused id.
+  // Authoritative lookup still runs again inside the reservation claim.
+  const preResolvedByIdempotency = await refundRequestModule.listRefundRequests({
+    idempotency_key: requestInput.idempotency_key,
   })
-
-  const paymentAttempt =
-    paymentAttempts.find(
-      (attempt) => attempt.status === "payment_confirmed_by_webhook"
-    ) ?? null
+  const preResolvedRecord = preResolvedByIdempotency[0] ?? null
+  const auditEntityId = preResolvedRecord?.id ?? refundRequestId
 
   const claim =
     deps.withOrderRefundReservationClaim ?? withOrderRefundReservationClaim
 
-  try {
-    await claim(order.id, async () => {
-      const [existingByIdempotency, existingForOrder] = await Promise.all([
-        refundRequestModule.listRefundRequests!({
-          idempotency_key: requestInput.idempotency_key,
-        }),
-        refundRequestModule.listRefundRequests!({
-          order_id: order.id,
-        }),
-      ])
-
-      const existingRecord = existingByIdempotency[0] ?? null
-
-      const result = createAdminRefundRequest({
-        request: requestInput,
-        order_metadata: order.metadata,
-        payment_attempt: paymentAttempt,
-        existing_refund_requests: existingForOrder,
-        existing_by_idempotency_key: existingRecord,
-        id: deps.generateId(),
-      })
-
-      let persisted = result.refund_request
-
-      if (!result.reused_idempotency) {
-        const created = await refundRequestModule.createRefundRequests!([
-          result.refund_request,
-        ])
-        persisted = created[0] ?? result.refund_request
-      }
-
-      res.status(result.reused_idempotency ? 200 : 201).json(
-        serializeRefundRequestResponse({
-          refund_request: persisted,
+  const domainResult = await auditAdminAction({
+    audit,
+    logger,
+    descriptor: {
+      action_attempt_id: actionAttemptId,
+      correlation_id: correlationId,
+      idempotency_key: requestInput.idempotency_key,
+      actor,
+      action: "refund_order",
+      entity_type: "refund_request",
+      entity_id: auditEntityId,
+      intent_previous_state: {},
+      classifySuccess: (result) => ({
+        result: "requested",
+        previous_state: {},
+        new_state: {
+          status: result.refund_request.status,
+          amount: result.refund_request.amount,
+          currency_code: result.refund_request.currency_code,
+        },
+        metadata: {
+          order_id: result.refund_request.order_id,
+          request_id: result.refund_request.id,
+          idempotency_key: result.refund_request.idempotency_key,
           reused_idempotency: result.reused_idempotency,
-          availability: result.availability,
+          actor_type: actor.actor_type,
+        },
+      }),
+      classifyDomainError: classifyRefundDomainError,
+      resolveOutcomeEntityId: (result) => result.refund_request.id,
+    },
+    executeDomain: async () => {
+      try {
+        return await claim(requestInput.order_id, async () => {
+          const order = await orderModule.retrieveOrder!(requestInput.order_id)
+
+          if (!order) {
+            throw new MedusaError(
+              MedusaError.Types.NOT_FOUND,
+              "REFUND_REQUEST_ORDER_NOT_FOUND"
+            )
+          }
+
+          const paymentAttempts = await paymentAttemptModule.listPaymentAttempts!({
+            order_id: order.id,
+          })
+
+          const paymentAttempt =
+            paymentAttempts.find(
+              (attempt) => attempt.status === "payment_confirmed_by_webhook"
+            ) ?? null
+
+          const [existingByIdempotency, existingForOrder] = await Promise.all([
+            refundRequestModule.listRefundRequests!({
+              idempotency_key: requestInput.idempotency_key,
+            }),
+            refundRequestModule.listRefundRequests!({
+              order_id: order.id,
+            }),
+          ])
+
+          const existingRecord = existingByIdempotency[0] ?? null
+
+          const result = createAdminRefundRequest({
+            request: requestInput,
+            order_metadata: order.metadata,
+            payment_attempt: paymentAttempt,
+            existing_refund_requests: existingForOrder,
+            existing_by_idempotency_key: existingRecord,
+            id: refundRequestId,
+            requested_by_operator_id: actor.actor_id,
+          })
+
+          let persisted = result.refund_request
+
+          if (!result.reused_idempotency) {
+            const created = await refundRequestModule.createRefundRequests!([
+              result.refund_request,
+            ])
+            persisted = created[0] ?? result.refund_request
+          }
+
+          return {
+            refund_request: persisted,
+            reused_idempotency: result.reused_idempotency,
+            availability: result.availability,
+          }
         })
-      )
-    })
-  } catch (error) {
-    mapRefundRequestError(error)
-  }
+      } catch (error) {
+        mapRefundRequestError(error)
+      }
+    },
+  })
+
+  res.status(domainResult.reused_idempotency ? 200 : 201).json(
+    serializeRefundRequestResponse(domainResult)
+  )
 }
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {

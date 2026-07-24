@@ -10,6 +10,10 @@ import {
   sanitizeCheckoutCompletionMetadata,
 } from "../service"
 import {
+  CHECKOUT_COMPLETION_STALE_AFTER_MS,
+  isCheckoutCompletionLockedStale,
+} from "../staleness"
+import {
   CHECKOUT_COMPLETION_OPERATION,
   CHECKOUT_COMPLETION_STATUS,
 } from "../types"
@@ -348,6 +352,210 @@ describe("CheckoutCompletionLog retry/idempotency decisions", () => {
         error_message: null,
       })
     )
+  })
+
+  it("reclama processing exatamente aos 15 minutos por locked_at", () => {
+    const lockedAt = "2026-07-08T12:00:00.000Z"
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: lockedAt,
+      },
+      "chkcpl_123",
+      new Date(lockedAt)
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T12:15:00.000Z"),
+    })
+
+    expect(decision.type).toBe("retry_processing_without_order")
+  })
+
+  it("reclama processing acima de 15 minutos por locked_at", () => {
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: "2026-07-08T12:00:00.000Z",
+      },
+      "chkcpl_123",
+      new Date("2026-07-08T12:00:00.000Z")
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T12:15:01.000Z"),
+    })
+
+    expect(decision.type).toBe("retry_processing_without_order")
+  })
+
+  it("preserva processing fresco abaixo de 15 minutos", () => {
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: "2026-07-08T12:00:00.000Z",
+      },
+      "chkcpl_123",
+      new Date("2026-07-08T12:00:00.000Z")
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T12:14:59.000Z"),
+    })
+
+    expect(decision.type).toBe("already_processing")
+  })
+
+  it("nao reclama processing sem locked_at", () => {
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: null,
+      },
+      "chkcpl_123",
+      new Date("2026-07-08T12:00:00.000Z")
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T13:00:00.000Z"),
+    })
+
+    expect(decision.type).toBe("already_processing")
+  })
+
+  it("nao reclama processing com locked_at invalido", () => {
+    const existing = buildCheckoutCompletionLogRecord(
+      {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+        status: CHECKOUT_COMPLETION_STATUS.PROCESSING,
+        locked_at: "not-a-date",
+      },
+      "chkcpl_123",
+      new Date("2026-07-08T12:00:00.000Z")
+    )
+
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: {
+        cart_id: "cart_123",
+        payment_intent_id: "pi_123",
+        payment_attempt_id: "payatt_123",
+      },
+      at: new Date("2026-07-08T13:00:00.000Z"),
+    })
+
+    expect(decision.type).toBe("already_processing")
+  })
+
+  it("nao usa relogio instavel de payment attempt no reclaim de processing", async () => {
+    const fs = await import("fs/promises")
+    const path = await import("path")
+    const source = await fs.readFile(
+      path.join(__dirname, "..", "service.ts"),
+      "utf8"
+    )
+    expect(source).toContain("CHECKOUT_COMPLETION_STALE_AFTER_MS")
+    expect(source).toContain("isCheckoutCompletionLockedStale")
+    expect(source).not.toMatch(
+      /PaymentAttempt\.updated_at|paymentAttempt\.updated_at|payment_attempt\.updated_at/
+    )
+    expect(source).toMatch(/locked_at/)
+  })
+
+  it("owns stale claim policy without importing the alert module", async () => {
+    const fs = await import("fs/promises")
+    const path = await import("path")
+    const serviceSource = await fs.readFile(
+      path.join(__dirname, "..", "service.ts"),
+      "utf8"
+    )
+    const forbiddenModule = ["operational", "alert"].join("-")
+    expect(serviceSource).not.toContain(forbiddenModule)
+    expect(serviceSource).toMatch(/from ["']\.\/staleness["']/)
+  })
+
+  describe("checkout-completion stale contract", () => {
+    const NOW = new Date("2026-07-08T12:15:00.000Z")
+
+    it("exports the fifteen-minute window", () => {
+      expect(CHECKOUT_COMPLETION_STALE_AFTER_MS).toBe(15 * 60_000)
+    })
+
+    it("returns false for invalid locked_at", () => {
+      expect(isCheckoutCompletionLockedStale("not-a-date", NOW)).toBe(false)
+    })
+
+    it("returns false for null locked_at", () => {
+      expect(isCheckoutCompletionLockedStale(null, NOW)).toBe(false)
+    })
+
+    it("returns true exactly at fifteen minutes", () => {
+      const lockedAt = new Date(NOW.getTime() - CHECKOUT_COMPLETION_STALE_AFTER_MS)
+      expect(isCheckoutCompletionLockedStale(lockedAt, NOW)).toBe(true)
+    })
+
+    it("returns false one millisecond below fifteen minutes", () => {
+      const lockedAt = new Date(
+        NOW.getTime() - CHECKOUT_COMPLETION_STALE_AFTER_MS + 1
+      )
+      expect(isCheckoutCompletionLockedStale(lockedAt, NOW)).toBe(false)
+    })
+
+    it("returns true above fifteen minutes", () => {
+      const lockedAt = new Date(
+        NOW.getTime() - CHECKOUT_COMPLETION_STALE_AFTER_MS - 1
+      )
+      expect(isCheckoutCompletionLockedStale(lockedAt, NOW)).toBe(true)
+    })
+
+    it("accepts a valid Date input", () => {
+      const lockedAt = new Date("2026-07-08T12:00:00.000Z")
+      expect(isCheckoutCompletionLockedStale(lockedAt, NOW)).toBe(true)
+    })
+
+    it("accepts a valid ISO string input", () => {
+      expect(
+        isCheckoutCompletionLockedStale("2026-07-08T12:00:00.000Z", NOW)
+      ).toBe(true)
+    })
   })
 
   it("permite retry controlado de failed sem order_id", () => {

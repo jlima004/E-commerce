@@ -2,6 +2,10 @@ import { MedusaService } from "@medusajs/framework/utils"
 import { sanitizeString } from "../../observability/sanitize"
 import CheckoutCompletionLog from "./models/checkout-completion-log"
 import {
+  CHECKOUT_COMPLETION_STALE_AFTER_MS,
+  isCheckoutCompletionLockedStale,
+} from "./staleness"
+import {
   CHECKOUT_COMPLETION_OPERATION,
   CHECKOUT_COMPLETION_STATUS,
   type BuildCheckoutCompletionIdempotencyKeyInput,
@@ -11,6 +15,8 @@ import {
   type CheckoutCompletionStatus,
   type CreateCheckoutCompletionLogInput,
 } from "./types"
+
+export { CHECKOUT_COMPLETION_STALE_AFTER_MS } from "./staleness"
 
 const ALLOWED_METADATA_KEYS = new Set([
   "cart_id",
@@ -356,6 +362,19 @@ export function resolveCheckoutCompletionClaimDecision(input: {
 
   if (input.existing.status === CHECKOUT_COMPLETION_STATUS.PROCESSING) {
     if (!input.existing.order_id) {
+      if (
+        !isCheckoutCompletionLockedStale(
+          input.existing.locked_at,
+          at,
+          CHECKOUT_COMPLETION_STALE_AFTER_MS
+        )
+      ) {
+        return {
+          type: "already_processing",
+          log: input.existing,
+        }
+      }
+
       return {
         type: "retry_processing_without_order",
         log: input.existing,
