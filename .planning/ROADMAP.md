@@ -496,8 +496,10 @@ Plans:
 **Type:** inserted operational phase
 **Depends on:** Phase 12 closed and PR 7 merged into `main`
 **Requirements:** None — no new product requirements; the existing 45/45 remain complete
-**Manual gate:** CONTEXT complete / RESEARCH not started. Human review is required
-before RESEARCH. Every later artifact and operational action remains separately gated.
+**Manual gate:** PLAN complete / awaiting human review. Exactly six sequential
+draft plans and six waves are preserved after documentary correction R4.
+Execution, deploy, provider access, rollback, REVIEW, CLOSURE and milestone
+closeout remain blocked.
 **Boundaries:** Release readiness and production validation only. No storefront,
 new provider, payment method, product feature, unlimited hardening, automatic
 milestone closeout, or reopening of Phases 1–12. Real provider mutations and
@@ -523,8 +525,35 @@ production business mutations require separate explicit human authorization.
   17. Rollback and runbook are documented with objective criteria.
   18. Limitations and providers not exercised are explicitly declared.
 
-**Plans:** 0 plans defined
-**Status:** CONTEXT complete / RESEARCH not started
+**Plans:** 6 planned / 0 executed
+**Waves:** 6
+**Status:** PLAN PASS after documentary correction R4
+
+Plans:
+
+**Wave 1**
+
+- [ ] 12.1-01-PLAN.md — Release Candidate Local
+
+**Wave 2** *(blocked on 12.1-01 manual gate)*
+
+- [ ] 12.1-02-PLAN.md — Migration and Release Preflight
+
+**Wave 3** *(blocked on 12.1-02 GO and separate deploy authorization)*
+
+- [ ] 12.1-03-PLAN.md — Authorized Heroku Release
+
+**Wave 4** *(blocked on 12.1-03 manual gate)*
+
+- [ ] 12.1-04-PLAN.md — Production Read-only Validation
+
+**Wave 5** *(blocked on 12.1-04 manual gate)*
+
+- [ ] 12.1-05-PLAN.md — Observability and Provider Limitations
+
+**Wave 6** *(blocked on 12.1-05 manual gate)*
+
+- [ ] 12.1-06-PLAN.md — Rollback/Runbook and Final Evidence Gate
 
 ## Progress
 
@@ -545,7 +574,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. Secure Guest Tracking | 3/3 | Complete / Closed | 2026-07-02 |
 | 11. Refunds & Exchanges (Admin) | 4/4 | Complete / Closed | 2026-07-03 |
 | 12. Ops, Audit & Critical Tests | 6/6 | Complete / Closed | 2026-07-23 |
-| 12.1. Backend MVP Release Readiness & Production Validation | 0 plans defined | CONTEXT | — |
+| 12.1. Backend MVP Release Readiness & Production Validation | 0/6 | PLAN PASS after documentary correction R4 | — |
 
 ---
 *Roadmap created: 2026-06-22*
