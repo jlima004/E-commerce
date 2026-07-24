@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12
 current_phase_name: Ops, Audit & Critical Tests
-status: phase-12-closed-post-closure-pr7-r3-pass-awaiting-pr-update
-stopped_at: P12-POST-CLOSURE-PR7-R3 PASS; awaiting push, PR reply and Codex re-review authorization
+status: phase-12-closed-post-closure-pr7-r4-pass-awaiting-pr-update
+stopped_at: P12-POST-CLOSURE-PR7-R4 PASS; awaiting push, PR reply and Codex re-review authorization
 last_updated: "2026-07-23"
 last_activity: 2026-07-23
-last_activity_desc: P12-POST-CLOSURE-PR7-R3 PASS; OperationalAlert user-only reads; Phase 12 closure reaffirmed
+last_activity_desc: P12-POST-CLOSURE-PR7-R4 PASS; checkout-completion owns stale policy; Phase 12 closure reaffirmed
 progress:
   total_phases: 12
   completed_phases: 12
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-20)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12 closed and reaffirmed by P12-POST-CLOSURE-PR7-R3 PASS. Phase 12.1 not started / blocked until separate push, PR reply, and Codex re-review on PR 7.
+**Current focus:** Phase 12 closed and reaffirmed by P12-POST-CLOSURE-PR7-R4 PASS. Phase 12.1 not started / blocked until separate push, PR reply, and Codex re-review on PR 7.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** P12-POST-CLOSURE-PR7-R3 PASS. `completed_phases: 12`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 closed and reaffirmed by third post-closure addendum. Phase 12.1 not started / blocked until separate push, PR reply, and Codex re-review authorization. Do not start Phase 12.1, Phase 13, milestone closeout, push, deploy, or frontend automatically.
+**Current gate:** P12-POST-CLOSURE-PR7-R4 PASS. `completed_phases: 12`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 closed and reaffirmed by fourth post-closure addendum. Phase 12.1 not started / blocked until separate push, PR reply, and Codex re-review authorization. Do not start Phase 12.1, Phase 13, milestone closeout, push, deploy, or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -63,11 +63,12 @@ OPS-02 complete
 completed_phases: 12
 completed_plans: 56
 percent: 100
-Phase 12 closed; reaffirmed by P12-POST-CLOSURE-PR7-R1, R2, and R3 PASS
+Phase 12 closed; reaffirmed by P12-POST-CLOSURE-PR7-R1, R2, R3, and R4 PASS
 P12-POST-CLOSURE-PR7-R1 PASS
 P12-POST-CLOSURE-PR7-R2 PASS
 P12-POST-CLOSURE-PR7-R3 PASS
-PR 7 open; OperationalAlert reads restricted to user actors locally; awaiting push + PR reply + Codex re-review authorization
+P12-POST-CLOSURE-PR7-R4 PASS
+PR 7 open; checkout-completion owns stale/reclaim policy locally; awaiting push + PR reply + Codex re-review authorization
 Phase 12.1 not started / blocked until PR re-review
 milestone phases: 12/12 closed
 milestone closed/archived: no
@@ -94,12 +95,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12 (Ops, Audit & Critical Tests) — closed; post-closure PR7-R3 PASS; awaiting PR update authorization
+Phase: 12 (Ops, Audit & Critical Tests) — closed; post-closure PR7-R4 PASS; awaiting PR update authorization
 Plan: 56/56 complete (milestone plans); Phase 12 plans: 6/6 executed and closed
-Status: phase-12-closed-post-closure-pr7-r3-pass-awaiting-pr-update
-Last activity: 2026-07-23 - P12-POST-CLOSURE-PR7-R3 PASS; Phase 12 closure reaffirmed
+Status: phase-12-closed-post-closure-pr7-r4-pass-awaiting-pr-update
+Last activity: 2026-07-23 - P12-POST-CLOSURE-PR7-R4 PASS; Phase 12 closure reaffirmed
 
-Progress: [██████████] 100% plans (56/56); Phase 12 complete / closed 2026-07-23; PR7-R3 post-closure PASS
+Progress: [██████████] 100% plans (56/56); Phase 12 complete / closed 2026-07-23; PR7-R4 post-closure PASS
 
 ## Performance Metrics
 
@@ -247,20 +248,22 @@ Items acknowledged and carried forward from previous milestone close:
 
 Last session: 2026-07-23
 
-Stopped at: P12-POST-CLOSURE-PR7-R2 PASS; awaiting separate push, PR replies
+Stopped at: P12-POST-CLOSURE-PR7-R4 PASS; awaiting separate push, PR reply
 and Codex re-review authorization.
 
 Resume file:
-`.planning/phases/12-ops-audit-critical-tests/12-POST-CLOSURE-PR7-R2-SUMMARY.md`
+`.planning/phases/12-ops-audit-critical-tests/12-POST-CLOSURE-PR7-R4-SUMMARY.md`
 
-Next permitted step: separate authorization to push, reply to the P1/P2 threads
-and request Codex re-review on PR 7. Do not start Phase 12.1, Phase 13,
+Next permitted step: separate authorization to push, reply to the Codex finding
+and request a new Codex review on PR 7. Do not start Phase 12.1, Phase 13,
 milestone closeout, or frontend automatically.
 
 ## Quick Tasks Completed
 
 | Date | Task | Summary |
 |------|------|---------|
+| 2026-07-23 | P12-POST-CLOSURE-PR7-R4 | Moved stale/reclaim policy to pure `checkout-completion/staleness.ts`; OperationalAlert consumes it; money path no longer imports alert module; focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
+| 2026-07-23 | P12-POST-CLOSURE-PR7-R3 | Restricted OperationalAlert Admin reads to user actors via `requireAdminActor`; API-key actors rejected; focused HTTP/Unit + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R2 | Removed runtime `rtk` dependency from disposable PostgreSQL Docker harness; Cursor/WSL2 Docker proven; serial PG 5/5 + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R1 | Corrected three Codex PR7 findings (refund replay audit, exchange reconciliation, alert scanner pagination); focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | phase-12-closure | Closed Phase 12 documentally after accepted execution, validation and human REVIEW; all 12 backend MVP phases closed; no Phase 13, milestone closeout, push or deploy. |

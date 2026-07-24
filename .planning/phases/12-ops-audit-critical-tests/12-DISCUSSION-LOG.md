@@ -984,3 +984,75 @@ Separate authorization may permit:
 ```text
 push → reply to Codex finding → request new Codex review
 ```
+
+## P12-POST-CLOSURE-PR7-R4 — CheckoutCompletion stale-policy ownership
+
+### Finding
+
+Reviewer `chatgpt-codex-connector` on commit
+`8a0f759ec45cb2a7a6384887bf7205141276dcbe` (PR 7):
+
+```text
+Keep checkout completion independent of alert module — P2 — classified valid
+```
+
+### Decision
+
+```text
+CheckoutCompletion owns:
+  stale claim window
+  locked_at stale predicate
+
+OperationalAlert owns:
+  detection and alert projection only
+```
+
+Direction corrected to:
+
+```text
+operational-alert/detectors → checkout-completion/staleness
+```
+
+Never the inverse. Pure contract (no MedusaService/DB/env). 15-minute window
+unchanged. Claim reclaim and detector thresholds preserved.
+
+### Files
+
+```text
+apps/backend/src/modules/checkout-completion/staleness.ts
+apps/backend/src/modules/checkout-completion/service.ts
+apps/backend/src/modules/checkout-completion/__tests__/checkout-completion-log.unit.spec.ts
+apps/backend/src/modules/checkout-completion/__tests__/checkout-completion-log.postgres.spec.ts
+apps/backend/src/modules/operational-alert/detectors.ts
+apps/backend/src/modules/operational-alert/__tests__/operational-alert-detectors.unit.spec.ts
+apps/backend/src/jobs/__tests__/operational-alert-scanner.unit.spec.ts
++ documentary allowlist (R4 summary, CLOSURE, DISCUSSION-LOG, ROADMAP, STATE)
+```
+
+### Tests
+
+```text
+Focused Unit: PASS (91)
+Full Unit: PASS (899)
+Full Modules: PASS (520)
+Full HTTP: PASS (240)
+Lint: PASS (0 errors)
+Build: PASS
+```
+
+### Result
+
+```text
+P12-POST-CLOSURE-PR7-R4: PASS
+Phase 12 closure: reaffirmed by fourth post-closure addendum
+Phase 12.1: not started / blocked until PR update + re-review
+Push/deploy/GitHub replies: not executed
+```
+
+### Next gates
+
+Separate authorization may permit:
+
+```text
+push → reply to Codex finding → request new Codex review
+```

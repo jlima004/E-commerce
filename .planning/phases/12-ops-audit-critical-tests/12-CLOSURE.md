@@ -436,3 +436,49 @@ Phase 12.1, Phase 13, milestone closeout, or frontend.
 Phase 12 closure is reaffirmed after P12-POST-CLOSURE-PR7-R3 PASS. Phase 12.1
 remains not started and blocked until separate authorization to push, reply to
 the Codex finding, and request Codex re-review on PR 7.
+
+## Post-closure addendum — P12-POST-CLOSURE-PR7-R4
+
+```text
+date: 2026-07-23
+PR: https://github.com/jlima004/E-commerce/pull/7
+reviewer: chatgpt-codex-connector
+reviewed commit: 8a0f759ec45cb2a7a6384887bf7205141276dcbe
+gate: P12-POST-CLOSURE-PR7-R4 PASS
+finding: Keep checkout completion independent of alert module (P2, valid)
+technical commit: 42fdffc2428aca3582aff23c7bd1f22bd8974be2
+```
+
+### Inverted dependency
+
+CheckoutCompletion money-path reclaim imported stale helpers from
+`operational-alert/detectors.ts`. That made the payment→Order claim path depend
+on the alert module's implementation surface even though runtime behavior was
+not immediately broken.
+
+### Correction
+
+- Created pure `checkout-completion/staleness.ts` owning the 15-minute stale
+  claim window and `isCheckoutCompletionLockedStale`.
+- `checkout-completion/service.ts` imports only that contract (zero
+  `operational-alert` imports).
+- `operational-alert/detectors.ts` consumes the checkout-owned contract; does
+  not re-export it.
+- Reclaim and detection thresholds preserved exactly (below / at / above 15m).
+
+### Tests
+
+Focused Unit 91 PASS (claim + detectors + scanner + webhook-order-creation).
+Full Unit 899 PASS. Full Modules 520 PASS. Full HTTP 240 PASS. Lint 0 errors.
+Build PASS. No schema, migration, package, config, provider, or Admin R3 change.
+
+### Limits
+
+No push, deploy, GitHub replies, thread resolution, Codex re-review request,
+Phase 12.1, Phase 13, milestone closeout, or frontend.
+
+### Closure reaffirmation
+
+Phase 12 closure is reaffirmed after P12-POST-CLOSURE-PR7-R4 PASS. Phase 12.1
+remains not started and blocked until separate authorization to push, reply to
+the Codex finding, and request Codex re-review on PR 7.

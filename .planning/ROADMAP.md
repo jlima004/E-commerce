@@ -461,6 +461,12 @@ PASS; OperationalAlert list/detail now reuse requireAdminActor and reject
 secret API-key actors before service resolution. Phase 12 closure reaffirmed.
 Phase 12.1 remains not started.
 
+**Post-closure PR7 correction gate P12-POST-CLOSURE-PR7-R4:**
+P12-POST-CLOSURE-PR7-R4 PASS:
+checkout-completion now owns its stale/reclaim policy through a pure contract;
+OperationalAlert consumes that policy without the money path importing the
+alert module. Phase 12 closure reaffirmed. Phase 12.1 remains not started.
+
 **Boundary preserved:** Phase 09 `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the local fulfillment truth and closes FUL-04. Phase 12 OPS-01 adds the promotion of that condition to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
 
 **Known PRD divergence:** OperationalAlert email delivery via Resend is outside the Phase 12 MVP, is a known divergence from the PRD, and is not a blocker for OPS-01.
