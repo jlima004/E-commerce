@@ -1,10 +1,10 @@
 import { MedusaService } from "@medusajs/framework/utils"
 import { sanitizeString } from "../../observability/sanitize"
+import CheckoutCompletionLog from "./models/checkout-completion-log"
 import {
   CHECKOUT_COMPLETION_STALE_AFTER_MS,
   isCheckoutCompletionLockedStale,
-} from "../operational-alert/detectors"
-import CheckoutCompletionLog from "./models/checkout-completion-log"
+} from "./staleness"
 import {
   CHECKOUT_COMPLETION_OPERATION,
   CHECKOUT_COMPLETION_STATUS,
@@ -16,7 +16,7 @@ import {
   type CreateCheckoutCompletionLogInput,
 } from "./types"
 
-export { CHECKOUT_COMPLETION_STALE_AFTER_MS }
+export { CHECKOUT_COMPLETION_STALE_AFTER_MS } from "./staleness"
 
 const ALLOWED_METADATA_KEYS = new Set([
   "cart_id",

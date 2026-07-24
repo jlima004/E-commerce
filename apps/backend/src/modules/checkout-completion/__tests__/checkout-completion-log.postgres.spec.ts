@@ -11,7 +11,7 @@ import {
   resolveCheckoutCompletionClaimDecision,
 } from "../service"
 import { CHECKOUT_COMPLETION_STATUS } from "../types"
-import { isCheckoutCompletionLockedStale } from "../../operational-alert/detectors"
+import { isCheckoutCompletionLockedStale } from "../staleness"
 
 jest.mock(
   "pg-god",

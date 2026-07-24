@@ -1,4 +1,4 @@
-import { CHECKOUT_COMPLETION_STALE_AFTER_MS } from "../../modules/operational-alert/detectors"
+import { CHECKOUT_COMPLETION_STALE_AFTER_MS } from "../../modules/checkout-completion/staleness"
 import type { UpsertAlertInput } from "../../modules/operational-alert"
 import {
   config,

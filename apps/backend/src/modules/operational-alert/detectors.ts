@@ -1,6 +1,8 @@
+import {
+  CHECKOUT_COMPLETION_STALE_AFTER_MS,
+  isCheckoutCompletionLockedStale,
+} from "../checkout-completion/staleness"
 import type { UpsertAlertInput } from "./service"
-
-export const CHECKOUT_COMPLETION_STALE_AFTER_MS = 15 * 60_000
 
 export const PIX_EXPIRED_ALERT_STATUSES = [
   "awaiting_pix_payment",
@@ -66,18 +68,6 @@ function sanitizeCode(value: string | null | undefined, fallback: string): strin
   }
   const trimmed = value.trim().slice(0, 128)
   return trimmed.length > 0 ? trimmed : fallback
-}
-
-export function isCheckoutCompletionLockedStale(
-  lockedAt: unknown,
-  now: Date,
-  staleAfterMs: number = CHECKOUT_COMPLETION_STALE_AFTER_MS
-): boolean {
-  const locked = parseTimestamp(lockedAt)
-  if (!locked) {
-    return false
-  }
-  return now.getTime() - locked.getTime() >= staleAfterMs
 }
 
 function isConfirmedWithoutOrder(

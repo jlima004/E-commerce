@@ -1,9 +1,11 @@
 import {
   CHECKOUT_COMPLETION_STALE_AFTER_MS,
+  isCheckoutCompletionLockedStale,
+} from "../../checkout-completion/staleness"
+import {
   detectFulfillmentFailed,
   detectPaymentStuckConfirmedWithoutOrder,
   detectPixExpiredWithoutOrder,
-  isCheckoutCompletionLockedStale,
   PIX_EXPIRED_ALERT_STATUSES,
 } from "../detectors"
 
