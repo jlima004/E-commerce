@@ -496,10 +496,11 @@ Plans:
 **Type:** inserted operational phase
 **Depends on:** Phase 12 closed and PR 7 merged into `main`
 **Requirements:** None — no new product requirements; the existing 45/45 remain complete
-**Manual gate:** 12.1-01 attempt 1 BLOCKED; documentary correction R1 complete /
-awaiting human review. Exactly six sequential plans and six waves are preserved;
-0 plans completed. Retry of 12.1-01, 12.1-02, deploy, provider access, rollback,
-REVIEW, CLOSURE and milestone closeout remain blocked.
+**Manual gate:** 12.1-01 attempt 1 BLOCKED; correction R1 complete;
+attempt 2 BLOCKED; documentary correction R2 complete / awaiting human review.
+Exactly six sequential plans and six waves are preserved; 0 plans completed.
+Attempt 3 of 12.1-01, 12.1-02, deploy, provider access, rollback, REVIEW,
+CLOSURE and milestone closeout remain blocked.
 **Boundaries:** Release readiness and production validation only. No storefront,
 new provider, payment method, product feature, unlimited hardening, automatic
 milestone closeout, or reopening of Phases 1–12. Real provider mutations and
@@ -528,16 +529,19 @@ production business mutations require separate explicit human authorization.
 **Plans:** 6 planned / 0 completed
 **Waves:** 6
 **12.1-01 attempt 1:** BLOCKED
-**12.1-01 correction R1:** complete / awaiting human review
-**Execution:** retry not started
+**12.1-01 correction R1:** complete
+**12.1-01 attempt 2:** BLOCKED
+**12.1-01 correction R2:** complete / awaiting human review
+**12.1-01 attempt 3:** not started
+**Execution:** attempt 3 not started
 **12.1-02:** blocked
-**Status:** 12.1-01 documentary correction R1 complete / awaiting human review
+**Status:** 12.1-01 documentary correction R2 complete / awaiting human review
 
 Plans:
 
 **Wave 1**
 
-- [ ] 12.1-01-PLAN.md — Release Candidate Local *(attempt 1 BLOCKED; correction R1 complete / awaiting human review; retry not started)*
+- [ ] 12.1-01-PLAN.md — Release Candidate Local *(attempt 1 BLOCKED; correction R1 complete; attempt 2 BLOCKED; correction R2 complete / awaiting human review; attempt 3 not started)*
 
 **Wave 2** *(blocked on 12.1-01 manual gate)*
 
@@ -578,7 +582,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. Secure Guest Tracking | 3/3 | Complete / Closed | 2026-07-02 |
 | 11. Refunds & Exchanges (Admin) | 4/4 | Complete / Closed | 2026-07-03 |
 | 12. Ops, Audit & Critical Tests | 6/6 | Complete / Closed | 2026-07-23 |
-| 12.1. Backend MVP Release Readiness & Production Validation | 0/6 | 12.1-01 correction R1 complete / awaiting human review | — |
+| 12.1. Backend MVP Release Readiness & Production Validation | 0/6 | 12.1-01 correction R2 complete / awaiting human review | — |
 
 ---
 *Roadmap created: 2026-06-22*
