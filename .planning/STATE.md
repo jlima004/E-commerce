@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: none
 current_phase_name: Milestone complete
-status: milestone-v1-0-archived-tagged-next-milestone-blocked
-stopped_at: Milestone v1.0 archived and tagged / awaiting next milestone decision
+status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
+stopped_at: Milestone v1.0 archived, tagged and released / awaiting next milestone decision
 last_updated: "2026-07-30"
 last_activity: 2026-07-30
-last_activity_desc: Milestone v1.0 archive merged and tag v1.0 created
+last_activity_desc: GitHub Release v1.0 published
 progress:
   total_phases: 13
   completed_phases: 13
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-30)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Milestone v1.0 is complete, closed, archived and tagged. Earlier BLOCKED attempts and corrections remain historical and superseded by approved corrective lineage. PR #9 is merged; the final archive commit is `fbe986160535c1ba9d2a5f41ad9255e91cd13914`; tag `v1.0` was created and pushed. The next milestone is not defined or started. Phase 13 and frontend remain blocked, not started and not authorized.
+**Current focus:** Milestone v1.0 is complete, closed, archived, tagged and released. The GitHub Release `v1.0 — Backend MVP` is published at https://github.com/jlima004/E-commerce/releases/tag/v1.0. Earlier BLOCKED attempts and corrections remain historical and superseded by approved corrective lineage. PR #9 is merged; the repository archive identity and immutable tag target remain `fbe986160535c1ba9d2a5f41ad9255e91cd13914`; current main after the prior documentary reconciliation is `de095d76a83e99faa0b459a58fc8b68200f02686`; runtime remains Heroku `v78` at `18d809e4169daa301839542191f0d6794b02d695`. The next milestone is not defined or started. Phase 13 and frontend remain blocked, not started and not authorized.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Milestone v1.0 archive merged and annotated tag `v1.0` created and pushed. `completed_phases: 13`; `total_plans: 62`; `completed_plans: 62`; product requirements 45/45 complete. Do not start a new milestone, Phase 13 or frontend automatically.
+**Current gate:** Milestone v1.0 archive merged, annotated tag `v1.0` created and pushed, and GitHub Release `v1.0 — Backend MVP` published. `completed_phases: 13`; `total_plans: 62`; `completed_plans: 62`; product requirements 45/45 complete. Do not start a new milestone, Phase 13 or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -114,7 +114,16 @@ tag type: annotated
 tag object: 2e91dcdffef5dc677e7e994f07b99f5c3bc2f167
 tag target: fbe986160535c1ba9d2a5f41ad9255e91cd13914
 tag created and pushed: true
-GitHub Release created: false
+PR #10: merged
+PR #10 final head: 2aa8d4dee0f63f5fa735a83854126ac0b3132ea1
+PR #10 merge commit: de095d76a83e99faa0b459a58fc8b68200f02686
+GitHub Release created: true
+GitHub Release status: published
+GitHub Release name: v1.0 — Backend MVP
+GitHub Release tag: v1.0
+GitHub Release published at: 2026-07-30T17:08:24Z
+GitHub Release URL: https://github.com/jlima004/E-commerce/releases/tag/v1.0
+repository archive identity differs from current main: true
 repository archive identity differs from runtime deployed SHA: true
 next milestone: not defined / not started
 Phase 13 not started / not authorized
@@ -137,7 +146,7 @@ rollback real: not executed
 
 Os registros `BLOCKED` históricos permanecem preservados e foram supersedidos pela linhagem corretiva aprovada. Nenhuma dessas limitações é blocker ativo do milestone.
 
-**Não-ações deste gate de reconciliação pós-tag:** nenhum acesso de produção/provider, teste, build, banco, migration, deploy, rollback, restart, scale, alteração de produto/runtime, movimentação de fases, novo milestone, Phase 13, frontend ou GitHub Release. A tag `v1.0`, criada anteriormente, não foi criada, excluída, movida ou recriada neste gate. Nenhum merge ou auto-merge da PR #10, comentário/aprovação de PR ou resolução de thread de review foi executado.
+**Não-ações deste gate de reconciliação pós-release:** nenhum acesso de produção/provider, teste, build, banco, migration, deploy, rollback, restart, scale, alteração de produto/runtime, movimentação de fases, novo milestone, Phase 13 ou frontend. A GitHub Release `v1.0`, publicada anteriormente, não foi criada, editada, excluída, republicada ou alterada neste gate. A tag `v1.0` não foi criada, excluída, movida ou recriada. Nenhum merge ou auto-merge da nova PR, aprovação ou resolução de thread foi executado.
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
 
@@ -158,13 +167,13 @@ Produção: saudável
 
 ## Current Position
 
-Phase: none — Milestone v1.0 complete / closed / archived / tagged
+Phase: none — Milestone v1.0 complete / closed / archived / tagged / released
 Plan: —; 62/62 milestone plans complete
-Status: milestone-v1-0-archived-tagged-next-milestone-blocked
-Last activity: 2026-07-30 - Milestone v1.0 archive merged and tag v1.0 created
+Status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
+Last activity: 2026-07-30 - GitHub Release v1.0 published
 Next: human decision on the next milestone
 
-Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived and tagged; next milestone and Phase 13 remain blocked
+Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived, tagged and released; next milestone and Phase 13 remain blocked
 
 ## Performance Metrics
 
@@ -326,7 +335,7 @@ Known deferred artifact items at v1.0 close: 0.
 
 Last session: 2026-07-30
 
-Stopped at: Milestone v1.0 archive merged and tag v1.0 created.
+Stopped at: Milestone v1.0 archive merged, tag v1.0 created and GitHub Release v1.0 published.
 
 Resume file:
 `.planning/milestones/v1.0-MILESTONE-AUDIT.md`
@@ -334,8 +343,8 @@ Resume file:
 Next permitted step: human decision on the next milestone only.
 
 Do not automatically create a new milestone, start Phase 13, start frontend,
-create a GitHub Release, deploy, exercise providers, execute rollback, or move
-or recreate tag `v1.0`.
+edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
+rollback, or move or recreate tag `v1.0`.
 
 ## Quick Tasks Completed
 

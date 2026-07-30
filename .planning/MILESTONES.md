@@ -25,6 +25,7 @@
 - Archive pull request: PR #9, merged on 2026-07-30.
 - PR #9 final head: `93bcc318e9d7c2309438ca33432fb6a93877a28d`.
 - Final repository archive identity: `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
+- Current repository main after documentary reconciliations: `de095d76a83e99faa0b459a58fc8b68200f02686`.
 - Initial archive documentation commit: `f9c9ea1aec8bf97d91960bbdb7d07072d82e3bf1`.
 - Runtime deployed identity: `18d809e4169daa301839542191f0d6794b02d695`.
 - The repository archive identity and runtime deployed identity are distinct.
@@ -50,10 +51,22 @@
 - Tag: `v1.0`.
 - Type: annotated.
 - Tag object: `2e91dcdffef5dc677e7e994f07b99f5c3bc2f167`.
-- Target: `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
+- Tag target: `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
 - Created and pushed: true.
 - The tag does not point to `f9c9ea1aec8bf97d91960bbdb7d07072d82e3bf1` or `18d809e4169daa301839542191f0d6794b02d695`.
 - The tag remains immutable at the PR #9 merge commit and must not be moved to the future commit of this documentary reconciliation.
+
+### GitHub Release
+
+- GitHub Release: published.
+- Release name: `v1.0 — Backend MVP`.
+- Release tag: `v1.0`.
+- Release URL: https://github.com/jlima004/E-commerce/releases/tag/v1.0
+- Published at: `2026-07-30T17:08:24Z`.
+- Draft: false.
+- Prerelease: false.
+- The GitHub Release publication did not move or recreate tag `v1.0`.
+- The tag remains immutable at the PR #9 merge commit.
 
 ### Archive
 

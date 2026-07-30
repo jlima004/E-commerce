@@ -53,11 +53,22 @@ The original phase directories remain in place as historical documentation.
 - PR #9: merged.
 - PR #9 final head: `93bcc318e9d7c2309438ca33432fb6a93877a28d`.
 - Repository archive merge commit: `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
+- Current main after documentary reconciliation: `de095d76a83e99faa0b459a58fc8b68200f02686`.
 - Deployed release: Heroku `v78`.
-- Candidate/deployed runtime SHA: `18d809e4169daa301839542191f0d6794b02d695`.
+- Runtime deployed SHA: `18d809e4169daa301839542191f0d6794b02d695`.
 - Rollback target: `v77`, documented and eligible; rollback not executed.
 
 The repository archive identity is distinct from the runtime deployed SHA.
+
+## GitHub Release
+
+- Release: `v1.0 — Backend MVP`.
+- Status: published.
+- Tag: `v1.0`.
+- Published at: `2026-07-30T17:08:24Z`.
+- URL: https://github.com/jlima004/E-commerce/releases/tag/v1.0
+- Draft: false.
+- Prerelease: false.
 
 ## Tag
 
