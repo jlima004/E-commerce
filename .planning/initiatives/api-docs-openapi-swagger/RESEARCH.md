@@ -1,8 +1,10 @@
 # API-DOCS-01 — OpenAPI & Swagger UI Research
 
-**Status:** Research corrected in R2; implementation remains blocked on final human review and explicit Wave 1 authorization
+**Status:** Research corrected in R3; implementation remains blocked on final human review and explicit Wave 1 authorization
 **Consulted on:** 2026-07-30
-**Scope:** Technical research only. No package installation, runtime change, migration, build, test, provider access, deployment, or Git publication was performed.
+**Planning publication:** Committed and pushed through PR #13.
+**Implementation publication:** None.
+**Scope:** Technical research and planning only. No implementation, dependency installation, runtime change, migration, build, test, provider access, or deployment was published or performed.
 
 ## Executive Summary
 
@@ -460,7 +462,11 @@ Versions below are the versions or active version lines observed in the official
 
 The backend compiles with TypeScript `module` and `moduleResolution` set to `Node16` (`apps/backend/tsconfig.json:4-7`). The preferred generator package exposes both CommonJS and ESM entry points, so registry code can remain TypeScript and use the project compiler.
 
-Avoid adding a runtime TypeScript loader solely for generation. A dedicated generator `tsconfig` can compile the registry to a temporary build directory, after which Node executes the compiled generator. This keeps generation independent of Medusa bootstrap and avoids database/container initialization.
+- Generator execution: `ts-node --swc`.
+- Additional generator `tsconfig`: none initially.
+- TypeScript compilation directory: none.
+
+No compiled-generator execution path is introduced. A reproduced incompatibility blocks API-DOCS-01 and requires a new human gate; the implementation must not add a parallel execution strategy automatically. This keeps generation independent of Medusa bootstrap and avoids database/container initialization.
 
 ## Generation and Drift Control
 
@@ -492,7 +498,6 @@ apps/backend/scripts/openapi/
   generate.ts
   lint.ts
   check.ts
-apps/backend/tsconfig.api-docs.json
 ```
 
 Putting generated JSON under `src` allows explicit JSON imports through the existing `resolveJsonModule` setting and gives the compiler/package step a concrete dependency. The implementation must still prove that all JSON and Swagger UI assets exist in `.medusa/server` before any production exposure is approved.
@@ -571,7 +576,7 @@ At minimum:
 - project rule: no Admin/Webhook operation in `store.openapi.json`;
 - project rule: no real-looking tracking token or signature example.
 
-Future dependency changes must add root `package.json` configuration with `scarfSettings.enabled=false`, and installation plus CI must run with `SCARF_ANALYTICS=false`. No postinstall analytics is necessary for API-DOCS-01, and no installation occurs during this R1 documentary gate.
+Future dependency changes must add root `package.json` configuration with `scarfSettings.enabled=false`, and installation plus CI must run with `SCARF_ANALYTICS=false`. No postinstall analytics is necessary for API-DOCS-01, and no installation occurs during this R3 editorial gate.
 
 ## Test Strategy
 

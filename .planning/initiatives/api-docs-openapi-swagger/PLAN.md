@@ -315,15 +315,15 @@ The future dependency change must also add this root manifest setting:
 
 Local installation and CI must apply `SCARF_ANALYTICS=false` to the approved
 install command. Scarf postinstall analytics is not necessary for the
-implementation and no installation is authorized by this R1 documentary gate.
+implementation and no installation is authorized by this R3 editorial gate.
 
 Additional rules:
 
 - Keep existing `zod@4.2.0`; do not add a second Zod major or import
   package-private Medusa schemas.
 - Use the already declared `ts-node` development tool for TypeScript generator
-  scripts. Do not add a new script runner unless a reproduced incompatibility
-  is reviewed separately.
+  scripts. A reproduced incompatibility blocks API-DOCS-01 and requires a new
+  human gate; do not add a new script runner automatically.
 - Update `package-lock.json` only through the approved workspace install.
 - Do not add `swagger-ui-express`, a YAML source package, an external validator
   client, or another OpenAPI linter.
@@ -447,6 +447,11 @@ not depend on a local agent-only command wrapper.
    openapi:verify:webhooks   -> ts-node --swc scripts/openapi/check.ts --coverage-scope webhooks --allow-untracked
    openapi:check             -> ts-node --swc scripts/openapi/check.ts --coverage-scope global --require-tracked --require-clean
    ```
+
+   These `ts-node --swc` commands are the initial generator execution path.
+   No additional generator `tsconfig` or TypeScript compilation directory is
+   created. A reproduced incompatibility blocks API-DOCS-01 and requires a new
+   human gate; no alternate execution path is added automatically.
 
    The writer accepts only `--surface all|store|admin|webhooks`; Wave 1 uses
    `all`, and Waves 2–4 use only their named surface. Omitted or unknown scope
