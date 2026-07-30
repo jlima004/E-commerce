@@ -53,7 +53,7 @@ The original phase directories remain in place as historical documentation.
 - PR #9: merged.
 - PR #9 final head: `93bcc318e9d7c2309438ca33432fb6a93877a28d`.
 - Repository archive merge commit: `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
-- Current main after documentary reconciliation: `de095d76a83e99faa0b459a58fc8b68200f02686`.
+- PR #10 merge commit and baseline before this GitHub Release reconciliation: `de095d76a83e99faa0b459a58fc8b68200f02686`.
 - Deployed release: Heroku `v78`.
 - Runtime deployed SHA: `18d809e4169daa301839542191f0d6794b02d695`.
 - Rollback target: `v77`, documented and eligible; rollback not executed.

@@ -25,7 +25,7 @@
 - Archive pull request: PR #9, merged on 2026-07-30.
 - PR #9 final head: `93bcc318e9d7c2309438ca33432fb6a93877a28d`.
 - Final repository archive identity: `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
-- Current repository main after documentary reconciliations: `de095d76a83e99faa0b459a58fc8b68200f02686`.
+- PR #10 merge commit and baseline before the GitHub Release reconciliation: `de095d76a83e99faa0b459a58fc8b68200f02686`.
 - Initial archive documentation commit: `f9c9ea1aec8bf97d91960bbdb7d07072d82e3bf1`.
 - Runtime deployed identity: `18d809e4169daa301839542191f0d6794b02d695`.
 - The repository archive identity and runtime deployed identity are distinct.
