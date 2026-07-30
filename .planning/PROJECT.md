@@ -107,8 +107,15 @@ Nenhum requisito ativo. O próximo milestone não está definido nem iniciado.
 - **Plans:** 62/62 complete.
 - **Requirements:** 45/45 complete.
 - **Repository closure:** PR #9 merged; final head `93bcc318e9d7c2309438ca33432fb6a93877a28d`.
-- **Final repository archive identity:** `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
-- **Tag:** annotated `v1.0`, created and pushed, targeting `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
+- **Repository archive identity:** `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
+- **PR #10 merge commit / baseline before this GitHub Release reconciliation:** `de095d76a83e99faa0b459a58fc8b68200f02686`.
+- **Tag:** annotated `v1.0`, created and pushed.
+- **Tag target:** `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
+- **GitHub Release:** published.
+- **Release name:** `v1.0 — Backend MVP`.
+- **Release tag:** `v1.0`.
+- **Published at:** `2026-07-30T17:08:24Z`.
+- **Release URL:** https://github.com/jlima004/E-commerce/releases/tag/v1.0
 - **Runtime evidence:** Heroku `v78`; candidate/deployed SHA `18d809e4169daa301839542191f0d6794b02d695`.
 - **Rollback:** target `v77` documented and eligible; not executed.
 - **Identity boundary:** the repository archive commit and deployed runtime SHA are distinct.
@@ -133,4 +140,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-30 after PR #9 merge and annotated tag `v1.0` creation; 13/13 phases, 62/62 plans and 45/45 requirements complete; milestone closed, archived and tagged; next milestone, Phase 13 and frontend not started or authorized*
+*Last updated: 2026-07-30 after GitHub Release v1.0 published; PR #9 archive merge and annotated tag `v1.0` preserved; 13/13 phases, 62/62 plans and 45/45 requirements complete; milestone closed, archived, tagged and released; next milestone, Phase 13 and frontend not started or authorized*
