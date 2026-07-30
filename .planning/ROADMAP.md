@@ -50,18 +50,23 @@ The original phase directories remain in place as historical documentation.
 
 ## Release Identity
 
-- Repository closure: PR 8.
-- PR 8 head: `7eaa223e82c819271682f0ea58ca50f66bfdbe8d`.
-- PR 8 merge commit / archive documentation base: `7c991bf422b3f1ca4ff202cad7e860db5a78ede8`.
+- PR #9: merged.
+- PR #9 final head: `93bcc318e9d7c2309438ca33432fb6a93877a28d`.
+- Repository archive merge commit: `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
 - Deployed release: Heroku `v78`.
 - Candidate/deployed runtime SHA: `18d809e4169daa301839542191f0d6794b02d695`.
 - Rollback target: `v77`, documented and eligible; rollback not executed.
 
 The repository archive identity is distinct from the runtime deployed SHA.
 
-## Planned Tag
+## Tag
 
-Tag `v1.0` is planned for the future merge commit of the archive documentation in `main`. It was not created in this gate and must not point to the runtime deployed SHA. Creation and push require separate authorization after merge.
+- Tag: `v1.0`.
+- Tag object: `2e91dcdffef5dc677e7e994f07b99f5c3bc2f167`.
+- Tag target: `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
+- Tag created and pushed: true.
+
+The annotated tag remains on the PR #9 merge commit and does not point to the runtime deployed SHA.
 
 ## Next Milestone
 

@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: none
 current_phase_name: Milestone complete
-status: milestone-v1-0-archived-next-milestone-blocked
-stopped_at: Milestone v1.0 archive PR #9 open / awaiting human review and merge decision
+status: milestone-v1-0-archived-tagged-next-milestone-blocked
+stopped_at: Milestone v1.0 archived and tagged / awaiting next milestone decision
 last_updated: "2026-07-30"
 last_activity: 2026-07-30
-last_activity_desc: Milestone v1.0 completed, closed and archived
+last_activity_desc: Milestone v1.0 archive merged and tag v1.0 created
 progress:
   total_phases: 13
   completed_phases: 13
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-30)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Milestone v1.0 is complete, closed and archived. Earlier BLOCKED attempts and corrections remain historical and superseded by approved corrective lineage. Archive documentation has been committed and pushed. PR #9 is open and awaiting human review and merge decision. The next milestone, Phase 13 and frontend remain blocked and not started.
+**Current focus:** Milestone v1.0 is complete, closed, archived and tagged. Earlier BLOCKED attempts and corrections remain historical and superseded by approved corrective lineage. PR #9 is merged; the final archive commit is `fbe986160535c1ba9d2a5f41ad9255e91cd13914`; tag `v1.0` was created and pushed. The next milestone is not defined or started. Phase 13 and frontend remain blocked, not started and not authorized.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Milestone v1.0 archive complete at the manual human-review gate. `completed_phases: 13`; `total_plans: 62`; `completed_plans: 62`; product requirements 45/45 complete. Do not start a new milestone, Phase 13 or frontend automatically.
+**Current gate:** Milestone v1.0 archive merged and annotated tag `v1.0` created and pushed. `completed_phases: 13`; `total_plans: 62`; `completed_plans: 62`; product requirements 45/45 complete. Do not start a new milestone, Phase 13 or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -102,19 +102,24 @@ PR 8 head: 7eaa223e82c819271682f0ea58ca50f66bfdbe8d
 PR 8 merge commit / repository archive base: 7c991bf422b3f1ca4ff202cad7e860db5a78ede8
 initial archive documentation commit: f9c9ea1aec8bf97d91960bbdb7d07072d82e3bf1
 archive PR: 9
-archive PR state: open / awaiting human review and merge decision
-final repository archive identity: future PR #9 merge commit in main
+archive PR state: merged
+archive PR final head: 93bcc318e9d7c2309438ca33432fb6a93877a28d
+final repository archive identity: fbe986160535c1ba9d2a5f41ad9255e91cd13914
 deployed release: v78
 deployed candidate SHA: 18d809e4169daa301839542191f0d6794b02d695
 rollback target: v77
 rollback executed: false
-planned tag: v1.0, future merge commit of archive documentation in main
-tag v1.0 created: false
+tag: v1.0
+tag type: annotated
+tag object: 2e91dcdffef5dc677e7e994f07b99f5c3bc2f167
+tag target: fbe986160535c1ba9d2a5f41ad9255e91cd13914
+tag created and pushed: true
+GitHub Release created: false
 repository archive identity differs from runtime deployed SHA: true
 next milestone: not defined / not started
 Phase 13 not started / not authorized
-frontend not started
-next permitted step: human review and merge decision for PR #9 only
+frontend not started / not authorized
+next permitted step: human decision on the next milestone only
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -153,12 +158,13 @@ Produção: saudável
 
 ## Current Position
 
-Phase: none — Milestone v1.0 complete / closed / archived
+Phase: none — Milestone v1.0 complete / closed / archived / tagged
 Plan: —; 62/62 milestone plans complete
-Status: milestone-v1-0-archived-next-milestone-blocked
-Last activity: 2026-07-30 - Milestone v1.0 completed, closed and archived
+Status: milestone-v1-0-archived-tagged-next-milestone-blocked
+Last activity: 2026-07-30 - Milestone v1.0 archive merged and tag v1.0 created
+Next: human decision on the next milestone
 
-Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived; next milestone and Phase 13 remain blocked
+Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived and tagged; next milestone and Phase 13 remain blocked
 
 ## Performance Metrics
 
@@ -320,19 +326,16 @@ Known deferred artifact items at v1.0 close: 0.
 
 Last session: 2026-07-30
 
-Stopped at: Milestone v1.0 archive PR #9 open / awaiting human review and merge decision.
+Stopped at: Milestone v1.0 archive merged and tag v1.0 created.
 
 Resume file:
 `.planning/milestones/v1.0-MILESTONE-AUDIT.md`
 
-Next permitted step: human review and merge decision for PR #9 only.
+Next permitted step: human decision on the next milestone only.
 
-Do not start a new milestone or Phase 13, start frontend, create the `v1.0`
-tag, create a GitHub Release, deploy, exercise providers, execute rollback,
-merge, auto-merge, comment on or approve PR #9, or resolve the review thread.
-
-The `v1.0` tag may be created only after PR #9 is merged, `main` is
-synchronized locally, and the PR #9 merge commit is confirmed.
+Do not automatically create a new milestone, start Phase 13, start frontend,
+create a GitHub Release, deploy, exercise providers, execute rollback, or move
+or recreate tag `v1.0`.
 
 ## Quick Tasks Completed
 
