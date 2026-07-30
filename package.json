@@ -12,7 +12,14 @@
     "lint": "turbo lint",
     "test": "turbo test",
     "backend:seed": "turbo seed --filter=@dtc/backend",
-    "backend:dev": "turbo dev --filter=@dtc/backend"
+    "backend:dev": "turbo dev --filter=@dtc/backend",
+    "openapi:generate": "npm run openapi:generate -w @dtc/backend --",
+    "openapi:lint": "npm run openapi:lint -w @dtc/backend",
+    "openapi:verify:foundation": "npm run openapi:verify:foundation -w @dtc/backend",
+    "openapi:verify:store": "npm run openapi:verify:store -w @dtc/backend",
+    "openapi:verify:admin": "npm run openapi:verify:admin -w @dtc/backend",
+    "openapi:verify:webhooks": "npm run openapi:verify:webhooks -w @dtc/backend",
+    "openapi:check": "npm run openapi:check -w @dtc/backend"
   },
   "pnpm": {
     "overrides": {
@@ -35,5 +42,8 @@
     "@rushstack/node-core-library@5.13.0": {
       "ajv": "8.20.0"
     }
+  },
+  "scarfSettings": {
+    "enabled": false
   }
 }

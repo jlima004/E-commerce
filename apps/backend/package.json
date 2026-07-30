@@ -20,7 +20,14 @@
     "lint": "medusa lint",
     "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
     "test:integration:modules": "TEST_TYPE=integration:modules NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
-    "test:unit": "TEST_TYPE=unit NODE_OPTIONS=--experimental-vm-modules jest --silent --runInBand --forceExit"
+    "test:unit": "TEST_TYPE=unit NODE_OPTIONS=--experimental-vm-modules jest --silent --runInBand --forceExit",
+    "openapi:generate": "ts-node --swc scripts/openapi/generate.ts --write",
+    "openapi:lint": "ts-node --swc scripts/openapi/lint.ts",
+    "openapi:verify:foundation": "ts-node --swc scripts/openapi/check.ts --coverage-scope foundation --allow-untracked",
+    "openapi:verify:store": "ts-node --swc scripts/openapi/check.ts --coverage-scope store --allow-untracked",
+    "openapi:verify:admin": "ts-node --swc scripts/openapi/check.ts --coverage-scope admin --allow-untracked",
+    "openapi:verify:webhooks": "ts-node --swc scripts/openapi/check.ts --coverage-scope webhooks --allow-untracked",
+    "openapi:check": "ts-node --swc scripts/openapi/check.ts --coverage-scope global --require-tracked --require-clean"
   },
   "dependencies": {
     "@medusajs/admin-sdk": "2.16.0",
@@ -43,10 +50,13 @@
     "react-router-dom": "6.30.3",
     "resend": "^4.8.0",
     "stripe": "19.1.0",
+    "swagger-ui-dist": "5.32.11",
     "zod": "4.2.0"
   },
   "devDependencies": {
+    "@asteasolutions/zod-to-openapi": "9.1.0",
     "@medusajs/test-utils": "2.16.0",
+    "@stoplight/spectral-cli": "6.16.2",
     "@swc/core": "^1.7.28",
     "@swc/jest": "^0.2.36",
     "@types/jest": "^29.5.13",
