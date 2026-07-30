@@ -22,8 +22,11 @@
 - Repository closure: PR 8.
 - PR 8 head: `7eaa223e82c819271682f0ea58ca50f66bfdbe8d`.
 - PR 8 merge commit and archive documentation base: `7c991bf422b3f1ca4ff202cad7e860db5a78ede8`.
-- The repository archive commit and runtime deployed SHA are distinct identities.
-- The final archive documentation commit has not been created in this gate.
+- Initial archive documentation commit: `f9c9ea1aec8bf97d91960bbdb7d07072d82e3bf1`.
+- Archive pull request: PR #9, open and awaiting human review and merge.
+- Final repository archive identity: the future PR #9 merge commit in `main`.
+- Runtime deployed identity: `18d809e4169daa301839542191f0d6794b02d695`.
+- The repository archive identity and runtime deployed identity are distinct.
 
 ### Rollback
 
@@ -44,8 +47,8 @@
 ### Planned tag
 
 - Planned tag: `v1.0`.
-- Target: the future merge commit of the archive documentation in `main`.
-- The tag must not point to the runtime deployed SHA.
+- Target: the future PR #9 merge commit in `main`.
+- The tag must not point to `f9c9ea1aec8bf97d91960bbdb7d07072d82e3bf1` or `18d809e4169daa301839542191f0d6794b02d695`.
 - Tag creation and push require separate authorization after the archive merge.
 - Tag created in this gate: false.
 

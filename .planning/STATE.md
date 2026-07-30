@@ -5,7 +5,7 @@ milestone_name: milestone
 current_phase: none
 current_phase_name: Milestone complete
 status: milestone-v1-0-archived-next-milestone-blocked
-stopped_at: Milestone v1.0 archive complete / awaiting human review
+stopped_at: Milestone v1.0 archive PR #9 open / awaiting human review and merge decision
 last_updated: "2026-07-30"
 last_activity: 2026-07-30
 last_activity_desc: Milestone v1.0 completed, closed and archived
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-30)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Milestone v1.0 is complete, closed and archived. Earlier BLOCKED attempts and corrections remain historical and superseded by approved corrective lineage. Awaiting human review, commit and push of archive documentation only. The next milestone, Phase 13 and frontend remain blocked and not started.
+**Current focus:** Milestone v1.0 is complete, closed and archived. Earlier BLOCKED attempts and corrections remain historical and superseded by approved corrective lineage. Archive documentation has been committed and pushed. PR #9 is open and awaiting human review and merge decision. The next milestone, Phase 13 and frontend remain blocked and not started.
 
 ## Execution Policy
 
@@ -100,17 +100,21 @@ unresolved required verification: 0
 PR 8: merged
 PR 8 head: 7eaa223e82c819271682f0ea58ca50f66bfdbe8d
 PR 8 merge commit / repository archive base: 7c991bf422b3f1ca4ff202cad7e860db5a78ede8
+initial archive documentation commit: f9c9ea1aec8bf97d91960bbdb7d07072d82e3bf1
+archive PR: 9
+archive PR state: open / awaiting human review and merge decision
+final repository archive identity: future PR #9 merge commit in main
 deployed release: v78
 deployed candidate SHA: 18d809e4169daa301839542191f0d6794b02d695
 rollback target: v77
 rollback executed: false
 planned tag: v1.0, future merge commit of archive documentation in main
-tag created: false
+tag v1.0 created: false
 repository archive identity differs from runtime deployed SHA: true
 next milestone: not defined / not started
 Phase 13 not started / not authorized
 frontend not started
-next permitted step: human review, commit and push of archive documentation only
+next permitted step: human review and merge decision for PR #9 only
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -128,7 +132,7 @@ rollback real: not executed
 
 Os registros `BLOCKED` históricos permanecem preservados e foram supersedidos pela linhagem corretiva aprovada. Nenhuma dessas limitações é blocker ativo do milestone.
 
-**Não-ações deste gate:** nenhum acesso de rede/produção/provider, teste, build, banco, migration, deploy, rollback, restart, scale, alteração de produto/runtime, movimentação de fases, novo milestone, Phase 13, frontend, tag, GitHub release, stage, commit, push, PR ou merge.
+**Não-ações deste gate:** nenhum acesso de produção/provider, teste, build, banco, migration, deploy, rollback, restart, scale, alteração de produto/runtime, movimentação de fases, novo milestone, Phase 13, frontend, tag, GitHub release, merge, auto-merge, comentário/aprovação da PR ou resolução da thread de review.
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
 
@@ -316,14 +320,19 @@ Known deferred artifact items at v1.0 close: 0.
 
 Last session: 2026-07-30
 
-Stopped at: Milestone v1.0 archive complete / awaiting human review.
+Stopped at: Milestone v1.0 archive PR #9 open / awaiting human review and merge decision.
 
 Resume file:
 `.planning/milestones/v1.0-MILESTONE-AUDIT.md`
 
-Next permitted step: human review, commit and push of archive documentation
-only. Do not start a new milestone or Phase 13, create a PR, merge, deploy,
-exercise providers, execute rollback, create a tag, or start frontend automatically.
+Next permitted step: human review and merge decision for PR #9 only.
+
+Do not start a new milestone or Phase 13, start frontend, create the `v1.0`
+tag, create a GitHub Release, deploy, exercise providers, execute rollback,
+merge, auto-merge, comment on or approve PR #9, or resolve the review thread.
+
+The `v1.0` tag may be created only after PR #9 is merged, `main` is
+synchronized locally, and the PR #9 merge commit is confirmed.
 
 ## Quick Tasks Completed
 
