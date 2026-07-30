@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 12.1
-current_phase_name: Backend MVP Release Readiness & Production Validation
-status: phase-12-1-closed-next-phase-blocked
-stopped_at: Phase 12.1 CLOSURE complete / awaiting human review
-last_updated: "2026-07-29"
-last_activity: 2026-07-29
-last_activity_desc: Phase 12.1 closed after final verification PASS
+current_phase: none
+current_phase_name: Milestone complete
+status: milestone-v1-0-archived-next-milestone-blocked
+stopped_at: Milestone v1.0 archive complete / awaiting human review
+last_updated: "2026-07-30"
+last_activity: 2026-07-30
+last_activity_desc: Milestone v1.0 completed, closed and archived
 progress:
   total_phases: 13
   completed_phases: 13
@@ -21,10 +21,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-24)
+See: .planning/PROJECT.md (updated 2026-07-30)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12.1 complete and closed after final verification PASS. Earlier BLOCKED attempts and corrections remain historical. Awaiting human review, commit and push of closure documentation only. Milestone archive, Phase 13 and frontend remain blocked.
+**Current focus:** Milestone v1.0 is complete, closed and archived. Earlier BLOCKED attempts and corrections remain historical and superseded by approved corrective lineage. Awaiting human review, commit and push of archive documentation only. The next milestone, Phase 13 and frontend remain blocked and not started.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 12.1 closed at manual CLOSURE gate. `completed_phases: 13`; `total_plans: 62`; `completed_plans: 62`; product requirements 45/45 remain complete. Do not archive the milestone or start Phase 13 or frontend automatically.
+**Current gate:** Milestone v1.0 archive complete at the manual human-review gate. `completed_phases: 13`; `total_plans: 62`; `completed_plans: 62`; product requirements 45/45 complete. Do not start a new milestone, Phase 13 or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -92,11 +92,43 @@ D12.1-01–D12.1-15: 15 PASS / 0 BLOCKED
 PHASE 12.1 CLOSURE: PASS
 Phase 12.1: 6 planned / 6 completed / closed
 milestone phases: 13/13 closed
-milestone closed/archived: no
+milestone closed/archived: yes
+MILESTONE v1.0 AUDIT: PASS
+MILESTONE v1.0 CLOSEOUT / ARCHIVE: PASS
+active blockers: 0
+unresolved required verification: 0
+PR 8: merged
+PR 8 head: 7eaa223e82c819271682f0ea58ca50f66bfdbe8d
+PR 8 merge commit / repository archive base: 7c991bf422b3f1ca4ff202cad7e860db5a78ede8
+deployed release: v78
+deployed candidate SHA: 18d809e4169daa301839542191f0d6794b02d695
+rollback target: v77
+rollback executed: false
+planned tag: v1.0, future merge commit of archive documentation in main
+tag created: false
+repository archive identity differs from runtime deployed SHA: true
+next milestone: not defined / not started
 Phase 13 not started / not authorized
 frontend not started
-next permitted step: human review, commit and push of closure documentation only
+next permitted step: human review, commit and push of archive documentation only
 ```
+
+### Limitações operacionais não bloqueantes no fechamento
+
+```text
+Sentry externally exercised: false
+Stripe provider gate exercised: false
+Resend real send proven: false
+Gelato real dispatch proven: false
+PostHog real event proven: false
+Correios API exercised: false
+Pix: deferred by account eligibility
+rollback real: not executed
+```
+
+Os registros `BLOCKED` históricos permanecem preservados e foram supersedidos pela linhagem corretiva aprovada. Nenhuma dessas limitações é blocker ativo do milestone.
+
+**Não-ações deste gate:** nenhum acesso de rede/produção/provider, teste, build, banco, migration, deploy, rollback, restart, scale, alteração de produto/runtime, movimentação de fases, novo milestone, Phase 13, frontend, tag, GitHub release, stage, commit, push, PR ou merge.
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
 
@@ -113,16 +145,16 @@ Produção: saudável
 
 **Branch policy:**
 
-`git.branching_strategy` is `phase` (GSD-supported). Phase 12.1 branch: `gsd/phase-12.1-mvp-release-readiness-production-validation`, created from merged `main` at `b4c1ee954c5d8337bff80a945eadec57ad2a0e0a`. Phase 12 CONTEXT branch remains historical: `gsd/phase-12-ops-audit-critical-tests` (`phase_branch_template`: `gsd/phase-{phase}-{slug}`). Phase 11 execution branch remains historical: `gsd/phase-11-refunds-exchanges-admin`. Historical Phase 09 branch decision remains preserved in `09-CONTEXT.md` and Phase 09 closure records.
+`git.branching_strategy` is `phase` (GSD-supported). Archive documentation branch: `gsd/milestone-v1.0-closeout-archive`, created from merged `main` at `7c991bf422b3f1ca4ff202cad7e860db5a78ede8`. Phase 12.1 branch remains historical: `gsd/phase-12.1-mvp-release-readiness-production-validation`. Phase 12 CONTEXT branch remains historical: `gsd/phase-12-ops-audit-critical-tests` (`phase_branch_template`: `gsd/phase-{phase}-{slug}`). Phase 11 execution branch remains historical: `gsd/phase-11-refunds-exchanges-admin`. Historical Phase 09 branch decision remains preserved in `09-CONTEXT.md` and Phase 09 closure records.
 
 ## Current Position
 
-Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — complete / closed at manual CLOSURE gate
-Plan: 62/62 completed milestone plans; Phase 12.1 has 6 planned / 6 completed
-Status: phase-12-1-closed-next-phase-blocked
-Last activity: 2026-07-29 - Phase 12.1 closed after final verification PASS
+Phase: none — Milestone v1.0 complete / closed / archived
+Plan: —; 62/62 milestone plans complete
+Status: milestone-v1-0-archived-next-milestone-blocked
+Last activity: 2026-07-30 - Milestone v1.0 completed, closed and archived
 
-Progress: [██████████] 100% phases (13/13); 62/62 plans complete; Phase 12.1 closed; milestone archive and Phase 13 remain blocked
+Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived; next milestone and Phase 13 remain blocked
 
 ## Performance Metrics
 
@@ -243,7 +275,7 @@ Recent decisions affecting current work:
 - [Phase 12.1 Plan 12.1-01 documentary correction R2]: Attempt 2 correctly BLOCKED under R1 Prova D manifests; Unit/lint/build/Modules normal/PostgreSQL 5/5/HTTP PASS; tables 11/11; indexes 76/76; blocker restricted to documentary Prova D (class-name vs MikroORM basename for three TBD files; 33 stable names treated as total constraint set vs 28 inline generated-name checks). BLOCKED SUMMARY committed historically. Documentary correction separates source classes from history basenames, adds 11 mappings, and replaces total constraint exact-set with stable named (33/33 present) + generated semantic exact multiset + unexpected=0. No migration/runtime/test changes. Attempt 3 requires separate authorization. 12.1-02 remains blocked.
 - [Phase 12.1 Plan 12.1-01 documentary correction R3]: R2 checker PASS; R2 human review BLOCKED. Attempt 2 and correction R2 preserved. Added closed semantic ID contract for 33 stable constraints, deterministic fail-closed canonicalization for 28 generated CHECKs, PK/UNIQUE ordered-column verification, bucket assignment with duplicate=0, and corrected execution metadata. No migration/runtime/test changes. Attempt 3 requires authorization after R3. 12.1-02 remains blocked.
 - [Phase 12.1 Plan 12.1-01 documentary correction R4]: R3 checker PASS; R3 human review BLOCKED. Attempt 2 and corrections R1–R3 preserved. Stable/generated inventories and execution metadata accepted. Remaining blocker restricted to PostgreSQL-decompiled BETWEEN form for five `btrim-length-between` constraints. Added closed equivalence `BETWEEN` ↔ `>= lower AND <= upper` with same-column/`AND`/`>=`then`<=`/exact-bounds enforcement; compatible `::text` casts only; malformed resemblance BLOCKED (no silent no-match). No migration/runtime/test changes. Attempt 3 requires authorization after R4. 12.1-02 remains blocked.
-- [Phase 12.1 closure]: Plans 12.1-01..12.1-06 are complete. `12.1-06-CORRECTION-C4-SUMMARY.md` is the final verification authority: PHASE 12.1 VERIFICATION PASS, C01–C18 18/18 PASS, D12.1-01–D12.1-15 15/15 PASS. Release v78 maps to candidate SHA `18d809e4169daa301839542191f0d6794b02d695`; rollback target v77 is documented and eligible but rollback was not executed. Historical BLOCKED SUMMARYs and C1→C4 corrections remain preserved. Sentry, Stripe, Resend, Gelato, PostHog, Correios and Pix limitations remain declared, not promoted to provider execution. Phase 13, milestone archive and frontend remain blocked.
+- [Phase 12.1 closure — historical gate]: Plans 12.1-01..12.1-06 are complete. `12.1-06-CORRECTION-C4-SUMMARY.md` is the final verification authority: PHASE 12.1 VERIFICATION PASS, C01–C18 18/18 PASS, D12.1-01–D12.1-15 15/15 PASS. Release v78 maps to candidate SHA `18d809e4169daa301839542191f0d6794b02d695`; rollback target v77 is documented and eligible but rollback was not executed. Historical BLOCKED SUMMARYs and C1→C4 corrections remain preserved. Sentry, Stripe, Resend, Gelato, PostHog, Correios and Pix limitations remain declared, not promoted to provider execution. At that closure gate, the milestone archive, Phase 13 and frontend were blocked; the archive restriction is now superseded by this v1.0 closeout, while Phase 13 and frontend remain blocked.
 
 ### Pending Todos
 
@@ -274,7 +306,7 @@ None yet.
 
 ## Deferred Items
 
-Items acknowledged and carried forward from previous milestone close:
+Known deferred artifact items at v1.0 close: 0.
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
@@ -282,16 +314,16 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29
+Last session: 2026-07-30
 
-Stopped at: Phase 12.1 CLOSURE complete / awaiting human review.
+Stopped at: Milestone v1.0 archive complete / awaiting human review.
 
 Resume file:
-`.planning/phases/12.1-mvp-release-readiness-production-validation/12.1-CLOSURE.md`
+`.planning/milestones/v1.0-MILESTONE-AUDIT.md`
 
-Next permitted step: human review, commit and push of closure documentation
-only. Do not start Phase 13, archive the milestone, create a PR, merge, deploy,
-exercise providers, execute rollback, or start frontend automatically.
+Next permitted step: human review, commit and push of archive documentation
+only. Do not start a new milestone or Phase 13, create a PR, merge, deploy,
+exercise providers, execute rollback, create a tag, or start frontend automatically.
 
 ## Quick Tasks Completed
 
