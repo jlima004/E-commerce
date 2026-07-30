@@ -106,13 +106,14 @@ Nenhum requisito ativo. O próximo milestone não está definido nem iniciado.
 - **Phases:** 13/13 complete and closed.
 - **Plans:** 62/62 complete.
 - **Requirements:** 45/45 complete.
-- **Repository closure:** PR 8; head `7eaa223e82c819271682f0ea58ca50f66bfdbe8d`; merge commit and archive base `7c991bf422b3f1ca4ff202cad7e860db5a78ede8`.
+- **Repository closure:** PR #9 merged; final head `93bcc318e9d7c2309438ca33432fb6a93877a28d`.
+- **Final repository archive identity:** `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
+- **Tag:** annotated `v1.0`, created and pushed, targeting `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
 - **Runtime evidence:** Heroku `v78`; candidate/deployed SHA `18d809e4169daa301839542191f0d6794b02d695`.
 - **Rollback:** target `v77` documented and eligible; not executed.
 - **Identity boundary:** the repository archive commit and deployed runtime SHA are distinct.
 - **Non-blocking limitations:** Sentry external exercise, Stripe provider gate, real Resend send, real Gelato dispatch, real PostHog event and Correios API exercise remain unproven; Pix remains deferred by account eligibility; real rollback was not executed.
 - **Next state:** no next milestone defined; Phase 13 and frontend not started or authorized.
-- **Planned tag:** `v1.0`, targeting the future merge commit of the archive documentation in `main`; not created in this gate.
 
 ## Evolution
 
@@ -132,4 +133,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-30 at Milestone v1.0 archive; 13/13 phases, 62/62 plans and 45/45 requirements complete; milestone closed and archived; frontend not started*
+*Last updated: 2026-07-30 after PR #9 merge and annotated tag `v1.0` creation; 13/13 phases, 62/62 plans and 45/45 requirements complete; milestone closed, archived and tagged; next milestone, Phase 13 and frontend not started or authorized*

@@ -22,9 +22,10 @@
 - Repository closure: PR 8.
 - PR 8 head: `7eaa223e82c819271682f0ea58ca50f66bfdbe8d`.
 - PR 8 merge commit and archive documentation base: `7c991bf422b3f1ca4ff202cad7e860db5a78ede8`.
+- Archive pull request: PR #9, merged on 2026-07-30.
+- PR #9 final head: `93bcc318e9d7c2309438ca33432fb6a93877a28d`.
+- Final repository archive identity: `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
 - Initial archive documentation commit: `f9c9ea1aec8bf97d91960bbdb7d07072d82e3bf1`.
-- Archive pull request: PR #9, open and awaiting human review and merge.
-- Final repository archive identity: the future PR #9 merge commit in `main`.
 - Runtime deployed identity: `18d809e4169daa301839542191f0d6794b02d695`.
 - The repository archive identity and runtime deployed identity are distinct.
 
@@ -44,13 +45,15 @@
 - Pix: deferred by account eligibility.
 - Real rollback: not executed.
 
-### Planned tag
+### Tag
 
-- Planned tag: `v1.0`.
-- Target: the future PR #9 merge commit in `main`.
-- The tag must not point to `f9c9ea1aec8bf97d91960bbdb7d07072d82e3bf1` or `18d809e4169daa301839542191f0d6794b02d695`.
-- Tag creation and push require separate authorization after the archive merge.
-- Tag created in this gate: false.
+- Tag: `v1.0`.
+- Type: annotated.
+- Tag object: `2e91dcdffef5dc677e7e994f07b99f5c3bc2f167`.
+- Target: `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
+- Created and pushed: true.
+- The tag does not point to `f9c9ea1aec8bf97d91960bbdb7d07072d82e3bf1` or `18d809e4169daa301839542191f0d6794b02d695`.
+- The tag remains immutable at the PR #9 merge commit and must not be moved to the future commit of this documentary reconciliation.
 
 ### Archive
 
