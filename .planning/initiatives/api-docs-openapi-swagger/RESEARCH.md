@@ -1,6 +1,6 @@
 # API-DOCS-01 — OpenAPI & Swagger UI Research
 
-**Status:** Research complete; implementation remains blocked on the human decision gate
+**Status:** Research corrected in R1; implementation remains blocked on final human review and explicit Wave 1 authorization
 **Consulted on:** 2026-07-30
 **Scope:** Technical research only. No package installation, runtime change, migration, build, test, provider access, deployment, or Git publication was performed.
 
@@ -20,7 +20,7 @@ Recommended tooling, subject to the human gate:
 | Concern | Recommendation | Dependency class |
 |---|---|---|
 | OpenAPI assembly and Zod conversion | `@asteasolutions/zod-to-openapi` 9.1.0, using `OpenAPIRegistry` and `OpenApiGeneratorV31`; reuse one schema in both directions only when its Zod input and output shapes are equal | Development only |
-| Lint and structural validation | `@redocly/cli` 2.43.1 | Development only |
+| Lint and structural validation | `@stoplight/spectral-cli` 6.16.2 with root `.spectral.yaml` and local `spectral:oas` only | `devDependency` |
 | Interactive rendering | `swagger-ui-dist` 5.32.11 | Runtime, because the web process serves local assets |
 | Existing schema runtime | `zod` 4.2.0 | Existing runtime dependency |
 
@@ -28,9 +28,9 @@ The preferred converter does not expose a public input/output direction switch e
 
 The generator and linter must not run during application startup. They should emit stable JSON artifacts before packaging, and runtime routes should only serve those artifacts. The pipeline must prove route coverage, unique `operationId` values, resolved references, deterministic output, direction-safe schema registration, and no unreviewed diff.
 
-Swagger UI must use local assets, must not call an external validator, must not persist authorization, and must have “Try it out” disabled by default. Production exposure must be fail-closed and disabled by default. Admin and webhook contracts are internal material and must never become public merely because the Store contract is enabled.
+Swagger UI must use local assets, must not call an external validator, must not persist authorization, and must disable interactivity unconditionally with `supportedSubmitMethods: []`. API-DOCS-01 defines no environment flag for interactivity. Any future executable profile is outside this initiative and requires a separate initiative and security review. Production exposure must be fail-closed and disabled by default. Admin and webhook contracts are internal material and must never become public merely because the Store contract is enabled.
 
-One compatibility gate is mandatory before package selection is final: `@redocly/cli` 2.43.1 declares Node `>=22.12.0` on the Node 22 line, while the repository currently permits any `>=22 <23`. The implementation must either tighten the project floor to a compatible 22.x minor or select the documented Spectral fallback.
+The OpenAPI linter decision is final: install exactly `@stoplight/spectral-cli@6.16.2` as a development dependency, create only the root `.spectral.yaml`, extend only the locally installed `spectral:oas` ruleset, forbid remote rulesets and ignore files, and fail on warnings or errors with `--fail-severity warn`. Redocly is not installed, not configured, and not an implementation option.
 
 ## Current API Architecture
 
@@ -45,7 +45,7 @@ The backend is a Medusa v2 application with file-based custom routes, central mi
 | Zod is exactly 4.2.0 | `apps/backend/package.json:46` | OAS 3.1 generation can use Zod 4 metadata and JSON Schema semantics, but only where runtime schemas exist. |
 | TypeScript is `^5.6.2` | `apps/backend/package.json:62` | A typed registry and compile-time checks fit the existing toolchain. |
 | JSON module resolution is enabled | `apps/backend/tsconfig.json:4-16` | Generated JSON can be imported by a small runtime adapter and included in the compiled server instead of being regenerated at startup. |
-| No OpenAPI, Swagger UI, Redocly, Spectral, or Zod-to-OpenAPI package is locked | `package-lock.json` package-name audit on 2026-07-30 | API-DOCS-01 requires a separately approved dependency change; this research installed nothing. |
+| No OpenAPI, Swagger UI, Spectral, or Zod-to-OpenAPI package is locked | `package-lock.json` package-name audit on 2026-07-30 | API-DOCS-01 requires a separately approved dependency change; this research installed nothing. |
 | Heroku has separate `web` and `worker` processes | `apps/backend/Procfile:1-3` | Only the web process may expose documentation. The worker must not generate or serve it. |
 
 ### Route mechanics
@@ -79,10 +79,10 @@ The project should own only contracts for behavior that this repository owns or 
 
 | API class | Included in project OpenAPI? | Authority and treatment |
 |---|---:|---|
-| Project custom Store routes | Yes | Full method, path, auth, request, response, and error contract in `store.json`. |
-| Project custom Admin routes | Yes | Full contract in `admin.json`; internal exposure policy. |
-| Stripe and Gelato ingress routes | Yes | Full ingress contract in `webhooks.json`; signature and raw-body constraints; no executable UI. |
-| Health routes | Yes | Include in `store.json` under an `Infrastructure` tag, or in a small public section of the same contract; `security: []`. |
+| Project custom Store routes | Yes | Full method, path, auth, request, response, and error contract in repository artifact `store.openapi.json`. |
+| Project custom Admin routes | Yes | Full contract in repository artifact `admin.openapi.json`; internal exposure policy. |
+| Stripe and Gelato ingress routes | Yes | Full ingress contract in repository artifact `webhooks.openapi.json`; signature and raw-body constraints; no executable UI. |
+| Health routes | Yes | Include in `store.openapi.json` under an `Infrastructure` tag, or in a small public section of the same contract; `security: []`. |
 | Native Medusa route extended or overridden by project code | Yes, as a project overlay | Document the effective project behavior and link the upstream native contract. |
 | Unchanged native Medusa route directly consumed by the future storefront | Cross-reference only | Maintain a versioned native-consumer manifest and link to Medusa 2.16 Store/Admin references; do not duplicate all schemas. |
 | Unchanged native route not known to be consumed | No | The official Medusa reference remains authoritative. |
@@ -95,6 +95,14 @@ The three contracts are intentionally separate:
 - **Store** is the only candidate for controlled public documentation.
 - **Admin** includes operational capabilities and must be internal.
 - **Webhooks** contains security-sensitive ingress semantics and must be internal.
+
+Repository artifact names and HTTP paths are deliberately different:
+
+| Repository artifact | HTTP endpoint |
+|---|---|
+| `apps/backend/src/api-docs/generated/store.openapi.json` | `GET /openapi/store.json` |
+| `apps/backend/src/api-docs/generated/admin.openapi.json` | `GET /openapi/admin.json` |
+| `apps/backend/src/api-docs/generated/webhooks.openapi.json` | `GET /openapi/webhooks.json` |
 
 Splitting the contracts reduces accidental disclosure, keeps tags and security schemes audience-specific, and allows public Store documentation without shipping Admin or webhook schemas to the browser.
 
@@ -133,7 +141,7 @@ Rationale:
 - it is the latest 3.1 patch published by the OpenAPI Initiative;
 - patch releases in the 3.1 line clarify the same feature set rather than introduce incompatible features;
 - Swagger UI’s current 5.32 line declares support for OAS 3.1.2;
-- the chosen Zod converters and Redocly CLI support OAS 3.1;
+- the chosen Zod converter and Spectral ruleset support OAS 3.1;
 - OpenAPI 3.2 exists, but adopting it would exceed the initiative’s 3.1 requirement and narrow tool compatibility without a project need.
 
 ### JSON Schema semantics
@@ -166,7 +174,7 @@ Examples:
 - `adminExchangeCreate`
 - `webhooksStripeReceiveEvent`
 
-The registry should reject duplicates before document generation, and Redocly should enforce `operation-operationId` and `operation-operationId-unique`.
+The registry should reject duplicates before document generation. Spectral provides the local OAS lint baseline, while the project TypeScript checker enforces global uniqueness across all three artifacts.
 
 ### Components and references
 
@@ -311,23 +319,24 @@ It must be disabled for every contract in the first release. Reasons:
 - a multi-contract UI does not naturally express a robust per-audience mutation policy;
 - browser-persisted credentials increase exposure.
 
-If a later human gate approves Store execution, create a separate local-only Store UI with an explicit safe-method allowlist. `API_DOCS_TRY_IT_OUT_ENABLED=true` alone must never enable Admin or webhook execution.
+Any future Store execution profile belongs to a separate initiative with an explicit safe-method allowlist and a dedicated security review. API-DOCS-01 exposes no environment flag that can enable Store, Admin, or webhook execution.
 
 ## Security and Exposure Model
 
 ### Proposed flags
 
-The four initially proposed flags are not sufficient to express “spec endpoints enabled, UI disabled.” Add a separate UI flag:
+The environment contract contains exactly four flags:
 
-| Flag | Meaning | Default |
-|---|---|---|
-| `API_DOCS_ENABLED` | Master switch for HTTP specification exposure | `true` locally; `false` in production |
-| `API_DOCS_UI_ENABLED` | Enables `/docs`; cannot override the master switch | `true` locally; `false` in test/production |
-| `API_DOCS_PUBLIC_ENABLED` | Allows the Store contract to be exposed under the approved public policy | `true` locally; `false` in production until approved |
-| `API_DOCS_INTERNAL_ENABLED` | Allows Admin/Webhooks endpoints after internal authentication | `true` only in trusted local development; otherwise `false` |
-| `API_DOCS_TRY_IT_OUT_ENABLED` | Enables a future separately allowlisted executable UI | `false` everywhere initially |
+| Variable | Development | Test | Production |
+|---|---:|---:|---:|
+| `API_DOCS_ENABLED` | `true` | `true` | `false` |
+| `API_DOCS_UI_ENABLED` | `true` | `false` | `false` |
+| `API_DOCS_PUBLIC_ENABLED` | `true` | `true` | `false` |
+| `API_DOCS_INTERNAL_ENABLED` | `true` | `true` | `false` |
 
 All flags must be parsed by the existing Zod environment configuration, reject ambiguous values, and fail closed. `NODE_ENV` may provide defaults, but explicit configuration must be auditable.
+
+Swagger UI interactivity is disabled unconditionally in API-DOCS-01 through `supportedSubmitMethods: []`. There is no environment flag for interactivity. A future executable profile is outside API-DOCS-01 and requires a separate initiative and security review.
 
 ### Environment matrix
 
@@ -428,8 +437,7 @@ Versions below are the versions or active version lines observed in the official
 | Custom TypeScript registry + native Zod conversion | Assemble OAS directly | Yes if implemented correctly | Yes | Project-controlled Node16 module output | Maintained by project | No | Zero converter dependency; exact behavior | High specification burden; easy to mishandle refs, nullability, directionality, and metadata | Reject unless both converter candidates fail |
 | `swagger-ui-dist` 5.32.11 | Browser UI assets | Official 5.32 line supports 3.1.2 | Server package is compatible; verify exact lock | Browser bundle plus Node package helpers | Official Swagger API project, active 5.32 line | **Yes**, if assets are served from installed package | Official UI; multi-spec `urls`; local assets; mature configuration | Distribution contains executable/support files the project does not need; exposing the directory would broaden attack surface; CSP requires care; global Try configuration is coarse | **Preferred exact-pinned runtime dependency**, served only through an exact minimal asset manifest |
 | `swagger-ui-express` 5.0.2 | Express wrapper around Swagger UI | Delegates to `swagger-ui-dist` | Expected, but adds another compatibility surface | CommonJS-oriented Express wrapper | Maintained but much smaller wrapper project | Yes | Quick setup in plain Express | Medusa already accepts Express middleware; wrapper does not solve auth, generation, CSP, or deterministic assets | Reject |
-| `@redocly/cli` 2.43.1 | Lint, structural validation, optional bundle | Yes | Requires Node `>=22.12.0` on 22.x | ESM CLI | Active official Redocly project | No | Strong OAS rules; lint and bundle; unresolved refs, operation IDs, security, structure | Node minor floor exceeds current declared minimum; telemetry must be disabled; notices must not pollute deterministic output | **Preferred devDependency if Node floor is approved** |
-| `@stoplight/spectral-cli` 6.16.2 | Ruleset-based OpenAPI lint | Yes | Official package supports modern Node including 22 | CLI/library packaging supports modern Node | Mature; slower release cadence observed than Redocly | No | Compatible fallback; customizable rules; no Redocly Node 22.12 gate | Does not replace Redocly bundling in one tool; ruleset configuration is another maintained artifact | Fallback if Node floor cannot be raised |
+| `@stoplight/spectral-cli` 6.16.2 | Ruleset-based OpenAPI lint | Yes | Official package supports modern Node including 22 | CLI/library packaging supports modern Node | Mature official Stoplight project | No | Compatible with the repository engine; customizable local OAS rules; deterministic local execution | Requires project checks for cross-document and repository-specific invariants | **Selected exact devDependency**, with root `.spectral.yaml`, local `spectral:oas` only, no remote ruleset, and `--fail-severity warn` |
 | TypeScript Compiler API route scanner | Discover exported route methods for coverage | Not applicable | Existing toolchain | Existing TypeScript module configuration | Maintained by project on existing TypeScript | No | No additional parser; understands exports and re-exports; deterministic | Discovery cannot infer contract semantics | Required as a drift-check input |
 | Test/fixture-generated OpenAPI | Generate schemas from observed responses | Partial | Yes | Project-controlled | Project-controlled | No | Mirrors selected observations | Incomplete and nondeterministic as authority | Reject as generator; retain fixtures for verification |
 
@@ -437,7 +445,7 @@ Versions below are the versions or active version lines observed in the official
 
 - `zod`: remains an existing runtime dependency because application environment parsing already uses it.
 - `@asteasolutions/zod-to-openapi`: development-only; generator must run before runtime.
-- `@redocly/cli` or approved Spectral fallback: development-only.
+- `@stoplight/spectral-cli@6.16.2`: development-only and exclusively selected.
 - `swagger-ui-dist`: runtime if the server resolves and serves its installed local files. Making it development-only would require a separately verified build step that copies and fingerprints every asset into the production package.
 - `swagger-ui-express`: do not install.
 - No database, Redis, provider, migration, or generated-client dependency is required.
@@ -466,16 +474,17 @@ apps/backend/src/api-docs/
     native-boundary.ts
     exclusions.ts
   generated/
-    store.json
-    admin.json
-    webhooks.json
+    store.openapi.json
+    admin.openapi.json
+    webhooks.openapi.json
   runtime/
     flags.ts
     serve-spec.ts
     swagger-config.ts
-apps/backend/scripts/api-docs/
+apps/backend/scripts/openapi/
   discover-routes.ts
   generate.ts
+  lint.ts
   check.ts
 apps/backend/tsconfig.api-docs.json
 ```
@@ -515,23 +524,29 @@ The scanner discovers candidates only. It must not infer schemas or authenticati
 Recommended scripts:
 
 ```text
-api-docs:generate
-api-docs:lint
-api-docs:check
+openapi:generate
+openapi:lint
+openapi:verify:foundation
+openapi:verify:store
+openapi:verify:admin
+openapi:verify:webhooks
+openapi:check
 ```
 
-`api-docs:check` should:
+`openapi:check` should:
 
 1. generate into a temporary directory;
 2. run route and native-overlay coverage;
-3. run Redocly/Spectral structural lint;
+3. run Spectral over `store.openapi.json`, `admin.openapi.json`, and `webhooks.openapi.json` with `--fail-severity warn`;
 4. validate global `operationId` uniqueness across all three documents;
 5. verify every local `$ref`;
 6. compare generated bytes with committed artifacts;
 7. generate a second time and compare the two temporary outputs;
 8. fail without rewriting committed files.
 
-Only `api-docs:generate` should update committed artifacts. Human review should see both registry changes and generated JSON diff.
+Only `openapi:generate` should update committed artifacts. Human review should see both registry changes and generated JSON diff. The `openapi:verify:*`, `openapi:lint`, and `openapi:check` scripts are read-only.
+
+Spectral is intentionally complemented by the read-only TypeScript checker for global `operationId` uniqueness, security declarations, reference resolution, Store/Admin/Webhooks separation, route coverage, sensitive examples, and deterministic drift.
 
 ### Suggested lint rules
 
@@ -547,10 +562,10 @@ At minimum:
 - no empty descriptions on security-sensitive fields;
 - no server URLs or examples matching secret/token/credential patterns;
 - project rule: no `nullable: true`;
-- project rule: no Admin/Webhook operation in `store.json`;
+- project rule: no Admin/Webhook operation in `store.openapi.json`;
 - project rule: no real-looking tracking token or signature example.
 
-Disable Redocly telemetry using its documented configuration/environment mechanism in CI and generation scripts.
+Future dependency changes must add root `package.json` configuration with `scarfSettings.enabled=false`, and installation plus CI must run with `SCARF_ANALYTICS=false`. No postinstall analytics is necessary for API-DOCS-01, and no installation occurs during this R1 documentary gate.
 
 ## Test Strategy
 
@@ -655,17 +670,18 @@ Before enabling any deployed UI, implementation tests must prove:
 | Native Medusa contract is copied and drifts | Medium / High | Boundary classification, upstream links, exact Medusa version drift gate |
 | Middleware semantics are missed by route scanning | High / High | Explicit registry plus middleware/native overlay manifest |
 | Admin or webhook spec leaks through the Store UI | Medium / High | Separate artifacts and flags; authorized URL list built server-side; isolation tests |
-| Swagger UI enables state-changing requests | Medium / Critical | `supportedSubmitMethods: []`; Try flag false; no Admin/Webhook execution path |
+| Swagger UI enables state-changing requests | Medium / Critical | Immutable `supportedSubmitMethods: []`; no interactivity environment flag; future executable profiles require a separate initiative and security review |
 | Credentials persist in browser storage | Medium / High | `persistAuthorization: false`; no examples; no pre-authorization |
 | Browser sends schemas to external validator/CDN | Medium / High | `validatorUrl: null`; local assets; restrictive CSP |
 | Raw webhook semantics are misrepresented | Medium / High | Explicit path metadata, raw-body descriptions, signature tests, no Try |
 | Tracking tokens or PII appear in examples | Medium / Critical | No token examples; synthetic minimized fixtures; secret-pattern lint |
-| Redocly fails on an allowed early Node 22 minor | Medium / Medium | Human gate to require Node >=22.12 or choose Spectral |
+| Spectral configuration drifts to a remote ruleset or ignores warnings | Medium / High | Pin `@stoplight/spectral-cli@6.16.2`, use root `.spectral.yaml` with local `spectral:oas` only, forbid ignore files, and require `--fail-severity warn` |
+| Dependency installation emits Scarf analytics | Medium / Medium | Set root `scarfSettings.enabled=false` and require `SCARF_ANALYTICS=false` for local and CI installation |
 | `zod-openapi` fails on an allowed early Node 22 minor | High under current range / Medium | Do not select unless floor becomes >=22.14 |
 | Generated output changes nondeterministically | Low / Medium | Stable sort, no timestamps, double-generation byte comparison |
 | Swagger assets/specs missing from Medusa build | Medium / Medium | Compile/package integration test before exposure |
 | Whole `swagger-ui-dist` directory exposes initializer, OAuth redirect, source maps, or unused code | Medium / High | Constant exact asset manifest; no `express.static`; explicit `404` tests for all non-allowlisted paths |
-| Generated artifacts become stale in Git | Medium / High | `api-docs:check` byte comparison required in CI |
+| Generated artifacts become stale in Git | Medium / High | `openapi:check` byte comparison required in CI |
 | OpenAPI 3.0 nullability idioms enter a 3.1 contract | Medium / Medium | Project lint forbids `nullable: true`; converter V31 |
 
 ## Recommended Architecture
@@ -679,7 +695,7 @@ Before enabling any deployed UI, implementation tests must prove:
 5. Generate and commit three stable JSON artifacts under source control.
 6. Use TypeScript AST discovery only to enforce custom-route coverage.
 7. Maintain a separate native boundary manifest for project extensions, overrides, and directly consumed native routes.
-8. Lint with Redocly if Node >=22.12 is approved; otherwise use Spectral.
+8. Lint exclusively with exact `@stoplight/spectral-cli@6.16.2`, root `.spectral.yaml`, local `spectral:oas`, and `--fail-severity warn`.
 9. Serve imported JSON and an exact minimal allowlist of pinned local `swagger-ui-dist` assets through narrow Medusa routes/middleware; every other distribution path returns `404`.
 10. Present one `/docs` selector containing only contracts allowed for the current request/environment.
 11. Disable external validation, credential persistence, and every submit method.
@@ -699,7 +715,7 @@ native boundary manifest ─────────────────┘
                                       |
                          +------------+-------------+
                          |            |             |
-                    store.json    admin.json   webhooks.json
+              store.openapi.json admin.openapi.json webhooks.openapi.json
                          |            |             |
                          +----- lint / drift --------+
                                       |
@@ -754,49 +770,46 @@ Only official/primary sources were used for external technical claims.
 | https://github.com/swagger-api/swagger-ui/blob/master/docs/usage/installation.md | 2026-07-30 | `swagger-ui-dist` is intended for server-side asset distribution; local and CDN installation patterns | Supports local runtime assets |
 | https://github.com/swagger-api/swagger-ui/blob/master/docs/usage/configuration.md | 2026-07-30 | `urls`, `supportedSubmitMethods`, `persistAuthorization`, `validatorUrl`, and `queryConfigEnabled` behavior | Defines secure UI configuration |
 | https://github.com/scottie1984/swagger-ui-express | 2026-07-30 | Express wrapper behavior and dependency on Swagger UI assets | Supports rejection of the extra wrapper |
-| https://github.com/Redocly/redocly-cli | 2026-07-30 | OAS 3.1 lint/bundle support, active CLI, module and Node compatibility | Preferred validation tool, subject to Node minor gate |
-| https://registry.npmjs.org/@redocly%2fcli/latest | 2026-07-30 | Current exact package version is 2.43.1; Node 22 requires at least 22.12.0 and npm requires at least 10 | Pins the reviewed development tool and compatibility gate |
-| https://redocly.com/docs/cli/commands/lint | 2026-07-30 | CLI lint workflow and failure semantics | CI validation design |
-| https://redocly.com/docs/cli/commands/bundle | 2026-07-30 | Multi-file bundling and component conflict handling | Optional self-contained artifact support |
-| https://redocly.com/docs/cli/rules/oas/operation-operationId | 2026-07-30 | Rule requiring operation IDs | Lint baseline |
-| https://redocly.com/docs/cli/rules/oas/operation-operationId-unique | 2026-07-30 | Rule requiring unique operation IDs | Lint baseline |
-| https://redocly.com/docs/cli/rules/oas/no-unresolved-refs | 2026-07-30 | Rule rejecting unresolved references | Component safety |
-| https://redocly.com/docs/cli/usage-data | 2026-07-30 | Telemetry behavior and opt-out | Prevents CI/tooling telemetry |
-| https://github.com/stoplightio/spectral | 2026-07-30 | OAS 3.1-capable ruleset/CLI and modern Node compatibility | Fallback linter |
-| https://registry.npmjs.org/@stoplight%2fspectral-cli/latest | 2026-07-30 | Current exact package version is 6.16.2 and its engine supports Node 22 | Pins the reviewed fallback tool |
+| https://github.com/stoplightio/spectral | 2026-07-30 | OAS 3.1-capable local ruleset/CLI and modern Node compatibility | Selected exclusive linter |
+| https://registry.npmjs.org/@stoplight%2fspectral-cli/latest | 2026-07-30 | Current exact package version is 6.16.2 and its engine supports Node 22 | Pins the selected development tool |
 
 ## Open Questions
 
 1. May the Store specification be public in production, or must all production docs remain disabled?
 2. If internal docs are enabled outside local development, which approved user/network control protects them?
-3. Will the project raise its Node floor to at least 22.12, and preferably the currently deployed Node 22 patch, for Redocly compatibility?
-4. Should deterministic generated JSON be committed, as recommended, or only produced in CI/build?
-5. Are `/store/custom` and `/admin/custom` real supported APIs, explicit exclusions, or cleanup candidates?
-6. Which unchanged native Medusa Store operations are directly consumed by the future storefront and therefore require cross-reference entries?
-7. Are the current native product middleware matchers the complete initial extension/override set?
-8. Should health operations live in `store.json` under `Infrastructure`, or should a later fourth public infrastructure contract be introduced?
-9. Is a future separate local Store-only executable UI desirable, or should “Try it out” remain permanently unsupported?
-10. Which current handwritten validators may be migrated to shared Zod without expanding API-DOCS-01 beyond documentation behavior?
-11. Does the pinned Swagger UI shell need `swagger-ui-standalone-preset.js` or any external font file, and what exact `N`-entry asset manifest results from that decision?
+3. Are `/store/custom` and `/admin/custom` real supported APIs, explicit exclusions, or cleanup candidates?
+4. Which unchanged native Medusa Store operations are directly consumed by the future storefront and therefore require cross-reference entries?
+5. Are the current native product middleware matchers the complete initial extension/override set?
+6. Should health operations live in `store.openapi.json` under `Infrastructure`, or should a later fourth public infrastructure contract be introduced?
+7. Which current handwritten validators may be migrated to shared Zod without expanding API-DOCS-01 beyond documentation behavior?
+8. Does the pinned Swagger UI shell need `swagger-ui-standalone-preset.js` or any external font file, and what exact `N`-entry asset manifest results from that decision?
 
-## Human Decision Gate
+## Human Approval Gate
 
-No implementation, dependency installation, or runtime exposure should begin until a human records explicit decisions for every item below.
+The R1 correction records these decisions as taken:
 
-| Gate | Recommended decision | If not approved |
-|---|---|---|
-| OAS version | Approve exact 3.1.2 | Re-research converter/UI/linter compatibility |
-| Contract split | Approve Store/Admin/Webhooks JSON separation | Re-design exposure and leakage controls |
-| Source of truth | Approve explicit TypeScript registry plus runtime-Zod reuse only when input=output, with separate direction schemas otherwise | Select another strategy and accept its drift cost |
-| Generator | Approve `@asteasolutions/zod-to-openapi` 9.1.0 as devDependency, public APIs only, and the direction-safety restriction | Run a bounded compile/behavior comparison for `zod-openapi` after enforcing Node >=22.14, or use custom assembly |
-| Node floor / linter | Approve Node >=22.12 and Redocly 2.43.1, or explicitly select Spectral 6.16.2 | Do not add Redocly under the current broad engine claim |
-| UI | Approve exact-pinned `swagger-ui-dist` 5.32.11 runtime dependency, a reviewed minimal `N`-asset manifest, and `404` for every non-allowlisted distribution path | Deliver JSON contracts without UI |
-| UI policy | Approve one `/docs` selector, external validator off, persistence off, Try off | Define a separately reviewed UI policy |
-| Exposure flags | Approve the five-flag fail-closed model including `API_DOCS_UI_ENABLED` | Do not expose HTTP documentation |
-| Production | Approve production-off defaults | Specify and review a narrower authenticated/public policy |
-| Native boundary | Approve custom/extension/override/native-consumed classifications | Do not claim native coverage |
-| Generated files | Approve committed deterministic JSON artifacts and CI byte check | Define another reviewable drift mechanism |
-| Example routes | Classify `/store/custom` and `/admin/custom` explicitly | Coverage gate remains blocked |
-| Data/infrastructure | Confirm no DB migration, Redis, external provider, or secret access | Re-scope as a separate approved initiative |
+| Decision | Approved value |
+|---|---|
+| OpenAPI | `3.1.2` |
+| Contract split | Store / Admin / Webhooks |
+| Source of truth | Explicit TypeScript registry |
+| Generator | `@asteasolutions/zod-to-openapi@9.1.0` |
+| Linter | `@stoplight/spectral-cli@6.16.2`, root `.spectral.yaml`, local `spectral:oas` only |
+| Swagger assets | `swagger-ui-dist@5.32.11` |
+| Try it out | Not implemented in API-DOCS-01; `supportedSubmitMethods: []` unconditionally |
+| Production | Disabled by default |
+| Database changes | Not expected |
+| Migration | Not expected |
 
-**Research recommendation:** proceed only after the gate approves the architecture and dependency/version choices. The implementation gate should then remain local and reversible, with generated-artifact, package, security, and route-coverage proof before any production exposure is considered.
+Implementation remains blocked until all genuinely pending gates are satisfied:
+
+1. final human review of the corrected R1 artifacts;
+2. confirmation of the six official Medusa `2.16.0` URLs;
+3. review of the six native-extension fingerprints and their local evidence;
+4. explicit authorization to install dependencies and begin Wave 1;
+5. separate approval for any package or runtime version change;
+6. separate approval for any production exposure or deployment.
+
+The `/store/custom` and `/admin/custom` classifications and any operation with incomplete schema/auth/status evidence must also be resolved before the relevant coverage gate can pass. These documentary gaps do not reopen the selected toolchain decisions.
+
+**Research recommendation:** keep implementation blocked until final R1 human review and explicit Wave 1 authorization. A future implementation gate should remain local and reversible, with generated-artifact, package, supply-chain, security, and route-coverage proof before any production exposure is considered.

@@ -60,18 +60,12 @@ Implementation may start only when all of the following are true:
 3. `apps/backend/package.json` still pins Medusa to `2.16.0`, Zod to `4.2.0`,
    and Node to `>=22 <23`; any version drift requires renewed compatibility
    review before dependency changes.
-4. Before Wave 1, human review selects and records exactly one complete lint
-   toolchain:
-   - **Redocly branch:** `@redocly/cli@2.43.1`, actual Node and CI Node
-     `>=22.12.0`, repository-pinned npm `10.9.8`, root `redocly.yaml`, and telemetry disabled
-     through both `telemetry: off` and `REDOCLY_TELEMETRY=off`;
-   - **Spectral branch:** `@stoplight/spectral-cli@6.16.2`, root
-     `.spectral.yaml` extending only the locally installed `spectral:oas`
-     ruleset, with equivalent local fail conditions and no remote ruleset.
-   Exactly one linter dependency and one linter configuration file are added.
-   If the Redocly floor is not met, the implementation does not raise the Node
-   floor silently; it either selects the complete Spectral branch or stops for
-   a separately approved Node-floor change.
+4. The lint toolchain decision is fixed: install exactly
+   `@stoplight/spectral-cli@6.16.2` as a `devDependency`, create only the root
+   `.spectral.yaml`, extend only the locally installed `spectral:oas` ruleset,
+   forbid remote rulesets and ignore files, and invoke every artifact
+   explicitly with `--fail-severity warn`. Redocly is not installed, not
+   configured, and not an implementation option.
 5. The route inventory has no unresolved authentication, request, response, or
    status-code gaps for an operation proposed for the initial contract. An
    operation with missing evidence remains explicitly excluded; its contract
@@ -212,8 +206,7 @@ apps/backend/src/api-docs/
 │   │   ├── products.ts
 │   │   ├── refunds.ts
 │   │   ├── exchanges.ts
-│   │   ├── operational-alerts.ts
-│   │   └── audit.ts
+│   │   └── operational-alerts.ts
 │   └── webhooks/
 │       ├── stripe.ts
 │       └── gelato.ts
@@ -269,8 +262,7 @@ ops/
 .github/workflows/
 └── api-docs.yml
 
-exactly one selected linter config:
-├── redocly.yaml
+root linter config:
 └── .spectral.yaml
 ```
 
@@ -295,9 +287,22 @@ All changes below occur only after the human approval gate.
 | Manifest | Package | Classification | Exact selection | Purpose |
 | --- | --- | --- | --- | --- |
 | `apps/backend/package.json` | `@asteasolutions/zod-to-openapi` | `devDependency` | `9.1.0` | Explicit registry and OpenAPI 3.1 document generation from Zod/raw components |
-| `apps/backend/package.json` | `@redocly/cli` | conditional `devDependency` | `2.43.1` exactly | Redocly branch: OpenAPI 3.1 lint, structural validation, and `$ref` checks |
-| `apps/backend/package.json` | `@stoplight/spectral-cli` | conditional `devDependency` | `6.16.2` exactly | Spectral branch: equivalent local OpenAPI 3.1 lint |
+| `apps/backend/package.json` | `@stoplight/spectral-cli` | `devDependency` | `6.16.2` exactly | Selected local OpenAPI 3.1 lint baseline |
 | `apps/backend/package.json` | `swagger-ui-dist` | runtime `dependency` | `5.32.11` exactly | Local Swagger UI HTML/JS/CSS assets |
+
+The future dependency change must also add this root manifest setting:
+
+```json
+{
+  "scarfSettings": {
+    "enabled": false
+  }
+}
+```
+
+Local installation and CI must apply `SCARF_ANALYTICS=false` to the approved
+install command. Scarf postinstall analytics is not necessary for the
+implementation and no installation is authorized by this R1 documentary gate.
 
 Additional rules:
 
@@ -308,23 +313,21 @@ Additional rules:
   is reviewed separately.
 - Update `package-lock.json` only through the approved workspace install.
 - Do not add `swagger-ui-express`, a YAML source package, an external validator
-  client, or a runtime Redocly dependency.
-- Select only one linter row. The committed `toolchain.ts`, package manifest,
-  lockfile, config file, and CI command must agree on that exact branch.
-- **Redocly branch:** require actual Node `>=22.12.0` and repository-pinned npm `10.9.8`; create
-  root `redocly.yaml` with the three API aliases, strict reviewed rules, and
-  official `telemetry: off`; run CI with `REDOCLY_TELEMETRY=off` and
-  `REDOCLY_SUPPRESS_UPDATE_NOTICE=true`; do not create an ignore file.
-- **Spectral branch:** create root `.spectral.yaml`, extend only local
-  `spectral:oas`, configure equivalent reviewed rules, and invoke
-  `--fail-severity warn` over the three explicit JSON paths; do not reference
-  remote URLs or create an ignore file.
-- In either branch, `scripts/openapi/lint.ts` verifies the committed selection
-  and exact package version, invokes only the selected local binary without a
+  client, or another OpenAPI linter.
+- The committed `toolchain.ts`, package manifest, lockfile, root
+  `.spectral.yaml`, scripts, and CI command must agree on exact Spectral
+  `6.16.2`.
+- Create root `.spectral.yaml`, extend only local `spectral:oas`, configure the
+  reviewed rules, and invoke `--fail-severity warn` over the three explicit
+  generated JSON paths; do not reference remote URLs or create an ignore file.
+- `scripts/openapi/lint.ts` verifies the committed selection and exact package
+  version, invokes only the selected local binary without a
   shell or network access, and fails on configuration mismatch, warning/error,
   invalid OpenAPI 3.1 structure, unresolved `$ref`, missing/duplicate
   `operationId`, or invalid security reference. The custom read-only checker
-  enforces any structural rule not provided equivalently by both CLIs.
+  complements Spectral with global `operationId` uniqueness, security,
+  reference, contract-partition, route-coverage, sensitive-example, and
+  deterministic-drift checks.
 
 Database and infrastructure impact:
 
@@ -347,8 +350,8 @@ blocks API-DOCS-01 and requires a separate human gate.
 
 ## Environment Contract
 
-Add the following booleans to `apps/backend/src/config/env.ts` and document them
-in `apps/backend/.env.template`:
+Add exactly the following four booleans to `apps/backend/src/config/env.ts` and
+document them in `apps/backend/.env.template`:
 
 | Variable | Development default | Test default | Production default | Meaning |
 | --- | ---: | ---: | ---: | --- |
@@ -356,7 +359,6 @@ in `apps/backend/.env.template`:
 | `API_DOCS_UI_ENABLED` | `true` | `false` | `false` | Enables `/docs` |
 | `API_DOCS_PUBLIC_ENABLED` | `true` | `true` | `false` | Enables the Store document endpoint |
 | `API_DOCS_INTERNAL_ENABLED` | `true` | `true` | `false` | Enables Admin/Webhook documents, subject to protection |
-| `API_DOCS_TRY_IT_OUT_ENABLED` | `false` | `false` | `false` | Reserved compatibility flag; no-op and fail-closed in this initiative |
 
 Exposure rules:
 
@@ -372,9 +374,10 @@ Exposure rules:
    documentation surface.
 6. In development and test, internal visibility may be enabled for local
    verification, but every UI document remains non-interactive.
-7. `API_DOCS_TRY_IT_OUT_ENABLED=true` is ignored in every environment. Any
-   future executable profile requires a separate plan, security review, human
-   gate, and flag contract change.
+7. Swagger UI interactivity is not configurable in API-DOCS-01 and is disabled
+   unconditionally through `supportedSubmitMethods: []`. No environment flag
+   exists for interactivity. Any future executable profile requires a separate
+   initiative and security review.
 8. No flag contains a token or secret, and no new documentation-specific secret
    is introduced.
 9. The web process serves documentation routes; the worker does not generate,
@@ -405,7 +408,9 @@ not depend on a local agent-only command wrapper.
 
 #### Changes
 
-1. Install only the approved dependencies and record the lockfile change.
+1. Install only the approved dependencies and record the lockfile change. Add
+   root `scarfSettings.enabled=false`, and run the approved install with
+   `SCARF_ANALYTICS=false`; no postinstall analytics is required.
 2. Add root wrappers to `package.json`:
 
    ```text
@@ -434,14 +439,11 @@ not depend on a local agent-only command wrapper.
    `all`, and Waves 2–4 use only their named surface. Omitted or unknown scope
    fails instead of rewriting an unintended artifact.
 
-4. Commit the approved `toolchain.ts` selection and complete exactly one branch:
-   - Redocly creates `redocly.yaml` with three API aliases, strict reviewed
-     rules, `telemetry: off`, and script/CI environment
-     `REDOCLY_TELEMETRY=off`;
-   - Spectral creates `.spectral.yaml` with local `spectral:oas`, equivalent
-     reviewed rules, and the three explicit generated JSON inputs.
-   The generic `openapi:lint` script must contain no unconditional dependency on
-   either binary.
+4. Commit the approved `toolchain.ts` and root `.spectral.yaml`. Extend only the
+   locally installed `spectral:oas`, forbid remote rulesets and ignore files,
+   list all three generated JSON artifacts explicitly, and fail on warnings or
+   errors with `--fail-severity warn`. The `openapi:lint` script invokes only
+   exact local Spectral `6.16.2`.
 5. Create Store, Admin, and Webhook registries with shared component helpers.
 6. Pin document metadata:
    - `openapi: 3.1.2`;
@@ -488,11 +490,11 @@ not depend on a local agent-only command wrapper.
 - `openapi:generate` fails on duplicate method/path, duplicate component name,
   duplicate `operationId`, missing mandatory operation metadata,
   unrepresentable schema, unstable output, unsafe example, or write failure.
-- `openapi:lint` fails equivalently in the selected branch on any configured
-  warning/error, unresolved `$ref`, invalid OpenAPI 3.1 structure, missing or
-  duplicate `operationId`, invalid security reference, config/version mismatch,
-  remote ruleset, or attempted telemetry/network use. No blanket suppression
-  or ignore file is allowed.
+- `openapi:lint` fails on any configured warning/error, unresolved `$ref`,
+  invalid OpenAPI 3.1 structure, missing or duplicate `operationId`, invalid
+  security reference, config/version mismatch, remote ruleset, missing
+  `--fail-severity warn`, or attempted network use. No blanket suppression or
+  ignore file is allowed.
 - `openapi:verify:foundation` is read-only: it builds all skeleton documents
   twice in memory, byte-compares them with the present artifacts, tests route
   discovery/exclusion/native-manifest mechanics, and deliberately does not
@@ -516,7 +518,7 @@ git diff --check
 
 - Three deterministic skeleton JSON documents exist.
 - Two consecutive in-memory builds are byte-identical.
-- The selected linter branch, registry, and component tests pass.
+- Spectral `6.16.2`, the local-only ruleset, registry, and component tests pass.
 - All six native extensions have reviewed Medusa `2.16.0` URLs, provenance,
   conservative fingerprints, and contract-test fixtures.
 - Foundation-only coverage passes without claiming Store, Admin, or Webhook
@@ -721,8 +723,8 @@ npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/gen
 6. Model the webhook request body as observed provider input. Do not reuse a
    transformed Store/Admin schema and do not imply that Swagger UI sends a
    signature-valid request.
-7. Mark both webhook operations permanently non-interactive, independently of
-   `API_DOCS_TRY_IT_OUT_ENABLED`.
+7. Mark both webhook operations permanently non-interactive; API-DOCS-01 has no
+   environment flag capable of changing this policy.
 8. Use synthetic, redacted examples only; omit examples when safe realism would
    require a signature, secret, token, personal data, or provider payload not
    present in official evidence.
@@ -760,7 +762,7 @@ npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/gen
 
 #### Changes
 
-1. Add the five environment flags and pure exposure-policy helpers. Update
+1. Add the four environment flags and pure exposure-policy helpers. Update
    parser/default tests and every complete `AppEnv` object/factory discovered by
    a TypeScript-AST search before editing. The mandatory set includes
    `env.unit.spec.ts`, `medusa-config.unit.spec.ts`, and the Sentry HTTP test
@@ -798,8 +800,8 @@ npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/gen
    - `withCredentials: false`;
    - `supportedSubmitMethods: []` for every selected document.
    The four inventory-marked candidates may be displayed as descriptive
-   metadata only. `API_DOCS_TRY_IT_OUT_ENABLED` is a reserved no-op and must not
-   alter the emitted configuration.
+   metadata only. No interactivity environment flag exists, and a future
+   executable profile requires a separate initiative and security review.
 6. Serve the project-owned `api-docs-initializer.js` rather than inline
    executable script or the package's `swagger-initializer.js`.
 7. Add response headers:
@@ -864,9 +866,9 @@ npm run openapi:lint
    never auto-accept a new digest.
 3. Add a CI workflow at `.github/workflows/api-docs.yml`. The repository
    currently has no workflow directory, so this is a new, explicit surface.
-4. CI uses the approved repository Node 22 line; the Redocly branch additionally
-   enforces Node `>=22.12.0` and repository-pinned npm `10.9.8`. CI runs:
-   - `npm ci`;
+4. CI uses the approved repository Node 22 line and exact Spectral `6.16.2`.
+   It validates root `scarfSettings.enabled=false` and runs:
+   - `SCARF_ANALYTICS=false npm ci`;
    - read-only global `openapi:check` first, before any writer;
    - selected-toolchain lint;
    - focused API-docs unit and HTTP tests;
@@ -934,10 +936,10 @@ not include the generated JSON and exact local UI assets.
 | Unit — exposure | `apps/backend/src/api-docs/__tests__/exposure.unit.spec.ts` | environment defaults and complete flag matrix |
 | Contract — monetary units | `apps/backend/src/api-docs/__tests__/money-units.contract.spec.ts` | PaymentAttempt/refund integer BRL minor units remain distinct from Cart/PaymentSession major units |
 | Contract — six native extensions | `apps/backend/src/api-docs/__tests__/native-extensions.contract.spec.ts` | official provenance, conservative fingerprints, and local behavior for two Store plus four Admin operations |
-| Existing env/config fixtures | `env.unit.spec.ts`, `medusa-config.unit.spec.ts`, and every discovered complete `AppEnv` fixture including Sentry HTTP when applicable | five defaults parse correctly and no complete fixture silently omits the new flags |
+| Existing env/config fixtures | `env.unit.spec.ts`, `medusa-config.unit.spec.ts`, and every discovered complete `AppEnv` fixture including Sentry HTTP when applicable | four defaults parse correctly and no complete fixture silently omits the new flags |
 | HTTP | `apps/backend/integration-tests/http/api-docs.spec.ts` | exact `.json` paths, extensionless `404`, auth, headers, JSON bodies, globally non-interactive UI, exact assets, CSP, disabled production |
 | Contract characterization | existing route/serializer tests plus focused additions only where needed | registry schema matches actual accepted input and serialized output |
-| Static | selected Redocly or Spectral branch + custom read-only check | OpenAPI structure, `$ref`, operation IDs, scoped/global route coverage, tracked artifacts, clean-tree drift |
+| Static | exact Spectral `6.16.2` + custom read-only check | OpenAPI structure, `$ref`, operation IDs, scoped/global route coverage, tracked artifacts, clean-tree drift |
 | Build | existing backend build | generated JSON imports and Swagger asset resolution compile into `.medusa/server` |
 
 Test fixtures must be synthetic. These tests do not require PostgreSQL, Redis,
@@ -962,9 +964,9 @@ All gates are binary:
    client secrets, Pix QR/copy-paste values, personal addresses, documents,
    email addresses, phone numbers, or production identifiers.
 7. **UI gate:** local assets only, external validation off, query configuration
-   off, authorization persistence off, and shared
+   off, authorization persistence off, and shared immutable
    `supportedSubmitMethods: []`; Store, Admin, and Webhook submission is
-   impossible even when the reserved Try-it-out flag is true.
+   impossible and no interactivity environment flag exists.
 8. **Browser-header gate:** CSP, anti-framing, MIME sniffing, referrer, and cache
    headers are asserted over HTTP.
 9. **CORS gate:** no new public origin or wildcard is introduced.
@@ -974,6 +976,9 @@ All gates are binary:
     `swagger-ui-standalone-preset.js`, and project-owned
     `api-docs-initializer.js` are served; package HTML, initializer, OAuth
     redirect helper, maps, nested paths, and all other assets return `404`.
+12. **Supply-chain gate:** root `scarfSettings.enabled` is `false`, CI and local
+    installation use `SCARF_ANALYTICS=false`, and no postinstall analytics is
+    treated as required behavior.
 
 Any failed security gate blocks release of API-DOCS-01.
 
@@ -1093,11 +1098,12 @@ human approval.
 
 ### Linter-toolchain drift
 
-`toolchain.ts`, the selected exact devDependency, `package-lock.json`, the one
-committed config file, root/backend scripts, and CI must identify the same
-branch. Redocly additionally proves Node/npm floors and both official telemetry
-opt-outs. Spectral proves a local-only ruleset and `--fail-severity warn`.
-Mismatch, both/neither configs, remote rulesets, or an unapproved version fails.
+`toolchain.ts`, exact `@stoplight/spectral-cli@6.16.2`, `package-lock.json`,
+root `.spectral.yaml`, root/backend scripts, and CI must identify the same
+toolchain. Spectral proves a local-only `spectral:oas` ruleset,
+`--fail-severity warn`, three explicit artifact inputs, no remote ruleset, and
+no ignore file. Mismatch, a second linter/config, or an unapproved version
+fails.
 
 ## Documentation Updates
 
@@ -1116,8 +1122,8 @@ Future implementation updates:
   - explain route-to-registry registration and native-route handling.
 - `docs/openapi/README.md`:
   - explain source-of-truth, generation, contract partitions, component reuse,
-    request/response schema separation, scoped/global checks, selected linter,
-    telemetry policy, and contributor workflow.
+    request/response schema separation, scoped/global checks, selected
+    Spectral toolchain, Scarf analytics opt-out, and contributor workflow.
 - `ops/API_DOCS.md`:
   - document flags, exposure matrix, local usage, production approval,
     globally non-interactive behavior, exact JSON/asset paths, security checks,
@@ -1180,13 +1186,13 @@ health behavior, worker behavior, or requires a database/provider action.
 | Manual route validators are mistaken for reusable Zod schemas | Reuse only identical runtime symbols; otherwise use explicit evidence-backed schemas and characterization tests |
 | A transformed Zod schema is reused for both directions despite Astea 9.1 lacking public `io` | Reuse only input=output; otherwise register distinct request/response schemas and contract-test both |
 | Zod/OpenAPI library changes nullable or `$ref` output | Pin `@asteasolutions/zod-to-openapi@9.1.0`, assert representative schemas, and byte-check artifacts |
-| Selected linter does not match runtime/CI constraints | Commit exactly one complete Redocly 2.43.1 or Spectral 6.16.2 branch and fail on dependency/config/script/CI mismatch |
-| Redocly sends telemetry or update checks | Set official `telemetry: off`, `REDOCLY_TELEMETRY=off`, and `REDOCLY_SUPPRESS_UPDATE_NOTICE=true` |
+| Spectral dependency/config/scripts/CI drift apart | Pin exact `@stoplight/spectral-cli@6.16.2`, root `.spectral.yaml`, local `spectral:oas`, three explicit artifacts, and `--fail-severity warn`; reject a second linter or config |
+| Dependency installation emits Scarf analytics | Set root `scarfSettings.enabled=false`, require `SCARF_ANALYTICS=false` locally and in CI, and treat postinstall analytics as unnecessary |
 | Native Medusa contracts drift | Pin exactly six entries to Medusa `2.16.0`, hash complete evidence files, and require focused contract tests plus human review |
 | Generated JSON is stale | Start the clean Wave 6 gate with read-only in-memory comparison; require all three artifacts tracked and an empty worktree |
 | BRL amounts cross the major/minor boundary | Separate PaymentAttempt/refund minor-unit components from Cart/PaymentSession major-unit components and contract-test exact conversions |
 | Internal schemas become public through shared components | Generate self-contained partitioned documents and run cross-contract leakage tests |
-| Swagger UI enables dangerous calls | Use one immutable `supportedSubmitMethods: []`; keep the Try-it-out flag no-op and defer every executable profile |
+| Swagger UI enables dangerous calls | Use one immutable `supportedSubmitMethods: []`, define no interactivity environment flag, and defer every executable profile to a separate initiative and security review |
 | UI leaks authorization | `persistAuthorization=false`, no query overrides, no examples with credentials, and HTTP/browser tests |
 | Swagger package exposes extra files | Allow exactly three package assets plus one project initializer and return `404` for package HTML, initializer, OAuth helper, maps, and all others |
 | CSP conflicts with Swagger assets | Serve the exact local allowlist and project initializer; require a focused CSP test before relaxing policy |
@@ -1212,8 +1218,11 @@ API-DOCS-01 implementation is acceptable only when:
 - Every custom route is documented or explicitly excluded.
 - Exactly six native Medusa extensions have official-version URLs,
   conservative full-evidence fingerprints, and focused contract tests.
-- `$ref` resolution and the selected Redocly-or-Spectral lint branch pass for
-  all three documents; Redocly telemetry is off when that branch is selected.
+- `$ref` resolution and exact Spectral `6.16.2` lint pass for all three
+  documents through root `.spectral.yaml`, local `spectral:oas`, and
+  `--fail-severity warn`.
+- Root `scarfSettings.enabled=false` and `SCARF_ANALYTICS=false` are enforced
+  for dependency installation and CI.
 - Foundation/Store/Admin/Webhook partial checks pass in their waves and global
   coverage runs only in Wave 6.
 - Global `openapi:check` is read-only, begins before any writer, proves all
@@ -1223,7 +1232,8 @@ API-DOCS-01 implementation is acceptable only when:
   Cart/PaymentSession major-unit schemas and contract tests pass.
 - Stripe raw body/signature and Gelato authentication are documented.
 - Store, Admin, and Webhook operations cannot execute from Swagger UI;
-  `supportedSubmitMethods: []` is immutable and the Try-it-out flag is a no-op.
+  `supportedSubmitMethods: []` is immutable and no interactivity environment
+  flag exists.
 - Production defaults expose no documentation route.
 - Internal documents require explicit enablement and protection.
 - The three `.json` routes resolve exactly; extensionless aliases return `404`.
@@ -1261,11 +1271,10 @@ Expected existing-file changes:
 - `README.md`;
 - `AGENTS.md`.
 
-Expected conditional linter file:
+Expected linter file:
 
-- Redocly branch: `redocly.yaml`; or
-- Spectral branch: `.spectral.yaml`;
-- never both.
+- `.spectral.yaml` at the repository root;
+- no second linter configuration.
 
 Expected new files/directories:
 
@@ -1306,21 +1315,30 @@ Files and surfaces not expected to change:
 
 Implementation status: **not started**.
 
-Human approval is required before:
+Decisions already taken by the corrected R1 plan:
 
-1. installing dependencies;
-2. selecting the exact Redocly or Spectral branch, or changing
-   `swagger-ui-dist@5.32.11`;
-3. modifying manifests or source files;
-4. executing Wave 1;
-5. accepting the six Medusa URLs/fingerprints or any operation whose
-   schema/auth/status evidence is incomplete;
-6. changing the Node engine floor;
-7. updating a native fingerprint after evidence drift;
-8. creating any executable profile for the four metadata-only Store
-   interaction candidates;
-9. deploying the implementation;
-10. enabling Store, Admin, Webhook, or Swagger UI documentation in production.
+- OpenAPI `3.1.2`;
+- Store / Admin / Webhooks contract split;
+- explicit TypeScript registry as source of truth;
+- `@asteasolutions/zod-to-openapi@9.1.0`;
+- `@stoplight/spectral-cli@6.16.2` with root `.spectral.yaml`;
+- `swagger-ui-dist@5.32.11`;
+- no Try-it-out implementation in API-DOCS-01;
+- production disabled by default;
+- database changes and migrations not expected.
+
+Human approval is still required before:
+
+1. accepting the final corrected R1 artifacts;
+2. accepting all six Medusa URLs and native-extension fingerprints;
+3. installing dependencies, modifying manifests/source, and executing Wave 1;
+4. accepting any operation whose schema/auth/status evidence is incomplete;
+5. changing any approved package/runtime version or updating a fingerprint
+   after evidence drift;
+6. creating any executable profile, which requires a separate initiative and
+   security review;
+7. deploying or enabling Store, Admin, Webhook, or Swagger UI documentation in
+   production.
 
 Approval of this plan authorizes only the explicitly reviewed implementation
 scope. It does not authorize deployment, production flags, provider access,
