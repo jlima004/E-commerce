@@ -108,7 +108,7 @@ Nenhum requisito ativo. O próximo milestone não está definido nem iniciado.
 - **Requirements:** 45/45 complete.
 - **Repository closure:** PR #9 merged; final head `93bcc318e9d7c2309438ca33432fb6a93877a28d`.
 - **Repository archive identity:** `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
-- **PR #10 merge commit / baseline before this GitHub Release reconciliation:** `de095d76a83e99faa0b459a58fc8b68200f02686`..
+- **PR #10 merge commit / baseline before this GitHub Release reconciliation:** `de095d76a83e99faa0b459a58fc8b68200f02686`.
 - **Tag:** annotated `v1.0`, created and pushed.
 - **Tag target:** `fbe986160535c1ba9d2a5f41ad9255e91cd13914`.
 - **GitHub Release:** published.
