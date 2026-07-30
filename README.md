@@ -196,10 +196,19 @@ corrente.
 
 ### Configuração e execução
 
+Instale as dependências e crie o arquivo local de ambiente:
+
 ```bash
 npm ci
 cp apps/backend/.env.template apps/backend/.env
+```
 
+Antes de continuar, edite `apps/backend/.env` e substitua os placeholders pelos
+valores do seu ambiente local. Nunca commite esse arquivo ou qualquer secret.
+
+Com PostgreSQL, Redis e as variáveis obrigatórias configurados, execute:
+
+```bash
 cd apps/backend
 npm run db:migrate:safe
 cd ../..
@@ -207,7 +216,6 @@ cd ../..
 npm run dev
 ```
 
-Preencha `apps/backend/.env` apenas com valores locais e nunca commite secrets.
 Por padrão, o desenvolvimento usa `WORKER_MODE=shared` e
 `ADMIN_DISABLED=false`. O Medusa escuta em `http://127.0.0.1:9000` e o Admin
 fica disponível em `/app`.
