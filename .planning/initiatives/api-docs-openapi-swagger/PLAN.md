@@ -70,6 +70,10 @@ Implementation may start only when all of the following are true:
    status-code gaps for an operation proposed for the initial contract. An
    operation with missing evidence remains explicitly excluded; its contract
    must not be invented.
+   `/store/custom` and `/admin/custom` are already explicit API-DOCS-01
+   exclusions because they are scaffold/example routes. They are not included
+   in the initial contracts. Physical removal is outside this initiative and
+   requires a separate cleanup decision.
 6. The missing per-operation Medusa `2.16.0` official-reference URLs are an
    explicit, currently unsatisfied Wave 1 documentary task, not an assumed
    precondition. Wave 2 is blocked until all six local native extensions have
@@ -143,10 +147,12 @@ Implementation may start only when all of the following are true:
    `$ref` values. Do not maintain a parallel hand-written components tree.
 6. **Contract split:**
    - Store: public/custom Store operations, selected native Store contracts,
-     and public health operations;
+     and `GET /health/live` plus `GET /health/ready`, tagged
+     `Infrastructure` with `security: []`;
    - Admin: custom Admin operations and only the locally extended or explicitly
      selected native Admin contracts;
    - Webhooks: Stripe and Gelato inbound contracts.
+   No separate infrastructure document is part of API-DOCS-01.
 7. **Generation:** build the three documents in a fixed registry order,
    canonicalize all object keys and operation collections, and write UTF-8 JSON
    with two-space indentation, LF endings, and one terminal newline.
@@ -161,7 +167,14 @@ Implementation may start only when all of the following are true:
    Store/Admin/Webhooks selection, no CDN, no external validator, no persisted
    authorization, no query-string configuration, and
    `supportedSubmitMethods: []` at the shared root configuration.
-10. **Native Medusa boundary:** do not discover or copy all routes from
+10. **Generator selection:** use
+    `@asteasolutions/zod-to-openapi@9.1.0`. `zod-openapi` is an evaluated
+    alternative, not selected for API-DOCS-01, not installed, and not part of
+    this implementation plan. If the approved generator becomes unusable, the
+    initiative stops. Reconsideration requires a new human decision,
+    compatibility and direction-behavior research, and explicit version and
+    Node gates.
+11. **Native Medusa boundary:** do not discover or copy all routes from
     `node_modules`. Track the approved native subset in a versioned manifest
     tied to Medusa `2.16.0`. The six local native extensions use conservative
     full-file evidence fingerprints and focused contract tests; any package or
@@ -792,6 +805,9 @@ npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/gen
    favicon/image/font assets, path traversal, nested paths, and every other
    package or unknown file. Do not expose the `swagger-ui-dist` directory
    through a generic static file server.
+   If the exact pinned `swagger-ui.css` references an additional runtime asset,
+   Wave 5 blocks. The asset is not served automatically, and changing the
+   manifest requires explicit human review.
 5. Use one `/docs` shell with separate Store/Admin/Webhook selections and
    one immutable shared configuration:
    - `persistAuthorization: false`;
@@ -839,6 +855,9 @@ npm run openapi:lint
 - Any non-allowlisted package asset, `index.html`, package initializer,
   OAuth redirect helper, source map, nested path, or extensionless OpenAPI
   alias returns anything other than `404`.
+- The exact pinned `swagger-ui.css` references an additional runtime asset.
+  Wave 5 must block rather than serving it or changing the manifest
+  automatically.
 - CSP requires broad `unsafe-inline` or `unsafe-eval` without a separate human
   security review.
 - Documentation routing changes any existing business route or global CORS
@@ -997,13 +1016,19 @@ this order it:
 3. fails if the generated directory contains a fourth artifact;
 4. reads the three committed byte sequences;
 5. builds all documents in memory without calling the writer;
-6. byte-compares the in-memory output with the committed bytes;
-7. runs global coverage, security, metadata, and semantic-drift checks.
+6. serializes them in memory with the canonical serializer;
+7. builds and serializes all documents a second time in memory;
+8. byte-compares both in-memory outputs;
+9. byte-compares the canonical output with the committed bytes;
+10. runs global coverage, security, metadata, and semantic-drift checks.
 
 Missing, untracked, additional, or byte-changed artifacts fail. The checker
-never writes, formats, stages, or regenerates a file. `openapi:generate` is a
-separate explicit remediation command and must not run before the check in the
-same final-gate sequence.
+never invokes the writer, creates an output directory, writes a contract,
+formats, stages, or regenerates a file. `openapi:generate` is the only writer
+and explicitly updates committed artifacts; it is a separate remediation
+command and must not run before or from the check in the same final-gate
+sequence. `openapi:verify:*` is read-only scoped validation, `openapi:lint` is
+read-only, and `openapi:check` is read-only global validation.
 
 ### Scoped versus global coverage
 
@@ -1315,7 +1340,7 @@ Files and surfaces not expected to change:
 
 Implementation status: **not started**.
 
-Decisions already taken by the corrected R1 plan:
+Decisions already taken by the corrected R2 plan:
 
 - OpenAPI `3.1.2`;
 - Store / Admin / Webhooks contract split;
@@ -1324,21 +1349,27 @@ Decisions already taken by the corrected R1 plan:
 - `@stoplight/spectral-cli@6.16.2` with root `.spectral.yaml`;
 - `swagger-ui-dist@5.32.11`;
 - no Try-it-out implementation in API-DOCS-01;
+- `/store/custom` and `/admin/custom` are explicit API-DOCS-01 exclusions;
+- health operations are in `store.openapi.json`, tagged `Infrastructure`, with
+  `security: []`;
+- the initial Swagger asset manifest contains exactly `swagger-ui.css`,
+  `swagger-ui-bundle.js`, `swagger-ui-standalone-preset.js`, and
+  `api-docs-initializer.js`, with no fonts;
+- `openapi:check` is in-memory and read-only, invokes no writer, and generates
+  no contract on the filesystem;
+- `zod-openapi` is evaluated but not selected, not installed, and not part of
+  the implementation plan;
 - production disabled by default;
 - database changes and migrations not expected.
 
 Human approval is still required before:
 
-1. accepting the final corrected R1 artifacts;
+1. accepting the final corrected R2 artifacts;
 2. accepting all six Medusa URLs and native-extension fingerprints;
 3. installing dependencies, modifying manifests/source, and executing Wave 1;
-4. accepting any operation whose schema/auth/status evidence is incomplete;
-5. changing any approved package/runtime version or updating a fingerprint
-   after evidence drift;
-6. creating any executable profile, which requires a separate initiative and
-   security review;
-7. deploying or enabling Store, Admin, Webhook, or Swagger UI documentation in
-   production.
+4. changing any approved package/runtime version;
+5. enabling Store, Admin, Webhook, or Swagger UI documentation in production;
+6. deploying.
 
 Approval of this plan authorizes only the explicitly reviewed implementation
 scope. It does not authorize deployment, production flags, provider access,

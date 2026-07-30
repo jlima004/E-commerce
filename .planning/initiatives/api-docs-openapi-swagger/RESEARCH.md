@@ -1,6 +1,6 @@
 # API-DOCS-01 — OpenAPI & Swagger UI Research
 
-**Status:** Research corrected in R1; implementation remains blocked on final human review and explicit Wave 1 authorization
+**Status:** Research corrected in R2; implementation remains blocked on final human review and explicit Wave 1 authorization
 **Consulted on:** 2026-07-30
 **Scope:** Technical research only. No package installation, runtime change, migration, build, test, provider access, deployment, or Git publication was performed.
 
@@ -24,7 +24,9 @@ Recommended tooling, subject to the human gate:
 | Interactive rendering | `swagger-ui-dist` 5.32.11 | Runtime, because the web process serves local assets |
 | Existing schema runtime | `zod` 4.2.0 | Existing runtime dependency |
 
-The preferred converter does not expose a public input/output direction switch equivalent to Zod's `io` option. The registry must consequently use a shared Zod schema in both request and response positions only when `z.input<T>` and `z.output<T>` are equal. Coercions, transforms, preprocessing, and defaults that change direction require separately registered request and response schemas or explicit OpenAPI schemas. Depending on converter internals is prohibited. `zod-openapi` remains the conditional alternative only after Node >=22.14 and a compile/behavior gate.
+The preferred converter does not expose a public input/output direction switch equivalent to Zod's `io` option. The registry must consequently use a shared Zod schema in both request and response positions only when `z.input<T>` and `z.output<T>` are equal. Coercions, transforms, preprocessing, and defaults that change direction require separately registered request and response schemas or explicit OpenAPI schemas. Depending on converter internals is prohibited.
+
+`zod-openapi` is an evaluated alternative, is not selected for API-DOCS-01, is not installed, and is not part of the implementation plan. If the approved generator becomes unusable, API-DOCS-01 stops rather than switching generators automatically. Reconsideration requires a new human decision, compatibility and direction-behavior research, and an explicit version and Node gate.
 
 The generator and linter must not run during application startup. They should emit stable JSON artifacts before packaging, and runtime routes should only serve those artifacts. The pipeline must prove route coverage, unique `operationId` values, resolved references, deterministic output, direction-safe schema registration, and no unreviewed diff.
 
@@ -61,7 +63,7 @@ Medusa maps exported HTTP method functions from `src/api/**/route.ts` to URLs. P
 
 This proves that pure route-file analysis cannot be the semantic source of truth. It can discover candidate method/path pairs, but authentication, raw-body behavior, response overlays, and native-route extensions require explicit metadata.
 
-The current tree contains custom Store, Admin, webhook, and health route files. It also contains scaffold-style `/store/custom` and `/admin/custom` examples. Those examples must be classified explicitly by the route inventory and either documented, excluded with a machine-readable reason, or removed in a later approved task. A generator must never silently skip them.
+The current tree contains custom Store, Admin, webhook, and health route files. It also contains the scaffold/example routes `/store/custom` and `/admin/custom`. Both are already an explicit API-DOCS-01 exclusion in the route inventory and are not included in the initial contracts. Physical route removal is outside API-DOCS-01 and requires a separate cleanup decision. A generator must never silently skip an unclassified route.
 
 ### Current validation reality
 
@@ -82,12 +84,12 @@ The project should own only contracts for behavior that this repository owns or 
 | Project custom Store routes | Yes | Full method, path, auth, request, response, and error contract in repository artifact `store.openapi.json`. |
 | Project custom Admin routes | Yes | Full contract in repository artifact `admin.openapi.json`; internal exposure policy. |
 | Stripe and Gelato ingress routes | Yes | Full ingress contract in repository artifact `webhooks.openapi.json`; signature and raw-body constraints; no executable UI. |
-| Health routes | Yes | Include in `store.openapi.json` under an `Infrastructure` tag, or in a small public section of the same contract; `security: []`. |
+| Health routes | Yes | Include `GET /health/live` and `GET /health/ready` in `store.openapi.json` under the `Infrastructure` tag with `security: []`. No separate infrastructure document is part of API-DOCS-01. |
 | Native Medusa route extended or overridden by project code | Yes, as a project overlay | Document the effective project behavior and link the upstream native contract. |
 | Unchanged native Medusa route directly consumed by the future storefront | Cross-reference only | Maintain a versioned native-consumer manifest and link to Medusa 2.16 Store/Admin references; do not duplicate all schemas. |
 | Unchanged native route not known to be consumed | No | The official Medusa reference remains authoritative. |
 | Admin dashboard internals not changed by this project | No | Avoid cloning the full Admin API. |
-| Example/scaffold routes | Decision required | Explicit exclusion with reason or full documentation; never implicit omission. |
+| Example/scaffold routes | No | `/store/custom` and `/admin/custom` are explicit API-DOCS-01 exclusions: scaffold/example routes that are not included in the initial contracts. Physical removal is a separate cleanup decision. |
 | Provider outbound APIs such as Stripe or Gelato APIs called by this backend | No | Link provider documentation separately. They are not this server’s ingress contract. |
 
 The three contracts are intentionally separate:
@@ -274,12 +276,16 @@ Preferred implementation:
 
 This uses Medusa’s documented Express middleware support while retaining precise project control. `swagger-ui-express` is unnecessary and would add a wrapper without solving generation, policy, CSP, or drift.
 
-The initial asset manifest should contain only the files referenced by the project-owned HTML shell:
+The initial HTTP asset allowlist is fixed at four files:
 
 - `swagger-ui.css`;
 - `swagger-ui-bundle.js`;
-- `swagger-ui-standalone-preset.js` only if the chosen layout actually imports it;
-- individually named font files only when the pinned CSS demonstrably references them.
+- `swagger-ui-standalone-preset.js`;
+- project-owned `api-docs-initializer.js`.
+
+The initial manifest therefore contains three package assets and one project-owned asset. It contains no fonts. Every other `swagger-ui-dist` file returns `404`.
+
+If the exact pinned `swagger-ui.css` references an additional runtime asset, Wave 5 blocks. The asset is not served automatically, and changing the manifest requires explicit human review.
 
 The namespace handler may match `/docs/assets/*` for dispatch, but it must return `404` for every path not present in that exact manifest. In particular, it must not serve package-provided `index.html`, `swagger-initializer.js`, `oauth2-redirect.html`, source maps, directory listings, alternate bundles, favicons, or any other non-allowlisted file. It should resolve each approved basename from a constant mapping, set an explicit MIME type, and reject encoded/path-traversal variants before filesystem resolution.
 
@@ -433,8 +439,8 @@ Versions below are the versions or active version lines observed in the official
 |---|---|---:|---|---|---|---:|---|---|---|
 | Existing `zod` 4.2.0 `z.toJSONSchema` | Convert Zod schemas to JSON Schema | Schema dialect yes; does not assemble OpenAPI operations | Yes in current app | Existing project integration | Active first-party Zod 4 docs/repository | Already yes | No new schema converter for pure JSON Schema; input/output modes; registry metadata | No path, response, security, parameter, or OpenAPI component orchestration; current routes mostly lack Zod schemas | Use as a primitive or fallback, not the complete generator |
 | `@asteasolutions/zod-to-openapi` 9.1.0 | Explicit OpenAPI registry and V3.1 generation from Zod 4 | Yes, `OpenApiGeneratorV31` | No incompatible engine declared; must prove on locked Node | Dual CJS/ESM entry points in official package | Active repository and 9.1.0 package observed | No | Best match for explicit registry; Zod 4 peer; component registration; 3.1 nullable output | Its public API does not expose Zod's input/output `io` direction switch; one schema is safe in both positions only when input=output; divergent directions need separately registered or explicit schemas; compatibility must be compile-tested | **Preferred devDependency**, with a direction-safety policy and no use of converter internals |
-| `zod-openapi` 6.0.x | Generate OAS 3.1 using Zod 4 metadata | Yes | Requires `>=22.14.0` | Package is ESM with import/require exports | Active repository and 6.0.0 package observed | No | Clean Zod `.meta()` model; no prototype extension; strong 3.1 focus | Current project engine permits Node 22 minors below 22.14; document assembly is less aligned with the desired explicit operation registry | Conditional alternative only if Node >=22.14 is enforced and compile plus direction-behavior gates pass |
-| Custom TypeScript registry + native Zod conversion | Assemble OAS directly | Yes if implemented correctly | Yes | Project-controlled Node16 module output | Maintained by project | No | Zero converter dependency; exact behavior | High specification burden; easy to mishandle refs, nullability, directionality, and metadata | Reject unless both converter candidates fail |
+| `zod-openapi` 6.0.x | Generate OAS 3.1 using Zod 4 metadata | Yes | Requires `>=22.14.0` | Package is ESM with import/require exports | Active repository and 6.0.0 package observed | No | Clean Zod `.meta()` model; no prototype extension; strong 3.1 focus | Current project engine permits Node 22 minors below 22.14; document assembly is less aligned with the desired explicit operation registry | Evaluated alternative; **not selected for API-DOCS-01**, not installed, and not part of the implementation plan. Reconsideration requires a new human decision and new compatibility, direction-behavior, version, and Node gates |
+| Custom TypeScript registry + native Zod conversion | Assemble OAS directly | Yes if implemented correctly | Yes | Project-controlled Node16 module output | Maintained by project | No | Zero converter dependency; exact behavior | High specification burden; easy to mishandle refs, nullability, directionality, and metadata | Not selected; any reconsideration requires a new human decision |
 | `swagger-ui-dist` 5.32.11 | Browser UI assets | Official 5.32 line supports 3.1.2 | Server package is compatible; verify exact lock | Browser bundle plus Node package helpers | Official Swagger API project, active 5.32 line | **Yes**, if assets are served from installed package | Official UI; multi-spec `urls`; local assets; mature configuration | Distribution contains executable/support files the project does not need; exposing the directory would broaden attack surface; CSP requires care; global Try configuration is coarse | **Preferred exact-pinned runtime dependency**, served only through an exact minimal asset manifest |
 | `swagger-ui-express` 5.0.2 | Express wrapper around Swagger UI | Delegates to `swagger-ui-dist` | Expected, but adds another compatibility surface | CommonJS-oriented Express wrapper | Maintained but much smaller wrapper project | Yes | Quick setup in plain Express | Medusa already accepts Express middleware; wrapper does not solve auth, generation, CSP, or deterministic assets | Reject |
 | `@stoplight/spectral-cli` 6.16.2 | Ruleset-based OpenAPI lint | Yes | Official package supports modern Node including 22 | CLI/library packaging supports modern Node | Mature official Stoplight project | No | Compatible with the repository engine; customizable local OAS rules; deterministic local execution | Requires project checks for cross-document and repository-specific invariants | **Selected exact devDependency**, with root `.spectral.yaml`, local `spectral:oas` only, no remote ruleset, and `--fail-severity warn` |
@@ -533,18 +539,18 @@ openapi:verify:webhooks
 openapi:check
 ```
 
-`openapi:check` should:
+`openapi:check` is strictly in-memory and read-only. It:
 
-1. generate into a temporary directory;
-2. run route and native-overlay coverage;
-3. run Spectral over `store.openapi.json`, `admin.openapi.json`, and `webhooks.openapi.json` with `--fail-severity warn`;
-4. validate global `operationId` uniqueness across all three documents;
-5. verify every local `$ref`;
-6. compare generated bytes with committed artifacts;
-7. generate a second time and compare the two temporary outputs;
-8. fail without rewriting committed files.
+1. requires a clean worktree and all three committed artifacts to be tracked;
+2. builds all three documents in memory;
+3. serializes them in memory with the canonical serializer;
+4. builds and serializes all three documents a second time in memory;
+5. compares both in-memory byte sequences;
+6. compares the canonical bytes with the committed artifacts;
+7. runs route and native-overlay coverage, Spectral with `--fail-severity warn`, global `operationId` uniqueness, local `$ref` resolution, security, and semantic-drift checks;
+8. fails without invoking the writer, creating an output directory, or writing a contract to the filesystem.
 
-Only `openapi:generate` should update committed artifacts. Human review should see both registry changes and generated JSON diff. The `openapi:verify:*`, `openapi:lint`, and `openapi:check` scripts are read-only.
+`openapi:generate` is the only writer and explicitly updates committed artifacts. `openapi:verify:*` performs read-only scoped validation, `openapi:lint` is read-only, and `openapi:check` performs read-only global validation. `openapi:check` must not execute `openapi:generate`, directly or indirectly. Human review should see both registry changes and generated JSON diff.
 
 Spectral is intentionally complemented by the read-only TypeScript checker for global `operationId` uniqueness, security declarations, reference resolution, Store/Admin/Webhooks separation, route coverage, sensitive examples, and deterministic drift.
 
@@ -608,8 +614,8 @@ Tests verify the contract; they do not generate it.
 - public Store flag does not expose Admin/Webhooks;
 - internal contract access is rejected before bytes are served;
 - UI configuration has no external validator, no credential persistence, and no submit methods;
-- each exact asset manifest entry returns only its expected JS, CSS, or required font bytes with an explicit MIME type;
-- `/docs/assets/index.html`, `/docs/assets/swagger-initializer.js`, `/docs/assets/oauth2-redirect.html`, every source map, alternate bundle, unlisted font, directory request, and arbitrary filename return `404`;
+- each of the four exact asset manifest entries returns only its expected JS or CSS bytes with an explicit MIME type;
+- `/docs/assets/index.html`, `/docs/assets/swagger-initializer.js`, `/docs/assets/oauth2-redirect.html`, every source map, alternate bundle, font, directory request, and arbitrary filename return `404`;
 - CSP, cache, content type, nosniff, and referrer headers are present;
 - docs routes do not change application CORS;
 - path traversal cannot access arbitrary `swagger-ui-dist` or filesystem files;
@@ -634,7 +640,7 @@ Generation and structural tests must not require:
 - No provider call.
 - No worker behavior change.
 - The web artifact grows by the pinned Swagger UI dependency and three JSON documents, while only the reviewed minimal asset manifest is HTTP-accessible.
-- The HTTP surface adds four logical read-only documentation endpoints (`/docs` plus three specs) and one constrained `/docs/assets/` namespace containing `N` exact GET targets. `N` is fixed and reviewed with the pinned asset manifest; the namespace fallback is always `404`.
+- The HTTP surface adds four logical read-only documentation endpoints (`/docs` plus three specs) and one constrained `/docs/assets/` namespace containing exactly four GET targets; the namespace fallback is always `404`.
 - Build/CI gains deterministic generation and lint steps.
 
 ### Startup model
@@ -677,7 +683,7 @@ Before enabling any deployed UI, implementation tests must prove:
 | Tracking tokens or PII appear in examples | Medium / Critical | No token examples; synthetic minimized fixtures; secret-pattern lint |
 | Spectral configuration drifts to a remote ruleset or ignores warnings | Medium / High | Pin `@stoplight/spectral-cli@6.16.2`, use root `.spectral.yaml` with local `spectral:oas` only, forbid ignore files, and require `--fail-severity warn` |
 | Dependency installation emits Scarf analytics | Medium / Medium | Set root `scarfSettings.enabled=false` and require `SCARF_ANALYTICS=false` for local and CI installation |
-| `zod-openapi` fails on an allowed early Node 22 minor | High under current range / Medium | Do not select unless floor becomes >=22.14 |
+| `zod-openapi` requires a higher Node 22 minor than the current engine guarantees | High under current range / Medium | Evaluated and not selected for API-DOCS-01; reconsideration requires a new human decision plus compatibility, direction-behavior, version, and Node gates |
 | Generated output changes nondeterministically | Low / Medium | Stable sort, no timestamps, double-generation byte comparison |
 | Swagger assets/specs missing from Medusa build | Medium / Medium | Compile/package integration test before exposure |
 | Whole `swagger-ui-dist` directory exposes initializer, OAuth redirect, source maps, or unused code | Medium / High | Constant exact asset manifest; no `express.static`; explicit `404` tests for all non-allowlisted paths |
@@ -690,7 +696,7 @@ Before enabling any deployed UI, implementation tests must prove:
 
 1. Adopt exact OAS 3.1.2.
 2. Create an explicit TypeScript operation registry split into Store, Admin, and Webhooks.
-3. Use `@asteasolutions/zod-to-openapi` 9.1.0 in development for OAS 3.1 assembly, without depending on an undocumented input/output direction mode or any converter internal API. Keep `zod-openapi` conditional on Node >=22.14 and a successful compile/direction-behavior gate.
+3. Use `@asteasolutions/zod-to-openapi` 9.1.0 in development for OAS 3.1 assembly, without depending on an undocumented input/output direction mode or any converter internal API. If it becomes unusable, stop API-DOCS-01; do not switch generators automatically.
 4. Reuse one Zod schema across directions only where the same schema governs runtime and input=output is proven; otherwise register separately named direction-stable request/response schemas or explicit schemas plus contract fixtures.
 5. Generate and commit three stable JSON artifacts under source control.
 6. Use TypeScript AST discovery only to enforce custom-route coverage.
@@ -745,7 +751,7 @@ The registry, not the generated JSON and not the Swagger UI, is the editable sem
 - **Production “Try it out”:** unacceptable for money, fulfillment, webhook, and Admin operations.
 - **Persisted Swagger authorization:** leaves credentials in browser storage.
 - **Immediate mass conversion of validators to Zod:** broad behavior-changing refactor outside a documentation gate.
-- **`zod-openapi` under the current engine range:** viable technology, but its Node >=22.14 floor is not guaranteed by `>=22 <23`.
+- **`zod-openapi` for API-DOCS-01:** evaluated but not selected, not installed, and absent from the implementation plan. Reconsideration requires a new human decision and renewed compatibility, direction-behavior, version, and Node research.
 
 ## Official Sources
 
@@ -775,18 +781,16 @@ Only official/primary sources were used for external technical claims.
 
 ## Open Questions
 
-1. May the Store specification be public in production, or must all production docs remain disabled?
-2. If internal docs are enabled outside local development, which approved user/network control protects them?
-3. Are `/store/custom` and `/admin/custom` real supported APIs, explicit exclusions, or cleanup candidates?
-4. Which unchanged native Medusa Store operations are directly consumed by the future storefront and therefore require cross-reference entries?
-5. Are the current native product middleware matchers the complete initial extension/override set?
-6. Should health operations live in `store.openapi.json` under `Infrastructure`, or should a later fourth public infrastructure contract be introduced?
-7. Which current handwritten validators may be migrated to shared Zod without expanding API-DOCS-01 beyond documentation behavior?
-8. Does the pinned Swagger UI shell need `swagger-ui-standalone-preset.js` or any external font file, and what exact `N`-entry asset manifest results from that decision?
+1. May the Store specification eventually be public in production, or must all production docs remain disabled?
+2. If internal docs are enabled outside local development, which approved additional network control protects them?
+3. Which unchanged native Medusa Store operations are directly consumed by the future storefront and therefore require cross-reference entries?
+4. Which current handwritten validators may be migrated to shared Zod in a future behavior-preserving initiative?
+5. Do the six official Medusa `2.16.0` URLs match the final selected native operations?
+6. Do the six native-extension fingerprints still match their reviewed local evidence?
 
 ## Human Approval Gate
 
-The R1 correction records these decisions as taken:
+The R2 correction records these decisions as taken:
 
 | Decision | Approved value |
 |---|---|
@@ -797,19 +801,25 @@ The R1 correction records these decisions as taken:
 | Linter | `@stoplight/spectral-cli@6.16.2`, root `.spectral.yaml`, local `spectral:oas` only |
 | Swagger assets | `swagger-ui-dist@5.32.11` |
 | Try it out | Not implemented in API-DOCS-01; `supportedSubmitMethods: []` unconditionally |
+| Scaffold routes | `/store/custom` and `/admin/custom` are explicit API-DOCS-01 exclusions |
+| Health | `GET /health/live` and `GET /health/ready` are in `store.openapi.json`, tagged `Infrastructure`, with `security: []` |
+| Initial asset manifest | Exactly `swagger-ui.css`, `swagger-ui-bundle.js`, `swagger-ui-standalone-preset.js`, and `api-docs-initializer.js`; no fonts |
+| `openapi:check` | In-memory and read-only; no writer invocation or filesystem contract generation |
+| `zod-openapi` | Evaluated alternative; not selected, not installed, and not part of the implementation plan |
 | Production | Disabled by default |
 | Database changes | Not expected |
 | Migration | Not expected |
 
 Implementation remains blocked until all genuinely pending gates are satisfied:
 
-1. final human review of the corrected R1 artifacts;
+1. final human review of the corrected R2 artifacts;
 2. confirmation of the six official Medusa `2.16.0` URLs;
 3. review of the six native-extension fingerprints and their local evidence;
 4. explicit authorization to install dependencies and begin Wave 1;
 5. separate approval for any package or runtime version change;
-6. separate approval for any production exposure or deployment.
+6. separate approval for any production exposure;
+7. separate approval for deployment.
 
-The `/store/custom` and `/admin/custom` classifications and any operation with incomplete schema/auth/status evidence must also be resolved before the relevant coverage gate can pass. These documentary gaps do not reopen the selected toolchain decisions.
+The scaffold-route, health-placement, initial-asset, check-mode, linter, generator, and Try-it-out decisions are closed for API-DOCS-01 and do not remain approval gates.
 
-**Research recommendation:** keep implementation blocked until final R1 human review and explicit Wave 1 authorization. A future implementation gate should remain local and reversible, with generated-artifact, package, supply-chain, security, and route-coverage proof before any production exposure is considered.
+**Research recommendation:** keep implementation blocked until final R2 human review and explicit Wave 1 authorization. A future implementation gate should remain local and reversible, with generated-artifact, package, supply-chain, security, and route-coverage proof before any production exposure is considered.
