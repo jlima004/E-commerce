@@ -21,12 +21,6 @@ Um pedido (Order) só existe e só é enviado à produção (Gelato) após confi
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
-
-### Active
-
-<!-- Current scope. Building toward these. -->
-
 - [x] Setup Medusa v2 com PostgreSQL/Supabase e Redis
 - [x] Admin Medusa em subdomínio próprio
 - [x] Catálogo: produtos, variantes e preços em BRL com metadados Gelato obrigatórios
@@ -47,6 +41,12 @@ Um pedido (Order) só existe e só é enviado à produção (Gelato) após confi
 - [x] AdminActionLog para ações administrativas de dinheiro/pedido/fulfillment (OPS-02, Phase 12 complete/closed)
 - [x] Observabilidade: Sentry backend, logs estruturados, health check
 - [x] Testes críticos cobrindo invariantes de pagamento/Order/fulfillment (TEST-01, Phase 12 complete/closed)
+
+### Active
+
+<!-- Current scope. Building toward these. -->
+
+Nenhum requisito ativo. O próximo milestone não está definido nem iniciado.
 
 ### Out of Scope
 
@@ -86,18 +86,33 @@ Um pedido (Order) só existe e só é enviado à produção (Gelato) após confi
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Order criado somente após webhook Stripe canônico aprovado | Evitar cobrança fantasma e pedidos sem pagamento confirmado | — Pending |
-| Idempotência de Order por payment_intent_id (ou cart_id + payment_intent_id) | Webhooks podem reentregar; criação deve ser à prova de duplicação | — Pending |
-| purchase_completed como evento de domínio backend (outbox), não evento frontend | Garantir registro durável independente do PostHog | — Pending |
-| Fulfillment Gelato depende de Order confirmado + purchase_completed local durável | Nunca produzir antes de pagamento e registro confiáveis | — Pending |
-| Reembolso só atualiza estado financeiro após webhook Stripe confiável; não muda order_status para canceled automaticamente | Estado financeiro e estado de pedido são desacoplados | — Pending |
-| Tokens de tracking armazenados com hash/criptografia, nunca em texto puro | Segurança de acesso de convidados | — Pending |
-| Backend-only MVP com contratos de API para storefront futura | Frontend é milestone posterior | — Pending |
+| Order criado somente após webhook Stripe canônico aprovado | Evitar cobrança fantasma e pedidos sem pagamento confirmado | — Validated in v1.0 |
+| Idempotência de Order por payment_intent_id (ou cart_id + payment_intent_id) | Webhooks podem reentregar; criação deve ser à prova de duplicação | — Validated in v1.0 |
+| purchase_completed como evento de domínio backend (outbox), não evento frontend | Garantir registro durável independente do PostHog | — Validated in v1.0 |
+| Fulfillment Gelato depende de Order confirmado + purchase_completed local durável | Nunca produzir antes de pagamento e registro confiáveis | — Validated in v1.0 |
+| Reembolso só atualiza estado financeiro após webhook Stripe confiável; não muda order_status para canceled automaticamente | Estado financeiro e estado de pedido são desacoplados | — Validated in v1.0 |
+| Tokens de tracking armazenados com hash/criptografia, nunca em texto puro | Segurança de acesso de convidados | — Validated in v1.0 |
+| Backend-only MVP com contratos de API para storefront futura | Frontend é milestone posterior | — Validated in v1.0 |
 | PRD Backend v1.1 + DB_MODEL v1.21 sobrepõem a redação mais antiga da SRS que sugere Order/awaiting_payment antes do pagamento confirmado | Estado pré-pagamento vive em Cart, PaymentCollection, PaymentSession e PaymentAttempt; Order só existe após confirmação canônica do webhook Stripe | — Decided (must be honored by all future planning) |
 | Heroku é o runtime de produção atual para o checkpoint da Fase 01 | A rota VPS/PM2/Nginx planejada foi substituída neste ciclo por Heroku/Supabase/Heroku Redis já estabilizados | — Decided (current production target) |
-| Phase 12.1 selected as an inserted release-readiness and production-validation phase for the merged backend MVP | It adds no product feature and does not start the storefront milestone | — Decided (CONTEXT complete; awaiting human review) |
+| Phase 12.1 selected as an inserted release-readiness and production-validation phase for the merged backend MVP | It adds no product feature and does not start the storefront milestone | — Validated in v1.0 (complete / closed) |
 
 > **Decision (SRS wording override):** For implementation, PRD Backend v1.1 + DB_MODEL v1.21 override older SRS wording that suggests Order/awaiting_payment before confirmed payment. Pre-payment state lives in Cart, PaymentCollection, PaymentSession, and PaymentAttempt. Order exists only after canonical Stripe webhook payment confirmation. This decision must be visible to and honored by future planning agents.
+
+## Milestone v1.0 Result
+
+- **Status:** completed, closed and archived on 2026-07-30.
+- **Scope delivered:** backend MVP through production release readiness.
+- **Phases:** 13/13 complete and closed.
+- **Plans:** 62/62 complete.
+- **Requirements:** 45/45 complete.
+- **Repository closure:** PR 8; head `7eaa223e82c819271682f0ea58ca50f66bfdbe8d`; merge commit and archive base `7c991bf422b3f1ca4ff202cad7e860db5a78ede8`.
+- **Runtime evidence:** Heroku `v78`; candidate/deployed SHA `18d809e4169daa301839542191f0d6794b02d695`.
+- **Rollback:** target `v77` documented and eligible; not executed.
+- **Identity boundary:** the repository archive commit and deployed runtime SHA are distinct.
+- **Non-blocking limitations:** Sentry external exercise, Stripe provider gate, real Resend send, real Gelato dispatch, real PostHog event and Correios API exercise remain unproven; Pix remains deferred by account eligibility; real rollback was not executed.
+- **Next state:** no next milestone defined; Phase 13 and frontend not started or authorized.
+- **Planned tag:** `v1.0`, targeting the future merge commit of the archive documentation in `main`; not created in this gate.
 
 ## Evolution
 
@@ -117,4 +132,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-24 during Phase 12.1 CONTEXT; PR 7 merged; Phase 12 remains closed; 45/45 requirements and 56/56 existing plans complete; milestone not archived; frontend not started*
+*Last updated: 2026-07-30 at Milestone v1.0 archive; 13/13 phases, 62/62 plans and 45/45 requirements complete; milestone closed and archived; frontend not started*
