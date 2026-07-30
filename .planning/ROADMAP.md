@@ -25,6 +25,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route *(complete; closed 2026-07-02)*
 - [x] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow *(complete; closed 2026-07-03)*
 - [x] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests *(6/6 plans executed; human REVIEW/re-REVIEW PASS; CLOSURE PASS; complete / closed 2026-07-23; OPS-01 complete; OPS-02 complete; TEST-01 complete)*
+- [x] **Phase 12.1: Backend MVP Release Readiness & Production Validation** — INSERTED — Production validation PASS; complete and closed 2026-07-29 without adding product features.
 
 ## Phase Details
 
@@ -450,22 +451,23 @@ Plans:
 
 **Post-closure PR7 correction gate P12-POST-CLOSURE-PR7-R1:**
 PASS; refund replay audit, exchange reconciliation and alert scanner pagination corrected.
-Phase 12 closure reaffirmed. Phase 12.1 remains not started.
+Phase 12 closure reaffirmed. At that historical gate, Phase 12.1 had not started.
 
 **Post-closure PR7 correction gate P12-POST-CLOSURE-PR7-R2:**
 PASS; disposable PostgreSQL harness now invokes `docker` directly (no runtime `rtk` dependency); Cursor/WSL2 Docker proven; serial disposable PostgreSQL 5/5 PASS.
-P1 Admin-auth finding classified false positive by PM (no runtime change). Phase 12 closure reaffirmed again. Phase 12.1 remains not started.
+P1 Admin-auth finding classified false positive by PM (no runtime change). Phase 12 closure reaffirmed again. At that historical gate, Phase 12.1 had not started.
 
 **Post-closure PR7 correction gate P12-POST-CLOSURE-PR7-R3:**
 PASS; OperationalAlert list/detail now reuse requireAdminActor and reject
 secret API-key actors before service resolution. Phase 12 closure reaffirmed.
-Phase 12.1 remains not started.
+At that historical gate, Phase 12.1 had not started.
 
 **Post-closure PR7 correction gate P12-POST-CLOSURE-PR7-R4:**
 P12-POST-CLOSURE-PR7-R4 PASS:
 checkout-completion now owns its stale/reclaim policy through a pure contract;
 OperationalAlert consumes that policy without the money path importing the
-alert module. Phase 12 closure reaffirmed. Phase 12.1 remains not started.
+alert module. Phase 12 closure reaffirmed. At that historical gate, Phase 12.1
+had not started.
 
 **Boundary preserved:** Phase 09 `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the local fulfillment truth and closes FUL-04. Phase 12 OPS-01 adds the promotion of that condition to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
 
@@ -479,6 +481,7 @@ alert module. Phase 12 closure reaffirmed. Phase 12.1 remains not started.
 **Plans**: 6/6 executed (human REVIEW/re-REVIEW PASS; CLOSURE PASS; complete / closed 2026-07-23; OPS-01 complete; OPS-02 complete; TEST-01 complete)
 
 Plans:
+
 - [x] 12-01-PLAN.md — Single-owner disposable PostgreSQL lifecycle and execution-base proof foundation
 - [x] 12-02-PLAN.md — OperationalAlert persistence, atomic upsert and Admin GET list/detail
 - [x] 12-03-PLAN.md — Factual fulfillment/payment-stuck detections and worker scanner
@@ -486,10 +489,92 @@ Plans:
 - [x] 12-05-PLAN.md — Runtime registration and explicit Strategy B audit instrumentation on refund/exchange Admin routes
 - [x] 12-06-PLAN.md — Named invariant suites, PostgreSQL concurrency/reconciliation proofs and SHA-based final validation
 
+### Phase 12.1: Backend MVP Release Readiness & Production Validation (INSERTED)
+
+**Goal:** Prove that the merged backend MVP can be built, migrated, released and observed safely on the actual Heroku + Supabase PostgreSQL + Redis topology, with the deployed SHA, process topology and critical backend surfaces validated without adding new product features.
+**Mode:** mvp
+**Type:** inserted operational phase
+**Depends on:** Phase 12 closed and PR 7 merged into `main`
+**Requirements:** None — no new product requirements; the existing 45/45 remain complete
+**Manual gate:** Phase 12.1 complete and closed at the manual CLOSURE gate on
+2026-07-29. Exactly six sequential plans and six waves are complete.
+`PHASE 12.1 VERIFICATION: PASS`; `C01–C18 = 18 PASS / 0 BLOCKED`;
+`D12.1-01–D12.1-15 = 15 PASS / 0 BLOCKED`. Earlier BLOCKED attempts,
+SUMMARYs and corrections remain historical. Phase 13 and milestone archive
+remain blocked pending explicit approval.
+**Boundaries:** Release readiness and production validation only. No storefront,
+new provider, payment method, product feature, unlimited hardening, automatic
+milestone closeout, or reopening of Phases 1–12. Real provider mutations and
+production business mutations require separate explicit human authorization.
+**Success Criteria** (confirmed by final verification and closure):
+
+  1. Baseline is derived from the merged `main`.
+  2. Unit, Modules, HTTP, lint, and build pass on the release candidate.
+  3. Migration inventory is coherent.
+  4. Release migrations run through the appropriate direct/session connection.
+  5. Deployment is associated with a known SHA.
+  6. `GET /health/live` reports `status = live`.
+  7. `GET /health/ready` reports `status = ready`.
+  8. Readiness reports PostgreSQL `up`.
+  9. Readiness reports Redis `up`.
+  10. `web.1` is active/up.
+  11. `worker.1` is active/up.
+  12. Health `version` equals the SHA actually deployed.
+  13. Essential public/read-only routes return no 5xx.
+  14. Administrative authentication fails closed.
+  15. Logs and evidence contain no secrets.
+  16. Health monitoring is not pinned to a numeric release.
+  17. Rollback and runbook are documented with objective criteria.
+  18. Limitations and providers not exercised are explicitly declared.
+
+**Plans:** 6 planned / 6 completed
+**Waves:** 6
+**Historical lineage:** attempt 1 BLOCKED; correction R1; attempt 2 BLOCKED;
+corrections R2–R4; subsequent execution/corrections through C4 preserved.
+**Verification:** PASS
+**Closure:** PASS
+**Status:** complete / closed
+
+Plans:
+
+**Wave 1**
+
+- [x] 12.1-01-PLAN.md — Release Candidate Local
+
+**Wave 2** *(sequential dependency completed)*
+
+- [x] 12.1-02-PLAN.md — Migration and Release Preflight
+
+**Wave 3** *(sequential dependency and deploy authorization completed)*
+
+- [x] 12.1-03-PLAN.md — Authorized Heroku Release
+
+**Wave 4** *(sequential dependency completed)*
+
+- [x] 12.1-04-PLAN.md — Production Read-only Validation
+
+**Wave 5** *(sequential dependency completed)*
+
+- [x] 12.1-05-PLAN.md — Observability and Provider Limitations
+
+**Wave 6** *(sequential dependency completed)*
+
+- [x] 12.1-06-PLAN.md — Rollback/Runbook and Final Evidence Gate
+
+**Closure status (2026-07-29):** Phase 12.1 complete and closed. Production
+validation PASS. Release `v78` maps to candidate SHA
+`18d809e4169daa301839542191f0d6794b02d695`. Rollback target `v77` is
+documented and eligible; rollback was not executed. Health, PostgreSQL, Redis,
+`web.1` and `worker.1` PASS. C01–C18 PASS. Provider limitations are declared:
+Sentry not externally exercised; Stripe provider not exercised in the provider
+gate; no proven real Resend send, Gelato dispatch, PostHog event or Correios API
+in this cycle; Pix deferred by account eligibility. Phase 13 remains blocked
+pending explicit approval.
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 12.1
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -505,7 +590,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. Secure Guest Tracking | 3/3 | Complete / Closed | 2026-07-02 |
 | 11. Refunds & Exchanges (Admin) | 4/4 | Complete / Closed | 2026-07-03 |
 | 12. Ops, Audit & Critical Tests | 6/6 | Complete / Closed | 2026-07-23 |
+| 12.1. Backend MVP Release Readiness & Production Validation | 6/6 | Complete / Closed | 2026-07-29 |
 
 ---
 *Roadmap created: 2026-06-22*
-*Granularity: fine (12 phases) · Mode: mvp · Coverage: 45/45 requirements mapped*
+*Granularity: fine (13 phases) · Mode: mvp · Coverage: 45/45 requirements mapped*
