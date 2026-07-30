@@ -137,7 +137,7 @@ rollback real: not executed
 
 Os registros `BLOCKED` históricos permanecem preservados e foram supersedidos pela linhagem corretiva aprovada. Nenhuma dessas limitações é blocker ativo do milestone.
 
-**Não-ações deste gate:** nenhum acesso de produção/provider, teste, build, banco, migration, deploy, rollback, restart, scale, alteração de produto/runtime, movimentação de fases, novo milestone, Phase 13, frontend, tag, GitHub release, merge, auto-merge, comentário/aprovação da PR ou resolução da thread de review.
+**Não-ações deste gate de reconciliação pós-tag:** nenhum acesso de produção/provider, teste, build, banco, migration, deploy, rollback, restart, scale, alteração de produto/runtime, movimentação de fases, novo milestone, Phase 13, frontend ou GitHub Release. A tag `v1.0`, criada anteriormente, não foi criada, excluída, movida ou recriada neste gate. Nenhum merge ou auto-merge da PR #10, comentário/aprovação de PR ou resolução de thread de review foi executado.
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
 
