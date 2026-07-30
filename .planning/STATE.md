@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 12.1
 current_phase_name: Backend MVP Release Readiness & Production Validation
-status: phase-12-1-plan-12-1-01-correction-r4-complete-awaiting-human-review
-stopped_at: Phase 12.1 Plan 12.1-01 documentary correction R4 complete; awaiting human review before push and attempt 3 authorization
-last_updated: "2026-07-24"
-last_activity: 2026-07-24
-last_activity_desc: Phase 12.1 Plan 12.1-01 documentary correction R4 complete; decompiled BETWEEN normalization; attempt 3 not started
+status: phase-12-1-closed-next-phase-blocked
+stopped_at: Phase 12.1 CLOSURE complete / awaiting human review
+last_updated: "2026-07-29"
+last_activity: 2026-07-29
+last_activity_desc: Phase 12.1 closed after final verification PASS
 progress:
   total_phases: 13
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 62
-  completed_plans: 56
-  percent: 92
+  completed_plans: 62
+  percent: 100
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-24)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 12.1 Plan 12.1-01 documentary correction R4 complete; awaiting human review before push and attempt 3 authorization. Attempt 1 BLOCKED and historically committed. Attempt 2 BLOCKED and historically committed. Correction R2 committed / human review BLOCKED. Correction R3 committed / human review BLOCKED. PR 7 is accepted, closed, and merged into `main`. Attempt 3, 12.1-02, deploy, providers, rollback, milestone closeout, Phase 13, and frontend remain blocked.
+**Current focus:** Phase 12.1 complete and closed after final verification PASS. Earlier BLOCKED attempts and corrections remain historical. Awaiting human review, commit and push of closure documentation only. Milestone archive, Phase 13 and frontend remain blocked.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 12.1 Plan 12.1-01 documentary correction R4 complete / awaiting human review. `completed_phases: 12`; `total_plans: 62`; `completed_plans: 56`; product requirements 45/45 remain complete. Phase 12 stays closed. Do not start 12.1-01 attempt 3, 12.1-02, deploy, provider validation, rollback, milestone closeout, Phase 13, or frontend automatically.
+**Current gate:** Phase 12.1 closed at manual CLOSURE gate. `completed_phases: 13`; `total_plans: 62`; `completed_plans: 62`; product requirements 45/45 remain complete. Do not archive the milestone or start Phase 13 or frontend automatically.
 
 ```text
 Phase 12 CONTEXT approved
@@ -60,9 +60,9 @@ P12-CLOSURE PASS
 TEST-01 complete
 OPS-01 complete
 OPS-02 complete
-completed_phases: 12
-completed_plans: 56
-percent: 92
+completed_phases: 13
+completed_plans: 62
+percent: 100
 Phase 12 closed; reaffirmed by P12-POST-CLOSURE-PR7-R1, R2, R3, and R4 PASS
 P12-POST-CLOSURE-PR7-R1 PASS
 P12-POST-CLOSURE-PR7-R2 PASS
@@ -84,14 +84,18 @@ Phase 12.1 12.1-01 attempt 2: BLOCKED / committed
 Phase 12.1 12.1-01 correction R2: committed / human review BLOCKED
 Phase 12.1 12.1-01 correction R3: committed / human review BLOCKED
 Phase 12.1 12.1-01 correction R4: documentary PASS / awaiting human review
-Phase 12.1 12.1-01 attempt 3: not started
-Phase 12.1 12.1-02: not authorized
-Phase 12.1: 6 planned / 0 completed
-milestone phases: 12/13 closed
+Phase 12.1 12.1-01 attempt 3: completed under the accepted corrective contract
+Phase 12.1 12.1-01 through 12.1-06: complete
+PHASE 12.1 VERIFICATION: PASS
+C01–C18: 18 PASS / 0 BLOCKED
+D12.1-01–D12.1-15: 15 PASS / 0 BLOCKED
+PHASE 12.1 CLOSURE: PASS
+Phase 12.1: 6 planned / 6 completed / closed
+milestone phases: 13/13 closed
 milestone closed/archived: no
 Phase 13 not started / not authorized
 frontend not started
-next permitted step: human review of correction R4; push and attempt 3 of 12.1-01 remain blocked
+next permitted step: human review, commit and push of closure documentation only
 ```
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
@@ -113,18 +117,18 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — 12.1-01 correction R4 complete / awaiting human review
-Plan: 56/62 completed milestone plans; Phase 12.1 has 6 planned / 0 completed
-Status: phase-12-1-plan-12-1-01-correction-r4-complete-awaiting-human-review
-Last activity: 2026-07-24 - Phase 12.1 Plan 12.1-01 documentary correction R4 complete; decompiled BETWEEN normalization
+Phase: 12.1 (Backend MVP Release Readiness & Production Validation) — complete / closed at manual CLOSURE gate
+Plan: 62/62 completed milestone plans; Phase 12.1 has 6 planned / 6 completed
+Status: phase-12-1-closed-next-phase-blocked
+Last activity: 2026-07-29 - Phase 12.1 closed after final verification PASS
 
-Progress: [█████████░] 92% phases (12/13); 56/62 plans complete; Phase 12.1 12.1-01 attempts 1–2 BLOCKED; correction R4 awaiting human review; attempt 3 not started
+Progress: [██████████] 100% phases (13/13); 62/62 plans complete; Phase 12.1 closed; milestone archive and Phase 13 remain blocked
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 56 / 62 planned
+- Total plans completed: 62 / 62 planned
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -144,7 +148,7 @@ Progress: [█████████░] 92% phases (12/13); 56/62 plans compl
 | 10. Secure Guest Tracking | 3 executed / 3 planned | Complete / Closed | — |
 | 11. Refunds & Exchanges (Admin) | 4 executed / 4 planned | Complete / Closed | — |
 | 12. Ops, Audit & Critical Tests | 6 executed / 6 planned | Complete / Closed | — |
-| 12.1. Backend MVP Release Readiness & Production Validation | 0 executed / 6 planned | 12.1-01 correction R4 complete / awaiting human review | — |
+| 12.1. Backend MVP Release Readiness & Production Validation | 6 executed / 6 planned | Complete / Closed | — |
 
 **Recent Trend:**
 
@@ -239,6 +243,7 @@ Recent decisions affecting current work:
 - [Phase 12.1 Plan 12.1-01 documentary correction R2]: Attempt 2 correctly BLOCKED under R1 Prova D manifests; Unit/lint/build/Modules normal/PostgreSQL 5/5/HTTP PASS; tables 11/11; indexes 76/76; blocker restricted to documentary Prova D (class-name vs MikroORM basename for three TBD files; 33 stable names treated as total constraint set vs 28 inline generated-name checks). BLOCKED SUMMARY committed historically. Documentary correction separates source classes from history basenames, adds 11 mappings, and replaces total constraint exact-set with stable named (33/33 present) + generated semantic exact multiset + unexpected=0. No migration/runtime/test changes. Attempt 3 requires separate authorization. 12.1-02 remains blocked.
 - [Phase 12.1 Plan 12.1-01 documentary correction R3]: R2 checker PASS; R2 human review BLOCKED. Attempt 2 and correction R2 preserved. Added closed semantic ID contract for 33 stable constraints, deterministic fail-closed canonicalization for 28 generated CHECKs, PK/UNIQUE ordered-column verification, bucket assignment with duplicate=0, and corrected execution metadata. No migration/runtime/test changes. Attempt 3 requires authorization after R3. 12.1-02 remains blocked.
 - [Phase 12.1 Plan 12.1-01 documentary correction R4]: R3 checker PASS; R3 human review BLOCKED. Attempt 2 and corrections R1–R3 preserved. Stable/generated inventories and execution metadata accepted. Remaining blocker restricted to PostgreSQL-decompiled BETWEEN form for five `btrim-length-between` constraints. Added closed equivalence `BETWEEN` ↔ `>= lower AND <= upper` with same-column/`AND`/`>=`then`<=`/exact-bounds enforcement; compatible `::text` casts only; malformed resemblance BLOCKED (no silent no-match). No migration/runtime/test changes. Attempt 3 requires authorization after R4. 12.1-02 remains blocked.
+- [Phase 12.1 closure]: Plans 12.1-01..12.1-06 are complete. `12.1-06-CORRECTION-C4-SUMMARY.md` is the final verification authority: PHASE 12.1 VERIFICATION PASS, C01–C18 18/18 PASS, D12.1-01–D12.1-15 15/15 PASS. Release v78 maps to candidate SHA `18d809e4169daa301839542191f0d6794b02d695`; rollback target v77 is documented and eligible but rollback was not executed. Historical BLOCKED SUMMARYs and C1→C4 corrections remain preserved. Sentry, Stripe, Resend, Gelato, PostHog, Correios and Pix limitations remain declared, not promoted to provider execution. Phase 13, milestone archive and frontend remain blocked.
 
 ### Pending Todos
 
@@ -277,16 +282,16 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-24
+Last session: 2026-07-29
 
-Stopped at: Phase 12.1 Plan 12.1-01 documentary correction R4 complete; awaiting human review before push and attempt 3 authorization.
+Stopped at: Phase 12.1 CLOSURE complete / awaiting human review.
 
 Resume file:
-`.planning/phases/12.1-mvp-release-readiness-production-validation/12.1-01-PLAN.md`
+`.planning/phases/12.1-mvp-release-readiness-production-validation/12.1-CLOSURE.md`
 
-Next permitted step: human review of correction R4;
-push and attempt 3 of 12.1-01 remain blocked. Do not start 12.1-02, Phase 13,
-milestone closeout, deploy, providers, or frontend automatically.
+Next permitted step: human review, commit and push of closure documentation
+only. Do not start Phase 13, archive the milestone, create a PR, merge, deploy,
+exercise providers, execute rollback, or start frontend automatically.
 
 ## Quick Tasks Completed
 

@@ -25,7 +25,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 10: Secure Guest Tracking** - Hashed TrackingAccessToken + token-gated public tracking route *(complete; closed 2026-07-02)*
 - [x] **Phase 11: Refunds & Exchanges (Admin)** - Webhook-confirmed refunds decoupled from order_status + operational exchanges + manual Correios flow *(complete; closed 2026-07-03)*
 - [x] **Phase 12: Ops, Audit & Critical Tests** - OperationalAlert + AdminActionLog + automated invariant regression tests *(6/6 plans executed; human REVIEW/re-REVIEW PASS; CLOSURE PASS; complete / closed 2026-07-23; OPS-01 complete; OPS-02 complete; TEST-01 complete)*
-- [ ] **Phase 12.1: Backend MVP Release Readiness & Production Validation** — INSERTED — Validate the merged backend MVP as a deployable and observable release on the actual Heroku/Supabase/Redis topology, without adding product features.
+- [x] **Phase 12.1: Backend MVP Release Readiness & Production Validation** — INSERTED — Production validation PASS; complete and closed 2026-07-29 without adding product features.
 
 ## Phase Details
 
@@ -496,18 +496,17 @@ Plans:
 **Type:** inserted operational phase
 **Depends on:** Phase 12 closed and PR 7 merged into `main`
 **Requirements:** None — no new product requirements; the existing 45/45 remain complete
-**Manual gate:** 12.1-01 attempt 1 BLOCKED; correction R1 complete;
-attempt 2 BLOCKED; correction R2 committed / human review BLOCKED;
-correction R3 committed / human review BLOCKED;
-correction R4 complete / awaiting human review.
-Exactly six sequential plans and six waves are preserved; 0 plans completed.
-Attempt 3 of 12.1-01, 12.1-02, deploy, provider access, rollback, REVIEW,
-CLOSURE and milestone closeout remain blocked.
+**Manual gate:** Phase 12.1 complete and closed at the manual CLOSURE gate on
+2026-07-29. Exactly six sequential plans and six waves are complete.
+`PHASE 12.1 VERIFICATION: PASS`; `C01–C18 = 18 PASS / 0 BLOCKED`;
+`D12.1-01–D12.1-15 = 15 PASS / 0 BLOCKED`. Earlier BLOCKED attempts,
+SUMMARYs and corrections remain historical. Phase 13 and milestone archive
+remain blocked pending explicit approval.
 **Boundaries:** Release readiness and production validation only. No storefront,
 new provider, payment method, product feature, unlimited hardening, automatic
 milestone closeout, or reopening of Phases 1–12. Real provider mutations and
 production business mutations require separate explicit human authorization.
-**Success Criteria** (future evidence required; none is claimed by this CONTEXT gate):
+**Success Criteria** (confirmed by final verification and closure):
 
   1. Baseline is derived from the merged `main`.
   2. Unit, Modules, HTTP, lint, and build pass on the release candidate.
@@ -528,44 +527,49 @@ production business mutations require separate explicit human authorization.
   17. Rollback and runbook are documented with objective criteria.
   18. Limitations and providers not exercised are explicitly declared.
 
-**Plans:** 6 planned / 0 completed
+**Plans:** 6 planned / 6 completed
 **Waves:** 6
-**12.1-01 attempt 1:** BLOCKED
-**12.1-01 correction R1:** complete
-**12.1-01 attempt 2:** BLOCKED
-**12.1-01 correction R2:** committed / human review BLOCKED
-**12.1-01 correction R3:** committed / human review BLOCKED
-**12.1-01 correction R4:** complete / awaiting human review
-**12.1-01 attempt 3:** not started
-**Execution:** attempt 3 not started
-**12.1-02:** blocked
-**Status:** 12.1-01 documentary correction R4 complete / awaiting human review
+**Historical lineage:** attempt 1 BLOCKED; correction R1; attempt 2 BLOCKED;
+corrections R2–R4; subsequent execution/corrections through C4 preserved.
+**Verification:** PASS
+**Closure:** PASS
+**Status:** complete / closed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 12.1-01-PLAN.md — Release Candidate Local *(attempt 1 BLOCKED; correction R1 complete; attempt 2 BLOCKED; correction R2 committed / human review BLOCKED; correction R3 committed / human review BLOCKED; correction R4 complete / awaiting human review; attempt 3 not started)*
+- [x] 12.1-01-PLAN.md — Release Candidate Local
 
-**Wave 2** *(blocked on 12.1-01 manual gate)*
+**Wave 2** *(sequential dependency completed)*
 
-- [ ] 12.1-02-PLAN.md — Migration and Release Preflight
+- [x] 12.1-02-PLAN.md — Migration and Release Preflight
 
-**Wave 3** *(blocked on 12.1-02 GO and separate deploy authorization)*
+**Wave 3** *(sequential dependency and deploy authorization completed)*
 
-- [ ] 12.1-03-PLAN.md — Authorized Heroku Release
+- [x] 12.1-03-PLAN.md — Authorized Heroku Release
 
-**Wave 4** *(blocked on 12.1-03 manual gate)*
+**Wave 4** *(sequential dependency completed)*
 
-- [ ] 12.1-04-PLAN.md — Production Read-only Validation
+- [x] 12.1-04-PLAN.md — Production Read-only Validation
 
-**Wave 5** *(blocked on 12.1-04 manual gate)*
+**Wave 5** *(sequential dependency completed)*
 
-- [ ] 12.1-05-PLAN.md — Observability and Provider Limitations
+- [x] 12.1-05-PLAN.md — Observability and Provider Limitations
 
-**Wave 6** *(blocked on 12.1-05 manual gate)*
+**Wave 6** *(sequential dependency completed)*
 
-- [ ] 12.1-06-PLAN.md — Rollback/Runbook and Final Evidence Gate
+- [x] 12.1-06-PLAN.md — Rollback/Runbook and Final Evidence Gate
+
+**Closure status (2026-07-29):** Phase 12.1 complete and closed. Production
+validation PASS. Release `v78` maps to candidate SHA
+`18d809e4169daa301839542191f0d6794b02d695`. Rollback target `v77` is
+documented and eligible; rollback was not executed. Health, PostgreSQL, Redis,
+`web.1` and `worker.1` PASS. C01–C18 PASS. Provider limitations are declared:
+Sentry not externally exercised; Stripe provider not exercised in the provider
+gate; no proven real Resend send, Gelato dispatch, PostHog event or Correios API
+in this cycle; Pix deferred by account eligibility. Phase 13 remains blocked
+pending explicit approval.
 
 ## Progress
 
@@ -586,7 +590,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. Secure Guest Tracking | 3/3 | Complete / Closed | 2026-07-02 |
 | 11. Refunds & Exchanges (Admin) | 4/4 | Complete / Closed | 2026-07-03 |
 | 12. Ops, Audit & Critical Tests | 6/6 | Complete / Closed | 2026-07-23 |
-| 12.1. Backend MVP Release Readiness & Production Validation | 0/6 | 12.1-01 correction R4 complete / awaiting human review | — |
+| 12.1. Backend MVP Release Readiness & Production Validation | 6/6 | Complete / Closed | 2026-07-29 |
 
 ---
 *Roadmap created: 2026-06-22*
