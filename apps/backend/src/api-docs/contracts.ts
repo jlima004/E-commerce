@@ -61,6 +61,7 @@ export type OpenApiDocument = {
   servers: Array<{ url: string; description: string }>
   paths: Record<string, JsonObject>
   components: {
+    headers: Record<string, unknown>
     parameters: Record<string, unknown>
     responses: Record<string, unknown>
     schemas: Record<string, unknown>

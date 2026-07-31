@@ -1,9 +1,994 @@
 {
   "components": {
+    "headers": {
+      "XCorrelationId": {
+        "description": "Correlation identifier returned by the server on every response. Echoes the request x-correlation-id when provided; otherwise a server-generated value.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
     "parameters": {},
     "responses": {},
-    "schemas": {},
-    "securitySchemes": {}
+    "schemas": {
+      "PublicStoreCartItem": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unit_price": {
+            "description": "Line item unit price in BRL major units.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "x-money-unit": "brl-major"
+          },
+          "variant_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variant_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "quantity",
+          "title",
+          "variant_id",
+          "variant_title",
+          "unit_price"
+        ],
+        "type": "object"
+      },
+      "PublicStoreCartPreOrder": {
+        "additionalProperties": false,
+        "description": "Public pre-order cart. Monetary totals are BRL major units, not integer centavos.",
+        "properties": {
+          "checkout_data_complete": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currency_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "customer": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "email": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "email"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "discount_total": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "x-money-unit": "brl-major"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "item_total": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "x-money-unit": "brl-major"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicStoreCartItem"
+            },
+            "type": "array"
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "region_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shipping_address": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PublicStoreCartShippingAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shipping_total": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "x-money-unit": "brl-major"
+          },
+          "subtotal": {
+            "description": "Cart subtotal in BRL major units.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "x-money-unit": "brl-major"
+          },
+          "tax_total": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "x-money-unit": "brl-major"
+          },
+          "total": {
+            "description": "Cart total in BRL major units.",
+            "type": [
+              "number",
+              "null"
+            ],
+            "x-money-unit": "brl-major"
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "currency_code",
+          "locale",
+          "total",
+          "subtotal",
+          "item_total",
+          "shipping_total",
+          "tax_total",
+          "discount_total",
+          "region_id",
+          "created_at",
+          "updated_at",
+          "checkout_data_complete",
+          "customer",
+          "items",
+          "shipping_address"
+        ],
+        "type": "object"
+      },
+      "PublicStoreCartShippingAddress": {
+        "additionalProperties": false,
+        "properties": {
+          "address_1": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address_2": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "city": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "company": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "masked_federal_tax_id": {
+            "description": "Masked federal tax identifier. Full CPF/CNPJ values are never returned.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "postal_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "province": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "first_name",
+          "last_name",
+          "company",
+          "address_1",
+          "address_2",
+          "city",
+          "postal_code",
+          "country_code",
+          "province",
+          "phone",
+          "masked_federal_tax_id"
+        ],
+        "type": "object"
+      },
+      "PublicStoreCatalogProduct": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "handle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/StoreCatalogImage"
+            },
+            "type": "array"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/StoreCatalogOption"
+            },
+            "type": "array"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thumbnail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/StoreCatalogVariant"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "subtitle",
+          "description",
+          "handle",
+          "thumbnail",
+          "images",
+          "options",
+          "variants"
+        ],
+        "type": "object"
+      },
+      "PublicTrackingLookupResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "fulfillment_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "item_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "item_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tracking_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "order_reference",
+          "order_status",
+          "fulfillment_status",
+          "tracking_status",
+          "item_count",
+          "item_labels",
+          "updated_at",
+          "message"
+        ],
+        "type": "object"
+      },
+      "StoreCardPaymentAttemptEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "payment_attempt": {
+            "$ref": "#/components/schemas/StoreCardPaymentAttemptResponse"
+          }
+        },
+        "required": [
+          "payment_attempt"
+        ],
+        "type": "object"
+      },
+      "StoreCardPaymentAttemptResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/StorePaymentAttemptAmountMinor"
+          },
+          "client_secret": {
+            "description": "Ephemeral Stripe client secret. Never logged or used as an OpenAPI example.",
+            "type": "string"
+          },
+          "currency_code": {
+            "const": "BRL",
+            "type": "string"
+          },
+          "payment_attempt_id": {
+            "type": "string"
+          },
+          "payment_method_type": {
+            "const": "card",
+            "type": "string"
+          },
+          "provider_payment_intent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "const": "card_client_secret_created",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payment_attempt_id",
+          "payment_method_type",
+          "status",
+          "amount",
+          "currency_code",
+          "provider_payment_intent_id",
+          "client_secret"
+        ],
+        "type": "object"
+      },
+      "StoreCartResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cart": {
+            "$ref": "#/components/schemas/PublicStoreCartPreOrder"
+          }
+        },
+        "required": [
+          "cart"
+        ],
+        "type": "object"
+      },
+      "StoreCatalogImage": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url"
+        ],
+        "type": "object"
+      },
+      "StoreCatalogOption": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "values"
+        ],
+        "type": "object"
+      },
+      "StoreCatalogPrice": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "description": "Sellable catalog price amount in BRL major units.",
+            "type": "integer",
+            "x-money-unit": "brl-major"
+          },
+          "currency_code": {
+            "const": "brl",
+            "description": "Catalog sellable price currency. Always BRL.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency_code",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "StoreCatalogVariant": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "is_sellable": {
+            "const": true,
+            "description": "Public catalog variants are always sellable.",
+            "type": "boolean"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/StoreCatalogVariantOption"
+            },
+            "type": "array"
+          },
+          "price": {
+            "$ref": "#/components/schemas/StoreCatalogPrice"
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "sku",
+          "is_sellable",
+          "price",
+          "options"
+        ],
+        "type": "object"
+      },
+      "StoreCatalogVariantOption": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "StoreCustomerCartAttachPreserveResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cart": {
+            "description": "Existing customer cart, or null when the customer has no cart to preserve.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PublicStoreCartPreOrder"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "const": "preserve_customer_cart",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "missing_session_guest_cart",
+              "guest_cart_not_found",
+              "guest_cart_empty_or_not_usable",
+              "guest_cart_already_customer_cart"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "reason",
+          "cart"
+        ],
+        "type": "object"
+      },
+      "StoreCustomerCartAttachRequest": {
+        "properties": {
+          "cart_id": {
+            "description": "Optional guest cart id. When supplied, it must match the guest cart owned by the current session.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "StoreCustomerCartAttachResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/StoreCustomerCartAttachPreserveResponse"
+          },
+          {
+            "$ref": "#/components/schemas/StoreCustomerCartAttachTransferResponse"
+          }
+        ]
+      },
+      "StoreCustomerCartAttachTransferResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cart": {
+            "$ref": "#/components/schemas/PublicStoreCartPreOrder"
+          },
+          "outcome": {
+            "const": "attached_guest_cart",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "cart"
+        ],
+        "type": "object"
+      },
+      "StoreError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Optional machine-readable error code when present.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "Human-readable sanitized error message.",
+            "type": "string"
+          },
+          "type": {
+            "description": "Medusa or project error type code.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "message"
+        ],
+        "type": "object"
+      },
+      "StoreHealthChecks": {
+        "additionalProperties": false,
+        "properties": {
+          "postgres": {
+            "enum": [
+              "up",
+              "down"
+            ],
+            "type": "string"
+          },
+          "redis": {
+            "enum": [
+              "up",
+              "down"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "postgres",
+          "redis"
+        ],
+        "type": "object"
+      },
+      "StoreHealthLiveResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string"
+          },
+          "status": {
+            "const": "live",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "timestamp",
+          "version"
+        ],
+        "type": "object"
+      },
+      "StoreHealthReadyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "$ref": "#/components/schemas/StoreHealthChecks"
+          },
+          "service": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "timestamp",
+          "version",
+          "checks"
+        ],
+        "type": "object"
+      },
+      "StorePaymentAttemptAmountMinor": {
+        "description": "PaymentAttempt amount in integer BRL minor units (centavos). Distinct from Cart and PaymentSession major-unit amounts.",
+        "minimum": 1,
+        "type": "integer",
+        "x-money-unit": "brl-minor"
+      },
+      "StorePaymentAttemptStartRequest": {
+        "additionalProperties": true,
+        "description": "Optional JSON body for card/Pix payment-attempt start. Body may be omitted or `{}`. Payment method is defined by the path (`/card` or `/pix`), not by a body field. Matches runtime rejectClientMoneyFields: CLIENT_MONEY_BODY_FIELDS are structurally forbidden via propertyNames; unknown non-money keys are ignored (additionalProperties is intentionally true).",
+        "propertyNames": {
+          "not": {
+            "enum": [
+              "amount",
+              "total",
+              "subtotal",
+              "item_total",
+              "shipping_total",
+              "tax_total",
+              "discount_total",
+              "grand_total",
+              "currency",
+              "currency_code",
+              "region_currency"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "StorePixPaymentAttemptEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "payment_attempt": {
+            "$ref": "#/components/schemas/StorePixPaymentAttemptResponse"
+          }
+        },
+        "required": [
+          "payment_attempt"
+        ],
+        "type": "object"
+      },
+      "StorePixPaymentAttemptResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/StorePaymentAttemptAmountMinor"
+          },
+          "client_secret": {
+            "description": "Optional Stripe client secret when returned by the provider layer.",
+            "type": "string"
+          },
+          "copy_paste": {
+            "description": "Pix copy-and-paste payload. Sensitive payment material; OpenAPI examples are omitted.",
+            "type": "string"
+          },
+          "currency_code": {
+            "const": "BRL",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hosted_instructions_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "payment_attempt_id": {
+            "type": "string"
+          },
+          "payment_method_type": {
+            "const": "pix",
+            "type": "string"
+          },
+          "provider_payment_intent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "qr_code": {
+            "description": "Pix QR payload. Sensitive payment material; OpenAPI examples are omitted.",
+            "type": "string"
+          },
+          "status": {
+            "const": "awaiting_pix_payment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payment_attempt_id",
+          "payment_method_type",
+          "status",
+          "amount",
+          "currency_code",
+          "provider_payment_intent_id",
+          "expires_at",
+          "qr_code",
+          "copy_paste",
+          "hosted_instructions_url"
+        ],
+        "type": "object"
+      },
+      "StoreProductResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "product": {
+            "$ref": "#/components/schemas/PublicStoreCatalogProduct"
+          }
+        },
+        "required": [
+          "product"
+        ],
+        "type": "object"
+      },
+      "StoreProductsListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "estimate_count": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/PublicStoreCatalogProduct"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "products"
+        ],
+        "type": "object"
+      },
+      "StoreTrackingLookupEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "tracking": {
+            "$ref": "#/components/schemas/PublicTrackingLookupResponse"
+          }
+        },
+        "required": [
+          "tracking"
+        ],
+        "type": "object"
+      },
+      "StoreTrackingLookupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "description": "Opaque tracking capability token. Accepted only in the JSON body; never in path or query. Examples are intentionally omitted.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "customerBearer": {
+        "bearerFormat": "JWT",
+        "description": "Optional or required customer JWT bearer token, depending on the operation.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "customerSession": {
+        "description": "Optional or required customer session cookie, depending on the operation.",
+        "in": "cookie",
+        "name": "connect.sid",
+        "type": "apiKey"
+      },
+      "publishableApiKey": {
+        "description": "Medusa publishable API key required for Store namespace routes.",
+        "in": "header",
+        "name": "x-publishable-api-key",
+        "type": "apiKey"
+      }
+    }
   },
   "info": {
     "contact": {
@@ -19,11 +1004,3605 @@
     "version": "1.0.0"
   },
   "openapi": "3.1.2",
-  "paths": {},
+  "paths": {
+    "/health/live": {
+      "get": {
+        "description": "Liveness probe",
+        "operationId": "storeHealthGetLive",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreHealthLiveResponse"
+                }
+              }
+            },
+            "description": "Process is live.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Unhandled framework or infrastructure failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [],
+        "summary": "Liveness probe",
+        "tags": [
+          "Infrastructure"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Readiness probe",
+        "operationId": "storeHealthGetReady",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreHealthReadyResponse"
+                }
+              }
+            },
+            "description": "Process is ready to accept traffic.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Unhandled framework or infrastructure failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreHealthReadyResponse"
+                }
+              }
+            },
+            "description": "One or more required dependencies are not ready.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [],
+        "summary": "Readiness probe",
+        "tags": [
+          "Infrastructure"
+        ]
+      }
+    },
+    "/store/carts/{id}/payment-attempts/card": {
+      "post": {
+        "description": "Start a card PaymentAttempt for a cart",
+        "operationId": "storePaymentAttemptCreateCard",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cart identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorePaymentAttemptStartRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCardPaymentAttemptEnvelope"
+                }
+              }
+            },
+            "description": "Card PaymentAttempt created. amount is integer BRL minor units; client_secret is ephemeral.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Client money fields were supplied, cart access was denied, or the cart is ineligible/incomplete.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Cart was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Stripe, module, or persistence failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Start a card PaymentAttempt for a cart",
+        "tags": [
+          "Payment"
+        ]
+      }
+    },
+    "/store/carts/{id}/payment-attempts/pix": {
+      "post": {
+        "description": "Start a Pix PaymentAttempt for a cart",
+        "operationId": "storePaymentAttemptCreatePix",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cart identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorePaymentAttemptStartRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorePixPaymentAttemptEnvelope"
+                }
+              }
+            },
+            "description": "Pix PaymentAttempt created. amount is integer BRL minor units; QR/copy-paste material is sensitive.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Client money fields were supplied, cart access was denied, or the cart is ineligible/incomplete.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Cart was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Stripe, module, or persistence failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Start a Pix PaymentAttempt for a cart",
+        "tags": [
+          "Payment"
+        ]
+      }
+    },
+    "/store/carts/active": {
+      "get": {
+        "description": "Get the active Store cart",
+        "operationId": "storeCartGetActive",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCartResponse"
+                }
+              }
+            },
+            "description": "Active cart serialized as PublicStoreCartPreOrder. Monetary totals are BRL major units.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Current guest session or authenticated customer has no active cart.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Cart retrieval failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Get the active Store cart",
+        "tags": [
+          "Cart"
+        ]
+      },
+      "post": {
+        "description": "Create or reuse the active Store cart",
+        "operationId": "storeCartCreateOrGetActive",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCartResponse"
+                }
+              }
+            },
+            "description": "Existing active cart reused. Monetary totals are BRL major units.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCartResponse"
+                }
+              }
+            },
+            "description": "New BRL cart created for the current actor. Monetary totals are BRL major units.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Session, customer, or cart workflow failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Create or reuse the active Store cart",
+        "tags": [
+          "Cart"
+        ]
+      }
+    },
+    "/store/customers/me/cart/attach": {
+      "post": {
+        "description": "Attach the guest session cart to the authenticated customer",
+        "operationId": "storeCustomerCartAttach",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreCustomerCartAttachRequest"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCustomerCartAttachResponse"
+                }
+              }
+            },
+            "description": "Either preserves the customer cart or attaches the authorized guest cart.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Invalid attach request body.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Missing publishable API key or authenticated customer actor.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Guest cart is not authorized for the current session.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Authenticated customer or referenced cart was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Attach workflow failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Attach the guest session cart to the authenticated customer",
+        "tags": [
+          "Customer"
+        ]
+      }
+    },
+    "/store/products": {
+      "get": {
+        "description": "List sellable Store catalog products",
+        "operationId": "storeProductsList",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Native fields selector (createSelectParams / createFindParams). Project middleware replaces client-supplied fields with the closed public catalog field set. Nested filters use Medusa bracket notation; recursive $and/$or filters are intentionally omitted from the public contract.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of products to return. Medusa StoreGetProductsParams default: 50.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of products to skip. Medusa StoreGetProductsParams default: 0.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Sort order expression accepted by createFindParams.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "When true, include soft-deleted records (createFindParams boolean preprocess).",
+            "in": "query",
+            "name": "with_deleted",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Region context used by the native Medusa Store product query (cleared after pricing/tax context is applied).",
+            "in": "query",
+            "name": "region_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Country context for pricing/tax normalization (cleared after context is applied).",
+            "in": "query",
+            "name": "country_code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Province/state context for pricing/tax normalization (cleared after context is applied).",
+            "in": "query",
+            "name": "province",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cart context for pricing/tax normalization (cleared after context is applied).",
+            "in": "query",
+            "name": "cart_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by sales channel id (string or string[]).",
+            "in": "query",
+            "name": "sales_channel_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Full-text search query.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by product id (string or string[]).",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product title (string or string[]).",
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product handle (string or string[]).",
+            "in": "query",
+            "name": "handle",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter gift-card products. Accepts boolean or boolean string (Medusa booleanString).",
+            "in": "query",
+            "name": "is_giftcard",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "enum": [
+                    "true",
+                    "false"
+                  ],
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by category id (string or string[]).",
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by external id (string or string[]).",
+            "in": "query",
+            "name": "external_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by collection id (string or string[]).",
+            "in": "query",
+            "name": "collection_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by tag id (string or string[]).",
+            "in": "query",
+            "name": "tag_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product type id (string or string[]).",
+            "in": "query",
+            "name": "type_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Created-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "created_at[$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Created-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "created_at[$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Created-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "created_at[$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Created-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "created_at[$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Created-at $like filter.",
+            "in": "query",
+            "name": "created_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $ilike filter.",
+            "in": "query",
+            "name": "created_at[$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $re filter.",
+            "in": "query",
+            "name": "created_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $contains filter.",
+            "in": "query",
+            "name": "created_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $gt filter.",
+            "in": "query",
+            "name": "created_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $gte filter.",
+            "in": "query",
+            "name": "created_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $lt filter.",
+            "in": "query",
+            "name": "created_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $lte filter.",
+            "in": "query",
+            "name": "created_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $like filter.",
+            "in": "query",
+            "name": "updated_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $ilike filter.",
+            "in": "query",
+            "name": "updated_at[$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $re filter.",
+            "in": "query",
+            "name": "updated_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $contains filter.",
+            "in": "query",
+            "name": "updated_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $gt filter.",
+            "in": "query",
+            "name": "updated_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $gte filter.",
+            "in": "query",
+            "name": "updated_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $lt filter.",
+            "in": "query",
+            "name": "updated_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $lte filter.",
+            "in": "query",
+            "name": "updated_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $like filter.",
+            "in": "query",
+            "name": "deleted_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $ilike filter.",
+            "in": "query",
+            "name": "deleted_at[$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $re filter.",
+            "in": "query",
+            "name": "deleted_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $contains filter.",
+            "in": "query",
+            "name": "deleted_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $gt filter.",
+            "in": "query",
+            "name": "deleted_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $gte filter.",
+            "in": "query",
+            "name": "deleted_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $lt filter.",
+            "in": "query",
+            "name": "deleted_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $lte filter.",
+            "in": "query",
+            "name": "deleted_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant search query.",
+            "in": "query",
+            "name": "variants[q]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by variant id. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[id]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant SKU. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[sku]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant EAN. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[ean]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant UPC. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[upc]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant barcode. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[barcode]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant option value.",
+            "in": "query",
+            "name": "variants[options][value]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by variant option id.",
+            "in": "query",
+            "name": "variants[options][option_id]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $like filter.",
+            "in": "query",
+            "name": "variants[created_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $ilike filter.",
+            "in": "query",
+            "name": "variants[created_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $re filter.",
+            "in": "query",
+            "name": "variants[created_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $contains filter.",
+            "in": "query",
+            "name": "variants[created_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $gt filter.",
+            "in": "query",
+            "name": "variants[created_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $gte filter.",
+            "in": "query",
+            "name": "variants[created_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $lt filter.",
+            "in": "query",
+            "name": "variants[created_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $lte filter.",
+            "in": "query",
+            "name": "variants[created_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $like filter.",
+            "in": "query",
+            "name": "variants[updated_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $ilike filter.",
+            "in": "query",
+            "name": "variants[updated_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $re filter.",
+            "in": "query",
+            "name": "variants[updated_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $contains filter.",
+            "in": "query",
+            "name": "variants[updated_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $gt filter.",
+            "in": "query",
+            "name": "variants[updated_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $gte filter.",
+            "in": "query",
+            "name": "variants[updated_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $lt filter.",
+            "in": "query",
+            "name": "variants[updated_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $lte filter.",
+            "in": "query",
+            "name": "variants[updated_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $like filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $ilike filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $re filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $contains filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $gt filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $gte filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $lt filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $lte filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreProductsListResponse"
+                }
+              }
+            },
+            "description": "Sellable products with the public Store catalog serializer applied.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Native query validation failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Upstream or framework failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "List sellable Store catalog products",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/store/products/{id}": {
+      "get": {
+        "description": "Retrieve a sellable Store catalog product",
+        "operationId": "storeProductsRetrieve",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Product identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Native fields selector (createSelectParams / createFindParams). Project middleware replaces client-supplied fields with the closed public catalog field set. Nested filters use Medusa bracket notation; recursive $and/$or filters are intentionally omitted from the public contract.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of products to return. Medusa StoreGetProductsParams default: 50.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of products to skip. Medusa StoreGetProductsParams default: 0.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Sort order expression accepted by createFindParams.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "When true, include soft-deleted records (createFindParams boolean preprocess).",
+            "in": "query",
+            "name": "with_deleted",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Region context used by the native Medusa Store product query (cleared after pricing/tax context is applied).",
+            "in": "query",
+            "name": "region_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Country context for pricing/tax normalization (cleared after context is applied).",
+            "in": "query",
+            "name": "country_code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Province/state context for pricing/tax normalization (cleared after context is applied).",
+            "in": "query",
+            "name": "province",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cart context for pricing/tax normalization (cleared after context is applied).",
+            "in": "query",
+            "name": "cart_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by sales channel id (string or string[]).",
+            "in": "query",
+            "name": "sales_channel_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Full-text search query.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by product id (string or string[]).",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product title (string or string[]).",
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product handle (string or string[]).",
+            "in": "query",
+            "name": "handle",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter gift-card products. Accepts boolean or boolean string (Medusa booleanString).",
+            "in": "query",
+            "name": "is_giftcard",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "enum": [
+                    "true",
+                    "false"
+                  ],
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by category id (string or string[]).",
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by external id (string or string[]).",
+            "in": "query",
+            "name": "external_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by collection id (string or string[]).",
+            "in": "query",
+            "name": "collection_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by tag id (string or string[]).",
+            "in": "query",
+            "name": "tag_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product type id (string or string[]).",
+            "in": "query",
+            "name": "type_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Created-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "created_at[$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Created-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "created_at[$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Created-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "created_at[$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Created-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "created_at[$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Created-at $like filter.",
+            "in": "query",
+            "name": "created_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $ilike filter.",
+            "in": "query",
+            "name": "created_at[$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $re filter.",
+            "in": "query",
+            "name": "created_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $contains filter.",
+            "in": "query",
+            "name": "created_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $gt filter.",
+            "in": "query",
+            "name": "created_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $gte filter.",
+            "in": "query",
+            "name": "created_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $lt filter.",
+            "in": "query",
+            "name": "created_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $lte filter.",
+            "in": "query",
+            "name": "created_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $like filter.",
+            "in": "query",
+            "name": "updated_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $ilike filter.",
+            "in": "query",
+            "name": "updated_at[$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $re filter.",
+            "in": "query",
+            "name": "updated_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $contains filter.",
+            "in": "query",
+            "name": "updated_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $gt filter.",
+            "in": "query",
+            "name": "updated_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $gte filter.",
+            "in": "query",
+            "name": "updated_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $lt filter.",
+            "in": "query",
+            "name": "updated_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $lte filter.",
+            "in": "query",
+            "name": "updated_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $like filter.",
+            "in": "query",
+            "name": "deleted_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $ilike filter.",
+            "in": "query",
+            "name": "deleted_at[$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $re filter.",
+            "in": "query",
+            "name": "deleted_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $contains filter.",
+            "in": "query",
+            "name": "deleted_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $gt filter.",
+            "in": "query",
+            "name": "deleted_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $gte filter.",
+            "in": "query",
+            "name": "deleted_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $lt filter.",
+            "in": "query",
+            "name": "deleted_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $lte filter.",
+            "in": "query",
+            "name": "deleted_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant search query.",
+            "in": "query",
+            "name": "variants[q]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by variant id. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[id]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant SKU. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[sku]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant EAN. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[ean]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant UPC. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[upc]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant barcode. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[barcode]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant option value.",
+            "in": "query",
+            "name": "variants[options][value]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by variant option id.",
+            "in": "query",
+            "name": "variants[options][option_id]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $like filter.",
+            "in": "query",
+            "name": "variants[created_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $ilike filter.",
+            "in": "query",
+            "name": "variants[created_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $re filter.",
+            "in": "query",
+            "name": "variants[created_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $contains filter.",
+            "in": "query",
+            "name": "variants[created_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $gt filter.",
+            "in": "query",
+            "name": "variants[created_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $gte filter.",
+            "in": "query",
+            "name": "variants[created_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $lt filter.",
+            "in": "query",
+            "name": "variants[created_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $lte filter.",
+            "in": "query",
+            "name": "variants[created_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $like filter.",
+            "in": "query",
+            "name": "variants[updated_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $ilike filter.",
+            "in": "query",
+            "name": "variants[updated_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $re filter.",
+            "in": "query",
+            "name": "variants[updated_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $contains filter.",
+            "in": "query",
+            "name": "variants[updated_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $gt filter.",
+            "in": "query",
+            "name": "variants[updated_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $gte filter.",
+            "in": "query",
+            "name": "variants[updated_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $lt filter.",
+            "in": "query",
+            "name": "variants[updated_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $lte filter.",
+            "in": "query",
+            "name": "variants[updated_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $like filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $ilike filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $re filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $contains filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $gt filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $gte filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $lt filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $lte filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreProductResponse"
+                }
+              }
+            },
+            "description": "Sellable product with the public Store catalog serializer applied.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Native query validation failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Product not found, or product has no sellable variant after project serialization.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Upstream or framework failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Retrieve a sellable Store catalog product",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/store/tracking/lookup": {
+      "post": {
+        "description": "Lookup public order tracking with a capability token",
+        "operationId": "storeTrackingLookup",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreTrackingLookupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreTrackingLookupEnvelope"
+                }
+              }
+            },
+            "description": "Allowlisted public tracking summary.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Malformed body or rejected non-token identifier fields.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Invalid, expired, revoked, or unavailable tracking token. The error body is intentionally indistinguishable.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Tracking lookup rate limit exceeded.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreError"
+                }
+              }
+            },
+            "description": "Internal tracking lookup failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Lookup public order tracking with a capability token",
+        "tags": [
+          "Tracking"
+        ]
+      }
+    }
+  },
   "servers": [
     {
       "description": "Same-origin",
       "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Cart"
+    },
+    {
+      "name": "Catalog"
+    },
+    {
+      "name": "Customer"
+    },
+    {
+      "name": "Infrastructure"
+    },
+    {
+      "name": "Payment"
+    },
+    {
+      "name": "Tracking"
     }
   ],
   "x-medusa-version": "2.16.0"

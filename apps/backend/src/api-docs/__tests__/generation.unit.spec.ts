@@ -39,7 +39,7 @@ function syntheticOperation(
 }
 
 describe("OpenAPI foundation generation", () => {
-  it("builds three deterministic OpenAPI 3.1.2 skeleton documents", () => {
+  it("builds three deterministic OpenAPI 3.1.2 documents with Store populated", () => {
     const first = buildContracts()
     const second = buildContracts()
 
@@ -60,13 +60,29 @@ describe("OpenAPI foundation generation", () => {
       expect(contract.document.servers).toEqual([
         { url: "/", description: "Same-origin" },
       ])
-      expect(contract.document.paths).toEqual({})
       expect(contract.bytes.endsWith("\n")).toBe(true)
       expect(contract.bytes.endsWith("\n\n")).toBe(false)
       expect(contract.bytes).not.toMatch(
-        /(?:generatedAt|timestamp|gitSha|\/home\/|localhost|herokuapp)/i
+        /(?:generatedAt|gitSha|\/home\/|localhost|herokuapp)/i
       )
     }
+
+    const store = first.find((contract) => contract.surface === "store")
+    const admin = first.find((contract) => contract.surface === "admin")
+    const webhooks = first.find((contract) => contract.surface === "webhooks")
+    expect(Object.keys(store?.document.paths ?? {}).sort()).toEqual([
+      "/health/live",
+      "/health/ready",
+      "/store/carts/active",
+      "/store/carts/{id}/payment-attempts/card",
+      "/store/carts/{id}/payment-attempts/pix",
+      "/store/customers/me/cart/attach",
+      "/store/products",
+      "/store/products/{id}",
+      "/store/tracking/lookup",
+    ])
+    expect(admin?.document.paths).toEqual({})
+    expect(webhooks?.document.paths).toEqual({})
   })
 
   it("uses canonical HTTP method order only inside Path Items", () => {
