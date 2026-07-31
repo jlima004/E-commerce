@@ -75,7 +75,52 @@
       },
       "AdminExchangeAffectedItemRequest": {
         "additionalProperties": false,
-        "minProperties": 1,
+        "anyOf": [
+          {
+            "properties": {
+              "line_item_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "line_item_id"
+            ]
+          },
+          {
+            "properties": {
+              "product_title": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "product_title"
+            ]
+          },
+          {
+            "properties": {
+              "variant_title": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "variant_title"
+            ]
+          },
+          {
+            "properties": {
+              "quantity": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "quantity"
+            ]
+          }
+        ],
         "properties": {
           "line_item_id": {
             "description": "Optional line-item identifier. Non-string values are ignored.",
@@ -128,8 +173,15 @@
             ]
           },
           "quantity": {
-            "minimum": 1,
-            "type": "integer"
+            "oneOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "variant_title": {
             "description": "Optional variant title. Non-string values are ignored.",
@@ -485,8 +537,90 @@
       },
       "AdminExchangeUpdateRequest": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "properties": {
+              "status": {
+                "enum": [
+                  "opened",
+                  "awaiting_customer_return",
+                  "return_in_transit",
+                  "return_received",
+                  "replacement_review",
+                  "resolved",
+                  "rejected",
+                  "canceled"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          {
+            "properties": {
+              "customer_visible_note": {}
+            },
+            "required": [
+              "customer_visible_note"
+            ]
+          },
+          {
+            "properties": {
+              "operator_note": {}
+            },
+            "required": [
+              "operator_note"
+            ]
+          },
+          {
+            "properties": {
+              "reverse_tracking_code": {}
+            },
+            "required": [
+              "reverse_tracking_code"
+            ]
+          },
+          {
+            "properties": {
+              "reverse_authorization_code": {}
+            },
+            "required": [
+              "reverse_authorization_code"
+            ]
+          },
+          {
+            "properties": {
+              "reverse_label_reference": {}
+            },
+            "required": [
+              "reverse_label_reference"
+            ]
+          },
+          {
+            "properties": {
+              "reverse_logistics_provider": {
+                "oneOf": [
+                  {
+                    "enum": [
+                      "correios_manual",
+                      "other_manual"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "reverse_logistics_provider"
+            ]
+          }
+        ],
         "description": "At least one effective update must remain after runtime normalization. Some optional non-string values are ignored or normalized to null rather than rejected.",
-        "minProperties": 1,
         "properties": {
           "customer_visible_note": {
             "description": "Non-string values are normalized to null.",
@@ -811,6 +945,7 @@
       },
       "AdminOperationalAlertMetadata": {
         "additionalProperties": false,
+        "description": "Sanitized, explicitly allowlisted scalar diagnostic references for the internal Admin contract. This metadata is not a raw payload, headers, secret data, or an HTTP webhook-log resource.",
         "properties": {
           "checkout_completion_log_id": {
             "type": [
@@ -2997,6 +3132,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Fields selector accepted by the native Medusa 2.16.0 AdminGetProductParams validator.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -3097,6 +3241,15 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Fields selector accepted by the native Medusa 2.16.0 AdminGetProductParams validator.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -3215,6 +3368,15 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Fields selector accepted by the native Medusa 2.16.0 AdminGetProductParams validator.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -3342,6 +3504,15 @@
             "in": "path",
             "name": "variant_id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Fields selector accepted by the native Medusa 2.16.0 AdminGetProductParams validator.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
             "schema": {
               "type": "string"
             }

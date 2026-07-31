@@ -60,6 +60,17 @@ export const ADMIN_VARIANT_ID_PATH = {
   description: "Product variant identifier.",
 } as const
 
+export const ADMIN_PRODUCT_FIELDS_QUERY = {
+  name: "fields",
+  in: "query",
+  required: false,
+  schema: {
+    type: "string",
+  },
+  description:
+    "Fields selector accepted by the native Medusa 2.16.0 AdminGetProductParams validator.",
+} as const
+
 export const ADMIN_EXCHANGE_ID_PATH = {
   name: "id",
   in: "path",

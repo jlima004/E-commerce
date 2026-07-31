@@ -384,13 +384,35 @@ function registerExchangeSchemas(registry: ContractRegistryBundle): void {
   registry.registerComponent("admin", "schemas", "AdminExchangeAffectedItemRequest", {
     type: "object",
     additionalProperties: false,
-    minProperties: 1,
     properties: {
       line_item_id: normalizableString("Optional line-item identifier. Non-string values are ignored."),
       product_title: normalizableString("Optional product title. Non-string values are ignored."),
       variant_title: normalizableString("Optional variant title. Non-string values are ignored."),
-      quantity: { type: "integer", minimum: 1 },
+      quantity: {
+        oneOf: [
+          { type: "integer", minimum: 1 },
+          { type: "null" },
+        ],
+      },
     },
+    anyOf: [
+      {
+        required: ["line_item_id"],
+        properties: { line_item_id: { type: "string", minLength: 1 } },
+      },
+      {
+        required: ["product_title"],
+        properties: { product_title: { type: "string", minLength: 1 } },
+      },
+      {
+        required: ["variant_title"],
+        properties: { variant_title: { type: "string", minLength: 1 } },
+      },
+      {
+        required: ["quantity"],
+        properties: { quantity: { type: "integer", minimum: 1 } },
+      },
+    ],
   })
 
   registry.registerComponent("admin", "schemas", "AdminExchangeAffectedItem", {
@@ -425,7 +447,6 @@ function registerExchangeSchemas(registry: ContractRegistryBundle): void {
   registry.registerComponent("admin", "schemas", "AdminExchangeUpdateRequest", {
     type: "object",
     additionalProperties: false,
-    minProperties: 1,
     description: "At least one effective update must remain after runtime normalization. Some optional non-string values are ignored or normalized to null rather than rejected.",
     properties: {
       status: { type: "string", enum: exchangeStatuses },
@@ -436,6 +457,43 @@ function registerExchangeSchemas(registry: ContractRegistryBundle): void {
       reverse_authorization_code: normalizableString("Non-string values are normalized to null."),
       reverse_label_reference: normalizableString("Non-string values are normalized to null."),
     },
+    anyOf: [
+      {
+        required: ["status"],
+        properties: { status: { type: "string", enum: exchangeStatuses } },
+      },
+      {
+        required: ["customer_visible_note"],
+        properties: { customer_visible_note: {} },
+      },
+      {
+        required: ["operator_note"],
+        properties: { operator_note: {} },
+      },
+      {
+        required: ["reverse_tracking_code"],
+        properties: { reverse_tracking_code: {} },
+      },
+      {
+        required: ["reverse_authorization_code"],
+        properties: { reverse_authorization_code: {} },
+      },
+      {
+        required: ["reverse_label_reference"],
+        properties: { reverse_label_reference: {} },
+      },
+      {
+        required: ["reverse_logistics_provider"],
+        properties: {
+          reverse_logistics_provider: {
+            oneOf: [
+              { type: "string", enum: reverseLogisticsProviders },
+              { type: "null" },
+            ],
+          },
+        },
+      },
+    ],
   })
 
   registry.registerComponent("admin", "schemas", "AdminExchangeRequest", {
@@ -476,6 +534,7 @@ function registerOperationalAlertSchemas(registry: ContractRegistryBundle): void
   registry.registerComponent("admin", "schemas", "AdminOperationalAlertMetadata", {
     type: "object",
     additionalProperties: false,
+    description: "Sanitized, explicitly allowlisted scalar diagnostic references for the internal Admin contract. This metadata is not a raw payload, headers, secret data, or an HTTP webhook-log resource.",
     properties: {
       payment_attempt_id: { type: ["string", "number", "boolean"] },
       payment_intent_id: { type: ["string", "number", "boolean"] },

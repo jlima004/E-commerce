@@ -28,6 +28,32 @@ const USER_ONLY_PATHS = new Set([
   "/admin/operational-alerts",
   "/admin/operational-alerts/{id}",
 ])
+const OPERATIONAL_METADATA_FIELDS = [
+  "payment_attempt_id",
+  "payment_intent_id",
+  "checkout_completion_log_id",
+  "webhook_event_log_id",
+  "fulfillment_id",
+  "order_id",
+  "detector_code",
+  "source_status",
+  "operator_alert_code",
+] as const
+const FORBIDDEN_OPERATIONAL_METADATA_FIELDS = [
+  "payload",
+  "raw_payload",
+  "body",
+  "headers",
+  "authorization",
+  "cookie",
+  "cookies",
+  "token",
+  "secret",
+  "client_secret",
+  "stripe_payload",
+  "gelato_payload",
+  "webhook_payload",
+] as const
 
 type DocumentOperation = {
   security: Array<Record<string, string[]>>
@@ -130,6 +156,27 @@ describe("OpenAPI Admin contract", () => {
           }),
         ])
       )
+    }
+  })
+
+  it("documents optional string fields only on the four native product operations", () => {
+    for (const { path: operationPath, operation } of operations) {
+      const fields = (operation.parameters ?? []).filter(
+        (parameter) => parameter.name === "fields"
+      )
+
+      if (NATIVE_PRODUCT_PATHS.has(operationPath)) {
+        expect(fields).toEqual([
+          expect.objectContaining({
+            name: "fields",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+          }),
+        ])
+      } else {
+        expect(fields).toHaveLength(0)
+      }
     }
   })
 
@@ -257,6 +304,118 @@ describe("OpenAPI Admin contract", () => {
     expect(update.patch).toBeUndefined()
   })
 
+  it("accepts only affected items with an effective runtime contribution", () => {
+    const schema = admin.components.schemas.AdminExchangeAffectedItemRequest as {
+      type: string
+      additionalProperties: boolean
+      properties: Record<
+        string,
+        { description?: string; oneOf: Array<Record<string, unknown>> }
+      >
+      anyOf: Array<{
+        required: string[]
+        properties: Record<string, Record<string, unknown>>
+      }>
+    }
+
+    expect(schema.type).toBe("object")
+    expect(schema.additionalProperties).toBe(false)
+    expect(schema.properties.quantity.oneOf).toEqual([
+      { type: "integer", minimum: 1 },
+      { type: "null" },
+    ])
+    expect(schema.anyOf).toEqual([
+      {
+        required: ["line_item_id"],
+        properties: { line_item_id: { type: "string", minLength: 1 } },
+      },
+      {
+        required: ["product_title"],
+        properties: { product_title: { type: "string", minLength: 1 } },
+      },
+      {
+        required: ["variant_title"],
+        properties: { variant_title: { type: "string", minLength: 1 } },
+      },
+      {
+        required: ["quantity"],
+        properties: { quantity: { type: "integer", minimum: 1 } },
+      },
+    ])
+    expect(schema.anyOf).toHaveLength(4)
+
+    for (const field of ["line_item_id", "product_title", "variant_title"]) {
+      expect(schema.properties[field].description).toMatch(
+        /non-string values are ignored/i
+      )
+      expect(schema.properties[field].oneOf).toEqual(
+        expect.arrayContaining([
+          { type: "number" },
+          { type: "boolean" },
+          { type: "object", additionalProperties: true },
+          { type: "array", items: {} },
+        ])
+      )
+    }
+  })
+
+  it("accepts only exchange updates retained by runtime normalization", () => {
+    const schema = admin.components.schemas.AdminExchangeUpdateRequest as {
+      type: string
+      additionalProperties: boolean
+      properties: Record<
+        string,
+        { description?: string; oneOf?: Array<Record<string, unknown>> }
+      >
+      anyOf: Array<{
+        required: string[]
+        properties: Record<string, Record<string, unknown>>
+      }>
+    }
+
+    expect(schema.type).toBe("object")
+    expect(schema.additionalProperties).toBe(false)
+    expect(schema.anyOf).toHaveLength(7)
+    expect(schema.anyOf.map((branch) => branch.required)).toEqual([
+      ["status"],
+      ["customer_visible_note"],
+      ["operator_note"],
+      ["reverse_tracking_code"],
+      ["reverse_authorization_code"],
+      ["reverse_label_reference"],
+      ["reverse_logistics_provider"],
+    ])
+
+    const providerBranch = schema.anyOf.find(
+      (branch) => branch.required[0] === "reverse_logistics_provider"
+    )
+    expect(providerBranch).toEqual({
+      required: ["reverse_logistics_provider"],
+      properties: {
+        reverse_logistics_provider: {
+          oneOf: [
+            {
+              type: "string",
+              enum: ["correios_manual", "other_manual"],
+            },
+            { type: "null" },
+          ],
+        },
+      },
+    })
+    expect(schema.properties.reverse_logistics_provider.description).toMatch(
+      /non-string values are ignored/i
+    )
+    expect(schema.properties.reverse_logistics_provider.oneOf).toEqual(
+      expect.arrayContaining([
+        { type: "number" },
+        { type: "boolean" },
+        { type: "object", additionalProperties: true },
+        { type: "array", items: {} },
+      ])
+    )
+  })
+
   it("keeps variant additional_data limited to top-level variant routes", () => {
     const createProduct = admin.components.schemas.AdminProductCreateRequest as {
       properties: { variants: { items: { $ref: string } } }
@@ -315,14 +474,54 @@ describe("OpenAPI Admin contract", () => {
     )
   })
 
-  it("does not expose audit endpoints or internal model schemas", () => {
+  it("exposes exactly the sanitized operational metadata scalar allowlist", () => {
+    const metadata = admin.components.schemas.AdminOperationalAlertMetadata as {
+      type: string
+      additionalProperties: boolean
+      description: string
+      properties: Record<string, { type: string[] }>
+    }
+
+    expect(metadata.type).toBe("object")
+    expect(metadata.additionalProperties).toBe(false)
+    expect(Object.keys(metadata.properties)).toEqual(OPERATIONAL_METADATA_FIELDS)
+    expect(Object.keys(metadata.properties)).toHaveLength(9)
+    expect(metadata.description).toMatch(/sanitized/i)
+    expect(metadata.description).toMatch(/explicitly allowlisted/i)
+    expect(metadata.description).toMatch(/scalar diagnostic references/i)
+    expect(metadata.description).toMatch(/not a raw payload/i)
+    expect(metadata.description).toMatch(/headers/i)
+    expect(metadata.description).toMatch(/secret/i)
+    expect(metadata.description).toMatch(/not.*webhook-log resource/i)
+
+    for (const property of Object.values(metadata.properties)) {
+      expect(property).toEqual({ type: ["string", "number", "boolean"] })
+      expect(property.type).not.toContain("null")
+      expect(property.type).not.toContain("object")
+      expect(property.type).not.toContain("array")
+    }
+    for (const field of FORBIDDEN_OPERATIONAL_METADATA_FIELDS) {
+      expect(metadata.properties).not.toHaveProperty(field)
+    }
+  })
+
+  it("does not expose audit, webhook-log, or generic metadata resources", () => {
     for (const forbiddenPath of [
       "/admin/audit",
       "/admin/audits",
       "/admin/action-logs",
       "/admin/admin-action-logs",
+      "/admin/webhook-event-logs",
+      "/admin/webhook-logs",
+      "/admin/operational-alert-metadata",
+      "/admin/metadata",
     ]) {
       expect(admin.paths).not.toHaveProperty(forbiddenPath)
+    }
+    for (const operationPath of Object.keys(admin.paths)) {
+      expect(operationPath).not.toMatch(
+        /\/admin\/(?:.*audit|.*webhook.*log|(?:operational-alert-)?metadata)(?:\/|$)/i
+      )
     }
     expect(admin.components.schemas).not.toHaveProperty("AdminActionLog")
     expect(admin.components.schemas).not.toHaveProperty("WebhookEventLog")

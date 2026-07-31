@@ -1,5 +1,6 @@
 import {
   ADMIN_NATIVE_SECURITY,
+  ADMIN_PRODUCT_FIELDS_QUERY,
   ADMIN_PRODUCT_ID_PATH,
   ADMIN_VARIANT_ID_PATH,
   CORRELATION_ID_HEADER,
@@ -51,7 +52,7 @@ export function registerAdminProductOperations(
       "Extends the native Medusa 2.16.0 create operation with the project sellable-product gate. Incomplete drafts remain valid; publication requires a sellable variant, Gelato metadata, and a positive BRL price.",
     tags: ["Products"],
     security: [...ADMIN_NATIVE_SECURITY],
-    parameters: [CORRELATION_ID_HEADER],
+    parameters: [CORRELATION_ID_HEADER, ADMIN_PRODUCT_FIELDS_QUERY],
     requestBody: {
       required: true,
       content: {
@@ -82,7 +83,11 @@ export function registerAdminProductOperations(
       "Extends the native Medusa 2.16.0 update operation by validating the resulting product against the project sellable-product gate when it is published.",
     tags: ["Products"],
     security: [...ADMIN_NATIVE_SECURITY],
-    parameters: [CORRELATION_ID_HEADER, ADMIN_PRODUCT_ID_PATH],
+    parameters: [
+      CORRELATION_ID_HEADER,
+      ADMIN_PRODUCT_ID_PATH,
+      ADMIN_PRODUCT_FIELDS_QUERY,
+    ],
     requestBody: {
       required: true,
       content: {
@@ -113,7 +118,11 @@ export function registerAdminProductOperations(
       "Extends the native Medusa 2.16.0 variant-create operation with the project sellable-variant gate. No operation-specific HTTP coverage is claimed beyond the recorded validator/module evidence.",
     tags: ["Products"],
     security: [...ADMIN_NATIVE_SECURITY],
-    parameters: [CORRELATION_ID_HEADER, ADMIN_PRODUCT_ID_PATH],
+    parameters: [
+      CORRELATION_ID_HEADER,
+      ADMIN_PRODUCT_ID_PATH,
+      ADMIN_PRODUCT_FIELDS_QUERY,
+    ],
     requestBody: {
       required: true,
       content: {
@@ -148,6 +157,7 @@ export function registerAdminProductOperations(
       CORRELATION_ID_HEADER,
       ADMIN_PRODUCT_ID_PATH,
       ADMIN_VARIANT_ID_PATH,
+      ADMIN_PRODUCT_FIELDS_QUERY,
     ],
     requestBody: {
       required: true,
