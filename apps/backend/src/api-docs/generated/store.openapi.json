@@ -804,40 +804,23 @@
         "x-money-unit": "brl-minor"
       },
       "StorePaymentAttemptStartRequest": {
-        "description": "Optional JSON body for card/Pix payment-attempt start. Body may be omitted or `{}`. Payment method is defined by the path (`/card` or `/pix`), not by a body field. Runtime rejects only the client money fields listed below via rejectClientMoneyFields; other unknown keys are ignored (additionalProperties is intentionally not false).",
-        "properties": {
-          "amount": {
-            "description": "Forbidden client money field; rejected by runtime."
-          },
-          "currency": {
-            "description": "Forbidden client money field; rejected by runtime."
-          },
-          "currency_code": {
-            "description": "Forbidden client money field; rejected by runtime."
-          },
-          "discount_total": {
-            "description": "Forbidden client money field; rejected by runtime."
-          },
-          "grand_total": {
-            "description": "Forbidden client money field; rejected by runtime."
-          },
-          "item_total": {
-            "description": "Forbidden client money field; rejected by runtime."
-          },
-          "region_currency": {
-            "description": "Forbidden client money field; rejected by runtime."
-          },
-          "shipping_total": {
-            "description": "Forbidden client money field; rejected by runtime."
-          },
-          "subtotal": {
-            "description": "Forbidden client money field; rejected by runtime."
-          },
-          "tax_total": {
-            "description": "Forbidden client money field; rejected by runtime."
-          },
-          "total": {
-            "description": "Forbidden client money field; rejected by runtime."
+        "additionalProperties": true,
+        "description": "Optional JSON body for card/Pix payment-attempt start. Body may be omitted or `{}`. Payment method is defined by the path (`/card` or `/pix`), not by a body field. Matches runtime rejectClientMoneyFields: CLIENT_MONEY_BODY_FIELDS are structurally forbidden via propertyNames; unknown non-money keys are ignored (additionalProperties is intentionally true).",
+        "propertyNames": {
+          "not": {
+            "enum": [
+              "amount",
+              "total",
+              "subtotal",
+              "item_total",
+              "shipping_total",
+              "tax_total",
+              "discount_total",
+              "grand_total",
+              "currency",
+              "currency_code",
+              "region_currency"
+            ]
           }
         },
         "type": "object"

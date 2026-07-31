@@ -1,3 +1,5 @@
+import Ajv from "ajv"
+import { CLIENT_MONEY_BODY_FIELDS } from "../../api/store/carts/payment-attempts/validators"
 import { verifyCoverage } from "../coverage/verify-coverage"
 import { ROUTE_EXCLUSIONS } from "../coverage/exclusions"
 import { buildContracts } from "../generation/build-documents"
@@ -170,7 +172,8 @@ describe("OpenAPI Store contract wave", () => {
       type?: string
       description?: string
       additionalProperties?: boolean
-      properties?: Record<string, { description?: string }>
+      propertyNames?: { not?: { enum?: string[] } }
+      properties?: Record<string, unknown>
       required?: string[]
     }
 
@@ -200,12 +203,33 @@ describe("OpenAPI Store contract wave", () => {
         },
       })
     )
-    expect(startSchema?.additionalProperties).not.toBe(false)
+
+    expect(startSchema?.type).toBe("object")
+    expect(startSchema?.additionalProperties).toBe(true)
     expect(startSchema?.required).toBeUndefined()
-    expect(startSchema?.description).toMatch(/client money|rejectClientMoneyFields/i)
-    expect(startSchema?.properties?.amount?.description).toMatch(
-      /Forbidden client money field/i
+    expect(startSchema?.properties).toBeUndefined()
+    expect(startSchema?.description).toMatch(
+      /client money|rejectClientMoneyFields/i
     )
+    expect(startSchema?.propertyNames?.not?.enum).toEqual([
+      ...CLIENT_MONEY_BODY_FIELDS,
+    ])
+
+    const ajv = new Ajv({ allErrors: true, strict: false })
+    const validate = ajv.compile({
+      type: startSchema?.type,
+      propertyNames: startSchema?.propertyNames,
+      additionalProperties: startSchema?.additionalProperties,
+    })
+
+    expect(validate({})).toBe(true)
+    expect(validate({ arbitrary_non_money_field: true })).toBe(true)
+
+    for (const field of CLIENT_MONEY_BODY_FIELDS) {
+      expect(validate({ [field]: 1 })).toBe(false)
+    }
+    expect(validate({ amount: 1090 })).toBe(false)
+    expect(validate({ currency_code: "BRL" })).toBe(false)
   })
 
   it("keeps attach request cart_id optional without additionalProperties:false", () => {
