@@ -48,7 +48,8 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
       amount: {
         type: "integer",
         description:
-          "Sellable catalog price amount exposed by the public Store serializer.",
+          "Sellable catalog price amount in BRL major units.",
+        "x-money-unit": "brl-major",
       },
     },
   })

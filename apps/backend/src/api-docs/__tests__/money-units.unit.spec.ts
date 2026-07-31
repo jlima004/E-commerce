@@ -119,6 +119,7 @@ describe("OpenAPI Store monetary unit boundary", () => {
     // Public catalog serializer (getBrlPrice) only publishes prices when
     // Number.isInteger(price.amount) — OpenAPI must declare integer, not number.
     expect(catalogPrice.properties.amount.type).toBe("integer")
+    expect(catalogPrice.properties.amount["x-money-unit"]).toBe("brl-major")
     expect(catalogPrice.properties.amount.type).not.toBe("number")
     expect(Number.isInteger(1090)).toBe(true)
     expect(Number.isInteger(10.9)).toBe(false)

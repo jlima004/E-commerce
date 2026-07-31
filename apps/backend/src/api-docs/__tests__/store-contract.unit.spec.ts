@@ -331,9 +331,12 @@ describe("OpenAPI Store contract wave", () => {
 
   it("documents StoreCatalogPrice.amount as integer", () => {
     const price = store?.document.components.schemas.StoreCatalogPrice as {
-      properties?: { amount?: { type?: string } }
+      properties?: {
+        amount?: { type?: string; "x-money-unit"?: string }
+      }
     }
 
     expect(price?.properties?.amount?.type).toBe("integer")
+    expect(price?.properties?.amount?.["x-money-unit"]).toBe("brl-major")
   })
 })

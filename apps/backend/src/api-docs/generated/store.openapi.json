@@ -544,8 +544,9 @@
         "additionalProperties": false,
         "properties": {
           "amount": {
-            "description": "Sellable catalog price amount exposed by the public Store serializer.",
-            "type": "integer"
+            "description": "Sellable catalog price amount in BRL major units.",
+            "type": "integer",
+            "x-money-unit": "brl-major"
           },
           "currency_code": {
             "const": "brl",
