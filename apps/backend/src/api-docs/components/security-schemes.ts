@@ -42,3 +42,39 @@ export function registerStoreSecuritySchemes(
       "Optional or required customer session cookie, depending on the operation.",
   })
 }
+
+export const ADMIN_NATIVE_SECURITY = [
+  { adminBearer: [] },
+  { adminSession: [] },
+  { adminApiKey: [] },
+] as const
+
+export const ADMIN_USER_SECURITY = [
+  { adminBearer: [] },
+  { adminSession: [] },
+] as const
+
+export function registerAdminSecuritySchemes(
+  registry: ContractRegistryBundle
+): void {
+  registry.registerComponent("admin", "securitySchemes", "adminBearer", {
+    type: "http",
+    scheme: "bearer",
+    bearerFormat: "JWT",
+    description: "Authenticated Medusa Admin user JWT bearer token.",
+  })
+
+  registry.registerComponent("admin", "securitySchemes", "adminSession", {
+    type: "apiKey",
+    in: "cookie",
+    name: "connect.sid",
+    description: "Authenticated Medusa Admin user session cookie.",
+  })
+
+  registry.registerComponent("admin", "securitySchemes", "adminApiKey", {
+    type: "http",
+    scheme: "basic",
+    description:
+      "Medusa secret Admin API key supplied as the HTTP Basic username. Accepted only by native Admin operations; project user-only operations reject API-key actors.",
+  })
+}

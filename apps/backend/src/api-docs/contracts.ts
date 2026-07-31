@@ -27,6 +27,7 @@ export type OperationMetadata = {
   path: string
   operationId: string
   summary: string
+  description?: string
   tags: string[]
   security: Array<Record<string, string[]>>
   parameters: unknown[]

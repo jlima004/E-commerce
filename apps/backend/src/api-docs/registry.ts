@@ -11,6 +11,7 @@ import {
   type OperationMetadata,
 } from "./contracts"
 import { registerStoreContract } from "./operations/store"
+import { registerAdminContract } from "./operations/admin"
 
 extendZodWithOpenApi(z)
 
@@ -349,7 +350,7 @@ export class ContractRegistryBundle {
       path: operation.path,
       operationId: operation.operationId,
       summary: operation.summary,
-      description: operation.summary,
+      description: operation.description ?? operation.summary,
       tags: operation.tags,
       security: operation.security,
       parameters: operation.parameters as never,
@@ -372,5 +373,6 @@ export class ContractRegistryBundle {
 export function createFoundationRegistry(): ContractRegistryBundle {
   const registry = new ContractRegistryBundle()
   registerStoreContract(registry)
+  registerAdminContract(registry)
   return registry
 }
