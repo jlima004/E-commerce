@@ -33,6 +33,21 @@ function ensureStructuralComponents(
   }
 }
 
+function collectDocumentTags(
+  registry: ContractRegistryBundle,
+  surface: ContractSurface
+): Array<{ name: string }> {
+  const names = new Set<string>()
+  for (const operation of registry.getOperations(surface)) {
+    for (const tag of operation.tags) {
+      names.add(tag)
+    }
+  }
+  return [...names].sort((left, right) => left.localeCompare(right)).map((name) => ({
+    name,
+  }))
+}
+
 export function buildDocument(
   registry: ContractRegistryBundle,
   surface: ContractSurface
@@ -40,6 +55,7 @@ export function buildDocument(
   const generator = new OpenApiGeneratorV31(
     registry.surfaces[surface].openapi.definitions
   )
+  const tags = collectDocumentTags(registry, surface)
   const generated = generator.generateDocument({
     openapi: OPENAPI_VERSION,
     info: {
@@ -50,9 +66,16 @@ export function buildDocument(
       license: PROJECT_LICENSE,
     },
     servers: [SAME_ORIGIN_SERVER],
+    ...(tags.length > 0 ? { tags } : {}),
     "x-medusa-version": MEDUSA_VERSION,
   } as never) as unknown as Record<string, unknown>
   delete generated.webhooks
+
+  if (tags.length > 0) {
+    generated.tags = tags
+  } else {
+    delete generated.tags
+  }
 
   return {
     ...(generated as Omit<OpenApiDocument, "components" | "openapi">),

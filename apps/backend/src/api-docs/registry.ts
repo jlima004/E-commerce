@@ -10,6 +10,7 @@ import {
   type ContractSurface,
   type OperationMetadata,
 } from "./contracts"
+import { registerStoreContract } from "./operations/store"
 
 extendZodWithOpenApi(z)
 
@@ -348,6 +349,7 @@ export class ContractRegistryBundle {
       path: operation.path,
       operationId: operation.operationId,
       summary: operation.summary,
+      description: operation.summary,
       tags: operation.tags,
       security: operation.security,
       parameters: operation.parameters as never,
@@ -368,5 +370,7 @@ export class ContractRegistryBundle {
 }
 
 export function createFoundationRegistry(): ContractRegistryBundle {
-  return new ContractRegistryBundle()
+  const registry = new ContractRegistryBundle()
+  registerStoreContract(registry)
+  return registry
 }
