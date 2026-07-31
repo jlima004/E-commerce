@@ -2,6 +2,7 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 import {
+  CANONICAL_NATIVE_EXTENSION_MATRIX,
   NATIVE_EXTENSIONS,
   verifyNativeExtensions,
   type NativeExtensionEntry,
@@ -13,6 +14,7 @@ function cloneEntries(): NativeExtensionEntry[] {
 
 describe("native Medusa extension manifest", () => {
   it("contains exactly the approved six versioned operations and official URLs", () => {
+    expect(CANONICAL_NATIVE_EXTENSION_MATRIX).toHaveLength(6)
     expect(
       NATIVE_EXTENSIONS.map((entry) => `${entry.method} ${entry.path}`)
     ).toEqual([
@@ -83,5 +85,21 @@ describe("native Medusa extension manifest", () => {
       entries[0].fingerprints[entries[0].evidenceFiles[0]]
 
     expect(() => verifyNativeExtensions(entries)).toThrow("fingerprint drift")
+  })
+
+  it.each([
+    ["surface", "admin"],
+    ["owningContract", "admin.openapi.json"],
+    ["officialReference", "https://example.test/wrong-reference"],
+    ["method", "POST"],
+    ["path", "/store/wrong-path"],
+    ["medusaVersion", "2.15.0"],
+  ] as const)("rejects canonical %s drift", (field, value) => {
+    const entries = cloneEntries()
+    Object.assign(entries[0], { [field]: value })
+
+    expect(() => verifyNativeExtensions(entries)).toThrow(
+      "canonical matrix mismatch"
+    )
   })
 })

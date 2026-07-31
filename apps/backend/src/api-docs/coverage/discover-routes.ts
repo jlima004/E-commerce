@@ -216,7 +216,7 @@ export function discoverRoutes(options?: {
                 `Unresolvable route handler re-export: ${sourceFile}#${element.name.text}`
               )
             }
-          } else if (!moduleExportsSymbol(file, original)) {
+          } else if (!moduleExportsSymbol(file, element.name.text)) {
             throw new Error(
               `Unresolvable local route handler export: ${sourceFile}#${element.name.text}`
             )

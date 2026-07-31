@@ -32,17 +32,78 @@ const ADMIN_EVIDENCE = [
 const NATIVE_EXTENSION_REASON =
   "Project middleware changes the observable Medusa 2.16.0 contract"
 
-export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
+type NativeExtensionIdentity = Pick<
+  NativeExtensionEntry,
+  | "surface"
+  | "method"
+  | "path"
+  | "medusaVersion"
+  | "officialReference"
+  | "owningContract"
+>
+
+export const CANONICAL_NATIVE_EXTENSION_MATRIX = [
   {
     surface: "store",
     method: "GET",
     path: "/store/products",
     medusaVersion: MEDUSA_VERSION,
+    owningContract: "store.openapi.json",
     officialReference:
       "https://github.com/medusajs/medusa/blob/v2.16.0/packages/medusa/src/api/store/products/route.ts",
+  },
+  {
+    surface: "store",
+    method: "GET",
+    path: "/store/products/{id}",
+    medusaVersion: MEDUSA_VERSION,
+    owningContract: "store.openapi.json",
+    officialReference:
+      "https://github.com/medusajs/medusa/blob/v2.16.0/packages/medusa/src/api/store/products/%5Bid%5D/route.ts",
+  },
+  {
+    surface: "admin",
+    method: "POST",
+    path: "/admin/products",
+    medusaVersion: MEDUSA_VERSION,
+    owningContract: "admin.openapi.json",
+    officialReference:
+      "https://github.com/medusajs/medusa/blob/v2.16.0/packages/medusa/src/api/admin/products/route.ts",
+  },
+  {
+    surface: "admin",
+    method: "POST",
+    path: "/admin/products/{id}",
+    medusaVersion: MEDUSA_VERSION,
+    owningContract: "admin.openapi.json",
+    officialReference:
+      "https://github.com/medusajs/medusa/blob/v2.16.0/packages/medusa/src/api/admin/products/%5Bid%5D/route.ts",
+  },
+  {
+    surface: "admin",
+    method: "POST",
+    path: "/admin/products/{id}/variants",
+    medusaVersion: MEDUSA_VERSION,
+    owningContract: "admin.openapi.json",
+    officialReference:
+      "https://github.com/medusajs/medusa/blob/v2.16.0/packages/medusa/src/api/admin/products/%5Bid%5D/variants/route.ts",
+  },
+  {
+    surface: "admin",
+    method: "POST",
+    path: "/admin/products/{id}/variants/{variant_id}",
+    medusaVersion: MEDUSA_VERSION,
+    owningContract: "admin.openapi.json",
+    officialReference:
+      "https://github.com/medusajs/medusa/blob/v2.16.0/packages/medusa/src/api/admin/products/%5Bid%5D/variants/%5Bvariant_id%5D/route.ts",
+  },
+] as const satisfies readonly NativeExtensionIdentity[]
+
+export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
+  {
+    ...CANONICAL_NATIVE_EXTENSION_MATRIX[0],
     inclusionReason: NATIVE_EXTENSION_REASON,
     evidenceFiles: STORE_EVIDENCE,
-    owningContract: "store.openapi.json",
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
         "a655a5a294edc5aba05b3e1b3768c035a3a3fa40a5b01d9fee628e4d2009402c",
@@ -55,15 +116,9 @@ export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
     },
   },
   {
-    surface: "store",
-    method: "GET",
-    path: "/store/products/{id}",
-    medusaVersion: MEDUSA_VERSION,
-    officialReference:
-      "https://github.com/medusajs/medusa/blob/v2.16.0/packages/medusa/src/api/store/products/%5Bid%5D/route.ts",
+    ...CANONICAL_NATIVE_EXTENSION_MATRIX[1],
     inclusionReason: NATIVE_EXTENSION_REASON,
     evidenceFiles: STORE_EVIDENCE,
-    owningContract: "store.openapi.json",
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
         "093409cd3f78da62c76ebca6adb6e02fa6e2d2f0cf3c582cf884d027c1477307",
@@ -76,15 +131,9 @@ export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
     },
   },
   {
-    surface: "admin",
-    method: "POST",
-    path: "/admin/products",
-    medusaVersion: MEDUSA_VERSION,
-    officialReference:
-      "https://github.com/medusajs/medusa/blob/v2.16.0/packages/medusa/src/api/admin/products/route.ts",
+    ...CANONICAL_NATIVE_EXTENSION_MATRIX[2],
     inclusionReason: NATIVE_EXTENSION_REASON,
     evidenceFiles: ADMIN_EVIDENCE,
-    owningContract: "admin.openapi.json",
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
         "500a30af5be87eae08cc2e06919c78ac90c0caf909e27901641b79700f25ee0e",
@@ -97,15 +146,9 @@ export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
     },
   },
   {
-    surface: "admin",
-    method: "POST",
-    path: "/admin/products/{id}",
-    medusaVersion: MEDUSA_VERSION,
-    officialReference:
-      "https://github.com/medusajs/medusa/blob/v2.16.0/packages/medusa/src/api/admin/products/%5Bid%5D/route.ts",
+    ...CANONICAL_NATIVE_EXTENSION_MATRIX[3],
     inclusionReason: NATIVE_EXTENSION_REASON,
     evidenceFiles: ADMIN_EVIDENCE,
-    owningContract: "admin.openapi.json",
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
         "996fff949d62ddf391daecf3aaccfea26424f409829b6d7136a1bbe5548a8a9f",
@@ -118,15 +161,9 @@ export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
     },
   },
   {
-    surface: "admin",
-    method: "POST",
-    path: "/admin/products/{id}/variants",
-    medusaVersion: MEDUSA_VERSION,
-    officialReference:
-      "https://github.com/medusajs/medusa/blob/v2.16.0/packages/medusa/src/api/admin/products/%5Bid%5D/variants/route.ts",
+    ...CANONICAL_NATIVE_EXTENSION_MATRIX[4],
     inclusionReason: NATIVE_EXTENSION_REASON,
     evidenceFiles: ADMIN_EVIDENCE,
-    owningContract: "admin.openapi.json",
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
         "8d4fe9852b2c4d2e219088236b05c7eeae7cf3b2c90c02647b0eeee92042e81c",
@@ -139,15 +176,9 @@ export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
     },
   },
   {
-    surface: "admin",
-    method: "POST",
-    path: "/admin/products/{id}/variants/{variant_id}",
-    medusaVersion: MEDUSA_VERSION,
-    officialReference:
-      "https://github.com/medusajs/medusa/blob/v2.16.0/packages/medusa/src/api/admin/products/%5Bid%5D/variants/%5Bvariant_id%5D/route.ts",
+    ...CANONICAL_NATIVE_EXTENSION_MATRIX[5],
     inclusionReason: NATIVE_EXTENSION_REASON,
     evidenceFiles: ADMIN_EVIDENCE,
-    owningContract: "admin.openapi.json",
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
         "c709abff4de34f131491df5a2c5e6fdebf58728bdf8dce78e40a54888d51f149",
@@ -168,10 +199,34 @@ export function verifyNativeExtensions(
   if (entries.length !== 6) {
     throw new Error("Native extension manifest must contain exactly six entries")
   }
+  if (
+    entries.reduce(
+      (count, entry) => count + Object.keys(entry.fingerprints).length,
+      0
+    ) !== 24
+  ) {
+    throw new Error("Native extension manifest must contain exactly 24 fingerprints")
+  }
 
   const keys = new Set<string>()
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
     const key = `${entry.method} ${entry.path}`
+    const canonical = CANONICAL_NATIVE_EXTENSION_MATRIX[index]
+    for (const field of [
+      "method",
+      "path",
+      "surface",
+      "owningContract",
+      "officialReference",
+      "medusaVersion",
+    ] as const) {
+      if (entry[field] !== canonical[field]) {
+        throw new Error(
+          `Native extension canonical matrix mismatch: entry ${index + 1} ${field}`
+        )
+      }
+    }
+
     if (keys.has(key)) {
       throw new Error(`Duplicate native extension: ${key}`)
     }

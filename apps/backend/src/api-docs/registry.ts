@@ -33,6 +33,7 @@ const SENSITIVE_EXAMPLE_PATTERNS = [
 
 type ZodInternals = {
   def?: {
+    [key: string]: unknown
     type?: string
     coerce?: boolean
     catchall?: unknown
@@ -41,6 +42,7 @@ type ZodInternals = {
     in?: ZodType
     out?: ZodType
     schema?: ZodType
+    getter?: () => ZodType
   }
 }
 
@@ -64,12 +66,13 @@ function schemaDefinition(schema: ZodType): NonNullable<ZodInternals["def"]> {
 
 function assertDirectionSafeSchema(
   schema: ZodType,
-  seen = new Set<ZodType>()
+  seenSchemas = new Set<ZodType>(),
+  seenDefinitions = new Set<object>()
 ): void {
-  if (seen.has(schema)) {
+  if (seenSchemas.has(schema)) {
     return
   }
-  seen.add(schema)
+  seenSchemas.add(schema)
 
   const definition = schemaDefinition(schema)
   const forbiddenTypes = new Set([
@@ -92,22 +95,32 @@ function assertDirectionSafeSchema(
     )
   }
 
-  const shape =
-    typeof definition.shape === "function" ? definition.shape() : definition.shape
-  for (const child of Object.values(shape ?? {})) {
-    assertDirectionSafeSchema(child, seen)
-  }
+  const visitDefinitionValue = (value: unknown): void => {
+    if (value instanceof ZodType) {
+      assertDirectionSafeSchema(value, seenSchemas, seenDefinitions)
+      return
+    }
+    if (!value || typeof value !== "object" || seenDefinitions.has(value)) {
+      return
+    }
 
-  for (const child of [
-    definition.innerType,
-    definition.in,
-    definition.out,
-    definition.schema,
-  ]) {
-    if (child) {
-      assertDirectionSafeSchema(child, seen)
+    seenDefinitions.add(value)
+    for (const child of Object.values(value)) {
+      visitDefinitionValue(child)
     }
   }
+
+  if (typeof definition.shape === "function") {
+    visitDefinitionValue(definition.shape())
+  }
+  if (definition.type === "lazy" && definition.getter) {
+    assertDirectionSafeSchema(
+      definition.getter(),
+      seenSchemas,
+      seenDefinitions
+    )
+  }
+  visitDefinitionValue(definition)
 }
 
 function assertRepresentable(value: unknown, seen = new Set<object>()): void {
@@ -262,7 +275,7 @@ export class ContractRegistryBundle {
   registerSchema<T extends ZodType>(
     scope: RegistryScope,
     name: string,
-    schema: T,
+    schema: DirectionSafeSchema<T>,
     direction: SchemaDirection
   ): T {
     requireNonEmpty(name, "schema name")
@@ -279,9 +292,7 @@ export class ContractRegistryBundle {
       throw new Error(`Duplicate shared component: schemas/${name}`)
     }
 
-    if (direction === "shared") {
-      assertDirectionSafeSchema(schema)
-    }
+    assertDirectionSafeSchema(schema)
 
     this.componentKeys.add(key)
     scopes.add(scope)
@@ -293,13 +304,16 @@ export class ContractRegistryBundle {
   registerDirectionalSchemas<TRequest extends ZodType, TResponse extends ZodType>(
     scope: RegistryScope,
     requestName: string,
-    requestSchema: TRequest,
+    requestSchema: DirectionSafeSchema<TRequest>,
     responseName: string,
-    responseSchema: TResponse
+    responseSchema: DirectionSafeSchema<TResponse>
   ): { request: TRequest; response: TResponse } {
     if (requestName === responseName) {
       throw new Error("Divergent request and response schemas require distinct names")
     }
+
+    assertDirectionSafeSchema(requestSchema)
+    assertDirectionSafeSchema(responseSchema)
 
     return {
       request: this.registerSchema(scope, requestName, requestSchema, "request"),

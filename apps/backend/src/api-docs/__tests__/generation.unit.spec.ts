@@ -1,7 +1,6 @@
 import fs from "fs"
 import path from "path"
-import { z } from "zod"
-import "./native-extensions.contract.spec"
+import { z, type ZodType } from "zod"
 import type { OperationMetadata } from "../contracts"
 import { CONTRACT_TITLES } from "../document"
 import { buildContracts } from "../generation/build-documents"
@@ -70,7 +69,7 @@ describe("OpenAPI foundation generation", () => {
     }
   })
 
-  it("uses lexical keys and canonical HTTP method order", () => {
+  it("uses canonical HTTP method order only inside Path Items", () => {
     const value = canonicalize({
       paths: {
         "/z": { head: {}, patch: {}, get: {}, post: {} },
@@ -84,6 +83,26 @@ describe("OpenAPI foundation generation", () => {
       "patch",
       "head",
     ])
+  })
+
+  it("uses lexical ordering for schema properties that look like HTTP methods", () => {
+    const value = canonicalize({
+      components: {
+        schemas: {
+          Synthetic: {
+            properties: {
+              post: {},
+              get: {},
+              alpha: {},
+            },
+          },
+        },
+      },
+    })
+
+    expect(
+      Object.keys(value.components.schemas.Synthetic.properties)
+    ).toEqual(["alpha", "get", "post"])
   })
 
   it("rejects duplicate method/path and duplicate operationId", () => {
@@ -195,20 +214,39 @@ describe("OpenAPI foundation generation", () => {
     ).toThrow("cannot coerce, preprocess, transform, or default")
   })
 
-  it("requires distinct names for divergent request and response schemas", () => {
-    const registry = new ContractRegistryBundle()
-    const request = z.string().transform((value) => value.length)
-    const response = z.number().int()
+  it("rejects transformed request and response schemas", () => {
+    const transformedRequest: ZodType = z
+      .string()
+      .transform((value) => value.length)
+    const transformedResponse: ZodType = z
+      .string()
+      .transform((value) => value.length)
 
     expect(() =>
-      registry.registerDirectionalSchemas(
+      new ContractRegistryBundle().registerDirectionalSchemas(
         "shared",
-        "Synthetic",
-        request,
-        "Synthetic",
-        response
+        "SyntheticRequest",
+        transformedRequest,
+        "SyntheticResponse",
+        z.number().int()
       )
-    ).toThrow("distinct names")
+    ).toThrow("cannot coerce, preprocess, transform, or default")
+
+    expect(() =>
+      new ContractRegistryBundle().registerDirectionalSchemas(
+        "shared",
+        "SyntheticRequest",
+        z.string(),
+        "SyntheticResponse",
+        transformedResponse
+      )
+    ).toThrow("cannot coerce, preprocess, transform, or default")
+  })
+
+  it("accepts stable request and response schemas with distinct names", () => {
+    const registry = new ContractRegistryBundle()
+    const request = z.strictObject({ input: z.string() })
+    const response = z.strictObject({ output: z.string() })
 
     const registered = registry.registerDirectionalSchemas(
       "shared",
@@ -217,11 +255,45 @@ describe("OpenAPI foundation generation", () => {
       "SyntheticResponse",
       response
     )
-    expect(registered.request.parse("abc")).toBe(3)
-    expect(registered.response.parse(3)).toBe(3)
+    expect(registered.request.parse({ input: "abc" })).toEqual({ input: "abc" })
+    expect(registered.response.parse({ output: "abc" })).toEqual({ output: "abc" })
     expect(
       Object.keys(buildContracts(registry)[0].document.components.schemas)
     ).toEqual(["SyntheticRequest", "SyntheticResponse"])
+  })
+
+  it("requires distinct names for directional schemas", () => {
+    expect(() =>
+      new ContractRegistryBundle().registerDirectionalSchemas(
+        "shared",
+        "Synthetic",
+        z.string(),
+        "Synthetic",
+        z.string()
+      )
+    ).toThrow("distinct names")
+  })
+
+  it("rejects coercion, defaults, stripping, and nested unsafe schemas", () => {
+    const unsafeSchemas: ZodType[] = [
+      z.coerce.number(),
+      z.string().default("fallback"),
+      z.object({ value: z.string() }),
+      z.strictObject({
+        nested: z.string().transform((value) => value.length),
+      }),
+    ]
+
+    for (const [index, schema] of unsafeSchemas.entries()) {
+      expect(() =>
+        new ContractRegistryBundle().registerSchema(
+          "shared",
+          `UnsafeSynthetic${index}`,
+          schema,
+          "request"
+        )
+      ).toThrow()
+    }
   })
 
   it("imports only public zod-to-openapi entry points", () => {
