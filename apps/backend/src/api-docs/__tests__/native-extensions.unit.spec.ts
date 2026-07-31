@@ -1,6 +1,7 @@
 import fs from "fs"
 import os from "os"
 import path from "path"
+import qs from "qs"
 import {
   STORE_PRODUCT_LIST_QUERY,
   STORE_PRODUCT_RETRIEVE_QUERY,
@@ -17,8 +18,7 @@ function cloneEntries(): NativeExtensionEntry[] {
   return JSON.parse(JSON.stringify(NATIVE_EXTENSIONS)) as NativeExtensionEntry[]
 }
 
-/** Top-level StoreGetProductsParams query names (Medusa 2.16.0). */
-const STORE_GET_PRODUCTS_QUERY_NAMES = [
+const STORE_GET_PRODUCTS_SIMPLE_QUERY_NAMES = [
   "fields",
   "limit",
   "offset",
@@ -39,13 +39,69 @@ const STORE_GET_PRODUCTS_QUERY_NAMES = [
   "collection_id",
   "tag_id",
   "type_id",
+] as const
+
+const OPERATOR_NAMES = [
+  "$eq",
+  "$ne",
+  "$in",
+  "$nin",
+  "$like",
+  "$ilike",
+  "$re",
+  "$contains",
+  "$gt",
+  "$gte",
+  "$lt",
+  "$lte",
+] as const
+
+const operatorLeafNames = (prefix: string) =>
+  OPERATOR_NAMES.map((operator) => `${prefix}[${operator}]`)
+
+const VARIANT_IDENTITY_QUERY_NAMES = [
+  "variants[q]",
+  "variants[id]",
+  "variants[sku]",
+  "variants[ean]",
+  "variants[upc]",
+  "variants[barcode]",
+  "variants[options][value]",
+  "variants[options][option_id]",
+] as const
+
+const STORE_GET_PRODUCTS_QUERY_NAMES = [
+  ...STORE_GET_PRODUCTS_SIMPLE_QUERY_NAMES,
+  ...operatorLeafNames("created_at"),
+  ...operatorLeafNames("updated_at"),
+  ...operatorLeafNames("deleted_at"),
+  ...VARIANT_IDENTITY_QUERY_NAMES,
+  ...operatorLeafNames("variants[created_at]"),
+  ...operatorLeafNames("variants[updated_at]"),
+  ...operatorLeafNames("variants[deleted_at]"),
+] as const
+
+const OMITTED_RECURSIVE_OR_OBJECT_QUERY_NAMES = [
   "created_at",
   "updated_at",
   "deleted_at",
+  "variants",
   "$and",
   "$or",
-  "variants",
+  "variants[$and]",
+  "variants[$or]",
 ] as const
+
+function serializeFormExplode(name: string, value: string | string[]): string {
+  if (Array.isArray(value)) {
+    return value.map((item) => `${name}=${item}`).join("&")
+  }
+  return `${name}=${value}`
+}
+
+function parseExpressQuery(raw: string) {
+  return qs.parse(raw, { allowPrototypes: true, arrayLimit: 1000 })
+}
 
 
 describe("native Medusa extension manifest", () => {
@@ -141,10 +197,32 @@ describe("native Medusa extension manifest", () => {
 })
 
 describe("native Store catalog StoreGetProductsParams query contract", () => {
-  it("documents the complete StoreGetProductsParams top-level query set for list", () => {
+  it("documents the explicit StoreGetProductsParams query leaves for list", () => {
     const names = STORE_PRODUCT_LIST_QUERY.map((param) => param.name)
     expect(names).toEqual([...STORE_GET_PRODUCTS_QUERY_NAMES])
-    expect(STORE_PRODUCT_LIST_QUERY).toHaveLength(26)
+    expect(names.slice(0, 20)).toEqual([
+      ...STORE_GET_PRODUCTS_SIMPLE_QUERY_NAMES,
+    ])
+    expect(STORE_PRODUCT_LIST_QUERY).toHaveLength(100)
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "created_at[$gte]",
+        "created_at[$eq]",
+        "created_at[$in]",
+        "updated_at[$lte]",
+        "deleted_at[$gt]",
+        "variants[sku]",
+        "variants[q]",
+        "variants[options][value]",
+        "variants[options][option_id]",
+        "variants[created_at][$gte]",
+        "variants[updated_at][$lte]",
+        "variants[deleted_at][$eq]",
+      ])
+    )
+    for (const omittedName of OMITTED_RECURSIVE_OR_OBJECT_QUERY_NAMES) {
+      expect(names).not.toContain(omittedName)
+    }
 
     const limit = STORE_PRODUCT_LIST_QUERY.find((param) => param.name === "limit")
     const offset = STORE_PRODUCT_LIST_QUERY.find(
@@ -183,33 +261,53 @@ describe("native Store catalog StoreGetProductsParams query contract", () => {
       )
     }
 
-    for (const dateName of ["created_at", "updated_at", "deleted_at"] as const) {
-      const param = STORE_PRODUCT_LIST_QUERY.find((item) => item.name === dateName)
-      expect(param?.schema).toEqual(
-        expect.objectContaining({
-          oneOf: expect.arrayContaining([
-            expect.objectContaining({ type: "object" }),
-          ]),
-        })
-      )
+    for (const param of STORE_PRODUCT_LIST_QUERY) {
+      const schema = param.schema as {
+        type?: string
+        oneOf?: readonly { type?: string }[]
+      }
+      expect(schema.type).not.toBe("object")
+      expect(schema.oneOf?.some((candidate) => candidate.type === "object") ?? false)
+        .toBe(false)
     }
 
-    expect(
-      STORE_PRODUCT_LIST_QUERY.find((param) => param.name === "variants")?.schema
-    ).toEqual(expect.objectContaining({ type: "object" }))
-    expect(
-      STORE_PRODUCT_LIST_QUERY.find((param) => param.name === "$and")?.schema
-    ).toEqual(expect.objectContaining({ type: "array" }))
-    expect(
-      STORE_PRODUCT_LIST_QUERY.find((param) => param.name === "$or")?.schema
-    ).toEqual(expect.objectContaining({ type: "array" }))
+    const arrayCapableBracketNames = [
+      ...[
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "variants[created_at]",
+        "variants[updated_at]",
+        "variants[deleted_at]",
+      ].flatMap((prefix) =>
+        ["$eq", "$ne", "$in", "$nin"].map(
+          (operator) => `${prefix}[${operator}]`
+        )
+      ),
+      "variants[id]",
+      "variants[sku]",
+      "variants[ean]",
+      "variants[upc]",
+      "variants[barcode]",
+    ]
+    for (const name of arrayCapableBracketNames) {
+      expect(
+        STORE_PRODUCT_LIST_QUERY.find((param) => param.name === name)
+      ).toEqual(expect.objectContaining({ style: "form", explode: true }))
+    }
   })
 
   it("reuses StoreGetProductsParams for retrieve (same middleware validator)", () => {
     expect(STORE_PRODUCT_RETRIEVE_QUERY).toBe(STORE_PRODUCT_LIST_QUERY)
-    expect(STORE_PRODUCT_RETRIEVE_QUERY.map((param) => param.name)).toEqual([
-      ...STORE_GET_PRODUCTS_QUERY_NAMES,
+    const names = STORE_PRODUCT_RETRIEVE_QUERY.map((param) => param.name)
+    expect(names).toEqual([...STORE_GET_PRODUCTS_QUERY_NAMES])
+    expect(names.slice(0, 20)).toEqual([
+      ...STORE_GET_PRODUCTS_SIMPLE_QUERY_NAMES,
     ])
+    expect(names).toHaveLength(100)
+    for (const omittedName of OMITTED_RECURSIVE_OR_OBJECT_QUERY_NAMES) {
+      expect(names).not.toContain(omittedName)
+    }
   })
 
   it("wires list and retrieve operations with the full query parameter set", () => {
@@ -255,8 +353,54 @@ describe("native Store catalog StoreGetProductsParams query contract", () => {
         expect.objectContaining({ name: "fields", in: "query" }),
         expect.objectContaining({ name: "region_id", in: "query" }),
         expect.objectContaining({ name: "sales_channel_id", in: "query" }),
-        expect.objectContaining({ name: "variants", in: "query" }),
+        expect.objectContaining({ name: "created_at[$gte]", in: "query" }),
+        expect.objectContaining({ name: "variants[sku]", in: "query" }),
       ])
     )
+  })
+
+  it("serializes form+explode bracket leaves into Medusa nested filters", () => {
+    const cases = [
+      {
+        name: "created_at[$gte]",
+        value: "2026-01-01T00:00:00.000Z",
+        expected: {
+          created_at: { $gte: "2026-01-01T00:00:00.000Z" },
+        },
+      },
+      {
+        name: "variants[sku]",
+        value: "SKU-001",
+        expected: { variants: { sku: "SKU-001" } },
+      },
+      {
+        name: "variants[options][value]",
+        value: "Preto",
+        expected: { variants: { options: { value: "Preto" } } },
+      },
+      {
+        name: "variants[sku]",
+        value: ["SKU1", "SKU2"],
+        expected: { variants: { sku: ["SKU1", "SKU2"] } },
+      },
+    ] as const
+
+    const documentedNames = STORE_PRODUCT_LIST_QUERY.map((param) => param.name)
+    for (const { name, value, expected } of cases) {
+      expect(documentedNames).toContain(name)
+      expect(
+        parseExpressQuery(
+          serializeFormExplode(name, value as string | string[])
+        )
+      ).toEqual(expected)
+    }
+
+    const timestamp = "2026-01-01T00:00:00.000Z"
+    const encodedQuery = `${encodeURIComponent(
+      "created_at[$gte]"
+    )}=${encodeURIComponent(timestamp)}`
+    const expected = { created_at: { $gte: timestamp } }
+    expect(parseExpressQuery(encodedQuery)).toEqual(expected)
+    expect(parseExpressQuery(decodeURIComponent(encodedQuery))).toEqual(expected)
   })
 })

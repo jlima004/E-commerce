@@ -7,6 +7,10 @@
  * - `@medusajs/medusa/dist/api/store/products/middlewares.js`
  * - `@medusajs/medusa/dist/api/utils/validators.js` (`createFindParams`, `createOperatorMap`)
  * - `@medusajs/medusa/dist/api/utils/common-validators/products/index.js`
+ *
+ * Nested filters use Medusa/Express `qs` bracket notation. Recursive `$and`/`$or`
+ * filters (including variant-scoped forms) are intentionally omitted from the
+ * narrower public OpenAPI contract.
  */
 
 export const CORRELATION_ID_HEADER = {
@@ -47,70 +51,12 @@ const stringOrStringArraySchema = {
   ],
 } as const
 
-/** Medusa `createOperatorMap()` — scalar, array, or operator object. */
-const operatorMapSchema = {
-  oneOf: [
-    { type: "string" },
-    { type: "array", items: { type: "string" } },
-    {
-      type: "object",
-      properties: {
-        $eq: stringOrStringArraySchema,
-        $ne: stringOrStringArraySchema,
-        $in: { type: "array", items: { type: "string" } },
-        $nin: { type: "array", items: { type: "string" } },
-        $like: { type: "string" },
-        $ilike: { type: "string" },
-        $re: { type: "string" },
-        $contains: { type: "string" },
-        $gt: { type: "string" },
-        $gte: { type: "string" },
-        $lt: { type: "string" },
-        $lte: { type: "string" },
-      },
-      additionalProperties: false,
-    },
-  ],
-} as const
-
-const productVariantsFilterSchema = {
-  type: "object",
-  description:
-    "Nested variant filters from StoreGetProductsParams (`variants`). Includes variant identity/options filters, date operator maps, and nested `$and`/`$or`.",
-  properties: {
-    q: { type: "string" },
-    id: stringOrStringArraySchema,
-    sku: stringOrStringArraySchema,
-    ean: stringOrStringArraySchema,
-    upc: stringOrStringArraySchema,
-    barcode: stringOrStringArraySchema,
-    options: {
-      type: "object",
-      properties: {
-        value: { type: "string" },
-        option_id: { type: "string" },
-      },
-      additionalProperties: false,
-    },
-    created_at: operatorMapSchema,
-    updated_at: operatorMapSchema,
-    deleted_at: operatorMapSchema,
-    $and: {
-      type: "array",
-      items: { type: "object" },
-    },
-    $or: {
-      type: "array",
-      items: { type: "object" },
-    },
-  },
-  additionalProperties: false,
-} as const
-
 function queryParam(
   name: string,
   schema: Record<string, unknown>,
-  description: string
+  description: string,
+  style?: "form",
+  explode?: boolean
 ) {
   return {
     name,
@@ -118,18 +64,130 @@ function queryParam(
     required: false,
     schema,
     description,
+    ...(style ? { style } : {}),
+    ...(explode !== undefined ? { explode } : {}),
   }
 }
 
+function operatorMapBracketParams(prefix: string, label: string) {
+  const repeatedValueDescription = (operator: string) =>
+    `${label} ${operator} filter. Repeat this query key to provide multiple values.`
+  const scalarDescription = (operator: string) =>
+    `${label} ${operator} filter.`
+
+  return [
+    queryParam(
+      `${prefix}[$eq]`,
+      { ...stringOrStringArraySchema },
+      repeatedValueDescription("$eq"),
+      "form",
+      true
+    ),
+    queryParam(
+      `${prefix}[$ne]`,
+      { ...stringOrStringArraySchema },
+      repeatedValueDescription("$ne"),
+      "form",
+      true
+    ),
+    queryParam(
+      `${prefix}[$in]`,
+      { type: "array", items: { type: "string" } },
+      repeatedValueDescription("$in"),
+      "form",
+      true
+    ),
+    queryParam(
+      `${prefix}[$nin]`,
+      { type: "array", items: { type: "string" } },
+      repeatedValueDescription("$nin"),
+      "form",
+      true
+    ),
+    queryParam(
+      `${prefix}[$like]`,
+      { type: "string" },
+      scalarDescription("$like")
+    ),
+    queryParam(
+      `${prefix}[$ilike]`,
+      { type: "string" },
+      scalarDescription("$ilike")
+    ),
+    queryParam(
+      `${prefix}[$re]`,
+      { type: "string" },
+      scalarDescription("$re")
+    ),
+    queryParam(
+      `${prefix}[$contains]`,
+      { type: "string" },
+      scalarDescription("$contains")
+    ),
+    queryParam(
+      `${prefix}[$gt]`,
+      { type: "string" },
+      scalarDescription("$gt")
+    ),
+    queryParam(
+      `${prefix}[$gte]`,
+      { type: "string" },
+      scalarDescription("$gte")
+    ),
+    queryParam(
+      `${prefix}[$lt]`,
+      { type: "string" },
+      scalarDescription("$lt")
+    ),
+    queryParam(
+      `${prefix}[$lte]`,
+      { type: "string" },
+      scalarDescription("$lte")
+    ),
+  ]
+}
+
+function variantIdentityBracketParams() {
+  const repeatedIdentityParam = (field: string, label: string) =>
+    queryParam(
+      `variants[${field}]`,
+      { ...stringOrStringArraySchema },
+      `Filter by variant ${label}. Repeat this query key to provide multiple values.`,
+      "form",
+      true
+    )
+
+  return [
+    queryParam("variants[q]", { type: "string" }, "Variant search query."),
+    repeatedIdentityParam("id", "id"),
+    repeatedIdentityParam("sku", "SKU"),
+    repeatedIdentityParam("ean", "EAN"),
+    repeatedIdentityParam("upc", "UPC"),
+    repeatedIdentityParam("barcode", "barcode"),
+    queryParam(
+      "variants[options][value]",
+      { type: "string" },
+      "Filter by variant option value."
+    ),
+    queryParam(
+      "variants[options][option_id]",
+      { type: "string" },
+      "Filter by variant option id."
+    ),
+  ]
+}
+
 /**
- * Complete top-level query parameter set accepted by Medusa 2.16.0
- * `StoreGetProductsParams` (createFindParams + StoreGetProductsParamsFields +
- * variants + $and/$or). Used by BOTH GET /store/products and GET /store/products/:id.
+ * Public query parameter set accepted by Medusa 2.16.0 `StoreGetProductsParams`.
+ * Object filters are exposed as explicit bracket-notation leaves and recursive
+ * logical operators are intentionally excluded. Used by BOTH GET /store/products
+ * and GET /store/products/:id.
  */
 export const STORE_PRODUCT_LIST_QUERY = [
   queryParam("fields", { type: "string" }, [
     "Native fields selector (createSelectParams / createFindParams).",
     "Project middleware replaces client-supplied fields with the closed public catalog field set.",
+    "Nested filters use Medusa bracket notation; recursive $and/$or filters are intentionally omitted from the public contract.",
   ].join(" ")),
   queryParam(
     "limit",
@@ -224,35 +282,21 @@ export const STORE_PRODUCT_LIST_QUERY = [
     { ...stringOrStringArraySchema },
     "Filter by product type id (string or string[])."
   ),
-  queryParam(
-    "created_at",
-    { ...operatorMapSchema },
-    "Created-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …)."
+  ...operatorMapBracketParams("created_at", "Created-at"),
+  ...operatorMapBracketParams("updated_at", "Updated-at"),
+  ...operatorMapBracketParams("deleted_at", "Deleted-at"),
+  ...variantIdentityBracketParams(),
+  ...operatorMapBracketParams(
+    "variants[created_at]",
+    "Variant created-at"
   ),
-  queryParam(
-    "updated_at",
-    { ...operatorMapSchema },
-    "Updated-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …)."
+  ...operatorMapBracketParams(
+    "variants[updated_at]",
+    "Variant updated-at"
   ),
-  queryParam(
-    "deleted_at",
-    { ...operatorMapSchema },
-    "Deleted-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …)."
-  ),
-  queryParam(
-    "$and",
-    { type: "array", items: { type: "object" } },
-    "Logical AND of StoreGetProductParamsDirectFields filter objects (applyAndAndOrOperators)."
-  ),
-  queryParam(
-    "$or",
-    { type: "array", items: { type: "object" } },
-    "Logical OR of StoreGetProductParamsDirectFields filter objects (applyAndAndOrOperators)."
-  ),
-  queryParam(
-    "variants",
-    { ...productVariantsFilterSchema },
-    "Nested variant filter object (options, sku/ean/upc/barcode/id/q, date operators, nested $and/$or)."
+  ...operatorMapBracketParams(
+    "variants[deleted_at]",
+    "Variant deleted-at"
   ),
 ] as const
 

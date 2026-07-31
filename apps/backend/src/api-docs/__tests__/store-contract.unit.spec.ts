@@ -13,6 +13,7 @@ describe("OpenAPI Store contract wave", () => {
 
   it("covers every included Store route and both native catalog extensions", () => {
     expect(() => verifyCoverage("store", registry)).not.toThrow()
+    expect(storeOperations).toHaveLength(10)
     expect(
       storeOperations.map((operation) => `${operation.method} ${operation.path}`).sort()
     ).toEqual(
@@ -29,6 +30,69 @@ describe("OpenAPI Store contract wave", () => {
         "POST /store/tracking/lookup",
       ].sort()
     )
+  })
+
+  it("omits ambiguous object and recursive catalog query parameters", () => {
+    const catalog = storeOperations.filter((operation) =>
+      ["/store/products", "/store/products/{id}"].includes(operation.path)
+    )
+    const omittedNames = [
+      "created_at",
+      "updated_at",
+      "deleted_at",
+      "variants",
+      "$and",
+      "$or",
+      "variants[$and]",
+      "variants[$or]",
+    ]
+
+    expect(catalog).toHaveLength(2)
+    for (const operation of catalog) {
+      const queryNames = (operation.parameters ?? [])
+        .filter(
+          (parameter): parameter is { name: string; in: string } =>
+            typeof parameter === "object" &&
+            parameter !== null &&
+            "name" in parameter &&
+            "in" in parameter &&
+            (parameter as { in: string }).in === "query"
+        )
+        .map((parameter) => parameter.name)
+
+      for (const omittedName of omittedNames) {
+        expect(queryNames).not.toContain(omittedName)
+      }
+    }
+  })
+
+  it("documents explicit bracket leaves on both catalog operations", () => {
+    const requiredLeaves = [
+      "created_at[$gte]",
+      "updated_at[$lte]",
+      "deleted_at[$eq]",
+      "variants[sku]",
+      "variants[options][value]",
+      "variants[created_at][$gte]",
+      "variants[updated_at][$lte]",
+      "variants[deleted_at][$eq]",
+    ]
+
+    for (const path of ["/store/products", "/store/products/{id}"]) {
+      const operation = storeOperations.find((candidate) => candidate.path === path)
+      const queryNames = (operation?.parameters ?? [])
+        .filter(
+          (parameter): parameter is { name: string; in: string } =>
+            typeof parameter === "object" &&
+            parameter !== null &&
+            "name" in parameter &&
+            "in" in parameter &&
+            (parameter as { in: string }).in === "query"
+        )
+        .map((parameter) => parameter.name)
+
+      expect(queryNames).toEqual(expect.arrayContaining(requiredLeaves))
+    }
   })
 
   it("keeps the two scaffold exclusions valid and undocumented", () => {

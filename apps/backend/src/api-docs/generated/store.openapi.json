@@ -1754,7 +1754,7 @@
             }
           },
           {
-            "description": "Native fields selector (createSelectParams / createFindParams). Project middleware replaces client-supplied fields with the closed public catalog field set.",
+            "description": "Native fields selector (createSelectParams / createFindParams). Project middleware replaces client-supplied fields with the closed public catalog field set. Nested filters use Medusa bracket notation; recursive $and/$or filters are intentionally omitted from the public contract.",
             "in": "query",
             "name": "fields",
             "required": false,
@@ -2039,9 +2039,10 @@
             }
           },
           {
-            "description": "Created-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "description": "Created-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
             "in": "query",
-            "name": "created_at",
+            "name": "created_at[$eq]",
             "required": false,
             "schema": {
               "oneOf": [
@@ -2053,82 +2054,16 @@
                     "type": "string"
                   },
                   "type": "array"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "$contains": {
-                      "type": "string"
-                    },
-                    "$eq": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$gt": {
-                      "type": "string"
-                    },
-                    "$gte": {
-                      "type": "string"
-                    },
-                    "$ilike": {
-                      "type": "string"
-                    },
-                    "$in": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$like": {
-                      "type": "string"
-                    },
-                    "$lt": {
-                      "type": "string"
-                    },
-                    "$lte": {
-                      "type": "string"
-                    },
-                    "$ne": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$nin": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$re": {
-                      "type": "string"
-                    }
-                  },
-                  "type": "object"
                 }
               ]
-            }
+            },
+            "style": "form"
           },
           {
-            "description": "Updated-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "description": "Created-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
             "in": "query",
-            "name": "updated_at",
+            "name": "created_at[$ne]",
             "required": false,
             "schema": {
               "oneOf": [
@@ -2140,535 +2075,951 @@
                     "type": "string"
                   },
                   "type": "array"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "$contains": {
-                      "type": "string"
-                    },
-                    "$eq": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$gt": {
-                      "type": "string"
-                    },
-                    "$gte": {
-                      "type": "string"
-                    },
-                    "$ilike": {
-                      "type": "string"
-                    },
-                    "$in": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$like": {
-                      "type": "string"
-                    },
-                    "$lt": {
-                      "type": "string"
-                    },
-                    "$lte": {
-                      "type": "string"
-                    },
-                    "$ne": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$nin": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$re": {
-                      "type": "string"
-                    }
-                  },
-                  "type": "object"
                 }
               ]
-            }
+            },
+            "style": "form"
           },
           {
-            "description": "Deleted-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "description": "Created-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
             "in": "query",
-            "name": "deleted_at",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "$contains": {
-                      "type": "string"
-                    },
-                    "$eq": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$gt": {
-                      "type": "string"
-                    },
-                    "$gte": {
-                      "type": "string"
-                    },
-                    "$ilike": {
-                      "type": "string"
-                    },
-                    "$in": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$like": {
-                      "type": "string"
-                    },
-                    "$lt": {
-                      "type": "string"
-                    },
-                    "$lte": {
-                      "type": "string"
-                    },
-                    "$ne": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$nin": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$re": {
-                      "type": "string"
-                    }
-                  },
-                  "type": "object"
-                }
-              ]
-            }
-          },
-          {
-            "description": "Logical AND of StoreGetProductParamsDirectFields filter objects (applyAndAndOrOperators).",
-            "in": "query",
-            "name": "$and",
+            "name": "created_at[$in]",
             "required": false,
             "schema": {
               "items": {
-                "type": "object"
+                "type": "string"
               },
               "type": "array"
-            }
+            },
+            "style": "form"
           },
           {
-            "description": "Logical OR of StoreGetProductParamsDirectFields filter objects (applyAndAndOrOperators).",
+            "description": "Created-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
             "in": "query",
-            "name": "$or",
+            "name": "created_at[$nin]",
             "required": false,
             "schema": {
               "items": {
-                "type": "object"
+                "type": "string"
               },
               "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Created-at $like filter.",
+            "in": "query",
+            "name": "created_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           },
           {
-            "description": "Nested variant filter object (options, sku/ean/upc/barcode/id/q, date operators, nested $and/$or).",
+            "description": "Created-at $ilike filter.",
             "in": "query",
-            "name": "variants",
+            "name": "created_at[$ilike]",
             "required": false,
             "schema": {
-              "additionalProperties": false,
-              "description": "Nested variant filters from StoreGetProductsParams (`variants`). Includes variant identity/options filters, date operator maps, and nested `$and`/`$or`.",
-              "properties": {
-                "$and": {
-                  "items": {
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "$or": {
-                  "items": {
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "barcode": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
-                },
-                "created_at": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "$contains": {
-                          "type": "string"
-                        },
-                        "$eq": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$gt": {
-                          "type": "string"
-                        },
-                        "$gte": {
-                          "type": "string"
-                        },
-                        "$ilike": {
-                          "type": "string"
-                        },
-                        "$in": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$like": {
-                          "type": "string"
-                        },
-                        "$lt": {
-                          "type": "string"
-                        },
-                        "$lte": {
-                          "type": "string"
-                        },
-                        "$ne": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$nin": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$re": {
-                          "type": "string"
-                        }
-                      },
-                      "type": "object"
-                    }
-                  ]
-                },
-                "deleted_at": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "$contains": {
-                          "type": "string"
-                        },
-                        "$eq": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$gt": {
-                          "type": "string"
-                        },
-                        "$gte": {
-                          "type": "string"
-                        },
-                        "$ilike": {
-                          "type": "string"
-                        },
-                        "$in": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$like": {
-                          "type": "string"
-                        },
-                        "$lt": {
-                          "type": "string"
-                        },
-                        "$lte": {
-                          "type": "string"
-                        },
-                        "$ne": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$nin": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$re": {
-                          "type": "string"
-                        }
-                      },
-                      "type": "object"
-                    }
-                  ]
-                },
-                "ean": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
-                },
-                "id": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
-                },
-                "options": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "option_id": {
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": "string"
-                    }
-                  },
-                  "type": "object"
-                },
-                "q": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $re filter.",
+            "in": "query",
+            "name": "created_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $contains filter.",
+            "in": "query",
+            "name": "created_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $gt filter.",
+            "in": "query",
+            "name": "created_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $gte filter.",
+            "in": "query",
+            "name": "created_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $lt filter.",
+            "in": "query",
+            "name": "created_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $lte filter.",
+            "in": "query",
+            "name": "created_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
                   "type": "string"
                 },
-                "sku": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
-                },
-                "upc": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
-                },
-                "updated_at": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "$contains": {
-                          "type": "string"
-                        },
-                        "$eq": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$gt": {
-                          "type": "string"
-                        },
-                        "$gte": {
-                          "type": "string"
-                        },
-                        "$ilike": {
-                          "type": "string"
-                        },
-                        "$in": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$like": {
-                          "type": "string"
-                        },
-                        "$lt": {
-                          "type": "string"
-                        },
-                        "$lte": {
-                          "type": "string"
-                        },
-                        "$ne": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$nin": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$re": {
-                          "type": "string"
-                        }
-                      },
-                      "type": "object"
-                    }
-                  ]
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
               },
-              "type": "object"
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $like filter.",
+            "in": "query",
+            "name": "updated_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $ilike filter.",
+            "in": "query",
+            "name": "updated_at[$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $re filter.",
+            "in": "query",
+            "name": "updated_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $contains filter.",
+            "in": "query",
+            "name": "updated_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $gt filter.",
+            "in": "query",
+            "name": "updated_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $gte filter.",
+            "in": "query",
+            "name": "updated_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $lt filter.",
+            "in": "query",
+            "name": "updated_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $lte filter.",
+            "in": "query",
+            "name": "updated_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $like filter.",
+            "in": "query",
+            "name": "deleted_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $ilike filter.",
+            "in": "query",
+            "name": "deleted_at[$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $re filter.",
+            "in": "query",
+            "name": "deleted_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $contains filter.",
+            "in": "query",
+            "name": "deleted_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $gt filter.",
+            "in": "query",
+            "name": "deleted_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $gte filter.",
+            "in": "query",
+            "name": "deleted_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $lt filter.",
+            "in": "query",
+            "name": "deleted_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $lte filter.",
+            "in": "query",
+            "name": "deleted_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant search query.",
+            "in": "query",
+            "name": "variants[q]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by variant id. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[id]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant SKU. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[sku]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant EAN. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[ean]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant UPC. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[upc]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant barcode. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[barcode]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant option value.",
+            "in": "query",
+            "name": "variants[options][value]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by variant option id.",
+            "in": "query",
+            "name": "variants[options][option_id]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $like filter.",
+            "in": "query",
+            "name": "variants[created_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $ilike filter.",
+            "in": "query",
+            "name": "variants[created_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $re filter.",
+            "in": "query",
+            "name": "variants[created_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $contains filter.",
+            "in": "query",
+            "name": "variants[created_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $gt filter.",
+            "in": "query",
+            "name": "variants[created_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $gte filter.",
+            "in": "query",
+            "name": "variants[created_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $lt filter.",
+            "in": "query",
+            "name": "variants[created_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $lte filter.",
+            "in": "query",
+            "name": "variants[created_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $like filter.",
+            "in": "query",
+            "name": "variants[updated_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $ilike filter.",
+            "in": "query",
+            "name": "variants[updated_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $re filter.",
+            "in": "query",
+            "name": "variants[updated_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $contains filter.",
+            "in": "query",
+            "name": "variants[updated_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $gt filter.",
+            "in": "query",
+            "name": "variants[updated_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $gte filter.",
+            "in": "query",
+            "name": "variants[updated_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $lt filter.",
+            "in": "query",
+            "name": "variants[updated_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $lte filter.",
+            "in": "query",
+            "name": "variants[updated_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $like filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $ilike filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $re filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $contains filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $gt filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $gte filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $lt filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $lte filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -2777,7 +3128,7 @@
             }
           },
           {
-            "description": "Native fields selector (createSelectParams / createFindParams). Project middleware replaces client-supplied fields with the closed public catalog field set.",
+            "description": "Native fields selector (createSelectParams / createFindParams). Project middleware replaces client-supplied fields with the closed public catalog field set. Nested filters use Medusa bracket notation; recursive $and/$or filters are intentionally omitted from the public contract.",
             "in": "query",
             "name": "fields",
             "required": false,
@@ -3062,9 +3413,10 @@
             }
           },
           {
-            "description": "Created-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "description": "Created-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
             "in": "query",
-            "name": "created_at",
+            "name": "created_at[$eq]",
             "required": false,
             "schema": {
               "oneOf": [
@@ -3076,82 +3428,16 @@
                     "type": "string"
                   },
                   "type": "array"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "$contains": {
-                      "type": "string"
-                    },
-                    "$eq": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$gt": {
-                      "type": "string"
-                    },
-                    "$gte": {
-                      "type": "string"
-                    },
-                    "$ilike": {
-                      "type": "string"
-                    },
-                    "$in": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$like": {
-                      "type": "string"
-                    },
-                    "$lt": {
-                      "type": "string"
-                    },
-                    "$lte": {
-                      "type": "string"
-                    },
-                    "$ne": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$nin": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$re": {
-                      "type": "string"
-                    }
-                  },
-                  "type": "object"
                 }
               ]
-            }
+            },
+            "style": "form"
           },
           {
-            "description": "Updated-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "description": "Created-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
             "in": "query",
-            "name": "updated_at",
+            "name": "created_at[$ne]",
             "required": false,
             "schema": {
               "oneOf": [
@@ -3163,535 +3449,951 @@
                     "type": "string"
                   },
                   "type": "array"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "$contains": {
-                      "type": "string"
-                    },
-                    "$eq": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$gt": {
-                      "type": "string"
-                    },
-                    "$gte": {
-                      "type": "string"
-                    },
-                    "$ilike": {
-                      "type": "string"
-                    },
-                    "$in": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$like": {
-                      "type": "string"
-                    },
-                    "$lt": {
-                      "type": "string"
-                    },
-                    "$lte": {
-                      "type": "string"
-                    },
-                    "$ne": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$nin": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$re": {
-                      "type": "string"
-                    }
-                  },
-                  "type": "object"
                 }
               ]
-            }
+            },
+            "style": "form"
           },
           {
-            "description": "Deleted-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "description": "Created-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
             "in": "query",
-            "name": "deleted_at",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "$contains": {
-                      "type": "string"
-                    },
-                    "$eq": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$gt": {
-                      "type": "string"
-                    },
-                    "$gte": {
-                      "type": "string"
-                    },
-                    "$ilike": {
-                      "type": "string"
-                    },
-                    "$in": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$like": {
-                      "type": "string"
-                    },
-                    "$lt": {
-                      "type": "string"
-                    },
-                    "$lte": {
-                      "type": "string"
-                    },
-                    "$ne": {
-                      "oneOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      ]
-                    },
-                    "$nin": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "$re": {
-                      "type": "string"
-                    }
-                  },
-                  "type": "object"
-                }
-              ]
-            }
-          },
-          {
-            "description": "Logical AND of StoreGetProductParamsDirectFields filter objects (applyAndAndOrOperators).",
-            "in": "query",
-            "name": "$and",
+            "name": "created_at[$in]",
             "required": false,
             "schema": {
               "items": {
-                "type": "object"
+                "type": "string"
               },
               "type": "array"
-            }
+            },
+            "style": "form"
           },
           {
-            "description": "Logical OR of StoreGetProductParamsDirectFields filter objects (applyAndAndOrOperators).",
+            "description": "Created-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
             "in": "query",
-            "name": "$or",
+            "name": "created_at[$nin]",
             "required": false,
             "schema": {
               "items": {
-                "type": "object"
+                "type": "string"
               },
               "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Created-at $like filter.",
+            "in": "query",
+            "name": "created_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           },
           {
-            "description": "Nested variant filter object (options, sku/ean/upc/barcode/id/q, date operators, nested $and/$or).",
+            "description": "Created-at $ilike filter.",
             "in": "query",
-            "name": "variants",
+            "name": "created_at[$ilike]",
             "required": false,
             "schema": {
-              "additionalProperties": false,
-              "description": "Nested variant filters from StoreGetProductsParams (`variants`). Includes variant identity/options filters, date operator maps, and nested `$and`/`$or`.",
-              "properties": {
-                "$and": {
-                  "items": {
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "$or": {
-                  "items": {
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "barcode": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
-                },
-                "created_at": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "$contains": {
-                          "type": "string"
-                        },
-                        "$eq": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$gt": {
-                          "type": "string"
-                        },
-                        "$gte": {
-                          "type": "string"
-                        },
-                        "$ilike": {
-                          "type": "string"
-                        },
-                        "$in": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$like": {
-                          "type": "string"
-                        },
-                        "$lt": {
-                          "type": "string"
-                        },
-                        "$lte": {
-                          "type": "string"
-                        },
-                        "$ne": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$nin": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$re": {
-                          "type": "string"
-                        }
-                      },
-                      "type": "object"
-                    }
-                  ]
-                },
-                "deleted_at": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "$contains": {
-                          "type": "string"
-                        },
-                        "$eq": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$gt": {
-                          "type": "string"
-                        },
-                        "$gte": {
-                          "type": "string"
-                        },
-                        "$ilike": {
-                          "type": "string"
-                        },
-                        "$in": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$like": {
-                          "type": "string"
-                        },
-                        "$lt": {
-                          "type": "string"
-                        },
-                        "$lte": {
-                          "type": "string"
-                        },
-                        "$ne": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$nin": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$re": {
-                          "type": "string"
-                        }
-                      },
-                      "type": "object"
-                    }
-                  ]
-                },
-                "ean": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
-                },
-                "id": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
-                },
-                "options": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "option_id": {
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": "string"
-                    }
-                  },
-                  "type": "object"
-                },
-                "q": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $re filter.",
+            "in": "query",
+            "name": "created_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $contains filter.",
+            "in": "query",
+            "name": "created_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $gt filter.",
+            "in": "query",
+            "name": "created_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $gte filter.",
+            "in": "query",
+            "name": "created_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $lt filter.",
+            "in": "query",
+            "name": "created_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Created-at $lte filter.",
+            "in": "query",
+            "name": "created_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
                   "type": "string"
                 },
-                "sku": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
-                },
-                "upc": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
-                },
-                "updated_at": {
-                  "oneOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "$contains": {
-                          "type": "string"
-                        },
-                        "$eq": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$gt": {
-                          "type": "string"
-                        },
-                        "$gte": {
-                          "type": "string"
-                        },
-                        "$ilike": {
-                          "type": "string"
-                        },
-                        "$in": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$like": {
-                          "type": "string"
-                        },
-                        "$lt": {
-                          "type": "string"
-                        },
-                        "$lte": {
-                          "type": "string"
-                        },
-                        "$ne": {
-                          "oneOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "items": {
-                                "type": "string"
-                              },
-                              "type": "array"
-                            }
-                          ]
-                        },
-                        "$nin": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "$re": {
-                          "type": "string"
-                        }
-                      },
-                      "type": "object"
-                    }
-                  ]
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
               },
-              "type": "object"
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "updated_at[$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Updated-at $like filter.",
+            "in": "query",
+            "name": "updated_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $ilike filter.",
+            "in": "query",
+            "name": "updated_at[$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $re filter.",
+            "in": "query",
+            "name": "updated_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $contains filter.",
+            "in": "query",
+            "name": "updated_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $gt filter.",
+            "in": "query",
+            "name": "updated_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $gte filter.",
+            "in": "query",
+            "name": "updated_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $lt filter.",
+            "in": "query",
+            "name": "updated_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Updated-at $lte filter.",
+            "in": "query",
+            "name": "updated_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "deleted_at[$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Deleted-at $like filter.",
+            "in": "query",
+            "name": "deleted_at[$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $ilike filter.",
+            "in": "query",
+            "name": "deleted_at[$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $re filter.",
+            "in": "query",
+            "name": "deleted_at[$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $contains filter.",
+            "in": "query",
+            "name": "deleted_at[$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $gt filter.",
+            "in": "query",
+            "name": "deleted_at[$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $gte filter.",
+            "in": "query",
+            "name": "deleted_at[$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $lt filter.",
+            "in": "query",
+            "name": "deleted_at[$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Deleted-at $lte filter.",
+            "in": "query",
+            "name": "deleted_at[$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant search query.",
+            "in": "query",
+            "name": "variants[q]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by variant id. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[id]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant SKU. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[sku]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant EAN. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[ean]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant UPC. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[upc]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant barcode. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[barcode]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Filter by variant option value.",
+            "in": "query",
+            "name": "variants[options][value]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by variant option id.",
+            "in": "query",
+            "name": "variants[options][option_id]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[created_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant created-at $like filter.",
+            "in": "query",
+            "name": "variants[created_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $ilike filter.",
+            "in": "query",
+            "name": "variants[created_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $re filter.",
+            "in": "query",
+            "name": "variants[created_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $contains filter.",
+            "in": "query",
+            "name": "variants[created_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $gt filter.",
+            "in": "query",
+            "name": "variants[created_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $gte filter.",
+            "in": "query",
+            "name": "variants[created_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $lt filter.",
+            "in": "query",
+            "name": "variants[created_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant created-at $lte filter.",
+            "in": "query",
+            "name": "variants[created_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[updated_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant updated-at $like filter.",
+            "in": "query",
+            "name": "variants[updated_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $ilike filter.",
+            "in": "query",
+            "name": "variants[updated_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $re filter.",
+            "in": "query",
+            "name": "variants[updated_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $contains filter.",
+            "in": "query",
+            "name": "variants[updated_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $gt filter.",
+            "in": "query",
+            "name": "variants[updated_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $gte filter.",
+            "in": "query",
+            "name": "variants[updated_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $lt filter.",
+            "in": "query",
+            "name": "variants[updated_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant updated-at $lte filter.",
+            "in": "query",
+            "name": "variants[updated_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $eq filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$eq]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $ne filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$ne]",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $in filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$in]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $nin filter. Repeat this query key to provide multiple values.",
+            "explode": true,
+            "in": "query",
+            "name": "variants[deleted_at][$nin]",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          },
+          {
+            "description": "Variant deleted-at $like filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$like]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $ilike filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$ilike]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $re filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$re]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $contains filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$contains]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $gt filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$gt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $gte filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$gte]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $lt filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$lt]",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Variant deleted-at $lte filter.",
+            "in": "query",
+            "name": "variants[deleted_at][$lte]",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
