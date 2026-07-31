@@ -205,17 +205,16 @@ describe("OpenAPI Webhooks contract", () => {
     expect(gelato.description).toMatch(/non-final duplicate.*may continue processing/i)
   })
 
-  it("uses only the evidenced response statuses and webhook error envelope", () => {
-    expect(Object.keys(stripe.responses).sort()).toEqual(["200", "400", "503"])
+  it("uses only the evidenced response statuses and webhook error envelopes", () => {
+    expect(Object.keys(stripe.responses).sort()).toEqual(["200", "400", "500", "503"])
     expect(Object.keys(gelato.responses).sort()).toEqual([
       "200",
       "400",
       "401",
       "403",
+      "500",
       "503",
     ])
-    expect(stripe.responses).not.toHaveProperty("500")
-    expect(gelato.responses).not.toHaveProperty("500")
 
     expect(schemas.WebhookErrorResponse).toEqual({
       type: "object",
@@ -230,6 +229,52 @@ describe("OpenAPI Webhooks contract", () => {
       },
     })
     expect(schemas.WebhookErrorResponse.properties).not.toHaveProperty("message")
+
+    expect(schemas.WebhookFrameworkError).toEqual({
+      type: "object",
+      additionalProperties: false,
+      required: ["type", "message"],
+      properties: {
+        type: {
+          type: "string",
+          description: "Medusa or project error type code.",
+        },
+        message: {
+          type: "string",
+          description: "Human-readable sanitized error message.",
+        },
+        code: {
+          type: ["string", "null"],
+          description: "Optional machine-readable error code when present.",
+        },
+      },
+    })
+    expect(schemas.WebhookFrameworkError.properties).not.toHaveProperty("stack")
+    expect(schemas.WebhookFrameworkError.properties).not.toHaveProperty("details")
+
+    const stripe400Schema =
+      stripe.responses["400"].content?.["application/json"]?.schema
+    expect(stripe400Schema?.oneOf).toEqual([
+      { $ref: "#/components/schemas/WebhookErrorResponse" },
+      { $ref: "#/components/schemas/WebhookFrameworkError" },
+    ])
+
+    const gelato400Schema =
+      gelato.responses["400"].content?.["application/json"]?.schema
+    expect(gelato400Schema?.oneOf).toEqual([
+      { $ref: "#/components/schemas/WebhookErrorResponse" },
+      { $ref: "#/components/schemas/WebhookFrameworkError" },
+    ])
+
+    expect(stripe.responses["500"].content?.["application/json"]?.schema).toEqual({
+      $ref: "#/components/schemas/WebhookFrameworkError",
+    })
+    expect(stripe.responses["500"]).not.toHaveProperty("headers")
+
+    expect(gelato.responses["500"].content?.["application/json"]?.schema).toEqual({
+      $ref: "#/components/schemas/WebhookFrameworkError",
+    })
+    expect(gelato.responses["500"]).not.toHaveProperty("headers")
   })
 
   it("models acknowledgement status, duplicate, and Gelato ignored event_id omission", () => {
@@ -267,24 +312,68 @@ describe("OpenAPI Webhooks contract", () => {
     )
   })
 
-  it("attaches the webhook correlation header to every documented response", () => {
+  it("documents Stripe account as optional nullable string", () => {
+    const request = schemas.StripeWebhookEventRequest
+    expect(request.properties?.account?.type).toEqual(["string", "null"])
+    expect(request.required).not.toContain("account")
+  })
+
+  it("attaches the webhook correlation header per documented response matrix", () => {
     expect(webhooks.components.headers.WebhookXCorrelationId).toEqual(
       expect.objectContaining({
         schema: { type: "string" },
         description: expect.stringMatching(/post-correlation/i),
       })
     )
-    for (const operation of [stripe, gelato]) {
-      for (const response of Object.values(operation.responses)) {
+
+    const correlationHeader = {
+      "x-correlation-id": { $ref: WEBHOOK_HEADER_REF },
+    }
+
+    const stripeMatrix: Record<string, boolean> = {
+      "200": true,
+      "400": true,
+      "500": false,
+      "503": true,
+    }
+    for (const [status, expectsHeader] of Object.entries(stripeMatrix)) {
+      const response = stripe.responses[status]
+      if (expectsHeader) {
         expect(response).toEqual(
-          expect.objectContaining({
-            headers: {
-              "x-correlation-id": { $ref: WEBHOOK_HEADER_REF },
-            },
-          })
+          expect.objectContaining({ headers: correlationHeader })
         )
+      } else {
+        expect(response).not.toHaveProperty("headers")
       }
     }
+
+    const gelatoMatrix: Record<string, boolean> = {
+      "200": true,
+      "400": true,
+      "401": true,
+      "403": true,
+      "500": false,
+      "503": true,
+    }
+    for (const [status, expectsHeader] of Object.entries(gelatoMatrix)) {
+      const response = gelato.responses[status]
+      if (expectsHeader) {
+        expect(response).toEqual(
+          expect.objectContaining({ headers: correlationHeader })
+        )
+      } else {
+        expect(response).not.toHaveProperty("headers")
+      }
+    }
+  })
+
+  it("includes order-creation integration test in Stripe webhook testEvidence", () => {
+    const stripeMetadata = registry
+      .getOperations("webhooks")
+      .find((operation) => operation.path === "/hooks/stripe")
+    expect(stripeMetadata?.testEvidence).toContain(
+      "apps/backend/integration-tests/http/stripe-webhook-order-creation.spec.ts"
+    )
   })
 
   it("contains no usable secret or signature examples in configured values", () => {

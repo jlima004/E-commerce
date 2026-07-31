@@ -215,19 +215,56 @@ describe("OpenAPI Store security contract and surface isolation", () => {
     expect(configured).not.toMatch(/\bwhsec_[A-Za-z0-9_-]+/i)
     expect(configured).not.toMatch(/Bearer\s+[A-Za-z0-9._~-]{8,}/i)
 
-    for (const pathItem of Object.values(webhooksDocument?.paths ?? {})) {
-      const operation = (pathItem as { post: { responses: Record<string, unknown> } })
-        .post
-      for (const response of Object.values(operation.responses)) {
+    const stripePost = (
+      webhooksDocument?.paths?.["/hooks/stripe"] as {
+        post: { responses: Record<string, Record<string, unknown>> }
+      }
+    ).post
+    const gelatoPost = (
+      webhooksDocument?.paths?.["/hooks/gelato"] as {
+        post: { responses: Record<string, Record<string, unknown>> }
+      }
+    ).post
+
+    const correlationHeader = {
+      "x-correlation-id": {
+        $ref: WEBHOOK_X_CORRELATION_ID_HEADER_REF,
+      },
+    }
+
+    const stripeMatrix: Record<string, boolean> = {
+      "200": true,
+      "400": true,
+      "500": false,
+      "503": true,
+    }
+    for (const [status, expectsHeader] of Object.entries(stripeMatrix)) {
+      const response = stripePost.responses[status]
+      if (expectsHeader) {
         expect(response).toEqual(
-          expect.objectContaining({
-            headers: {
-              "x-correlation-id": {
-                $ref: WEBHOOK_X_CORRELATION_ID_HEADER_REF,
-              },
-            },
-          })
+          expect.objectContaining({ headers: correlationHeader })
         )
+      } else {
+        expect(response).not.toHaveProperty("headers")
+      }
+    }
+
+    const gelatoMatrix: Record<string, boolean> = {
+      "200": true,
+      "400": true,
+      "401": true,
+      "403": true,
+      "500": false,
+      "503": true,
+    }
+    for (const [status, expectsHeader] of Object.entries(gelatoMatrix)) {
+      const response = gelatoPost.responses[status]
+      if (expectsHeader) {
+        expect(response).toEqual(
+          expect.objectContaining({ headers: correlationHeader })
+        )
+      } else {
+        expect(response).not.toHaveProperty("headers")
       }
     }
   })

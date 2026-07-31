@@ -51,6 +51,8 @@ export {
   adminErrorResponse,
   adminUnauthorizedResponse,
   webhookErrorResponse,
+  webhookControlledOrFrameworkErrorResponse,
+  webhookFrameworkErrorResponse,
 } from "./errors"
 export {
   STORE_X_CORRELATION_ID_RESPONSE_HEADERS,

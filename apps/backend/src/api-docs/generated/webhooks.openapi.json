@@ -215,7 +215,10 @@
         "properties": {
           "account": {
             "description": "Optional connected Stripe account identifier.",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "data": {
             "additionalProperties": true,
@@ -271,6 +274,31 @@
         "required": [
           "ok",
           "code"
+        ],
+        "type": "object"
+      },
+      "WebhookFrameworkError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Optional machine-readable error code when present.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "Human-readable sanitized error message.",
+            "type": "string"
+          },
+          "type": {
+            "description": "Medusa or project error type code.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "message"
         ],
         "type": "object"
       }
@@ -348,11 +376,18 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WebhookErrorResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/WebhookErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WebhookFrameworkError"
+                    }
+                  ]
                 }
               }
             },
-            "description": "The body is null or not an object, or a supported event has malformed required fields. The code is gelato_webhook_payload_invalid or the lowercase parser code.",
+            "description": "Route-level controlled rejection when the body is null or not an object, or a supported event has malformed required fields (codes gelato_webhook_payload_invalid or the lowercase parser code). Framework-level invalid-data failure when webhook module resolution or record update rejects the request with the Medusa error envelope.",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/WebhookXCorrelationId"
@@ -388,6 +423,16 @@
                 "$ref": "#/components/headers/WebhookXCorrelationId"
               }
             }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookFrameworkError"
+                }
+              }
+            },
+            "description": "Unexpected framework or infrastructure failure outside the route's controlled webhook rejection envelope."
           },
           "503": {
             "content": {
@@ -452,16 +497,33 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WebhookErrorResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/WebhookErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WebhookFrameworkError"
+                    }
+                  ]
                 }
               }
             },
-            "description": "The exact raw body is missing, the stripe-signature header is missing, or signature verification failed. Codes are stripe_raw_body_required, stripe_signature_required, and stripe_signature_invalid.",
+            "description": "Route-level controlled rejection when the exact raw body is missing, the stripe-signature header is missing, or signature verification failed (codes stripe_raw_body_required, stripe_signature_required, stripe_signature_invalid). Framework-level invalid-data failure when webhook module resolution or record update rejects the request with the Medusa error envelope.",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/WebhookXCorrelationId"
               }
             }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookFrameworkError"
+                }
+              }
+            },
+            "description": "Unexpected framework or infrastructure failure outside the route's controlled webhook rejection envelope."
           },
           "503": {
             "content": {

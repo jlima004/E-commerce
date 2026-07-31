@@ -1,6 +1,8 @@
 import {
   STRIPE_SIGNATURE_SECURITY,
+  webhookControlledOrFrameworkErrorResponse,
   webhookErrorResponse,
+  webhookFrameworkErrorResponse,
 } from "../../components"
 import type { ContractRegistryBundle } from "../../registry"
 import { webhookJsonResponse } from "./schemas"
@@ -38,8 +40,12 @@ export function registerStripeWebhookOperation(
         "Signed event acknowledged. The terminal result is processed, ignored, or failed; processing failures after persistence are acknowledged as failed and are not retried by replaying that terminal event.",
         "StripeWebhookAcknowledgementResponse"
       ),
-      "400": webhookErrorResponse(
-        "The exact raw body is missing, the stripe-signature header is missing, or signature verification failed. Codes are stripe_raw_body_required, stripe_signature_required, and stripe_signature_invalid."
+      "400": webhookControlledOrFrameworkErrorResponse(
+        "Route-level controlled rejection when the exact raw body is missing, the stripe-signature header is missing, or signature verification failed (codes stripe_raw_body_required, stripe_signature_required, stripe_signature_invalid). Framework-level invalid-data failure when webhook module resolution or record update rejects the request with the Medusa error envelope."
+      ),
+      "500": webhookFrameworkErrorResponse(
+        "Unexpected framework or infrastructure failure outside the route's controlled webhook rejection envelope.",
+        false
       ),
       "503": webhookErrorResponse(
         "Stripe ingestion is disabled or the verification secret is not configured. These pre-verification configuration failures do not persist or process an event. Codes are stripe_webhook_ingestion_disabled and stripe_webhook_secret_not_configured."
@@ -54,6 +60,7 @@ export function registerStripeWebhookOperation(
       "apps/backend/src/api/hooks/stripe/__tests__/stripe-webhook-route.unit.spec.ts",
       "apps/backend/integration-tests/http/stripe-webhook-store.spec.ts",
       "apps/backend/integration-tests/http/stripe-refund-webhook.spec.ts",
+      "apps/backend/integration-tests/http/stripe-webhook-order-creation.spec.ts",
     ],
     officialReference:
       "https://github.com/jlima004/E-commerce/blob/main/apps/backend/src/api/hooks/stripe/route.ts",

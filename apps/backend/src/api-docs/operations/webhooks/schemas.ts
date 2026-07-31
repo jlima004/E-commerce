@@ -50,7 +50,7 @@ export function registerWebhookSchemas(
           "Supported event types. A correctly signed event with another type is acknowledged as ignored.",
       },
       account: {
-        type: "string",
+        type: ["string", "null"],
         description: "Optional connected Stripe account identifier.",
       },
       livemode: {

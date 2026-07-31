@@ -132,6 +132,26 @@ export function registerWebhookErrorSchemas(
       },
     },
   })
+
+  registry.registerComponent("webhooks", "schemas", "WebhookFrameworkError", {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "message"],
+    properties: {
+      type: {
+        type: "string",
+        description: "Medusa or project error type code.",
+      },
+      message: {
+        type: "string",
+        description: "Human-readable sanitized error message.",
+      },
+      code: {
+        ...nullableString,
+        description: "Optional machine-readable error code when present.",
+      },
+    },
+  })
 }
 
 export function webhookErrorResponse(description: string) {
@@ -142,6 +162,42 @@ export function webhookErrorResponse(description: string) {
       "application/json": {
         schema: {
           $ref: "#/components/schemas/WebhookErrorResponse",
+        },
+      },
+    },
+  }
+}
+
+export function webhookControlledOrFrameworkErrorResponse(description: string) {
+  return {
+    description,
+    headers: WEBHOOK_X_CORRELATION_ID_RESPONSE_HEADERS,
+    content: {
+      "application/json": {
+        schema: {
+          oneOf: [
+            { $ref: "#/components/schemas/WebhookErrorResponse" },
+            { $ref: "#/components/schemas/WebhookFrameworkError" },
+          ],
+        },
+      },
+    },
+  }
+}
+
+export function webhookFrameworkErrorResponse(
+  description: string,
+  correlationHeaderGuaranteed = true
+) {
+  return {
+    description,
+    ...(correlationHeaderGuaranteed
+      ? { headers: WEBHOOK_X_CORRELATION_ID_RESPONSE_HEADERS }
+      : {}),
+    content: {
+      "application/json": {
+        schema: {
+          $ref: "#/components/schemas/WebhookFrameworkError",
         },
       },
     },

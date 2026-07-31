@@ -1,7 +1,9 @@
 import {
   GELATO_WEBHOOK_SECRET_SECURITY,
   WEBHOOK_X_CORRELATION_ID_RESPONSE_HEADERS,
+  webhookControlledOrFrameworkErrorResponse,
   webhookErrorResponse,
+  webhookFrameworkErrorResponse,
 } from "../../components"
 import type { ContractRegistryBundle } from "../../registry"
 
@@ -51,14 +53,18 @@ export function registerGelatoWebhookOperation(
           },
         },
       },
-      "400": webhookErrorResponse(
-        "The body is null or not an object, or a supported event has malformed required fields. The code is gelato_webhook_payload_invalid or the lowercase parser code."
+      "400": webhookControlledOrFrameworkErrorResponse(
+        "Route-level controlled rejection when the body is null or not an object, or a supported event has malformed required fields (codes gelato_webhook_payload_invalid or the lowercase parser code). Framework-level invalid-data failure when webhook module resolution or record update rejects the request with the Medusa error envelope."
       ),
       "401": webhookErrorResponse(
         "The canonical Gelato authentication header is absent. The code is gelato_webhook_auth_header_required."
       ),
       "403": webhookErrorResponse(
         "The canonical Gelato authentication header value is invalid. The code is gelato_webhook_auth_header_invalid."
+      ),
+      "500": webhookFrameworkErrorResponse(
+        "Unexpected framework or infrastructure failure outside the route's controlled webhook rejection envelope.",
+        false
       ),
       "503": webhookErrorResponse(
         "The Gelato webhook verification secret is not configured. The code is gelato_webhook_secret_not_configured."
