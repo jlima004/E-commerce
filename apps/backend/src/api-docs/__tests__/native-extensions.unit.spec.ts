@@ -2,15 +2,51 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 import {
+  STORE_PRODUCT_LIST_QUERY,
+  STORE_PRODUCT_RETRIEVE_QUERY,
+} from "../components/parameters"
+import {
   CANONICAL_NATIVE_EXTENSION_MATRIX,
   NATIVE_EXTENSIONS,
   verifyNativeExtensions,
   type NativeExtensionEntry,
 } from "../coverage/native-routes"
+import { createFoundationRegistry } from "../registry"
 
 function cloneEntries(): NativeExtensionEntry[] {
   return JSON.parse(JSON.stringify(NATIVE_EXTENSIONS)) as NativeExtensionEntry[]
 }
+
+/** Top-level StoreGetProductsParams query names (Medusa 2.16.0). */
+const STORE_GET_PRODUCTS_QUERY_NAMES = [
+  "fields",
+  "limit",
+  "offset",
+  "order",
+  "with_deleted",
+  "region_id",
+  "country_code",
+  "province",
+  "cart_id",
+  "sales_channel_id",
+  "q",
+  "id",
+  "title",
+  "handle",
+  "is_giftcard",
+  "category_id",
+  "external_id",
+  "collection_id",
+  "tag_id",
+  "type_id",
+  "created_at",
+  "updated_at",
+  "deleted_at",
+  "$and",
+  "$or",
+  "variants",
+] as const
+
 
 describe("native Medusa extension manifest", () => {
   it("contains exactly the approved six versioned operations and official URLs", () => {
@@ -100,6 +136,127 @@ describe("native Medusa extension manifest", () => {
 
     expect(() => verifyNativeExtensions(entries)).toThrow(
       "canonical matrix mismatch"
+    )
+  })
+})
+
+describe("native Store catalog StoreGetProductsParams query contract", () => {
+  it("documents the complete StoreGetProductsParams top-level query set for list", () => {
+    const names = STORE_PRODUCT_LIST_QUERY.map((param) => param.name)
+    expect(names).toEqual([...STORE_GET_PRODUCTS_QUERY_NAMES])
+    expect(STORE_PRODUCT_LIST_QUERY).toHaveLength(26)
+
+    const limit = STORE_PRODUCT_LIST_QUERY.find((param) => param.name === "limit")
+    const offset = STORE_PRODUCT_LIST_QUERY.find(
+      (param) => param.name === "offset"
+    )
+    expect(limit?.schema).toEqual(
+      expect.objectContaining({ type: "integer", default: 50 })
+    )
+    expect(offset?.schema).toEqual(
+      expect.objectContaining({ type: "integer", default: 0 })
+    )
+
+    const fields = STORE_PRODUCT_LIST_QUERY.find(
+      (param) => param.name === "fields"
+    )
+    expect(fields?.description).toMatch(/closed public catalog field set/i)
+
+    for (const filterName of [
+      "sales_channel_id",
+      "id",
+      "title",
+      "handle",
+      "category_id",
+      "collection_id",
+      "tag_id",
+      "type_id",
+    ] as const) {
+      const param = STORE_PRODUCT_LIST_QUERY.find((item) => item.name === filterName)
+      expect(param?.schema).toEqual(
+        expect.objectContaining({
+          oneOf: expect.arrayContaining([
+            expect.objectContaining({ type: "string" }),
+            expect.objectContaining({ type: "array" }),
+          ]),
+        })
+      )
+    }
+
+    for (const dateName of ["created_at", "updated_at", "deleted_at"] as const) {
+      const param = STORE_PRODUCT_LIST_QUERY.find((item) => item.name === dateName)
+      expect(param?.schema).toEqual(
+        expect.objectContaining({
+          oneOf: expect.arrayContaining([
+            expect.objectContaining({ type: "object" }),
+          ]),
+        })
+      )
+    }
+
+    expect(
+      STORE_PRODUCT_LIST_QUERY.find((param) => param.name === "variants")?.schema
+    ).toEqual(expect.objectContaining({ type: "object" }))
+    expect(
+      STORE_PRODUCT_LIST_QUERY.find((param) => param.name === "$and")?.schema
+    ).toEqual(expect.objectContaining({ type: "array" }))
+    expect(
+      STORE_PRODUCT_LIST_QUERY.find((param) => param.name === "$or")?.schema
+    ).toEqual(expect.objectContaining({ type: "array" }))
+  })
+
+  it("reuses StoreGetProductsParams for retrieve (same middleware validator)", () => {
+    expect(STORE_PRODUCT_RETRIEVE_QUERY).toBe(STORE_PRODUCT_LIST_QUERY)
+    expect(STORE_PRODUCT_RETRIEVE_QUERY.map((param) => param.name)).toEqual([
+      ...STORE_GET_PRODUCTS_QUERY_NAMES,
+    ])
+  })
+
+  it("wires list and retrieve operations with the full query parameter set", () => {
+    const registry = createFoundationRegistry()
+    const list = registry
+      .getOperations("store")
+      .find((operation) => operation.path === "/store/products")
+    const retrieve = registry
+      .getOperations("store")
+      .find((operation) => operation.path === "/store/products/{id}")
+
+    const listQueryNames = (list?.parameters ?? [])
+      .filter(
+        (param): param is { name: string; in: string } =>
+          typeof param === "object" &&
+          param !== null &&
+          "name" in param &&
+          "in" in param &&
+          (param as { in: string }).in === "query"
+      )
+      .map((param) => param.name)
+
+    const retrieveQueryNames = (retrieve?.parameters ?? [])
+      .filter(
+        (param): param is { name: string; in: string } =>
+          typeof param === "object" &&
+          param !== null &&
+          "name" in param &&
+          "in" in param &&
+          (param as { in: string }).in === "query"
+      )
+      .map((param) => param.name)
+
+    expect(listQueryNames).toEqual(
+      expect.arrayContaining([...STORE_GET_PRODUCTS_QUERY_NAMES])
+    )
+    expect(retrieveQueryNames).toEqual(
+      expect.arrayContaining([...STORE_GET_PRODUCTS_QUERY_NAMES])
+    )
+    expect(retrieve?.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "id", in: "path", required: true }),
+        expect.objectContaining({ name: "fields", in: "query" }),
+        expect.objectContaining({ name: "region_id", in: "query" }),
+        expect.objectContaining({ name: "sales_channel_id", in: "query" }),
+        expect.objectContaining({ name: "variants", in: "query" }),
+      ])
     )
   })
 })

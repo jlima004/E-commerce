@@ -1,4 +1,5 @@
 import type { ContractRegistryBundle } from "../registry"
+import { STORE_X_CORRELATION_ID_RESPONSE_HEADERS } from "./headers"
 
 const nullableString = {
   type: ["string", "null"],
@@ -31,6 +32,7 @@ export function registerStoreErrorSchemas(
 export function storeErrorResponse(description: string) {
   return {
     description,
+    headers: STORE_X_CORRELATION_ID_RESPONSE_HEADERS,
     content: {
       "application/json": {
         schema: {

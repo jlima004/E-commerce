@@ -19,7 +19,16 @@ export function registerStorePaymentAttemptOperations(
     tags: ["Payment"],
     security: [...STORE_OPTIONAL_CUSTOMER],
     parameters: [CORRELATION_ID_HEADER, STORE_CART_ID_PATH],
-    requestBody: null,
+    requestBody: {
+      required: false,
+      content: {
+        "application/json": {
+          schema: {
+            $ref: "#/components/schemas/StorePaymentAttemptStartRequest",
+          },
+        },
+      },
+    },
     responses: {
       "201": storeJsonResponse(
         "Card PaymentAttempt created. amount is integer BRL minor units; client_secret is ephemeral.",
@@ -66,7 +75,16 @@ export function registerStorePaymentAttemptOperations(
     tags: ["Payment"],
     security: [...STORE_OPTIONAL_CUSTOMER],
     parameters: [CORRELATION_ID_HEADER, STORE_CART_ID_PATH],
-    requestBody: null,
+    requestBody: {
+      required: false,
+      content: {
+        "application/json": {
+          schema: {
+            $ref: "#/components/schemas/StorePaymentAttemptStartRequest",
+          },
+        },
+      },
+    },
     responses: {
       "201": storeJsonResponse(
         "Pix PaymentAttempt created. amount is integer BRL minor units; QR/copy-paste material is sensitive.",

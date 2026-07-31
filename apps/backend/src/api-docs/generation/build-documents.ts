@@ -26,6 +26,7 @@ function ensureStructuralComponents(
 ): OpenApiDocument["components"] {
   const components = (document.components ?? {}) as Record<string, unknown>
   return {
+    headers: (components.headers ?? {}) as Record<string, unknown>,
     parameters: (components.parameters ?? {}) as Record<string, unknown>,
     responses: (components.responses ?? {}) as Record<string, unknown>,
     schemas: (components.schemas ?? {}) as Record<string, unknown>,

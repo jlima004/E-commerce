@@ -37,7 +37,7 @@ export function registerStoreSecuritySchemes(
   registry.registerComponent("store", "securitySchemes", "customerSession", {
     type: "apiKey",
     in: "cookie",
-    name: "_medusa_jwt",
+    name: "connect.sid",
     description:
       "Optional or required customer session cookie, depending on the operation.",
   })

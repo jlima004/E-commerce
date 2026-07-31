@@ -2,9 +2,12 @@ import {
   CORRELATION_ID_HEADER,
   STORE_OPTIONAL_CUSTOMER,
   STORE_PRODUCT_ID_PATH,
-  STORE_PRODUCT_LIST_QUERY,
   storeErrorResponse,
 } from "../../components"
+import {
+  STORE_PRODUCT_LIST_QUERY,
+  STORE_PRODUCT_RETRIEVE_QUERY,
+} from "../../components/parameters"
 import { NATIVE_EXTENSIONS } from "../../coverage/native-routes"
 import type { ContractRegistryBundle } from "../../registry"
 import { storeJsonResponse } from "./schemas"
@@ -65,7 +68,11 @@ export function registerStoreCatalogOperations(
     summary: "Retrieve a sellable Store catalog product",
     tags: ["Catalog"],
     security: [...STORE_OPTIONAL_CUSTOMER],
-    parameters: [CORRELATION_ID_HEADER, STORE_PRODUCT_ID_PATH],
+    parameters: [
+      CORRELATION_ID_HEADER,
+      STORE_PRODUCT_ID_PATH,
+      ...STORE_PRODUCT_RETRIEVE_QUERY,
+    ],
     requestBody: null,
     responses: {
       "200": storeJsonResponse(

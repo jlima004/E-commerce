@@ -155,4 +155,97 @@ describe("OpenAPI Store contract wave", () => {
       path.startsWith("/hooks/")
     )).toBe(false)
   })
+
+  it("documents optional shared request bodies for card and pix payment starts", () => {
+    const card = storeOperations.find(
+      (operation) =>
+        operation.path === "/store/carts/{id}/payment-attempts/card"
+    )
+    const pix = storeOperations.find(
+      (operation) =>
+        operation.path === "/store/carts/{id}/payment-attempts/pix"
+    )
+    const startSchema = store?.document.components.schemas
+      .StorePaymentAttemptStartRequest as {
+      type?: string
+      description?: string
+      additionalProperties?: boolean
+      properties?: Record<string, { description?: string }>
+      required?: string[]
+    }
+
+    expect(card?.requestBody).not.toBeNull()
+    expect(pix?.requestBody).not.toBeNull()
+    expect(card?.requestBody).toEqual(
+      expect.objectContaining({
+        required: false,
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/StorePaymentAttemptStartRequest",
+            },
+          },
+        },
+      })
+    )
+    expect(pix?.requestBody).toEqual(
+      expect.objectContaining({
+        required: false,
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/StorePaymentAttemptStartRequest",
+            },
+          },
+        },
+      })
+    )
+    expect(startSchema?.additionalProperties).not.toBe(false)
+    expect(startSchema?.required).toBeUndefined()
+    expect(startSchema?.description).toMatch(/client money|rejectClientMoneyFields/i)
+    expect(startSchema?.properties?.amount?.description).toMatch(
+      /Forbidden client money field/i
+    )
+  })
+
+  it("keeps attach request cart_id optional without additionalProperties:false", () => {
+    const attachSchema = store?.document.components.schemas
+      .StoreCustomerCartAttachRequest as {
+      additionalProperties?: boolean
+      properties?: { cart_id?: { type?: string } }
+      required?: string[]
+    }
+
+    expect(attachSchema?.additionalProperties).not.toBe(false)
+    expect(attachSchema?.required).toBeUndefined()
+    expect(attachSchema?.properties?.cart_id?.type).toBe("string")
+  })
+
+  it("documents synchronous PaymentAttempt status consts for card and pix", () => {
+    const card = store?.document.components.schemas
+      .StoreCardPaymentAttemptResponse as {
+      properties?: { status?: { const?: string; enum?: string[] } }
+    }
+    const pix = store?.document.components.schemas
+      .StorePixPaymentAttemptResponse as {
+      properties?: { status?: { const?: string; enum?: string[] } }
+    }
+
+    expect(card?.properties?.status).toEqual({
+      type: "string",
+      const: "card_client_secret_created",
+    })
+    expect(pix?.properties?.status).toEqual({
+      type: "string",
+      const: "awaiting_pix_payment",
+    })
+  })
+
+  it("documents StoreCatalogPrice.amount as integer", () => {
+    const price = store?.document.components.schemas.StoreCatalogPrice as {
+      properties?: { amount?: { type?: string } }
+    }
+
+    expect(price?.properties?.amount?.type).toBe("integer")
+  })
 })

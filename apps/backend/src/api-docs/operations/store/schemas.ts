@@ -1,4 +1,4 @@
-import { PAYMENT_ATTEMPT_STATUSES } from "../../../modules/payment-attempt/types"
+import { STORE_X_CORRELATION_ID_RESPONSE_HEADERS } from "../../components/headers"
 import type { ContractRegistryBundle } from "../../registry"
 
 const nullableString = {
@@ -28,6 +28,7 @@ function jsonSchemaRef(name: string) {
 export function storeJsonResponse(statusDescription: string, schemaName: string) {
   return {
     description: statusDescription,
+    headers: STORE_X_CORRELATION_ID_RESPONSE_HEADERS,
     ...jsonSchemaRef(schemaName),
   }
 }
@@ -44,7 +45,7 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
         description: "Catalog sellable price currency. Always BRL.",
       },
       amount: {
-        type: "number",
+        type: "integer",
         description:
           "Sellable catalog price amount exposed by the public Store serializer.",
       },
@@ -352,7 +353,6 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
     "StoreCustomerCartAttachRequest",
     {
       type: "object",
-      additionalProperties: false,
       properties: {
         cart_id: {
           type: "string",
@@ -438,6 +438,52 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
   registry.registerComponent(
     "store",
     "schemas",
+    "StorePaymentAttemptStartRequest",
+    {
+      type: "object",
+      description:
+        "Optional JSON body for card/Pix payment-attempt start. Body may be omitted or `{}`. Payment method is defined by the path (`/card` or `/pix`), not by a body field. Runtime rejects only the client money fields listed below via rejectClientMoneyFields; other unknown keys are ignored (additionalProperties is intentionally not false).",
+      properties: {
+        amount: {
+          description: "Forbidden client money field; rejected by runtime.",
+        },
+        total: {
+          description: "Forbidden client money field; rejected by runtime.",
+        },
+        subtotal: {
+          description: "Forbidden client money field; rejected by runtime.",
+        },
+        item_total: {
+          description: "Forbidden client money field; rejected by runtime.",
+        },
+        shipping_total: {
+          description: "Forbidden client money field; rejected by runtime.",
+        },
+        tax_total: {
+          description: "Forbidden client money field; rejected by runtime.",
+        },
+        discount_total: {
+          description: "Forbidden client money field; rejected by runtime.",
+        },
+        grand_total: {
+          description: "Forbidden client money field; rejected by runtime.",
+        },
+        currency: {
+          description: "Forbidden client money field; rejected by runtime.",
+        },
+        currency_code: {
+          description: "Forbidden client money field; rejected by runtime.",
+        },
+        region_currency: {
+          description: "Forbidden client money field; rejected by runtime.",
+        },
+      },
+    }
+  )
+
+  registry.registerComponent(
+    "store",
+    "schemas",
     "StorePaymentAttemptAmountMinor",
     {
       type: "integer",
@@ -472,7 +518,7 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
         },
         status: {
           type: "string",
-          enum: [...PAYMENT_ATTEMPT_STATUSES],
+          const: "card_client_secret_created",
         },
         amount: {
           $ref: "#/components/schemas/StorePaymentAttemptAmountMinor",
@@ -518,7 +564,7 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
         },
         status: {
           type: "string",
-          enum: [...PAYMENT_ATTEMPT_STATUSES],
+          const: "awaiting_pix_payment",
         },
         amount: {
           $ref: "#/components/schemas/StorePaymentAttemptAmountMinor",

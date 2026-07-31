@@ -1,5 +1,13 @@
 {
   "components": {
+    "headers": {
+      "XCorrelationId": {
+        "description": "Correlation identifier returned by the server on every response. Echoes the request x-correlation-id when provided; otherwise a server-generated value.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
     "parameters": {},
     "responses": {},
     "schemas": {
@@ -463,22 +471,7 @@
             ]
           },
           "status": {
-            "enum": [
-              "created",
-              "provider_session_created",
-              "client_action_required",
-              "card_client_secret_created",
-              "payment_client_confirmed",
-              "payment_instructions_displayed",
-              "awaiting_pix_payment",
-              "awaiting_webhook_confirmation",
-              "payment_confirmed_by_webhook",
-              "pix_expired",
-              "payment_failed",
-              "payment_canceled",
-              "superseded",
-              "invalidated_by_cart_change"
-            ],
+            "const": "card_client_secret_created",
             "type": "string"
           }
         },
@@ -552,7 +545,7 @@
         "properties": {
           "amount": {
             "description": "Sellable catalog price amount exposed by the public Store serializer.",
-            "type": "number"
+            "type": "integer"
           },
           "currency_code": {
             "const": "brl",
@@ -661,7 +654,6 @@
         "type": "object"
       },
       "StoreCustomerCartAttachRequest": {
-        "additionalProperties": false,
         "properties": {
           "cart_id": {
             "description": "Optional guest cart id. When supplied, it must match the guest cart owned by the current session.",
@@ -811,6 +803,45 @@
         "type": "integer",
         "x-money-unit": "brl-minor"
       },
+      "StorePaymentAttemptStartRequest": {
+        "description": "Optional JSON body for card/Pix payment-attempt start. Body may be omitted or `{}`. Payment method is defined by the path (`/card` or `/pix`), not by a body field. Runtime rejects only the client money fields listed below via rejectClientMoneyFields; other unknown keys are ignored (additionalProperties is intentionally not false).",
+        "properties": {
+          "amount": {
+            "description": "Forbidden client money field; rejected by runtime."
+          },
+          "currency": {
+            "description": "Forbidden client money field; rejected by runtime."
+          },
+          "currency_code": {
+            "description": "Forbidden client money field; rejected by runtime."
+          },
+          "discount_total": {
+            "description": "Forbidden client money field; rejected by runtime."
+          },
+          "grand_total": {
+            "description": "Forbidden client money field; rejected by runtime."
+          },
+          "item_total": {
+            "description": "Forbidden client money field; rejected by runtime."
+          },
+          "region_currency": {
+            "description": "Forbidden client money field; rejected by runtime."
+          },
+          "shipping_total": {
+            "description": "Forbidden client money field; rejected by runtime."
+          },
+          "subtotal": {
+            "description": "Forbidden client money field; rejected by runtime."
+          },
+          "tax_total": {
+            "description": "Forbidden client money field; rejected by runtime."
+          },
+          "total": {
+            "description": "Forbidden client money field; rejected by runtime."
+          }
+        },
+        "type": "object"
+      },
       "StorePixPaymentAttemptEnvelope": {
         "additionalProperties": false,
         "properties": {
@@ -869,22 +900,7 @@
             "type": "string"
           },
           "status": {
-            "enum": [
-              "created",
-              "provider_session_created",
-              "client_action_required",
-              "card_client_secret_created",
-              "payment_client_confirmed",
-              "payment_instructions_displayed",
-              "awaiting_pix_payment",
-              "awaiting_webhook_confirmation",
-              "payment_confirmed_by_webhook",
-              "pix_expired",
-              "payment_failed",
-              "payment_canceled",
-              "superseded",
-              "invalidated_by_cart_change"
-            ],
+            "const": "awaiting_pix_payment",
             "type": "string"
           }
         },
@@ -978,7 +994,7 @@
       "customerSession": {
         "description": "Optional or required customer session cookie, depending on the operation.",
         "in": "cookie",
-        "name": "_medusa_jwt",
+        "name": "connect.sid",
         "type": "apiKey"
       },
       "publishableApiKey": {
@@ -1028,7 +1044,12 @@
                 }
               }
             },
-            "description": "Process is live."
+            "description": "Process is live.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "500": {
             "content": {
@@ -1038,7 +1059,12 @@
                 }
               }
             },
-            "description": "Unhandled framework or infrastructure failure."
+            "description": "Unhandled framework or infrastructure failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           }
         },
         "security": [],
@@ -1072,7 +1098,12 @@
                 }
               }
             },
-            "description": "Process is ready to accept traffic."
+            "description": "Process is ready to accept traffic.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "500": {
             "content": {
@@ -1082,7 +1113,12 @@
                 }
               }
             },
-            "description": "Unhandled framework or infrastructure failure."
+            "description": "Unhandled framework or infrastructure failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "503": {
             "content": {
@@ -1092,7 +1128,12 @@
                 }
               }
             },
-            "description": "One or more required dependencies are not ready."
+            "description": "One or more required dependencies are not ready.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           }
         },
         "security": [],
@@ -1126,6 +1167,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorePaymentAttemptStartRequest"
+              }
+            }
+          },
+          "required": false
+        },
         "responses": {
           "201": {
             "content": {
@@ -1135,7 +1186,12 @@
                 }
               }
             },
-            "description": "Card PaymentAttempt created. amount is integer BRL minor units; client_secret is ephemeral."
+            "description": "Card PaymentAttempt created. amount is integer BRL minor units; client_secret is ephemeral.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "400": {
             "content": {
@@ -1145,7 +1201,12 @@
                 }
               }
             },
-            "description": "Client money fields were supplied, or the cart is ineligible/incomplete."
+            "description": "Client money fields were supplied, or the cart is ineligible/incomplete.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "401": {
             "content": {
@@ -1155,7 +1216,12 @@
                 }
               }
             },
-            "description": "Missing or invalid publishable API key."
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "403": {
             "content": {
@@ -1165,7 +1231,12 @@
                 }
               }
             },
-            "description": "Actor is not authorized for the target cart."
+            "description": "Actor is not authorized for the target cart.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "404": {
             "content": {
@@ -1175,7 +1246,12 @@
                 }
               }
             },
-            "description": "Cart was not found."
+            "description": "Cart was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "500": {
             "content": {
@@ -1185,7 +1261,12 @@
                 }
               }
             },
-            "description": "Stripe, module, or persistence failure."
+            "description": "Stripe, module, or persistence failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           }
         },
         "security": [
@@ -1231,6 +1312,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorePaymentAttemptStartRequest"
+              }
+            }
+          },
+          "required": false
+        },
         "responses": {
           "201": {
             "content": {
@@ -1240,7 +1331,12 @@
                 }
               }
             },
-            "description": "Pix PaymentAttempt created. amount is integer BRL minor units; QR/copy-paste material is sensitive."
+            "description": "Pix PaymentAttempt created. amount is integer BRL minor units; QR/copy-paste material is sensitive.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "400": {
             "content": {
@@ -1250,7 +1346,12 @@
                 }
               }
             },
-            "description": "Client money fields were supplied, or the cart is ineligible/incomplete."
+            "description": "Client money fields were supplied, or the cart is ineligible/incomplete.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "401": {
             "content": {
@@ -1260,7 +1361,12 @@
                 }
               }
             },
-            "description": "Missing or invalid publishable API key."
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "403": {
             "content": {
@@ -1270,7 +1376,12 @@
                 }
               }
             },
-            "description": "Actor is not authorized for the target cart."
+            "description": "Actor is not authorized for the target cart.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "404": {
             "content": {
@@ -1280,7 +1391,12 @@
                 }
               }
             },
-            "description": "Cart was not found."
+            "description": "Cart was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "500": {
             "content": {
@@ -1290,7 +1406,12 @@
                 }
               }
             },
-            "description": "Stripe, module, or persistence failure."
+            "description": "Stripe, module, or persistence failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           }
         },
         "security": [
@@ -1336,7 +1457,12 @@
                 }
               }
             },
-            "description": "Active cart serialized as PublicStoreCartPreOrder. Monetary totals are BRL major units."
+            "description": "Active cart serialized as PublicStoreCartPreOrder. Monetary totals are BRL major units.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "401": {
             "content": {
@@ -1346,7 +1472,12 @@
                 }
               }
             },
-            "description": "Missing or invalid publishable API key."
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "404": {
             "content": {
@@ -1356,7 +1487,12 @@
                 }
               }
             },
-            "description": "Current guest session or authenticated customer has no active cart."
+            "description": "Current guest session or authenticated customer has no active cart.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "500": {
             "content": {
@@ -1366,7 +1502,12 @@
                 }
               }
             },
-            "description": "Cart retrieval failure."
+            "description": "Cart retrieval failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           }
         },
         "security": [
@@ -1410,7 +1551,12 @@
                 }
               }
             },
-            "description": "Existing active cart reused. Monetary totals are BRL major units."
+            "description": "Existing active cart reused. Monetary totals are BRL major units.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "201": {
             "content": {
@@ -1420,7 +1566,12 @@
                 }
               }
             },
-            "description": "New BRL cart created for the current actor. Monetary totals are BRL major units."
+            "description": "New BRL cart created for the current actor. Monetary totals are BRL major units.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "401": {
             "content": {
@@ -1430,7 +1581,12 @@
                 }
               }
             },
-            "description": "Missing or invalid publishable API key."
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "500": {
             "content": {
@@ -1440,7 +1596,12 @@
                 }
               }
             },
-            "description": "Session, customer, or cart workflow failure."
+            "description": "Session, customer, or cart workflow failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           }
         },
         "security": [
@@ -1496,7 +1657,12 @@
                 }
               }
             },
-            "description": "Either preserves the customer cart or attaches the authorized guest cart."
+            "description": "Either preserves the customer cart or attaches the authorized guest cart.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "400": {
             "content": {
@@ -1506,7 +1672,12 @@
                 }
               }
             },
-            "description": "Invalid attach request body."
+            "description": "Invalid attach request body.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "401": {
             "content": {
@@ -1516,7 +1687,12 @@
                 }
               }
             },
-            "description": "Missing publishable API key or authenticated customer actor."
+            "description": "Missing publishable API key or authenticated customer actor.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "403": {
             "content": {
@@ -1526,7 +1702,12 @@
                 }
               }
             },
-            "description": "Guest cart is not authorized for the current session."
+            "description": "Guest cart is not authorized for the current session.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "404": {
             "content": {
@@ -1536,7 +1717,12 @@
                 }
               }
             },
-            "description": "Authenticated customer or referenced cart was not found."
+            "description": "Authenticated customer or referenced cart was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "500": {
             "content": {
@@ -1546,7 +1732,12 @@
                 }
               }
             },
-            "description": "Attach workflow failure."
+            "description": "Attach workflow failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           }
         },
         "security": [
@@ -1580,7 +1771,16 @@
             }
           },
           {
-            "description": "Maximum number of products to return.",
+            "description": "Native fields selector (createSelectParams / createFindParams). Project middleware replaces client-supplied fields with the closed public catalog field set.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of products to return. Medusa StoreGetProductsParams default: 50.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -1591,7 +1791,7 @@
             }
           },
           {
-            "description": "Number of products to skip.",
+            "description": "Number of products to skip. Medusa StoreGetProductsParams default: 0.",
             "in": "query",
             "name": "offset",
             "required": false,
@@ -1602,7 +1802,25 @@
             }
           },
           {
-            "description": "Region context used by the native Medusa Store product query.",
+            "description": "Sort order expression accepted by createFindParams.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "When true, include soft-deleted records (createFindParams boolean preprocess).",
+            "in": "query",
+            "name": "with_deleted",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Region context used by the native Medusa Store product query (cleared after pricing/tax context is applied).",
             "in": "query",
             "name": "region_id",
             "required": false,
@@ -1611,12 +1829,863 @@
             }
           },
           {
-            "description": "Native fields selector. Project middleware replaces client-supplied fields with the closed public catalog field set.",
+            "description": "Country context for pricing/tax normalization (cleared after context is applied).",
             "in": "query",
-            "name": "fields",
+            "name": "country_code",
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "Province/state context for pricing/tax normalization (cleared after context is applied).",
+            "in": "query",
+            "name": "province",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cart context for pricing/tax normalization (cleared after context is applied).",
+            "in": "query",
+            "name": "cart_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by sales channel id (string or string[]).",
+            "in": "query",
+            "name": "sales_channel_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Full-text search query.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by product id (string or string[]).",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product title (string or string[]).",
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product handle (string or string[]).",
+            "in": "query",
+            "name": "handle",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter gift-card products. Accepts boolean or boolean string (Medusa booleanString).",
+            "in": "query",
+            "name": "is_giftcard",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "enum": [
+                    "true",
+                    "false"
+                  ],
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by category id (string or string[]).",
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by external id (string or string[]).",
+            "in": "query",
+            "name": "external_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by collection id (string or string[]).",
+            "in": "query",
+            "name": "collection_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by tag id (string or string[]).",
+            "in": "query",
+            "name": "tag_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product type id (string or string[]).",
+            "in": "query",
+            "name": "type_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Created-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "in": "query",
+            "name": "created_at",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "$contains": {
+                      "type": "string"
+                    },
+                    "$eq": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$gt": {
+                      "type": "string"
+                    },
+                    "$gte": {
+                      "type": "string"
+                    },
+                    "$ilike": {
+                      "type": "string"
+                    },
+                    "$in": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$like": {
+                      "type": "string"
+                    },
+                    "$lt": {
+                      "type": "string"
+                    },
+                    "$lte": {
+                      "type": "string"
+                    },
+                    "$ne": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$nin": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$re": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Updated-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "in": "query",
+            "name": "updated_at",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "$contains": {
+                      "type": "string"
+                    },
+                    "$eq": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$gt": {
+                      "type": "string"
+                    },
+                    "$gte": {
+                      "type": "string"
+                    },
+                    "$ilike": {
+                      "type": "string"
+                    },
+                    "$in": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$like": {
+                      "type": "string"
+                    },
+                    "$lt": {
+                      "type": "string"
+                    },
+                    "$lte": {
+                      "type": "string"
+                    },
+                    "$ne": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$nin": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$re": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Deleted-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "in": "query",
+            "name": "deleted_at",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "$contains": {
+                      "type": "string"
+                    },
+                    "$eq": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$gt": {
+                      "type": "string"
+                    },
+                    "$gte": {
+                      "type": "string"
+                    },
+                    "$ilike": {
+                      "type": "string"
+                    },
+                    "$in": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$like": {
+                      "type": "string"
+                    },
+                    "$lt": {
+                      "type": "string"
+                    },
+                    "$lte": {
+                      "type": "string"
+                    },
+                    "$ne": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$nin": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$re": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Logical AND of StoreGetProductParamsDirectFields filter objects (applyAndAndOrOperators).",
+            "in": "query",
+            "name": "$and",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Logical OR of StoreGetProductParamsDirectFields filter objects (applyAndAndOrOperators).",
+            "in": "query",
+            "name": "$or",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Nested variant filter object (options, sku/ean/upc/barcode/id/q, date operators, nested $and/$or).",
+            "in": "query",
+            "name": "variants",
+            "required": false,
+            "schema": {
+              "additionalProperties": false,
+              "description": "Nested variant filters from StoreGetProductsParams (`variants`). Includes variant identity/options filters, date operator maps, and nested `$and`/`$or`.",
+              "properties": {
+                "$and": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "$or": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "barcode": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "created_at": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "$contains": {
+                          "type": "string"
+                        },
+                        "$eq": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$gt": {
+                          "type": "string"
+                        },
+                        "$gte": {
+                          "type": "string"
+                        },
+                        "$ilike": {
+                          "type": "string"
+                        },
+                        "$in": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$like": {
+                          "type": "string"
+                        },
+                        "$lt": {
+                          "type": "string"
+                        },
+                        "$lte": {
+                          "type": "string"
+                        },
+                        "$ne": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$nin": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$re": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                },
+                "deleted_at": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "$contains": {
+                          "type": "string"
+                        },
+                        "$eq": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$gt": {
+                          "type": "string"
+                        },
+                        "$gte": {
+                          "type": "string"
+                        },
+                        "$ilike": {
+                          "type": "string"
+                        },
+                        "$in": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$like": {
+                          "type": "string"
+                        },
+                        "$lt": {
+                          "type": "string"
+                        },
+                        "$lte": {
+                          "type": "string"
+                        },
+                        "$ne": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$nin": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$re": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                },
+                "ean": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "id": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "options": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "option_id": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "q": {
+                  "type": "string"
+                },
+                "sku": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "upc": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "updated_at": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "$contains": {
+                          "type": "string"
+                        },
+                        "$eq": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$gt": {
+                          "type": "string"
+                        },
+                        "$gte": {
+                          "type": "string"
+                        },
+                        "$ilike": {
+                          "type": "string"
+                        },
+                        "$in": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$like": {
+                          "type": "string"
+                        },
+                        "$lt": {
+                          "type": "string"
+                        },
+                        "$lte": {
+                          "type": "string"
+                        },
+                        "$ne": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$nin": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$re": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
             }
           }
         ],
@@ -1629,7 +2698,12 @@
                 }
               }
             },
-            "description": "Sellable products with the public Store catalog serializer applied."
+            "description": "Sellable products with the public Store catalog serializer applied.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "400": {
             "content": {
@@ -1639,7 +2713,12 @@
                 }
               }
             },
-            "description": "Native query validation failure."
+            "description": "Native query validation failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "401": {
             "content": {
@@ -1649,7 +2728,12 @@
                 }
               }
             },
-            "description": "Missing or invalid publishable API key."
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "500": {
             "content": {
@@ -1659,7 +2743,12 @@
                 }
               }
             },
-            "description": "Upstream or framework failure."
+            "description": "Upstream or framework failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           }
         },
         "security": [
@@ -1703,6 +2792,924 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Native fields selector (createSelectParams / createFindParams). Project middleware replaces client-supplied fields with the closed public catalog field set.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of products to return. Medusa StoreGetProductsParams default: 50.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of products to skip. Medusa StoreGetProductsParams default: 0.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Sort order expression accepted by createFindParams.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "When true, include soft-deleted records (createFindParams boolean preprocess).",
+            "in": "query",
+            "name": "with_deleted",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Region context used by the native Medusa Store product query (cleared after pricing/tax context is applied).",
+            "in": "query",
+            "name": "region_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Country context for pricing/tax normalization (cleared after context is applied).",
+            "in": "query",
+            "name": "country_code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Province/state context for pricing/tax normalization (cleared after context is applied).",
+            "in": "query",
+            "name": "province",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cart context for pricing/tax normalization (cleared after context is applied).",
+            "in": "query",
+            "name": "cart_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by sales channel id (string or string[]).",
+            "in": "query",
+            "name": "sales_channel_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Full-text search query.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by product id (string or string[]).",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product title (string or string[]).",
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product handle (string or string[]).",
+            "in": "query",
+            "name": "handle",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter gift-card products. Accepts boolean or boolean string (Medusa booleanString).",
+            "in": "query",
+            "name": "is_giftcard",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "enum": [
+                    "true",
+                    "false"
+                  ],
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by category id (string or string[]).",
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by external id (string or string[]).",
+            "in": "query",
+            "name": "external_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by collection id (string or string[]).",
+            "in": "query",
+            "name": "collection_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by tag id (string or string[]).",
+            "in": "query",
+            "name": "tag_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Filter by product type id (string or string[]).",
+            "in": "query",
+            "name": "type_id",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Created-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "in": "query",
+            "name": "created_at",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "$contains": {
+                      "type": "string"
+                    },
+                    "$eq": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$gt": {
+                      "type": "string"
+                    },
+                    "$gte": {
+                      "type": "string"
+                    },
+                    "$ilike": {
+                      "type": "string"
+                    },
+                    "$in": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$like": {
+                      "type": "string"
+                    },
+                    "$lt": {
+                      "type": "string"
+                    },
+                    "$lte": {
+                      "type": "string"
+                    },
+                    "$ne": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$nin": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$re": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Updated-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "in": "query",
+            "name": "updated_at",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "$contains": {
+                      "type": "string"
+                    },
+                    "$eq": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$gt": {
+                      "type": "string"
+                    },
+                    "$gte": {
+                      "type": "string"
+                    },
+                    "$ilike": {
+                      "type": "string"
+                    },
+                    "$in": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$like": {
+                      "type": "string"
+                    },
+                    "$lt": {
+                      "type": "string"
+                    },
+                    "$lte": {
+                      "type": "string"
+                    },
+                    "$ne": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$nin": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$re": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Deleted-at filter: scalar, array, or Medusa operator map ($eq, $gt, $lte, …).",
+            "in": "query",
+            "name": "deleted_at",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "$contains": {
+                      "type": "string"
+                    },
+                    "$eq": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$gt": {
+                      "type": "string"
+                    },
+                    "$gte": {
+                      "type": "string"
+                    },
+                    "$ilike": {
+                      "type": "string"
+                    },
+                    "$in": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$like": {
+                      "type": "string"
+                    },
+                    "$lt": {
+                      "type": "string"
+                    },
+                    "$lte": {
+                      "type": "string"
+                    },
+                    "$ne": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "$nin": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "$re": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Logical AND of StoreGetProductParamsDirectFields filter objects (applyAndAndOrOperators).",
+            "in": "query",
+            "name": "$and",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Logical OR of StoreGetProductParamsDirectFields filter objects (applyAndAndOrOperators).",
+            "in": "query",
+            "name": "$or",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Nested variant filter object (options, sku/ean/upc/barcode/id/q, date operators, nested $and/$or).",
+            "in": "query",
+            "name": "variants",
+            "required": false,
+            "schema": {
+              "additionalProperties": false,
+              "description": "Nested variant filters from StoreGetProductsParams (`variants`). Includes variant identity/options filters, date operator maps, and nested `$and`/`$or`.",
+              "properties": {
+                "$and": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "$or": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "barcode": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "created_at": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "$contains": {
+                          "type": "string"
+                        },
+                        "$eq": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$gt": {
+                          "type": "string"
+                        },
+                        "$gte": {
+                          "type": "string"
+                        },
+                        "$ilike": {
+                          "type": "string"
+                        },
+                        "$in": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$like": {
+                          "type": "string"
+                        },
+                        "$lt": {
+                          "type": "string"
+                        },
+                        "$lte": {
+                          "type": "string"
+                        },
+                        "$ne": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$nin": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$re": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                },
+                "deleted_at": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "$contains": {
+                          "type": "string"
+                        },
+                        "$eq": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$gt": {
+                          "type": "string"
+                        },
+                        "$gte": {
+                          "type": "string"
+                        },
+                        "$ilike": {
+                          "type": "string"
+                        },
+                        "$in": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$like": {
+                          "type": "string"
+                        },
+                        "$lt": {
+                          "type": "string"
+                        },
+                        "$lte": {
+                          "type": "string"
+                        },
+                        "$ne": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$nin": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$re": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                },
+                "ean": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "id": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "options": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "option_id": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "q": {
+                  "type": "string"
+                },
+                "sku": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "upc": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "updated_at": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "$contains": {
+                          "type": "string"
+                        },
+                        "$eq": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$gt": {
+                          "type": "string"
+                        },
+                        "$gte": {
+                          "type": "string"
+                        },
+                        "$ilike": {
+                          "type": "string"
+                        },
+                        "$in": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$like": {
+                          "type": "string"
+                        },
+                        "$lt": {
+                          "type": "string"
+                        },
+                        "$lte": {
+                          "type": "string"
+                        },
+                        "$ne": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "$nin": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "$re": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            }
           }
         ],
         "responses": {
@@ -1714,7 +3721,12 @@
                 }
               }
             },
-            "description": "Sellable product with the public Store catalog serializer applied."
+            "description": "Sellable product with the public Store catalog serializer applied.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "400": {
             "content": {
@@ -1724,7 +3736,12 @@
                 }
               }
             },
-            "description": "Native query validation failure."
+            "description": "Native query validation failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "401": {
             "content": {
@@ -1734,7 +3751,12 @@
                 }
               }
             },
-            "description": "Missing or invalid publishable API key."
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "404": {
             "content": {
@@ -1744,7 +3766,12 @@
                 }
               }
             },
-            "description": "Product not found, or product has no sellable variant after project serialization."
+            "description": "Product not found, or product has no sellable variant after project serialization.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "500": {
             "content": {
@@ -1754,7 +3781,12 @@
                 }
               }
             },
-            "description": "Upstream or framework failure."
+            "description": "Upstream or framework failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           }
         },
         "security": [
@@ -1810,7 +3842,12 @@
                 }
               }
             },
-            "description": "Allowlisted public tracking summary."
+            "description": "Allowlisted public tracking summary.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "400": {
             "content": {
@@ -1820,7 +3857,12 @@
                 }
               }
             },
-            "description": "Malformed body or rejected non-token identifier fields."
+            "description": "Malformed body or rejected non-token identifier fields.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "401": {
             "content": {
@@ -1830,7 +3872,12 @@
                 }
               }
             },
-            "description": "Invalid, expired, revoked, or unavailable tracking token. The error body is intentionally indistinguishable."
+            "description": "Invalid, expired, revoked, or unavailable tracking token. The error body is intentionally indistinguishable.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "429": {
             "content": {
@@ -1840,7 +3887,12 @@
                 }
               }
             },
-            "description": "Tracking lookup rate limit exceeded."
+            "description": "Tracking lookup rate limit exceeded.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           },
           "500": {
             "content": {
@@ -1850,7 +3902,12 @@
                 }
               }
             },
-            "description": "Internal tracking lookup failure."
+            "description": "Internal tracking lookup failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
           }
         },
         "security": [

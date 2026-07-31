@@ -1,11 +1,20 @@
 import { buildContracts } from "../generation/build-documents"
 import { createFoundationRegistry } from "../registry"
 
+const X_CORRELATION_ID_HEADER_REF = "#/components/headers/XCorrelationId"
+
 describe("OpenAPI Store security contract", () => {
   const registry = createFoundationRegistry()
   const storeOperations = registry.getOperations("store")
-  const storeDocument = buildContracts(registry).find(
+  const contracts = buildContracts(registry)
+  const storeDocument = contracts.find(
     (contract) => contract.surface === "store"
+  )?.document
+  const adminDocument = contracts.find(
+    (contract) => contract.surface === "admin"
+  )?.document
+  const webhooksDocument = contracts.find(
+    (contract) => contract.surface === "webhooks"
   )?.document
 
   it("registers exactly ten Store operations and keeps Admin/Webhooks empty", () => {
@@ -13,13 +22,8 @@ describe("OpenAPI Store security contract", () => {
     expect(registry.getOperations("admin")).toHaveLength(0)
     expect(registry.getOperations("webhooks")).toHaveLength(0)
 
-    const contracts = buildContracts(registry)
-    expect(contracts.find((item) => item.surface === "admin")?.document.paths).toEqual(
-      {}
-    )
-    expect(
-      contracts.find((item) => item.surface === "webhooks")?.document.paths
-    ).toEqual({})
+    expect(adminDocument?.paths).toEqual({})
+    expect(webhooksDocument?.paths).toEqual({})
   })
 
   it("marks every Store operation non-interactive and preserves four candidates", () => {
@@ -116,12 +120,86 @@ describe("OpenAPI Store security contract", () => {
       Object.keys(storeDocument?.components.securitySchemes ?? {}).sort()
     ).toEqual(["customerBearer", "customerSession", "publishableApiKey"])
 
-    const contracts = buildContracts(registry)
     for (const surface of ["admin", "webhooks"] as const) {
       expect(
         contracts.find((item) => item.surface === surface)?.document.components
           .securitySchemes
       ).toEqual({})
     }
+  })
+
+  it("documents customerSession as the connect.sid cookie", () => {
+    const customerSession =
+      storeDocument?.components.securitySchemes?.customerSession
+    expect(customerSession).toEqual(
+      expect.objectContaining({
+        type: "apiKey",
+        in: "cookie",
+        name: "connect.sid",
+      })
+    )
+  })
+
+  it("registers XCorrelationId response header on Store only", () => {
+    const storeHeaders = (
+      storeDocument?.components as { headers?: Record<string, unknown> }
+    ).headers
+    expect(storeHeaders?.XCorrelationId).toEqual(
+      expect.objectContaining({
+        schema: { type: "string" },
+        description: expect.stringMatching(/correlation/i),
+      })
+    )
+    expect(storeHeaders?.XCorrelationId).not.toHaveProperty("example")
+    expect(storeHeaders?.XCorrelationId).not.toHaveProperty("examples")
+
+    for (const document of [adminDocument, webhooksDocument]) {
+      const headers = (document?.components as { headers?: Record<string, unknown> })
+        ?.headers
+      expect(headers?.XCorrelationId).toBeUndefined()
+      expect(headers ?? {}).toEqual({})
+    }
+  })
+
+  it("attaches x-correlation-id header $ref on every Store response", () => {
+    const paths = storeDocument?.paths ?? {}
+    let responseCount = 0
+
+    for (const pathItem of Object.values(paths)) {
+      for (const operation of Object.values(pathItem as Record<string, unknown>)) {
+        if (!operation || typeof operation !== "object") {
+          continue
+        }
+        const responses = (operation as { responses?: Record<string, unknown> })
+          .responses
+        if (!responses) {
+          continue
+        }
+        for (const response of Object.values(responses)) {
+          responseCount += 1
+          expect(response).toEqual(
+            expect.objectContaining({
+              headers: {
+                "x-correlation-id": {
+                  $ref: X_CORRELATION_ID_HEADER_REF,
+                },
+              },
+            })
+          )
+        }
+      }
+    }
+
+    expect(responseCount).toBeGreaterThan(0)
+  })
+
+  it("omits concrete correlation id example values from the Store document", () => {
+    const serialized = JSON.stringify(storeDocument)
+    expect(serialized).not.toMatch(
+      /"example"\s*:\s*"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/i
+    )
+    expect(serialized).not.toMatch(
+      /"x-correlation-id"[^}]*"example"\s*:\s*"[^"]+"/i
+    )
   })
 })
