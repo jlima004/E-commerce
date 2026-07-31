@@ -124,4 +124,18 @@ describe("OpenAPI Store monetary unit boundary", () => {
     expect(Number.isInteger(1090)).toBe(true)
     expect(Number.isInteger(10.9)).toBe(false)
   })
+
+  it("documents PublicStoreCartItem.unit_price as nullable major-unit number", () => {
+    const item = store?.components.schemas.PublicStoreCartItem as {
+      properties: {
+        unit_price: {
+          type?: unknown
+          "x-money-unit"?: string
+        }
+      }
+    }
+
+    expect(item.properties.unit_price["x-money-unit"]).toBe("brl-major")
+    expect(item.properties.unit_price.type).toEqual(["number", "null"])
+  })
 })

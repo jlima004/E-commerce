@@ -244,6 +244,7 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
       unit_price: {
         ...nullableNumber,
         description: "Line item unit price in BRL major units.",
+        "x-money-unit": "brl-major",
       },
     },
   })

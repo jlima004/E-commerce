@@ -329,6 +329,52 @@ describe("OpenAPI Store contract wave", () => {
     })
   })
 
+  it("maps cart access denial to 400 (not 403) on card and pix payment attempts", () => {
+    const paymentAttemptPaths = [
+      "/store/carts/{id}/payment-attempts/card",
+      "/store/carts/{id}/payment-attempts/pix",
+    ] as const
+
+    for (const path of paymentAttemptPaths) {
+      const operation = storeOperations.find(
+        (candidate) =>
+          candidate.method === "POST" && candidate.path === path
+      )
+      expect(operation).toBeDefined()
+
+      const responseKeys = Object.keys(operation?.responses ?? {})
+      expect(responseKeys).toEqual(
+        expect.arrayContaining(["201", "400", "401", "404", "500"])
+      )
+      expect(responseKeys).not.toContain("403")
+      expect(operation?.responses["400"]).toBeDefined()
+      expect(operation?.responses["403"]).toBeUndefined()
+
+      const registered400 = operation?.responses["400"] as {
+        description?: string
+      }
+      expect(registered400?.description).toMatch(
+        /access denied|ownership|access/i
+      )
+
+      const documentOperation = store?.document.paths?.[path]?.post as
+        | {
+            responses?: Record<string, { description?: string }>
+          }
+        | undefined
+      expect(documentOperation?.responses?.["400"]).toBeDefined()
+      expect(documentOperation?.responses?.["403"]).toBeUndefined()
+      expect(documentOperation?.responses?.["400"]?.description).toMatch(
+        /access denied|ownership|access/i
+      )
+      expect(
+        Object.keys(documentOperation?.responses ?? {})
+      ).toEqual(
+        expect.arrayContaining(["201", "400", "401", "404", "500"])
+      )
+    }
+  })
+
   it("documents StoreCatalogPrice.amount as integer", () => {
     const price = store?.document.components.schemas.StoreCatalogPrice as {
       properties?: {

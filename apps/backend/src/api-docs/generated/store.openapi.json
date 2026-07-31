@@ -34,7 +34,8 @@
             "type": [
               "number",
               "null"
-            ]
+            ],
+            "x-money-unit": "brl-major"
           },
           "variant_id": {
             "type": [
@@ -1185,7 +1186,7 @@
                 }
               }
             },
-            "description": "Client money fields were supplied, or the cart is ineligible/incomplete.",
+            "description": "Client money fields were supplied, cart access was denied, or the cart is ineligible/incomplete.",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"
@@ -1201,21 +1202,6 @@
               }
             },
             "description": "Missing or invalid publishable API key.",
-            "headers": {
-              "x-correlation-id": {
-                "$ref": "#/components/headers/XCorrelationId"
-              }
-            }
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StoreError"
-                }
-              }
-            },
-            "description": "Actor is not authorized for the target cart.",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"
@@ -1330,7 +1316,7 @@
                 }
               }
             },
-            "description": "Client money fields were supplied, or the cart is ineligible/incomplete.",
+            "description": "Client money fields were supplied, cart access was denied, or the cart is ineligible/incomplete.",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"
@@ -1346,21 +1332,6 @@
               }
             },
             "description": "Missing or invalid publishable API key.",
-            "headers": {
-              "x-correlation-id": {
-                "$ref": "#/components/headers/XCorrelationId"
-              }
-            }
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StoreError"
-                }
-              }
-            },
-            "description": "Actor is not authorized for the target cart.",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"

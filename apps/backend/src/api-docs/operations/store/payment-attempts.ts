@@ -35,13 +35,10 @@ export function registerStorePaymentAttemptOperations(
         "StoreCardPaymentAttemptEnvelope"
       ),
       "400": storeErrorResponse(
-        "Client money fields were supplied, or the cart is ineligible/incomplete."
+        "Client money fields were supplied, cart access was denied, or the cart is ineligible/incomplete."
       ),
       "401": storeErrorResponse(
         "Missing or invalid publishable API key."
-      ),
-      "403": storeErrorResponse(
-        "Actor is not authorized for the target cart."
       ),
       "404": storeErrorResponse("Cart was not found."),
       "500": storeErrorResponse(
@@ -91,13 +88,10 @@ export function registerStorePaymentAttemptOperations(
         "StorePixPaymentAttemptEnvelope"
       ),
       "400": storeErrorResponse(
-        "Client money fields were supplied, or the cart is ineligible/incomplete."
+        "Client money fields were supplied, cart access was denied, or the cart is ineligible/incomplete."
       ),
       "401": storeErrorResponse(
         "Missing or invalid publishable API key."
-      ),
-      "403": storeErrorResponse(
-        "Actor is not authorized for the target cart."
       ),
       "404": storeErrorResponse("Cart was not found."),
       "500": storeErrorResponse(
