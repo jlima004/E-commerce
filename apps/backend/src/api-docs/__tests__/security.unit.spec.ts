@@ -2,6 +2,8 @@ import { buildContracts } from "../generation/build-documents"
 import { createFoundationRegistry } from "../registry"
 
 const X_CORRELATION_ID_HEADER_REF = "#/components/headers/XCorrelationId"
+const WEBHOOK_X_CORRELATION_ID_HEADER_REF =
+  "#/components/headers/WebhookXCorrelationId"
 
 describe("OpenAPI Store security contract and surface isolation", () => {
   const registry = createFoundationRegistry()
@@ -17,13 +19,16 @@ describe("OpenAPI Store security contract and surface isolation", () => {
     (contract) => contract.surface === "webhooks"
   )?.document
 
-  it("registers Store and Admin while keeping Webhooks empty", () => {
+  it("registers populated and isolated Store, Admin, and Webhooks surfaces", () => {
     expect(storeOperations).toHaveLength(10)
     expect(registry.getOperations("admin")).toHaveLength(9)
-    expect(registry.getOperations("webhooks")).toHaveLength(0)
+    expect(registry.getOperations("webhooks")).toHaveLength(2)
 
     expect(Object.keys(adminDocument?.paths ?? {})).toHaveLength(9)
-    expect(webhooksDocument?.paths).toEqual({})
+    expect(Object.keys(webhooksDocument?.paths ?? {}).sort()).toEqual([
+      "/hooks/gelato",
+      "/hooks/stripe",
+    ])
   })
 
   it("marks every Store operation non-interactive and preserves four candidates", () => {
@@ -115,7 +120,7 @@ describe("OpenAPI Store security contract and surface isolation", () => {
     expect(serialized).not.toMatch(/pi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+/)
   })
 
-  it("keeps Store and Admin security schemes surface-local", () => {
+  it("keeps all security schemes surface-local", () => {
     expect(
       Object.keys(storeDocument?.components.securitySchemes ?? {}).sort()
     ).toEqual(["customerBearer", "customerSession", "publishableApiKey"])
@@ -123,9 +128,23 @@ describe("OpenAPI Store security contract and surface isolation", () => {
     expect(
       Object.keys(adminDocument?.components.securitySchemes ?? {}).sort()
     ).toEqual(["adminApiKey", "adminBearer", "adminSession"])
-    expect(webhooksDocument?.components.securitySchemes).toEqual({})
+    expect(
+      Object.keys(webhooksDocument?.components.securitySchemes ?? {}).sort()
+    ).toEqual(["gelatoWebhookSecret", "stripeSignature"])
     expect(storeDocument?.components.securitySchemes).not.toHaveProperty("adminBearer")
     expect(adminDocument?.components.securitySchemes).not.toHaveProperty("customerBearer")
+    expect(storeDocument?.components.securitySchemes).not.toHaveProperty(
+      "stripeSignature"
+    )
+    expect(adminDocument?.components.securitySchemes).not.toHaveProperty(
+      "gelatoWebhookSecret"
+    )
+    expect(webhooksDocument?.components.securitySchemes).not.toHaveProperty(
+      "publishableApiKey"
+    )
+    expect(webhooksDocument?.components.securitySchemes).not.toHaveProperty(
+      "adminBearer"
+    )
   })
 
   it("documents customerSession as the connect.sid cookie", () => {
@@ -140,7 +159,7 @@ describe("OpenAPI Store security contract and surface isolation", () => {
     )
   })
 
-  it("registers distinct Store and Admin correlation response headers", () => {
+  it("registers distinct Store, Admin, and Webhooks correlation response headers", () => {
     const storeHeaders = (
       storeDocument?.components as { headers?: Record<string, unknown> }
     ).headers
@@ -164,7 +183,53 @@ describe("OpenAPI Store security contract and surface isolation", () => {
     )
     expect(adminHeaders?.XCorrelationId).toBeUndefined()
     expect(storeHeaders?.AdminXCorrelationId).toBeUndefined()
-    expect(webhooksDocument?.components.headers).toEqual({})
+    const webhookHeaders = (
+      webhooksDocument?.components as { headers?: Record<string, unknown> }
+    ).headers
+    expect(webhookHeaders?.WebhookXCorrelationId).toEqual(
+      expect.objectContaining({
+        schema: { type: "string" },
+        description: expect.stringMatching(/post-correlation/i),
+      })
+    )
+    expect(webhookHeaders?.XCorrelationId).toBeUndefined()
+    expect(webhookHeaders?.AdminXCorrelationId).toBeUndefined()
+    expect(storeHeaders?.WebhookXCorrelationId).toBeUndefined()
+    expect(adminHeaders?.WebhookXCorrelationId).toBeUndefined()
+  })
+
+  it("makes both webhook operations explicit, secured, and non-interactive", () => {
+    const metadata = registry.getOperations("webhooks")
+    expect(metadata).toHaveLength(2)
+    expect(metadata.every((operation) => operation.nonInteractive)).toBe(true)
+    expect(metadata.every((operation) => !operation.interactiveCandidate)).toBe(
+      true
+    )
+    expect(metadata.map((operation) => operation.security)).toEqual([
+      [{ stripeSignature: [] }],
+      [{ gelatoWebhookSecret: [] }],
+    ])
+
+    const configured = JSON.stringify(webhooksDocument)
+    expect(configured).not.toMatch(/\bsk_(?:live|test)_[A-Za-z0-9_-]+/i)
+    expect(configured).not.toMatch(/\bwhsec_[A-Za-z0-9_-]+/i)
+    expect(configured).not.toMatch(/Bearer\s+[A-Za-z0-9._~-]{8,}/i)
+
+    for (const pathItem of Object.values(webhooksDocument?.paths ?? {})) {
+      const operation = (pathItem as { post: { responses: Record<string, unknown> } })
+        .post
+      for (const response of Object.values(operation.responses)) {
+        expect(response).toEqual(
+          expect.objectContaining({
+            headers: {
+              "x-correlation-id": {
+                $ref: WEBHOOK_X_CORRELATION_ID_HEADER_REF,
+              },
+            },
+          })
+        )
+      }
+    }
   })
 
   it("attaches x-correlation-id header $ref on every Store response", () => {

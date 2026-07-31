@@ -35,3 +35,21 @@ export const ADMIN_X_CORRELATION_ID_RESPONSE_HEADERS = {
     $ref: "#/components/headers/AdminXCorrelationId",
   },
 } as const
+
+export function registerWebhookResponseHeaders(
+  registry: ContractRegistryBundle
+): void {
+  registry.registerComponent("webhooks", "headers", "WebhookXCorrelationId", {
+    schema: {
+      type: "string",
+    },
+    description:
+      "Correlation identifier returned after the request reaches the project correlation middleware. This header is attached only to evidenced post-correlation webhook responses.",
+  })
+}
+
+export const WEBHOOK_X_CORRELATION_ID_RESPONSE_HEADERS = {
+  "x-correlation-id": {
+    $ref: "#/components/headers/WebhookXCorrelationId",
+  },
+} as const
