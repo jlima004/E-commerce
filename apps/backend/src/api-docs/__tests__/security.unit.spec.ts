@@ -3,7 +3,7 @@ import { createFoundationRegistry } from "../registry"
 
 const X_CORRELATION_ID_HEADER_REF = "#/components/headers/XCorrelationId"
 
-describe("OpenAPI Store security contract", () => {
+describe("OpenAPI Store security contract and surface isolation", () => {
   const registry = createFoundationRegistry()
   const storeOperations = registry.getOperations("store")
   const contracts = buildContracts(registry)
@@ -17,12 +17,12 @@ describe("OpenAPI Store security contract", () => {
     (contract) => contract.surface === "webhooks"
   )?.document
 
-  it("registers exactly ten Store operations and keeps Admin/Webhooks empty", () => {
+  it("registers Store and Admin while keeping Webhooks empty", () => {
     expect(storeOperations).toHaveLength(10)
-    expect(registry.getOperations("admin")).toHaveLength(0)
+    expect(registry.getOperations("admin")).toHaveLength(9)
     expect(registry.getOperations("webhooks")).toHaveLength(0)
 
-    expect(adminDocument?.paths).toEqual({})
+    expect(Object.keys(adminDocument?.paths ?? {})).toHaveLength(9)
     expect(webhooksDocument?.paths).toEqual({})
   })
 
@@ -115,17 +115,17 @@ describe("OpenAPI Store security contract", () => {
     expect(serialized).not.toMatch(/pi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+/)
   })
 
-  it("emits Store security schemes without leaking them into Admin/Webhooks", () => {
+  it("keeps Store and Admin security schemes surface-local", () => {
     expect(
       Object.keys(storeDocument?.components.securitySchemes ?? {}).sort()
     ).toEqual(["customerBearer", "customerSession", "publishableApiKey"])
 
-    for (const surface of ["admin", "webhooks"] as const) {
-      expect(
-        contracts.find((item) => item.surface === surface)?.document.components
-          .securitySchemes
-      ).toEqual({})
-    }
+    expect(
+      Object.keys(adminDocument?.components.securitySchemes ?? {}).sort()
+    ).toEqual(["adminApiKey", "adminBearer", "adminSession"])
+    expect(webhooksDocument?.components.securitySchemes).toEqual({})
+    expect(storeDocument?.components.securitySchemes).not.toHaveProperty("adminBearer")
+    expect(adminDocument?.components.securitySchemes).not.toHaveProperty("customerBearer")
   })
 
   it("documents customerSession as the connect.sid cookie", () => {
@@ -140,7 +140,7 @@ describe("OpenAPI Store security contract", () => {
     )
   })
 
-  it("registers XCorrelationId response header on Store only", () => {
+  it("registers distinct Store and Admin correlation response headers", () => {
     const storeHeaders = (
       storeDocument?.components as { headers?: Record<string, unknown> }
     ).headers
@@ -153,12 +153,18 @@ describe("OpenAPI Store security contract", () => {
     expect(storeHeaders?.XCorrelationId).not.toHaveProperty("example")
     expect(storeHeaders?.XCorrelationId).not.toHaveProperty("examples")
 
-    for (const document of [adminDocument, webhooksDocument]) {
-      const headers = (document?.components as { headers?: Record<string, unknown> })
-        ?.headers
-      expect(headers?.XCorrelationId).toBeUndefined()
-      expect(headers ?? {}).toEqual({})
-    }
+    const adminHeaders = (
+      adminDocument?.components as { headers?: Record<string, unknown> }
+    ).headers
+    expect(adminHeaders?.AdminXCorrelationId).toEqual(
+      expect.objectContaining({
+        schema: { type: "string" },
+        description: expect.stringMatching(/early framework responses.*omit/i),
+      })
+    )
+    expect(adminHeaders?.XCorrelationId).toBeUndefined()
+    expect(storeHeaders?.AdminXCorrelationId).toBeUndefined()
+    expect(webhooksDocument?.components.headers).toEqual({})
   })
 
   it("attaches x-correlation-id header $ref on every Store response", () => {

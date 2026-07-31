@@ -1,10 +1,2587 @@
 {
   "components": {
-    "headers": {},
+    "headers": {
+      "AdminXCorrelationId": {
+        "description": "Correlation identifier returned after the request reaches the project correlation middleware. Early framework responses, including authentication failures, can omit this header.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
     "parameters": {},
     "responses": {},
-    "schemas": {},
-    "securitySchemes": {}
+    "schemas": {
+      "AdminBrlMinorAmount": {
+        "description": "Amount in integer BRL minor units (centavos).",
+        "minimum": 1,
+        "type": "integer",
+        "x-money-unit": "brl-minor"
+      },
+      "AdminError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Optional machine-readable error code when present.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "Human-readable sanitized error message.",
+            "type": "string"
+          },
+          "type": {
+            "description": "Medusa or project error type code.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "message"
+        ],
+        "type": "object"
+      },
+      "AdminExchangeAffectedItem": {
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "line_item_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "variant_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "AdminExchangeAffectedItemRequest": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "properties": {
+              "line_item_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "line_item_id"
+            ]
+          },
+          {
+            "properties": {
+              "product_title": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "product_title"
+            ]
+          },
+          {
+            "properties": {
+              "variant_title": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "variant_title"
+            ]
+          },
+          {
+            "properties": {
+              "quantity": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "quantity"
+            ]
+          }
+        ],
+        "properties": {
+          "line_item_id": {
+            "description": "Optional line-item identifier. Non-string values are ignored.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "product_title": {
+            "description": "Optional product title. Non-string values are ignored.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "quantity": {
+            "oneOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variant_title": {
+            "description": "Optional variant title. Non-string values are ignored.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "AdminExchangeCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "affected_items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminExchangeAffectedItemRequest"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "type": "array"
+          },
+          "customer_visible_note": {
+            "description": "Optional customer-visible note. Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "operator_note": {
+            "description": "Optional operator note. Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "order_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "defect",
+              "wrong_product"
+            ],
+            "type": "string"
+          },
+          "reverse_authorization_code": {
+            "description": "Optional reverse authorization code. Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "reverse_label_reference": {
+            "description": "Optional reverse label reference. Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "reverse_logistics_provider": {
+            "description": "Optional reverse-logistics provider. Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "enum": [
+                  "correios_manual",
+                  "other_manual"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "reverse_tracking_code": {
+            "description": "Optional reverse tracking code. Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "order_id",
+          "reason",
+          "affected_items"
+        ],
+        "type": "object"
+      },
+      "AdminExchangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "affected_items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminExchangeAffectedItem"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by_operator_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "customer_visible_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "operator_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_id": {
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "defect",
+              "wrong_product"
+            ],
+            "type": "string"
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "return_received_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reverse_authorization_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reverse_label_reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reverse_logistics_provider": {
+            "oneOf": [
+              {
+                "enum": [
+                  "correios_manual",
+                  "other_manual"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reverse_tracking_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "opened",
+              "awaiting_customer_return",
+              "return_in_transit",
+              "return_received",
+              "replacement_review",
+              "resolved",
+              "rejected",
+              "canceled"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "reason",
+          "status",
+          "affected_items",
+          "customer_visible_note",
+          "operator_note",
+          "reverse_logistics_provider",
+          "reverse_tracking_code",
+          "reverse_authorization_code",
+          "reverse_label_reference",
+          "return_received_at",
+          "resolved_at",
+          "created_by_operator_id",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "AdminExchangeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "exchange_request": {
+            "$ref": "#/components/schemas/AdminExchangeRequest"
+          }
+        },
+        "required": [
+          "exchange_request"
+        ],
+        "type": "object"
+      },
+      "AdminExchangeUpdateRequest": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "properties": {
+              "status": {
+                "enum": [
+                  "opened",
+                  "awaiting_customer_return",
+                  "return_in_transit",
+                  "return_received",
+                  "replacement_review",
+                  "resolved",
+                  "rejected",
+                  "canceled"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          {
+            "properties": {
+              "customer_visible_note": {}
+            },
+            "required": [
+              "customer_visible_note"
+            ]
+          },
+          {
+            "properties": {
+              "operator_note": {}
+            },
+            "required": [
+              "operator_note"
+            ]
+          },
+          {
+            "properties": {
+              "reverse_tracking_code": {}
+            },
+            "required": [
+              "reverse_tracking_code"
+            ]
+          },
+          {
+            "properties": {
+              "reverse_authorization_code": {}
+            },
+            "required": [
+              "reverse_authorization_code"
+            ]
+          },
+          {
+            "properties": {
+              "reverse_label_reference": {}
+            },
+            "required": [
+              "reverse_label_reference"
+            ]
+          },
+          {
+            "properties": {
+              "reverse_logistics_provider": {
+                "oneOf": [
+                  {
+                    "enum": [
+                      "correios_manual",
+                      "other_manual"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "reverse_logistics_provider"
+            ]
+          }
+        ],
+        "description": "At least one effective update must remain after runtime normalization. Some optional non-string values are ignored or normalized to null rather than rejected.",
+        "properties": {
+          "customer_visible_note": {
+            "description": "Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "operator_note": {
+            "description": "Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "reverse_authorization_code": {
+            "description": "Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "reverse_label_reference": {
+            "description": "Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "reverse_logistics_provider": {
+            "description": "Non-string values are ignored by the update parser.",
+            "oneOf": [
+              {
+                "enum": [
+                  "correios_manual",
+                  "other_manual"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "reverse_tracking_code": {
+            "description": "Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "opened",
+              "awaiting_customer_return",
+              "return_in_transit",
+              "return_received",
+              "replacement_review",
+              "resolved",
+              "rejected",
+              "canceled"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AdminOperationalAlert": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledged_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "acknowledged_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "entity_id": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "entity_type": {
+            "enum": [
+              "payment_attempt",
+              "fulfillment"
+            ],
+            "type": "string"
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^opalert_[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "ignored_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ignored_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "message_code": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AdminOperationalAlertMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "occurrence_count": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolved_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "acknowledged",
+              "resolved",
+              "ignored"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "payment_stuck",
+              "fulfillment_failed"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "severity",
+          "status",
+          "entity_type",
+          "entity_id",
+          "message_code",
+          "message",
+          "error_code",
+          "metadata",
+          "first_seen_at",
+          "last_seen_at",
+          "occurrence_count",
+          "acknowledged_at",
+          "acknowledged_by",
+          "resolved_at",
+          "resolved_by",
+          "ignored_at",
+          "ignored_by",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "AdminOperationalAlertMetadata": {
+        "additionalProperties": false,
+        "description": "Sanitized, explicitly allowlisted scalar diagnostic references for the internal Admin contract. This metadata is not a raw payload, headers, secret data, or an HTTP webhook-log resource.",
+        "properties": {
+          "checkout_completion_log_id": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "detector_code": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "fulfillment_id": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "operator_alert_code": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "order_id": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "payment_attempt_id": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "payment_intent_id": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "source_status": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "webhook_event_log_id": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "AdminOperationalAlertResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "operational_alert": {
+            "$ref": "#/components/schemas/AdminOperationalAlert"
+          }
+        },
+        "required": [
+          "operational_alert"
+        ],
+        "type": "object"
+      },
+      "AdminOperationalAlertsListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "operational_alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AdminOperationalAlert"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "operational_alerts",
+          "count",
+          "limit",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "AdminProductCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "additional_data": {
+            "description": "Optional Medusa additional_data object.",
+            "oneOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "categories": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "collection_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "discountable": {
+            "default": true,
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "handle": {
+            "type": "string"
+          },
+          "height": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "hs_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "images": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "is_giftcard": {
+            "default": false,
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "length": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mid_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "title",
+                "values"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "origin_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sales_channels": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "shipping_profile_id": {
+            "type": "string"
+          },
+          "status": {
+            "default": "draft",
+            "oneOf": [
+              {
+                "enum": [
+                  "draft",
+                  "proposed",
+                  "published",
+                  "rejected"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "thumbnail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "type_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/AdminProductVariantCreateInput"
+            },
+            "type": "array"
+          },
+          "weight": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
+      "AdminProductResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "product": {
+            "additionalProperties": true,
+            "description": "Native Medusa 2.16.0 Admin product selected by the route response query.",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "product"
+        ],
+        "type": "object"
+      },
+      "AdminProductUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "additional_data": {
+            "description": "Optional Medusa additional_data object.",
+            "oneOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "categories": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "collection_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "discountable": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "handle": {
+            "type": "string"
+          },
+          "height": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "hs_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "images": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "is_giftcard": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "length": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mid_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "origin_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sales_channels": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "shipping_profile_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "proposed",
+              "published",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "thumbnail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "type_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/AdminProductVariantUpdateInput"
+            },
+            "type": "array"
+          },
+          "weight": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "AdminProductVariantCreateInput": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_backorder": {
+            "default": false,
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "barcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ean": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "hs_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inventory_items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "inventory_item_id": {
+                  "type": "string"
+                },
+                "required_quantity": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "inventory_item_id",
+                "required_quantity"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "length": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "manage_inventory": {
+            "default": true,
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mid_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "origin_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/AdminProductVariantPriceCreate"
+            },
+            "type": "array"
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "upc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variant_rank": {
+            "type": "number"
+          },
+          "weight": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "prices"
+        ],
+        "type": "object"
+      },
+      "AdminProductVariantCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "additional_data": {
+            "description": "Optional Medusa additional_data object.",
+            "oneOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allow_backorder": {
+            "default": false,
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "barcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ean": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "hs_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inventory_items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "inventory_item_id": {
+                  "type": "string"
+                },
+                "required_quantity": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "inventory_item_id",
+                "required_quantity"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "length": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "manage_inventory": {
+            "default": true,
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mid_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "origin_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/AdminProductVariantPriceCreate"
+            },
+            "type": "array"
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "upc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variant_rank": {
+            "type": "number"
+          },
+          "weight": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "prices"
+        ],
+        "type": "object"
+      },
+      "AdminProductVariantPriceCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "max_quantity": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "min_quantity": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "rules": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "currency_code",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "AdminProductVariantPriceUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "max_quantity": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "min_quantity": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "rules": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "AdminProductVariantUpdateInput": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_backorder": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "barcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ean": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "hs_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "length": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "manage_inventory": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mid_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "origin_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/AdminProductVariantPriceUpdate"
+            },
+            "type": "array"
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thumbnail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "upc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variant_rank": {
+            "type": "number"
+          },
+          "weight": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "AdminProductVariantUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "additional_data": {
+            "description": "Optional Medusa additional_data object.",
+            "oneOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allow_backorder": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "barcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ean": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "hs_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "length": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "manage_inventory": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "true",
+                  "false"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mid_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "origin_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/AdminProductVariantPriceUpdate"
+            },
+            "type": "array"
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thumbnail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "upc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variant_rank": {
+            "type": "number"
+          },
+          "weight": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "AdminRefundAvailability": {
+        "additionalProperties": false,
+        "properties": {
+          "available_amount": {
+            "minimum": 0,
+            "type": "integer",
+            "x-money-unit": "brl-minor"
+          },
+          "captured_amount": {
+            "$ref": "#/components/schemas/AdminBrlMinorAmount"
+          },
+          "confirmed_refunded_amount": {
+            "minimum": 0,
+            "type": "integer",
+            "x-money-unit": "brl-minor"
+          },
+          "currency_code": {
+            "const": "brl",
+            "type": "string"
+          },
+          "reserved_amount": {
+            "minimum": 0,
+            "type": "integer",
+            "x-money-unit": "brl-minor"
+          }
+        },
+        "required": [
+          "captured_amount",
+          "confirmed_refunded_amount",
+          "reserved_amount",
+          "available_amount",
+          "currency_code"
+        ],
+        "type": "object"
+      },
+      "AdminRefundRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/AdminBrlMinorAmount"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "currency_code": {
+            "const": "brl",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "correlation_id": {},
+                  "recovery_origin": {},
+                  "source": {}
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operator_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_id": {
+            "type": "string"
+          },
+          "payment_attempt_id": {
+            "type": "string"
+          },
+          "payment_intent_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requested_by_operator_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "requested",
+              "rejected",
+              "stripe_create_pending",
+              "stripe_created",
+              "confirmation_pending",
+              "confirmed",
+              "failed",
+              "canceled"
+            ],
+            "type": "string"
+          },
+          "stripe_refund_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "payment_intent_id",
+          "payment_attempt_id",
+          "stripe_refund_id",
+          "idempotency_key",
+          "amount",
+          "currency_code",
+          "reason",
+          "operator_note",
+          "status",
+          "requested_by_operator_id",
+          "metadata"
+        ],
+        "type": "object"
+      },
+      "AdminRefundRequestCreate": {
+        "additionalProperties": true,
+        "description": "Unknown non-identity top-level properties are ignored by the current parser. Authenticated operator identity is never client supplied.",
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/AdminBrlMinorAmount"
+          },
+          "currency_code": {
+            "pattern": "^[Bb][Rr][Ll]$",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "metadata": {
+            "description": "Optional metadata object. Runtime keeps only its safe allowlist and rejects sensitive values.",
+            "oneOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operator_note": {
+            "description": "Optional operator note. Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          },
+          "order_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "description": "Optional reason. Non-string values are normalized to null.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "propertyNames": {
+          "not": {
+            "enum": [
+              "requested_by_operator_id",
+              "admin_id",
+              "actor_id",
+              "admin_email"
+            ]
+          }
+        },
+        "required": [
+          "order_id",
+          "amount",
+          "currency_code",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "AdminRefundRequestResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "$ref": "#/components/schemas/AdminRefundAvailability"
+          },
+          "refund_request": {
+            "$ref": "#/components/schemas/AdminRefundRequest"
+          },
+          "reused_idempotency": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "refund_request",
+          "reused_idempotency",
+          "availability"
+        ],
+        "type": "object"
+      },
+      "AdminUnauthorized": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "const": "Unauthorized",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "adminApiKey": {
+        "description": "Medusa secret Admin API key supplied as the HTTP Basic username. Accepted only by native Admin operations; project user-only operations reject API-key actors.",
+        "scheme": "basic",
+        "type": "http"
+      },
+      "adminBearer": {
+        "bearerFormat": "JWT",
+        "description": "Authenticated Medusa Admin user JWT bearer token.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "adminSession": {
+        "description": "Authenticated Medusa Admin user session cookie.",
+        "in": "cookie",
+        "name": "connect.sid",
+        "type": "apiKey"
+      }
+    }
   },
   "info": {
     "contact": {
@@ -20,11 +2597,1161 @@
     "version": "1.0.0"
   },
   "openapi": "3.1.2",
-  "paths": {},
+  "paths": {
+    "/admin/exchanges": {
+      "post": {
+        "description": "Creates an exchange request through a closed property allowlist. Some optional non-string values are normalized to null or ignored by the current runtime. Internal audit facts are appended without exposing an audit resource.",
+        "operationId": "adminExchangesCreate",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminExchangeCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminExchangeResponse"
+                }
+              }
+            },
+            "description": "Exchange request created.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Invalid actor type, disabled feature, unknown/forbidden key, invalid reason/items/reverse logistics, or other evidenced domain rejection.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnauthorized"
+                }
+              }
+            },
+            "description": "Authentication failed before the request reached the project correlation middleware."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Order was not found or was not eligible.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Early body-parser failure or later module, audit, or persistence failure. Correlation header presence is not guaranteed for this mixed response."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Create an Admin exchange request",
+        "tags": [
+          "Exchanges"
+        ]
+      }
+    },
+    "/admin/exchanges/{id}": {
+      "post": {
+        "description": "Updates an exchange request with POST, not PATCH. At least one effective update must remain after normalization, and status changes follow the current transition graph. Internal audit facts are appended without exposing an audit resource.",
+        "operationId": "adminExchangesUpdate",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exchange-request identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminExchangeUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminExchangeResponse"
+                }
+              }
+            },
+            "description": "Exchange request updated.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Invalid actor type, disabled feature, invalid/empty effective update, forbidden key, invalid provider, or invalid/terminal status transition.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnauthorized"
+                }
+              }
+            },
+            "description": "Authentication failed before the request reached the project correlation middleware."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Exchange request was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Early body-parser failure or later module, audit, or persistence failure. Correlation header presence is not guaranteed for this mixed response."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Update an Admin exchange request",
+        "tags": [
+          "Exchanges"
+        ]
+      }
+    },
+    "/admin/operational-alerts": {
+      "get": {
+        "description": "Lists the safe, allowlisted operational-alert DTO. Alert contents remain operationally sensitive and the operation is non-interactive.",
+        "operationId": "adminOperationalAlertsList",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by operational-alert type.",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "enum": [
+                "payment_stuck",
+                "fulfillment_failed"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by operational-alert status.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "open",
+                "acknowledged",
+                "resolved",
+                "ignored"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by operational-alert severity.",
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by safe entity type.",
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "enum": [
+                "payment_attempt",
+                "fulfillment"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by entity identifier.",
+            "in": "query",
+            "name": "entity_id",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Include alerts last seen at or after this timestamp.",
+            "in": "query",
+            "name": "last_seen_at_from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Include alerts last seen at or before this timestamp.",
+            "in": "query",
+            "name": "last_seen_at_to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of alerts to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of alerts to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOperationalAlertsListResponse"
+                }
+              }
+            },
+            "description": "Operational alerts and pagination metadata.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Invalid actor type or query key, enum, entity identifier, date range, or pagination value.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnauthorized"
+                }
+              }
+            },
+            "description": "Authentication failed before the request reached the project correlation middleware."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Early body-parser failure or later module/query failure. Correlation header presence is not guaranteed for this mixed response."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "List operational alerts",
+        "tags": [
+          "Operational Alerts"
+        ]
+      }
+    },
+    "/admin/operational-alerts/{id}": {
+      "get": {
+        "description": "Retrieves one safe, allowlisted operational-alert DTO. Alert contents remain operationally sensitive and the operation is non-interactive.",
+        "operationId": "adminOperationalAlertsRetrieve",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Operational-alert identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "pattern": "^opalert_[A-Za-z0-9_-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOperationalAlertResponse"
+                }
+              }
+            },
+            "description": "Operational alert detail.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Invalid actor type or operational-alert identifier.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnauthorized"
+                }
+              }
+            },
+            "description": "Authentication failed before the request reached the project correlation middleware."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Operational alert was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Early body-parser failure or later module/query failure. Correlation header presence is not guaranteed for this mixed response."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Retrieve an operational alert",
+        "tags": [
+          "Operational Alerts"
+        ]
+      }
+    },
+    "/admin/products": {
+      "post": {
+        "description": "Extends the native Medusa 2.16.0 create operation with the project sellable-product gate. Incomplete drafts remain valid; publication requires a sellable variant, Gelato metadata, and a positive BRL price.",
+        "operationId": "adminProductsCreate",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Fields selector accepted by the native Medusa 2.16.0 AdminGetProductParams validator.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminProductCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProductResponse"
+                }
+              }
+            },
+            "description": "Native Medusa Admin product response after the project sellable gate.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Native validation or project sellable-gate rejection. Draft incompleteness remains allowed; published products and variants must satisfy the local sellability contract.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnauthorized"
+                }
+              }
+            },
+            "description": "Authentication failed before the request reached the project correlation middleware."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Early body-parser failure or later workflow/handler failure. Correlation header presence is not guaranteed for this mixed response."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminSession": []
+          },
+          {
+            "adminApiKey": []
+          }
+        ],
+        "summary": "Create an Admin product",
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/admin/products/{id}": {
+      "post": {
+        "description": "Extends the native Medusa 2.16.0 update operation by validating the resulting product against the project sellable-product gate when it is published.",
+        "operationId": "adminProductsUpdate",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Product identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Fields selector accepted by the native Medusa 2.16.0 AdminGetProductParams validator.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminProductUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProductResponse"
+                }
+              }
+            },
+            "description": "Native Medusa Admin product response after the project sellable gate.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Native validation or project sellable-gate rejection. Draft incompleteness remains allowed; published products and variants must satisfy the local sellability contract.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnauthorized"
+                }
+              }
+            },
+            "description": "Authentication failed before the request reached the project correlation middleware."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Product or variant was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Early body-parser failure or later workflow/handler failure. Correlation header presence is not guaranteed for this mixed response."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminSession": []
+          },
+          {
+            "adminApiKey": []
+          }
+        ],
+        "summary": "Update an Admin product",
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/admin/products/{id}/variants": {
+      "post": {
+        "description": "Extends the native Medusa 2.16.0 variant-create operation with the project sellable-variant gate. No operation-specific HTTP coverage is claimed beyond the recorded validator/module evidence.",
+        "operationId": "adminProductVariantsCreate",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Product identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Fields selector accepted by the native Medusa 2.16.0 AdminGetProductParams validator.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminProductVariantCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProductResponse"
+                }
+              }
+            },
+            "description": "Native Medusa Admin product response after the project sellable gate.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Native validation or project sellable-gate rejection. Draft incompleteness remains allowed; published products and variants must satisfy the local sellability contract.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnauthorized"
+                }
+              }
+            },
+            "description": "Authentication failed before the request reached the project correlation middleware."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Product or variant was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Early body-parser failure or later workflow/handler failure. Correlation header presence is not guaranteed for this mixed response."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminSession": []
+          },
+          {
+            "adminApiKey": []
+          }
+        ],
+        "summary": "Create an Admin product variant",
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/admin/products/{id}/variants/{variant_id}": {
+      "post": {
+        "description": "Extends the native Medusa 2.16.0 variant-update operation with the project sellable-variant gate. No operation-specific HTTP coverage is claimed beyond the recorded validator/module evidence.",
+        "operationId": "adminProductVariantsUpdate",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Product identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Product variant identifier.",
+            "in": "path",
+            "name": "variant_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Fields selector accepted by the native Medusa 2.16.0 AdminGetProductParams validator.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminProductVariantUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProductResponse"
+                }
+              }
+            },
+            "description": "Native Medusa Admin product response after the project sellable gate.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Native validation or project sellable-gate rejection. Draft incompleteness remains allowed; published products and variants must satisfy the local sellability contract.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnauthorized"
+                }
+              }
+            },
+            "description": "Authentication failed before the request reached the project correlation middleware."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Product or variant was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Early body-parser failure or later workflow/handler failure. Correlation header presence is not guaranteed for this mixed response."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminSession": []
+          },
+          {
+            "adminApiKey": []
+          }
+        ],
+        "summary": "Update an Admin product variant",
+        "tags": [
+          "Products"
+        ]
+      }
+    },
+    "/admin/refunds/request": {
+      "post": {
+        "description": "Creates an idempotent refund request using integer BRL minor units. The authenticated Admin user is the operator; client-supplied operator identity is forbidden. The operation appends internal audit facts without exposing an audit resource.",
+        "operationId": "adminRefundRequestCreate",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminRefundRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRefundRequestResponse"
+                }
+              }
+            },
+            "description": "Existing refund request returned for the same idempotency key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRefundRequestResponse"
+                }
+              }
+            },
+            "description": "New refund request created.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Invalid actor type, disabled feature, invalid request, unavailable refund amount, or other evidenced domain rejection.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnauthorized"
+                }
+              }
+            },
+            "description": "Authentication failed before the request reached the project correlation middleware."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Order, captured PaymentAttempt, or eligible payment state was not found.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/AdminXCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminError"
+                }
+              }
+            },
+            "description": "Early body-parser failure or later module, audit, or persistence failure. Correlation header presence is not guaranteed for this mixed response."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Create or replay an Admin refund request",
+        "tags": [
+          "Refunds"
+        ]
+      }
+    }
+  },
   "servers": [
     {
       "description": "Same-origin",
       "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Exchanges"
+    },
+    {
+      "name": "Operational Alerts"
+    },
+    {
+      "name": "Products"
+    },
+    {
+      "name": "Refunds"
     }
   ],
   "x-medusa-version": "2.16.0"

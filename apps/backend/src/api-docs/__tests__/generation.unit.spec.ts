@@ -39,7 +39,7 @@ function syntheticOperation(
 }
 
 describe("OpenAPI foundation generation", () => {
-  it("builds three deterministic OpenAPI 3.1.2 documents with Store populated", () => {
+  it("builds three deterministic OpenAPI 3.1.2 documents with Store and Admin populated", () => {
     const first = buildContracts()
     const second = buildContracts()
 
@@ -81,8 +81,39 @@ describe("OpenAPI foundation generation", () => {
       "/store/products/{id}",
       "/store/tracking/lookup",
     ])
-    expect(admin?.document.paths).toEqual({})
+    expect(Object.keys(admin?.document.paths ?? {}).sort()).toEqual([
+      "/admin/exchanges",
+      "/admin/exchanges/{id}",
+      "/admin/operational-alerts",
+      "/admin/operational-alerts/{id}",
+      "/admin/products",
+      "/admin/products/{id}",
+      "/admin/products/{id}/variants",
+      "/admin/products/{id}/variants/{variant_id}",
+      "/admin/refunds/request",
+    ])
     expect(webhooks?.document.paths).toEqual({})
+  })
+
+  it("uses an explicit operation description and otherwise falls back to summary", () => {
+    const registry = new ContractRegistryBundle()
+    registry.registerOperation(syntheticOperation())
+    registry.registerOperation(
+      syntheticOperation({
+        method: "POST",
+        path: "/store/synthetic-described",
+        operationId: "storeSyntheticDescribed",
+        description: "Explicit operation description",
+      })
+    )
+
+    const store = buildContracts(registry).find(
+      (contract) => contract.surface === "store"
+    )?.document
+    expect((store?.paths["/store/synthetic"] as { get: { description: string } }).get.description)
+      .toBe("Synthetic operation")
+    expect((store?.paths["/store/synthetic-described"] as { post: { description: string } }).post.description)
+      .toBe("Explicit operation description")
   })
 
   it("uses canonical HTTP method order only inside Path Items", () => {

@@ -141,6 +141,22 @@ describe("native Medusa extension manifest", () => {
     expect(() => verifyNativeExtensions()).not.toThrow()
   })
 
+  it("registers the four Admin native extensions in the Admin contract", () => {
+    const adminNative = createFoundationRegistry()
+      .getOperations("admin")
+      .filter((operation) => operation.sourceClassification === "project-extension")
+
+    expect(adminNative.map((operation) => `${operation.method} ${operation.path}`))
+      .toEqual([
+        "POST /admin/products",
+        "POST /admin/products/{id}",
+        "POST /admin/products/{id}/variants",
+        "POST /admin/products/{id}/variants/{variant_id}",
+      ])
+    expect(adminNative.every((operation) => operation.officialReference.includes("/v2.16.0/")))
+      .toBe(true)
+  })
+
   it("fails when local evidence changes", () => {
     const repositoryRoot = fs.mkdtempSync(
       path.join(os.tmpdir(), "api-docs-native-")

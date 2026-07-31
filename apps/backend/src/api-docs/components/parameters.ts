@@ -44,6 +44,65 @@ export const STORE_PRODUCT_ID_PATH = {
   description: "Product identifier.",
 } as const
 
+export const ADMIN_PRODUCT_ID_PATH = {
+  name: "id",
+  in: "path",
+  required: true,
+  schema: { type: "string" },
+  description: "Product identifier.",
+} as const
+
+export const ADMIN_VARIANT_ID_PATH = {
+  name: "variant_id",
+  in: "path",
+  required: true,
+  schema: { type: "string" },
+  description: "Product variant identifier.",
+} as const
+
+export const ADMIN_PRODUCT_FIELDS_QUERY = {
+  name: "fields",
+  in: "query",
+  required: false,
+  schema: {
+    type: "string",
+  },
+  description:
+    "Fields selector accepted by the native Medusa 2.16.0 AdminGetProductParams validator.",
+} as const
+
+export const ADMIN_EXCHANGE_ID_PATH = {
+  name: "id",
+  in: "path",
+  required: true,
+  schema: { type: "string", minLength: 1 },
+  description: "Exchange-request identifier.",
+} as const
+
+export const ADMIN_OPERATIONAL_ALERT_ID_PATH = {
+  name: "id",
+  in: "path",
+  required: true,
+  schema: {
+    type: "string",
+    maxLength: 128,
+    pattern: "^opalert_[A-Za-z0-9_-]+$",
+  },
+  description: "Operational-alert identifier.",
+} as const
+
+export const ADMIN_OPERATIONAL_ALERT_LIST_QUERY = [
+  queryParam("type", { type: "string", enum: ["payment_stuck", "fulfillment_failed"] }, "Filter by operational-alert type."),
+  queryParam("status", { type: "string", enum: ["open", "acknowledged", "resolved", "ignored"] }, "Filter by operational-alert status."),
+  queryParam("severity", { type: "string", enum: ["low", "medium", "high", "critical"] }, "Filter by operational-alert severity."),
+  queryParam("entity_type", { type: "string", enum: ["payment_attempt", "fulfillment"] }, "Filter by safe entity type."),
+  queryParam("entity_id", { type: "string", maxLength: 128, pattern: "^[A-Za-z0-9_-]+$" }, "Filter by entity identifier."),
+  queryParam("last_seen_at_from", { type: "string", format: "date-time" }, "Include alerts last seen at or after this timestamp."),
+  queryParam("last_seen_at_to", { type: "string", format: "date-time" }, "Include alerts last seen at or before this timestamp."),
+  queryParam("limit", { type: "integer", minimum: 1, maximum: 100, default: 20 }, "Maximum number of alerts to return."),
+  queryParam("offset", { type: "integer", minimum: 0, maximum: 100000, default: 0 }, "Number of alerts to skip."),
+] as const
+
 const stringOrStringArraySchema = {
   oneOf: [
     { type: "string" },

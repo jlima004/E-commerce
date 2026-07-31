@@ -139,3 +139,53 @@ describe("OpenAPI Store monetary unit boundary", () => {
     expect(item.properties.unit_price.type).toEqual(["number", "null"])
   })
 })
+
+describe("OpenAPI Admin refund monetary unit boundary", () => {
+  const admin = buildContracts(createFoundationRegistry()).find(
+    (contract) => contract.surface === "admin"
+  )?.document
+
+  it("uses an Admin-local integer BRL minor-unit schema for refund request and response", () => {
+    const amount = admin?.components.schemas.AdminBrlMinorAmount as {
+      type?: string
+      minimum?: number
+      "x-money-unit"?: string
+    }
+    const request = admin?.components.schemas.AdminRefundRequestCreate as {
+      properties: { amount: { $ref?: string } }
+    }
+    const response = admin?.components.schemas.AdminRefundRequest as {
+      properties: { amount: { $ref?: string } }
+    }
+    const availability = admin?.components.schemas.AdminRefundAvailability as {
+      properties: Record<string, { $ref?: string; type?: string; "x-money-unit"?: string }>
+    }
+
+    expect(amount).toEqual(
+      expect.objectContaining({
+        type: "integer",
+        minimum: 1,
+        "x-money-unit": "brl-minor",
+      })
+    )
+    expect(request.properties.amount.$ref).toBe(
+      "#/components/schemas/AdminBrlMinorAmount"
+    )
+    expect(response.properties.amount.$ref).toBe(
+      "#/components/schemas/AdminBrlMinorAmount"
+    )
+    for (const field of [
+      "captured_amount",
+      "confirmed_refunded_amount",
+      "reserved_amount",
+      "available_amount",
+    ]) {
+      const schema = availability.properties[field]
+      expect(
+        schema.$ref === "#/components/schemas/AdminBrlMinorAmount" ||
+          (schema.type === "integer" && schema["x-money-unit"] === "brl-minor")
+      ).toBe(true)
+    }
+    expect(amount.type).not.toBe("number")
+  })
+})
