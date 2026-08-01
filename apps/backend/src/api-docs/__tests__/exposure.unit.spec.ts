@@ -1,6 +1,7 @@
 import {
   CANONICAL_GELATO_WEBHOOK_AUTH_HEADER_NAME,
   canExposeApiDocs,
+  listAuthorizedApiDocsSelectorUrls,
   matchesCanonicalGelatoWebhookAuthHeader,
   resolveApiDocsFlagDefaults,
   type ApiDocsFlags,
@@ -329,5 +330,93 @@ describe("matchesCanonicalGelatoWebhookAuthHeader", () => {
     expect(matchesCanonicalGelatoWebhookAuthHeader("   ")).toBe(false)
     expect(matchesCanonicalGelatoWebhookAuthHeader(null)).toBe(false)
     expect(matchesCanonicalGelatoWebhookAuthHeader(undefined)).toBe(false)
+  })
+})
+
+describe("listAuthorizedApiDocsSelectorUrls", () => {
+  const canonicalHeader = CANONICAL_GELATO_WEBHOOK_AUTH_HEADER_NAME
+
+  it("returns Store only for anonymous callers when all flags are enabled", () => {
+    expect(
+      listAuthorizedApiDocsSelectorUrls(allEnabled, undefined, canonicalHeader)
+    ).toEqual([{ name: "Store", url: "/openapi/store.json" }])
+    expect(
+      listAuthorizedApiDocsSelectorUrls(
+        allEnabled,
+        { authenticated: false },
+        canonicalHeader
+      )
+    ).toEqual([{ name: "Store", url: "/openapi/store.json" }])
+  })
+
+  it("returns Store, Admin, Webhooks for authenticated user when all flags are enabled", () => {
+    expect(
+      listAuthorizedApiDocsSelectorUrls(allEnabled, userActor, canonicalHeader)
+    ).toEqual([
+      { name: "Store", url: "/openapi/store.json" },
+      { name: "Admin", url: "/openapi/admin.json" },
+      { name: "Webhooks", url: "/openapi/webhooks.json" },
+    ])
+  })
+
+  it("returns no specifications when public is disabled and caller is anonymous", () => {
+    const flags: ApiDocsFlags = {
+      ...allEnabled,
+      API_DOCS_PUBLIC_ENABLED: false,
+    }
+
+    expect(
+      listAuthorizedApiDocsSelectorUrls(flags, undefined, canonicalHeader)
+    ).toEqual([])
+  })
+
+  it("returns Admin and Webhooks when public is disabled for authenticated user", () => {
+    const flags: ApiDocsFlags = {
+      ...allEnabled,
+      API_DOCS_PUBLIC_ENABLED: false,
+    }
+
+    expect(
+      listAuthorizedApiDocsSelectorUrls(flags, userActor, canonicalHeader)
+    ).toEqual([
+      { name: "Admin", url: "/openapi/admin.json" },
+      { name: "Webhooks", url: "/openapi/webhooks.json" },
+    ])
+  })
+
+  it("returns Store only when internal is disabled for authenticated user", () => {
+    const flags: ApiDocsFlags = {
+      ...allEnabled,
+      API_DOCS_INTERNAL_ENABLED: false,
+    }
+
+    expect(
+      listAuthorizedApiDocsSelectorUrls(flags, userActor, canonicalHeader)
+    ).toEqual([{ name: "Store", url: "/openapi/store.json" }])
+  })
+
+  it("omits Webhooks when Gelato header diverges for authenticated user", () => {
+    expect(
+      listAuthorizedApiDocsSelectorUrls(
+        allEnabled,
+        userActor,
+        "x-custom-gelato-secret"
+      )
+    ).toEqual([
+      { name: "Store", url: "/openapi/store.json" },
+      { name: "Admin", url: "/openapi/admin.json" },
+    ])
+  })
+
+  it("never includes actor identity in selector entries", () => {
+    const urls = listAuthorizedApiDocsSelectorUrls(
+      allEnabled,
+      userActor,
+      canonicalHeader
+    )
+
+    expect(JSON.stringify(urls)).not.toContain("user_123")
+    expect(JSON.stringify(urls)).not.toContain("actor")
+    expect(JSON.stringify(urls)).not.toContain("session")
   })
 })

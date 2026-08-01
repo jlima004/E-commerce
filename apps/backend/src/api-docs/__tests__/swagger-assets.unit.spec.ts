@@ -3,6 +3,12 @@ import {
   resolveSwaggerAsset,
 } from "../runtime/swagger-assets"
 
+const FULL_INITIALIZER_URLS = [
+  { name: "Store" as const, url: "/openapi/store.json" as const },
+  { name: "Admin" as const, url: "/openapi/admin.json" as const },
+  { name: "Webhooks" as const, url: "/openapi/webhooks.json" as const },
+]
+
 describe("resolveSwaggerAsset", () => {
   it("has exactly four allowlisted asset names", () => {
     expect(SWAGGER_ASSET_NAMES).toHaveLength(4)
@@ -14,22 +20,43 @@ describe("resolveSwaggerAsset", () => {
     ])
   })
 
-  it.each(SWAGGER_ASSET_NAMES)(
-    "resolves allowlisted asset %s with correct MIME",
-    (name) => {
-      const asset = resolveSwaggerAsset(name)
+  it.each(
+    SWAGGER_ASSET_NAMES.filter((name) => name !== "api-docs-initializer.js")
+  )("resolves allowlisted static asset %s with correct MIME", (name) => {
+    const asset = resolveSwaggerAsset(name)
 
-      expect(asset).not.toBeNull()
-      expect(asset?.name).toBe(name)
-      expect(asset?.body.length).toBeGreaterThan(0)
+    expect(asset).not.toBeNull()
+    expect(asset?.name).toBe(name)
+    expect(asset?.body.length).toBeGreaterThan(0)
 
-      if (name.endsWith(".css")) {
-        expect(asset?.contentType).toBe("text/css; charset=utf-8")
-      } else {
-        expect(asset?.contentType).toBe("text/javascript; charset=utf-8")
-      }
+    if (name.endsWith(".css")) {
+      expect(asset?.contentType).toBe("text/css; charset=utf-8")
+    } else {
+      expect(asset?.contentType).toBe("text/javascript; charset=utf-8")
     }
-  )
+  })
+
+  it("resolves initializer only when authorized urls are provided", () => {
+    expect(resolveSwaggerAsset("api-docs-initializer.js")).toBeNull()
+
+    const empty = resolveSwaggerAsset("api-docs-initializer.js", {
+      initializerUrls: [],
+    })
+    expect(empty).not.toBeNull()
+    expect(empty?.contentType).toBe("text/javascript; charset=utf-8")
+    expect(empty?.body.toString("utf8")).toContain("urls: []")
+    expect(empty?.body.toString("utf8")).not.toContain("Store")
+
+    const full = resolveSwaggerAsset("api-docs-initializer.js", {
+      initializerUrls: FULL_INITIALIZER_URLS,
+    })
+    expect(full).not.toBeNull()
+    const body = full!.body.toString("utf8")
+    expect(body).toContain('name: "Store"')
+    expect(body).toContain('name: "Admin"')
+    expect(body).toContain('name: "Webhooks"')
+    expect(body).not.toMatch(/https?:\/\//)
+  })
 
   it("returns null for unknown asset names", () => {
     expect(resolveSwaggerAsset("unknown.js")).toBeNull()

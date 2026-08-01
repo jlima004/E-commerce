@@ -122,3 +122,47 @@ export function canExposeApiDocs(
 
   return isAuthenticatedAdminUser(actor)
 }
+
+export type ApiDocsSelectorUrl = {
+  name: "Store" | "Admin" | "Webhooks"
+  url: "/openapi/store.json" | "/openapi/admin.json" | "/openapi/webhooks.json"
+}
+
+const SELECTOR_CATALOG: ReadonlyArray<{
+  surface: Exclude<ApiDocsSurface, "ui">
+  name: ApiDocsSelectorUrl["name"]
+  url: ApiDocsSelectorUrl["url"]
+}> = [
+  { surface: "store", name: "Store", url: "/openapi/store.json" },
+  { surface: "admin", name: "Admin", url: "/openapi/admin.json" },
+  { surface: "webhooks", name: "Webhooks", url: "/openapi/webhooks.json" },
+]
+
+/**
+ * Build the Swagger selector list for the current flags + actor + Gelato header guard.
+ * Pure helper — no env singleton, tokens, cookies, or actor identity in the result.
+ */
+export function listAuthorizedApiDocsSelectorUrls(
+  flags: ApiDocsFlags,
+  actor: ApiDocsActor,
+  gelatoWebhookAuthHeaderName: string | null | undefined
+): ApiDocsSelectorUrl[] {
+  const authorized: ApiDocsSelectorUrl[] = []
+
+  for (const entry of SELECTOR_CATALOG) {
+    if (!canExposeApiDocs(flags, entry.surface, actor)) {
+      continue
+    }
+
+    if (
+      entry.surface === "webhooks" &&
+      !matchesCanonicalGelatoWebhookAuthHeader(gelatoWebhookAuthHeaderName)
+    ) {
+      continue
+    }
+
+    authorized.push({ name: entry.name, url: entry.url })
+  }
+
+  return authorized
+}

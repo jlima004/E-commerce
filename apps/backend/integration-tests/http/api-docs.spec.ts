@@ -389,30 +389,135 @@ describe("api docs HTTP routes", () => {
   })
 
   describe("GET /docs/assets/{asset}", () => {
-    it.each(SWAGGER_ASSET_NAMES)(
-      "returns 200 with MIME and security headers for %s",
-      async (assetName) => {
+    it.each(
+      SWAGGER_ASSET_NAMES.filter((name) => name !== "api-docs-initializer.js")
+    )("returns 200 with MIME and security headers for %s", async (assetName) => {
+      const route = await importWithEnvMocks<
+        typeof import("../../src/api/docs/assets/[asset]/route")
+      >("../../src/api/docs/assets/[asset]/route")
+      const res = createResponse()
+
+      await route.GET(
+        {
+          ...createRequest(),
+          params: { asset: assetName },
+        } as MedusaRequest,
+        res
+      )
+
+      expect(res.status).toHaveBeenCalledWith(200)
+      expect(res.body).toBeDefined()
+      const expectedContentType = assetName.endsWith(".css")
+        ? "text/css; charset=utf-8"
+        : "text/javascript; charset=utf-8"
+      expectSecurityHeaders(res, expectedContentType)
+    })
+
+    describe("api-docs-initializer.js authorized selector matrix", () => {
+      async function getInitializerBody(
+        authContext?: unknown,
+        envOverrides: Record<string, boolean | string> = {}
+      ): Promise<string> {
         const route = await importWithEnvMocks<
           typeof import("../../src/api/docs/assets/[asset]/route")
-        >("../../src/api/docs/assets/[asset]/route")
+        >("../../src/api/docs/assets/[asset]/route", envOverrides)
         const res = createResponse()
 
         await route.GET(
           {
-            ...createRequest(),
-            params: { asset: assetName },
+            ...createRequest(authContext),
+            params: { asset: "api-docs-initializer.js" },
           } as MedusaRequest,
           res
         )
 
         expect(res.status).toHaveBeenCalledWith(200)
-        expect(res.body).toBeDefined()
-        const expectedContentType = assetName.endsWith(".css")
-          ? "text/css; charset=utf-8"
-          : "text/javascript; charset=utf-8"
-        expectSecurityHeaders(res, expectedContentType)
+        expectSecurityHeaders(res, "text/javascript; charset=utf-8")
+        const body = Buffer.isBuffer(res.body)
+          ? res.body.toString("utf8")
+          : String(res.body)
+
+        expect(body).not.toMatch(/https?:\/\//)
+        expect(body).toContain("tryItOutEnabled: false")
+        expect(body).toContain("withCredentials: false")
+        expect(body).toContain("persistAuthorization: false")
+        expect(body).not.toMatch(/Bearer\s/i)
+        expect(body).not.toMatch(/cookie/i)
+        expect(body).not.toContain("user_123")
+        expect(body).not.toMatch(/actor_/i)
+
+        return body
       }
-    )
+
+      function expectSelectorNames(body: string, names: string[]) {
+        for (const name of ["Store", "Admin", "Webhooks"] as const) {
+          if (names.includes(name)) {
+            expect(body).toContain(`name: "${name}"`)
+          } else {
+            expect(body).not.toContain(`name: "${name}"`)
+          }
+        }
+      }
+
+      it("anonymous + all enabled → Store only", async () => {
+        const body = await getInitializerBody()
+        expectSelectorNames(body, ["Store"])
+        expect(body).toContain('url: "/openapi/store.json"')
+      })
+
+      it("authenticated user + all enabled → Store, Admin, Webhooks", async () => {
+        const body = await getInitializerBody(userAuthContext)
+        expectSelectorNames(body, ["Store", "Admin", "Webhooks"])
+      })
+
+      it("public disabled + anonymous → no specifications", async () => {
+        const body = await getInitializerBody(undefined, {
+          API_DOCS_PUBLIC_ENABLED: false,
+        })
+        expectSelectorNames(body, [])
+        expect(body).toContain("urls: []")
+      })
+
+      it("public disabled + authenticated user → Admin, Webhooks", async () => {
+        const body = await getInitializerBody(userAuthContext, {
+          API_DOCS_PUBLIC_ENABLED: false,
+        })
+        expectSelectorNames(body, ["Admin", "Webhooks"])
+      })
+
+      it("internal disabled + authenticated user → Store only", async () => {
+        const body = await getInitializerBody(userAuthContext, {
+          API_DOCS_INTERNAL_ENABLED: false,
+        })
+        expectSelectorNames(body, ["Store"])
+      })
+
+      it("custom Gelato header + authenticated user → Store, Admin", async () => {
+        const body = await getInitializerBody(userAuthContext, {
+          GELATO_WEBHOOK_AUTH_HEADER_NAME: "x-custom-gelato-secret",
+        })
+        expectSelectorNames(body, ["Store", "Admin"])
+      })
+
+      it("UI disabled → opaque 404", async () => {
+        const route = await importWithEnvMocks<
+          typeof import("../../src/api/docs/assets/[asset]/route")
+        >("../../src/api/docs/assets/[asset]/route", {
+          API_DOCS_UI_ENABLED: false,
+        })
+        const res = createResponse()
+
+        await route.GET(
+          {
+            ...createRequest(userAuthContext),
+            params: { asset: "api-docs-initializer.js" },
+          } as MedusaRequest,
+          res
+        )
+
+        expectNotFound(res)
+      })
+    })
 
     it("returns 404 for unknown asset", async () => {
       const route = await importWithEnvMocks<

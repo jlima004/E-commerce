@@ -351,6 +351,15 @@ export default defineMiddlewares({
       ],
     },
     {
+      method: ["GET"],
+      matcher: "/docs/assets/:asset",
+      middlewares: [
+        authenticate("user", ["session", "bearer"], {
+          allowUnauthenticated: true,
+        }),
+      ],
+    },
+    {
       method: ["POST"],
       matcher: "/store/tracking/lookup",
       middlewares: [storeTrackingLookupGuardMiddleware],

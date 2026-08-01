@@ -415,6 +415,28 @@ if (!requestedDatabaseName) {
       })
 
       describe("GET /docs/assets/{asset}", () => {
+        function expectInitializerSelector(
+          body: string,
+          names: Array<"Store" | "Admin" | "Webhooks">
+        ) {
+          for (const name of ["Store", "Admin", "Webhooks"] as const) {
+            if (names.includes(name)) {
+              expect(body).toContain(`name: "${name}"`)
+            } else {
+              expect(body).not.toContain(`name: "${name}"`)
+            }
+          }
+          expect(body).not.toMatch(/https?:\/\//)
+          expect(body).toContain("tryItOutEnabled: false")
+          expect(body).toContain("withCredentials: false")
+          expect(body).toContain("persistAuthorization: false")
+          expect(body).not.toMatch(/Bearer\s/i)
+          expect(body).not.toMatch(/cookie/i)
+          expect(body).not.toMatch(/actor_/i)
+          expect(body).not.toContain(adminAuth.userId)
+          expect(body).not.toContain(adminAuth.bearerToken)
+        }
+
         it.each(SWAGGER_ASSET_NAMES)(
           "returns non-empty 200 for allowlisted asset %s",
           async (assetName) => {
@@ -431,6 +453,54 @@ if (!requestedDatabaseName) {
             expectSecurityHeaders(response.headers, expectedContentType)
           }
         )
+
+        it("anonymous initializer lists Store only", async () => {
+          const response = await api.get(
+            "/docs/assets/api-docs-initializer.js",
+            { validateStatus: () => true }
+          )
+
+          expect(response.status).toBe(200)
+          expectSecurityHeaders(
+            response.headers,
+            "text/javascript; charset=utf-8"
+          )
+          expectInitializerSelector(String(response.data), ["Store"])
+        })
+
+        it("bearer-authenticated initializer lists Store, Admin, Webhooks", async () => {
+          const response = await api.get(
+            "/docs/assets/api-docs-initializer.js",
+            {
+              headers: { authorization: `Bearer ${adminAuth.bearerToken}` },
+              validateStatus: () => true,
+            }
+          )
+
+          expect(response.status).toBe(200)
+          expectInitializerSelector(String(response.data), [
+            "Store",
+            "Admin",
+            "Webhooks",
+          ])
+        })
+
+        it("session-authenticated initializer lists Store, Admin, Webhooks", async () => {
+          const response = await api.get(
+            "/docs/assets/api-docs-initializer.js",
+            {
+              headers: { cookie: adminAuth.sessionCookie },
+              validateStatus: () => true,
+            }
+          )
+
+          expect(response.status).toBe(200)
+          expectInitializerSelector(String(response.data), [
+            "Store",
+            "Admin",
+            "Webhooks",
+          ])
+        })
 
         it.each([
           "swagger-initializer.js",

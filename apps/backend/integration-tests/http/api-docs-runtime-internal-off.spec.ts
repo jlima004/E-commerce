@@ -260,6 +260,24 @@ if (!requestedDatabaseName) {
 
           expect(response.status).toBe(200)
         })
+
+        it("authenticated initializer lists Store only", async () => {
+          const response = await api.get(
+            "/docs/assets/api-docs-initializer.js",
+            {
+              headers: { authorization: `Bearer ${adminAuth.bearerToken}` },
+              validateStatus: () => true,
+            }
+          )
+
+          expect(response.status).toBe(200)
+          const body = String(response.data)
+          expect(body).toContain('name: "Store"')
+          expect(body).not.toContain('name: "Admin"')
+          expect(body).not.toContain('name: "Webhooks"')
+          expect(body).not.toMatch(/https?:\/\//)
+          expect(body).not.toContain(adminAuth.bearerToken)
+        })
       })
     },
   })

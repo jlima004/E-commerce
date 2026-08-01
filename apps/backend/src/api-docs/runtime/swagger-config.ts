@@ -19,19 +19,36 @@ export const SWAGGER_UI_HTML = `<!DOCTYPE html>
 </html>
 `
 
+export type ApiDocsInitializerUrl = {
+  name: string
+  url: string
+}
+
 /**
  * Project-owned Swagger UI initializer (non-interactive).
  * Forbidden: try-it-out, oauth redirect, preauthorize, auth injection,
  * response interceptors that expose content, external URLs, query configUrl.
+ *
+ * The urls array must contain only surfaces authorized for the current request.
+ * Names and URLs are embedded via JSON.stringify — never interpolate raw strings.
  */
-export const API_DOCS_INITIALIZER_JS = `"use strict";
+export function buildApiDocsInitializerJs(
+  urls: ReadonlyArray<ApiDocsInitializerUrl>
+): string {
+  const urlsLiteral =
+    urls.length === 0
+      ? "[]"
+      : `[\n${urls
+          .map(
+            (entry) =>
+              `      { name: ${JSON.stringify(entry.name)}, url: ${JSON.stringify(entry.url)} }`
+          )
+          .join(",\n")}\n    ]`
+
+  return `"use strict";
 window.onload = function () {
   window.ui = SwaggerUIBundle({
-    urls: [
-      { name: "Store", url: "/openapi/store.json" },
-      { name: "Admin", url: "/openapi/admin.json" },
-      { name: "Webhooks", url: "/openapi/webhooks.json" }
-    ],
+    urls: ${urlsLiteral},
     dom_id: "#swagger-ui",
     deepLinking: true,
     presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
@@ -45,3 +62,4 @@ window.onload = function () {
   });
 };
 `
+}

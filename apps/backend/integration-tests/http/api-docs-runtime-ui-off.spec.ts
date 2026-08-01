@@ -180,10 +180,23 @@ if (!requestedDatabaseName) {
           "/docs",
           "/docs/assets/swagger-ui.css",
           "/docs/assets/swagger-ui-bundle.js",
+          "/docs/assets/api-docs-initializer.js",
         ])("returns opaque 404 for anonymous GET %s", async (routePath) => {
           const response = await api.get(routePath, {
             validateStatus: () => true,
           })
+
+          expectOpaqueNotFound(response.status)
+        })
+
+        it("returns opaque 404 for authenticated GET /docs/assets/api-docs-initializer.js", async () => {
+          const response = await api.get(
+            "/docs/assets/api-docs-initializer.js",
+            {
+              headers: { authorization: `Bearer ${bearerToken}` },
+              validateStatus: () => true,
+            }
+          )
 
           expectOpaqueNotFound(response.status)
         })

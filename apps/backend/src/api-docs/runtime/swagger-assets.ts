@@ -1,6 +1,7 @@
 import { createRequire } from "node:module"
 import { readFileSync } from "node:fs"
-import { API_DOCS_INITIALIZER_JS } from "./swagger-config"
+import { buildApiDocsInitializerJs } from "./swagger-config"
+import type { ApiDocsSelectorUrl } from "./exposure"
 
 const requirePackage = createRequire(__filename)
 
@@ -17,6 +18,14 @@ export type ResolvedSwaggerAsset = {
   name: SwaggerAssetName
   contentType: "text/css; charset=utf-8" | "text/javascript; charset=utf-8"
   body: Buffer
+}
+
+export type ResolveSwaggerAssetOptions = {
+  /**
+   * Required when resolving api-docs-initializer.js.
+   * May be an empty array when no surfaces are authorized.
+   */
+  initializerUrls?: ReadonlyArray<ApiDocsSelectorUrl>
 }
 
 const ALLOWED_ASSETS = new Set<string>(SWAGGER_ASSET_NAMES)
@@ -64,19 +73,30 @@ function contentTypeForAsset(
 /**
  * Resolve a swagger UI asset by exact allowlisted basename only.
  * Returns null for unknown, nested, traversal, maps, oauth, favicons, etc.
+ *
+ * `api-docs-initializer.js` is dynamic: callers must pass `initializerUrls`
+ * (authorized surfaces for the current request). Static package assets ignore it.
  */
 export function resolveSwaggerAsset(
-  assetParam: unknown
+  assetParam: unknown,
+  options?: ResolveSwaggerAssetOptions
 ): ResolvedSwaggerAsset | null {
   if (typeof assetParam !== "string" || !isExactAllowlistedAssetName(assetParam)) {
     return null
   }
 
   if (assetParam === "api-docs-initializer.js") {
+    if (!options || !Array.isArray(options.initializerUrls)) {
+      return null
+    }
+
     return {
       name: assetParam,
       contentType: contentTypeForAsset(assetParam),
-      body: Buffer.from(API_DOCS_INITIALIZER_JS, "utf8"),
+      body: Buffer.from(
+        buildApiDocsInitializerJs(options.initializerUrls),
+        "utf8"
+      ),
     }
   }
 

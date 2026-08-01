@@ -211,6 +211,38 @@ if (!requestedDatabaseName) {
 
           expect(response.status).toBe(200)
         })
+
+        it("anonymous initializer lists no specifications", async () => {
+          const response = await api.get(
+            "/docs/assets/api-docs-initializer.js",
+            { validateStatus: () => true }
+          )
+
+          expect(response.status).toBe(200)
+          const body = String(response.data)
+          expect(body).toContain("urls: []")
+          expect(body).not.toContain('name: "Store"')
+          expect(body).not.toContain('name: "Admin"')
+          expect(body).not.toContain('name: "Webhooks"')
+        })
+
+        it("authenticated initializer lists Admin and Webhooks only", async () => {
+          const response = await api.get(
+            "/docs/assets/api-docs-initializer.js",
+            {
+              headers: { authorization: `Bearer ${bearerToken}` },
+              validateStatus: () => true,
+            }
+          )
+
+          expect(response.status).toBe(200)
+          const body = String(response.data)
+          expect(body).not.toContain('name: "Store"')
+          expect(body).toContain('name: "Admin"')
+          expect(body).toContain('name: "Webhooks"')
+          expect(body).not.toMatch(/https?:\/\//)
+          expect(body).not.toContain(bearerToken)
+        })
       })
     },
   })
