@@ -333,6 +333,24 @@ export default defineMiddlewares({
       },
     },
     {
+      method: ["GET"],
+      matcher: "/openapi/admin.json",
+      middlewares: [
+        authenticate("user", ["session", "bearer"], {
+          allowUnauthenticated: true,
+        }),
+      ],
+    },
+    {
+      method: ["GET"],
+      matcher: "/openapi/webhooks.json",
+      middlewares: [
+        authenticate("user", ["session", "bearer"], {
+          allowUnauthenticated: true,
+        }),
+      ],
+    },
+    {
       method: ["POST"],
       matcher: "/store/tracking/lookup",
       middlewares: [storeTrackingLookupGuardMiddleware],

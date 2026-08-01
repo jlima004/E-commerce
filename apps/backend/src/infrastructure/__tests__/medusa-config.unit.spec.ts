@@ -58,6 +58,10 @@ function productionEnv(workerMode: "server" | "worker" | "shared"): AppEnv {
     TRACKING_TOKEN_PEPPER: undefined,
     ADMIN_REFUND_REQUEST_ENABLED: true,
     ADMIN_EXCHANGE_REQUEST_ENABLED: true,
+    API_DOCS_ENABLED: false,
+    API_DOCS_UI_ENABLED: false,
+    API_DOCS_PUBLIC_ENABLED: false,
+    API_DOCS_INTERNAL_ENABLED: false,
   }
 }
 

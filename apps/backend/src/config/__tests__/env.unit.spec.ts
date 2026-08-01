@@ -574,6 +574,79 @@ describe("environment configuration", () => {
       )
     })
   })
+
+  describe("API docs exposure flags", () => {
+    it("defaults all four flags true in development when unset", () => {
+      const env = parseEnv(localFixture({ NODE_ENV: "development" }))
+
+      expect(env.API_DOCS_ENABLED).toBe(true)
+      expect(env.API_DOCS_UI_ENABLED).toBe(true)
+      expect(env.API_DOCS_PUBLIC_ENABLED).toBe(true)
+      expect(env.API_DOCS_INTERNAL_ENABLED).toBe(true)
+    })
+
+    it("defaults UI false and the rest true in test when unset", () => {
+      const env = parseEnv(localFixture({ NODE_ENV: "test" }))
+
+      expect(env.API_DOCS_ENABLED).toBe(true)
+      expect(env.API_DOCS_UI_ENABLED).toBe(false)
+      expect(env.API_DOCS_PUBLIC_ENABLED).toBe(true)
+      expect(env.API_DOCS_INTERNAL_ENABLED).toBe(true)
+    })
+
+    it("defaults all four flags false in production when unset (fail-closed)", () => {
+      const env = parseEnv(productionFixture())
+
+      expect(env.API_DOCS_ENABLED).toBe(false)
+      expect(env.API_DOCS_UI_ENABLED).toBe(false)
+      expect(env.API_DOCS_PUBLIC_ENABLED).toBe(false)
+      expect(env.API_DOCS_INTERNAL_ENABLED).toBe(false)
+    })
+
+    it("accepts explicit true/false overrides for each flag", () => {
+      const env = parseEnv(
+        localFixture({
+          API_DOCS_ENABLED: "false",
+          API_DOCS_UI_ENABLED: "false",
+          API_DOCS_PUBLIC_ENABLED: "false",
+          API_DOCS_INTERNAL_ENABLED: "false",
+        })
+      )
+
+      expect(env.API_DOCS_ENABLED).toBe(false)
+      expect(env.API_DOCS_UI_ENABLED).toBe(false)
+      expect(env.API_DOCS_PUBLIC_ENABLED).toBe(false)
+      expect(env.API_DOCS_INTERNAL_ENABLED).toBe(false)
+
+      const enabled = parseEnv(
+        productionFixture({
+          API_DOCS_ENABLED: "true",
+          API_DOCS_UI_ENABLED: "true",
+          API_DOCS_PUBLIC_ENABLED: "true",
+          API_DOCS_INTERNAL_ENABLED: "true",
+        })
+      )
+
+      expect(enabled.API_DOCS_ENABLED).toBe(true)
+      expect(enabled.API_DOCS_UI_ENABLED).toBe(true)
+      expect(enabled.API_DOCS_PUBLIC_ENABLED).toBe(true)
+      expect(enabled.API_DOCS_INTERNAL_ENABLED).toBe(true)
+    })
+
+    it("rejects invalid boolean values for each API docs flag", () => {
+      for (const field of [
+        "API_DOCS_ENABLED",
+        "API_DOCS_UI_ENABLED",
+        "API_DOCS_PUBLIC_ENABLED",
+        "API_DOCS_INTERNAL_ENABLED",
+      ] as const) {
+        expectErrorWithoutValues(
+          () => parseEnv(localFixture({ [field]: "maybe" })),
+          field
+        )
+      }
+    })
+  })
 })
 
 describe("migration URL guard", () => {
@@ -646,6 +719,15 @@ describe("migration URL guard", () => {
 })
 
 describe(".env.template contract", () => {
+  it("documents API docs exposure flags", () => {
+    const template = fs.readFileSync(templatePath, "utf8")
+
+    expect(template).toMatch(/API_DOCS_ENABLED=/)
+    expect(template).toMatch(/API_DOCS_UI_ENABLED=/)
+    expect(template).toMatch(/API_DOCS_PUBLIC_ENABLED=/)
+    expect(template).toMatch(/API_DOCS_INTERNAL_ENABLED=/)
+  })
+
   it("documents SENTRY_DSN and APP_VERSION without real credentials", () => {
     const template = fs.readFileSync(templatePath, "utf8")
 
