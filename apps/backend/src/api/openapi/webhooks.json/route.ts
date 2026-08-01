@@ -1,11 +1,15 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { canExposeApiDocs } from "../../../api-docs/runtime/exposure"
+import {
+  canExposeApiDocs,
+  matchesCanonicalGelatoWebhookAuthHeader,
+} from "../../../api-docs/runtime/exposure"
 import { getWebhooksOpenApiDocument } from "../../../api-docs/runtime/documents"
 import {
   API_DOCS_CONTENT_TYPE_JSON,
   applyApiDocsSecurityHeaders,
   sendApiDocsNotFound,
 } from "../../../api-docs/runtime/security-headers"
+import { env } from "../../../config/env"
 import {
   getApiDocsFlagsFromEnv,
   mapAuthContextToApiDocsActor,
@@ -15,7 +19,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const flags = getApiDocsFlagsFromEnv()
   const actor = mapAuthContextToApiDocsActor(req)
 
-  if (!canExposeApiDocs(flags, "webhooks", actor)) {
+  if (
+    !canExposeApiDocs(flags, "webhooks", actor) ||
+    !matchesCanonicalGelatoWebhookAuthHeader(
+      env.GELATO_WEBHOOK_AUTH_HEADER_NAME
+    )
+  ) {
     sendApiDocsNotFound(res)
     return
   }

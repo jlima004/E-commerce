@@ -1,5 +1,7 @@
 import {
+  CANONICAL_GELATO_WEBHOOK_AUTH_HEADER_NAME,
   canExposeApiDocs,
+  matchesCanonicalGelatoWebhookAuthHeader,
   resolveApiDocsFlagDefaults,
   type ApiDocsFlags,
 } from "../runtime/exposure"
@@ -289,5 +291,43 @@ describe("canExposeApiDocs — master prevails", () => {
     expect(canExposeApiDocs(flags, "store", undefined)).toBe(false)
     expect(canExposeApiDocs(flags, "admin", userActor)).toBe(false)
     expect(canExposeApiDocs(flags, "webhooks", userActor)).toBe(false)
+  })
+})
+
+describe("matchesCanonicalGelatoWebhookAuthHeader", () => {
+  it("accepts the committed canonical header name", () => {
+    expect(
+      matchesCanonicalGelatoWebhookAuthHeader(
+        CANONICAL_GELATO_WEBHOOK_AUTH_HEADER_NAME
+      )
+    ).toBe(true)
+  })
+
+  it("accepts canonical header with different casing and surrounding whitespace", () => {
+    expect(
+      matchesCanonicalGelatoWebhookAuthHeader("X-GELATO-WEBHOOK-SECRET")
+    ).toBe(true)
+    expect(
+      matchesCanonicalGelatoWebhookAuthHeader("X-Gelato-Webhook-Secret")
+    ).toBe(true)
+    expect(
+      matchesCanonicalGelatoWebhookAuthHeader("  x-gelato-webhook-secret  ")
+    ).toBe(true)
+  })
+
+  it("rejects custom header overrides", () => {
+    expect(
+      matchesCanonicalGelatoWebhookAuthHeader("x-custom-gelato-secret")
+    ).toBe(false)
+    expect(matchesCanonicalGelatoWebhookAuthHeader("Authorization")).toBe(
+      false
+    )
+  })
+
+  it("rejects empty, whitespace-only, and non-string values", () => {
+    expect(matchesCanonicalGelatoWebhookAuthHeader("")).toBe(false)
+    expect(matchesCanonicalGelatoWebhookAuthHeader("   ")).toBe(false)
+    expect(matchesCanonicalGelatoWebhookAuthHeader(null)).toBe(false)
+    expect(matchesCanonicalGelatoWebhookAuthHeader(undefined)).toBe(false)
   })
 })

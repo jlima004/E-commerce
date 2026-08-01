@@ -90,13 +90,19 @@ function expectNotFound(res: MockResponse): void {
   expect(res.status).not.toHaveBeenCalledWith(403)
 }
 
+const defaultEnvMock = {
+  ...allEnabled,
+  // Default runtime value (different casing from the OpenAPI contract name).
+  GELATO_WEBHOOK_AUTH_HEADER_NAME: "X-GELATO-WEBHOOK-SECRET",
+} as const
+
 async function importWithEnvMocks<T>(
   modulePath: string,
-  envOverrides: Record<string, boolean> = {}
+  envOverrides: Record<string, boolean | string> = {}
 ): Promise<T> {
   jest.resetModules()
   jest.doMock("../../src/config/env", () => ({
-    env: { ...allEnabled, ...envOverrides },
+    env: { ...defaultEnvMock, ...envOverrides },
   }))
   jest.doMock("../../src/api-docs/generation/build-documents", () => ({
     buildContracts: jest.fn(),
@@ -273,6 +279,72 @@ describe("api docs HTTP routes", () => {
 
       await route.GET(createRequest(userAuthContext), res)
       expectNotFound(res)
+    })
+  })
+
+  describe("GET /openapi/webhooks.json Gelato header contract guard", () => {
+    const webhooksRoute =
+      "../../src/api/openapi/webhooks.json/route" as const
+    const adminRoute = "../../src/api/openapi/admin.json/route" as const
+    const storeRoute = "../../src/api/openapi/store.json/route" as const
+
+    it("returns 200 for canonical header with lowercase spelling", async () => {
+      const route = await importWithEnvMocks<{
+        GET: (req: MedusaRequest, res: MedusaResponse) => Promise<void>
+      }>(webhooksRoute, {
+        GELATO_WEBHOOK_AUTH_HEADER_NAME: "x-gelato-webhook-secret",
+      })
+      const res = createResponse()
+
+      await route.GET(createRequest(userAuthContext), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+    })
+
+    it("returns 200 for canonical header with alternate casing", async () => {
+      const route = await importWithEnvMocks<{
+        GET: (req: MedusaRequest, res: MedusaResponse) => Promise<void>
+      }>(webhooksRoute, {
+        GELATO_WEBHOOK_AUTH_HEADER_NAME: "X-Gelato-Webhook-Secret",
+      })
+      const res = createResponse()
+
+      await route.GET(createRequest(userAuthContext), res)
+
+      expect(res.status).toHaveBeenCalledWith(200)
+    })
+
+    it("returns opaque 404 when configured header diverges from the contract", async () => {
+      const route = await importWithEnvMocks<{
+        GET: (req: MedusaRequest, res: MedusaResponse) => Promise<void>
+      }>(webhooksRoute, {
+        GELATO_WEBHOOK_AUTH_HEADER_NAME: "x-custom-gelato-secret",
+      })
+      const res = createResponse()
+
+      await route.GET(createRequest(userAuthContext), res)
+      expectNotFound(res)
+    })
+
+    it("does not affect admin or store surfaces when Gelato header is overridden", async () => {
+      const admin = await importWithEnvMocks<{
+        GET: (req: MedusaRequest, res: MedusaResponse) => Promise<void>
+      }>(adminRoute, {
+        GELATO_WEBHOOK_AUTH_HEADER_NAME: "x-custom-gelato-secret",
+      })
+      const store = await importWithEnvMocks<{
+        GET: (req: MedusaRequest, res: MedusaResponse) => Promise<void>
+      }>(storeRoute, {
+        GELATO_WEBHOOK_AUTH_HEADER_NAME: "x-custom-gelato-secret",
+      })
+
+      const adminRes = createResponse()
+      await admin.GET(createRequest(userAuthContext), adminRes)
+      expect(adminRes.status).toHaveBeenCalledWith(200)
+
+      const storeRes = createResponse()
+      await store.GET(createRequest(), storeRes)
+      expect(storeRes.status).toHaveBeenCalledWith(200)
     })
   })
 

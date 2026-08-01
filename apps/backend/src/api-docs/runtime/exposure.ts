@@ -8,6 +8,31 @@ export type ApiDocsFlags = {
 }
 
 /**
+ * Header name documented by the committed Webhooks OpenAPI contract.
+ * Runtime may override via GELATO_WEBHOOK_AUTH_HEADER_NAME; exposure of
+ * /openapi/webhooks.json must stay disabled when the override diverges.
+ */
+export const CANONICAL_GELATO_WEBHOOK_AUTH_HEADER_NAME =
+  "x-gelato-webhook-secret"
+
+/**
+ * Case-insensitive match against the committed Gelato webhook auth header.
+ * Pure helper — no env singleton access.
+ */
+export function matchesCanonicalGelatoWebhookAuthHeader(
+  configuredHeaderName: string | null | undefined
+): boolean {
+  if (typeof configuredHeaderName !== "string") {
+    return false
+  }
+
+  return (
+    configuredHeaderName.trim().toLowerCase() ===
+    CANONICAL_GELATO_WEBHOOK_AUTH_HEADER_NAME
+  )
+}
+
+/**
  * Actor identity for internal documentation surfaces.
  * Prefer injecting a plain object from the request auth context —
  * never read the env singleton inside these policy helpers.
