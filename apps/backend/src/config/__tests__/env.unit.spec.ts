@@ -719,13 +719,13 @@ describe("migration URL guard", () => {
 })
 
 describe(".env.template contract", () => {
-  it("documents API docs exposure flags", () => {
+  it("documents API docs exposure flags as disabled by default", () => {
     const template = fs.readFileSync(templatePath, "utf8")
 
-    expect(template).toMatch(/API_DOCS_ENABLED=/)
-    expect(template).toMatch(/API_DOCS_UI_ENABLED=/)
-    expect(template).toMatch(/API_DOCS_PUBLIC_ENABLED=/)
-    expect(template).toMatch(/API_DOCS_INTERNAL_ENABLED=/)
+    expect(template).toMatch(/^API_DOCS_ENABLED=false$/m)
+    expect(template).toMatch(/^API_DOCS_UI_ENABLED=false$/m)
+    expect(template).toMatch(/^API_DOCS_PUBLIC_ENABLED=false$/m)
+    expect(template).toMatch(/^API_DOCS_INTERNAL_ENABLED=false$/m)
   })
 
   it("documents SENTRY_DSN and APP_VERSION without real credentials", () => {
