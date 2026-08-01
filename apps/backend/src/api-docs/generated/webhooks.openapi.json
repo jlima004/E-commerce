@@ -89,14 +89,26 @@
       },
       "GelatoWebhookRequest": {
         "additionalProperties": true,
-        "description": "Authenticated Gelato webhook object. The supported order_status_updated variant requires non-empty string id, event, orderId, orderReferenceId, and fulfillmentStatus. Authenticated objects with a missing or unsupported event are acknowledged as ignored without persistence and may carry null, malformed, or omitted supported-event fields. connectedOrderIds may be null or an array; non-array values are rejected only for the supported variant, and non-string array entries are filtered by the parser.",
+        "description": "Authenticated Gelato webhook object. The supported order_status_updated variant requires id, orderId, orderReferenceId, and fulfillmentStatus as non-whitespace strings and event as order_status_updated with optional surrounding whitespace. Authenticated objects with a missing or unsupported event are acknowledged as ignored without persistence and may carry null, malformed, or omitted supported-event fields. connectedOrderIds may be null or an array; non-array values are rejected only for the supported variant, and non-string array entries are filtered by the parser.",
         "oneOf": [
           {
             "properties": {
               "connectedOrderIds": {
                 "oneOf": [
                   {
-                    "items": {},
+                    "items": {
+                      "oneOf": [
+                        {
+                          "pattern": "\\S",
+                          "type": "string"
+                        },
+                        {
+                          "not": {
+                            "type": "string"
+                          }
+                        }
+                      ]
+                    },
                     "type": "array"
                   },
                   {
@@ -105,23 +117,27 @@
                 ]
               },
               "event": {
-                "const": "order_status_updated",
+                "pattern": "^\\s*order_status_updated\\s*$",
                 "type": "string"
               },
               "fulfillmentStatus": {
                 "minLength": 1,
+                "pattern": "\\S",
                 "type": "string"
               },
               "id": {
                 "minLength": 1,
+                "pattern": "\\S",
                 "type": "string"
               },
               "orderId": {
                 "minLength": 1,
+                "pattern": "\\S",
                 "type": "string"
               },
               "orderReferenceId": {
                 "minLength": 1,
+                "pattern": "\\S",
                 "type": "string"
               }
             },
@@ -138,7 +154,8 @@
             "not": {
               "properties": {
                 "event": {
-                  "const": "order_status_updated"
+                  "pattern": "^\\s*order_status_updated\\s*$",
+                  "type": "string"
                 }
               },
               "required": [

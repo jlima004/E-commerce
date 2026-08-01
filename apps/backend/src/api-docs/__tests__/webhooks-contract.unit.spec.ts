@@ -34,6 +34,12 @@ type Schema = {
   required?: string[]
   properties?: Record<string, Schema>
   oneOf?: Schema[]
+  not?: Schema
+  items?: Schema
+  pattern?: string
+  minLength?: number
+  uniqueItems?: boolean
+  title?: string
   description?: string
   "x-supported-event-types"?: string[]
 }
@@ -180,6 +186,15 @@ describe("OpenAPI Webhooks contract", () => {
   it("models only order_status_updated as the supported Gelato variant", () => {
     const request = schemas.GelatoWebhookRequest
     const supported = request.oneOf?.[0]
+    const unsupported = request.oneOf?.[1]
+    const eventPattern = "^\\s*order_status_updated\\s*$"
+    const trimFieldNames = [
+      "id",
+      "orderId",
+      "orderReferenceId",
+      "fulfillmentStatus",
+    ] as const
+
     expect(supported?.required).toEqual([
       "id",
       "event",
@@ -187,22 +202,112 @@ describe("OpenAPI Webhooks contract", () => {
       "orderReferenceId",
       "fulfillmentStatus",
     ])
-    expect(supported?.properties?.event.const).toBe("order_status_updated")
+
+    const supportedEvent = supported?.properties?.event
+    expect(supportedEvent?.type).toBe("string")
+    expect(supportedEvent?.pattern).toBe(eventPattern)
+    expect(supportedEvent?.const).toBeUndefined()
+
+    const unsupportedEvent = unsupported?.not?.properties?.event
+    expect(unsupportedEvent?.type).toBe("string")
+    expect(unsupportedEvent?.pattern).toBe(eventPattern)
+    expect(unsupportedEvent?.const).toBeUndefined()
+    expect(supportedEvent?.pattern).toBe(unsupportedEvent?.pattern)
+
+    for (const field of trimFieldNames) {
+      const property = supported?.properties?.[field]
+      expect(property?.type).toBe("string")
+      expect(property?.pattern).toBe("\\S")
+      expect(property?.minLength).toBe(1)
+    }
+
+    const connectedOrderIds = supported?.properties?.connectedOrderIds
+    expect(connectedOrderIds?.oneOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "null" }),
+        expect.objectContaining({
+          type: "array",
+          items: expect.objectContaining({
+            oneOf: expect.arrayContaining([
+              expect.objectContaining({
+                type: "string",
+                pattern: "\\S",
+              }),
+              expect.objectContaining({
+                not: { type: "string" },
+              }),
+            ]),
+          }),
+        }),
+      ])
+    )
+    expect(connectedOrderIds?.uniqueItems).toBeUndefined()
+
     expect(request.properties?.id?.type).toBeUndefined()
     expect(request.properties?.connectedOrderIds?.oneOf).toBeUndefined()
     expect(request.properties?.connectedOrderIds?.type).toBeUndefined()
-    expect(supported?.properties?.connectedOrderIds?.oneOf).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: "null" }),
-        expect.objectContaining({ type: "array" }),
-      ])
-    )
+
     expect(request.description).toMatch(/missing or unsupported event/i)
     expect(request.description).toMatch(/ignored without persistence/i)
     expect(request.description).toMatch(/null/i)
     expect(gelato.description).toMatch(/supports only order_status_updated/i)
     expect(gelato.description).toMatch(/final event replay.*without a new fulfillment update/i)
     expect(gelato.description).toMatch(/non-final duplicate.*may continue processing/i)
+  })
+
+  it("matches Gelato supported event pattern with optional surrounding whitespace", () => {
+    const eventPattern = new RegExp(
+      schemas.GelatoWebhookRequest.oneOf?.[0]?.properties?.event?.pattern ?? ""
+    )
+
+    for (const value of [
+      "order_status_updated",
+      " order_status_updated",
+      "order_status_updated ",
+      "\torder_status_updated\n",
+    ]) {
+      expect(eventPattern.test(value)).toBe(true)
+    }
+
+    for (const value of ["other_event", "", " ", "\t\n"]) {
+      expect(eventPattern.test(value)).toBe(false)
+    }
+  })
+
+  it("matches Gelato required trim field pattern for non-whitespace strings", () => {
+    const trimPattern = new RegExp("\\S")
+    const supported = schemas.GelatoWebhookRequest.oneOf?.[0]
+
+    for (const field of ["id", "orderId", "orderReferenceId", "fulfillmentStatus"]) {
+      const pattern = supported?.properties?.[field]?.pattern
+      expect(pattern).toBe("\\S")
+      expect(new RegExp(pattern ?? "").test("value")).toBe(true)
+      expect(new RegExp(pattern ?? "").test(" value ")).toBe(true)
+      expect(new RegExp(pattern ?? "").test("")).toBe(false)
+      expect(new RegExp(pattern ?? "").test(" ")).toBe(false)
+      expect(new RegExp(pattern ?? "").test("\t\n")).toBe(false)
+    }
+
+    expect(trimPattern.test("value")).toBe(true)
+    expect(trimPattern.test(" value ")).toBe(true)
+    expect(trimPattern.test("")).toBe(false)
+    expect(trimPattern.test(" ")).toBe(false)
+    expect(trimPattern.test("\t\n")).toBe(false)
+  })
+
+  it("matches Gelato connectedOrderIds string item pattern for non-whitespace strings", () => {
+    const connectedOrderIds =
+      schemas.GelatoWebhookRequest.oneOf?.[0]?.properties?.connectedOrderIds
+    const stringBranch = connectedOrderIds?.oneOf?.[0]?.items?.oneOf?.[0]
+    const pattern = new RegExp(stringBranch?.pattern ?? "")
+
+    expect(stringBranch?.type).toBe("string")
+    expect(stringBranch?.pattern).toBe("\\S")
+    expect(pattern.test("value")).toBe(true)
+    expect(pattern.test(" value ")).toBe(true)
+    expect(pattern.test("")).toBe(false)
+    expect(pattern.test(" ")).toBe(false)
+    expect(pattern.test("\t\n")).toBe(false)
   })
 
   it("uses only the evidenced response statuses and webhook error envelopes", () => {

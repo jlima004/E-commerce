@@ -2,6 +2,8 @@ import { WEBHOOK_X_CORRELATION_ID_RESPONSE_HEADERS } from "../../components"
 import type { ContractRegistryBundle } from "../../registry"
 
 const terminalWebhookStatuses = ["processed", "ignored", "failed"] as const
+const GELATO_SUPPORTED_EVENT_PATTERN =
+  "^\\s*order_status_updated\\s*$"
 
 export function webhookJsonResponse(
   description: string,
@@ -104,7 +106,7 @@ export function registerWebhookSchemas(
     type: "object",
     additionalProperties: true,
     description:
-      "Authenticated Gelato webhook object. The supported order_status_updated variant requires non-empty string id, event, orderId, orderReferenceId, and fulfillmentStatus. Authenticated objects with a missing or unsupported event are acknowledged as ignored without persistence and may carry null, malformed, or omitted supported-event fields. connectedOrderIds may be null or an array; non-array values are rejected only for the supported variant, and non-string array entries are filtered by the parser.",
+      "Authenticated Gelato webhook object. The supported order_status_updated variant requires id, orderId, orderReferenceId, and fulfillmentStatus as non-whitespace strings and event as order_status_updated with optional surrounding whitespace. Authenticated objects with a missing or unsupported event are acknowledged as ignored without persistence and may carry null, malformed, or omitted supported-event fields. connectedOrderIds may be null or an array; non-array values are rejected only for the supported variant, and non-string array entries are filtered by the parser.",
     properties: {
       id: {
         description:
@@ -142,19 +144,31 @@ export function registerWebhookSchemas(
           "fulfillmentStatus",
         ],
         properties: {
-          id: { type: "string", minLength: 1 },
+          id: { type: "string", minLength: 1, pattern: "\\S" },
           event: {
             type: "string",
-            const: "order_status_updated",
+            pattern: GELATO_SUPPORTED_EVENT_PATTERN,
           },
-          orderId: { type: "string", minLength: 1 },
-          orderReferenceId: { type: "string", minLength: 1 },
-          fulfillmentStatus: { type: "string", minLength: 1 },
+          orderId: { type: "string", minLength: 1, pattern: "\\S" },
+          orderReferenceId: { type: "string", minLength: 1, pattern: "\\S" },
+          fulfillmentStatus: { type: "string", minLength: 1, pattern: "\\S" },
           connectedOrderIds: {
             oneOf: [
               {
                 type: "array",
-                items: {},
+                items: {
+                  oneOf: [
+                    {
+                      type: "string",
+                      pattern: "\\S",
+                    },
+                    {
+                      not: {
+                        type: "string",
+                      },
+                    },
+                  ],
+                },
               },
               {
                 type: "null",
@@ -169,7 +183,8 @@ export function registerWebhookSchemas(
           required: ["event"],
           properties: {
             event: {
-              const: "order_status_updated",
+              type: "string",
+              pattern: GELATO_SUPPORTED_EVENT_PATTERN,
             },
           },
         },
