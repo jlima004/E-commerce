@@ -12,6 +12,7 @@ import {
 } from "./contracts"
 import { registerStoreContract } from "./operations/store"
 import { registerAdminContract } from "./operations/admin"
+import { registerWebhookContract } from "./operations/webhooks"
 
 extendZodWithOpenApi(z)
 
@@ -374,5 +375,6 @@ export function createFoundationRegistry(): ContractRegistryBundle {
   const registry = new ContractRegistryBundle()
   registerStoreContract(registry)
   registerAdminContract(registry)
+  registerWebhookContract(registry)
   return registry
 }

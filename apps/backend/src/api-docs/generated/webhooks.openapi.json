@@ -1,10 +1,339 @@
 {
   "components": {
-    "headers": {},
+    "headers": {
+      "WebhookXCorrelationId": {
+        "description": "Correlation identifier returned after the request reaches the project correlation middleware. This header is attached only to evidenced post-correlation webhook responses.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
     "parameters": {},
     "responses": {},
-    "schemas": {},
-    "securitySchemes": {}
+    "schemas": {
+      "GelatoWebhookAcknowledgementResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "duplicate": {
+            "description": "True when an existing persisted event was found. A final replay is a no-op, but a non-final duplicate may continue processing.",
+            "type": "boolean"
+          },
+          "event_id": {
+            "description": "Gelato event identifier when available.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "event_type": {
+            "const": "order_status_updated",
+            "type": "string"
+          },
+          "ok": {
+            "const": true,
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "processed",
+              "ignored",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "duplicate",
+          "event_id",
+          "event_type",
+          "status"
+        ],
+        "type": "object"
+      },
+      "GelatoWebhookIgnoredResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "const": "gelato_webhook_event_unsupported",
+            "type": "string"
+          },
+          "duplicate": {
+            "const": false,
+            "type": "boolean"
+          },
+          "event_type": {
+            "description": "Unsupported event type, or null when it was missing.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ok": {
+            "const": true,
+            "type": "boolean"
+          },
+          "status": {
+            "const": "ignored",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "duplicate",
+          "status",
+          "event_type",
+          "code"
+        ],
+        "type": "object"
+      },
+      "GelatoWebhookRequest": {
+        "additionalProperties": true,
+        "description": "Authenticated Gelato webhook object. The supported order_status_updated variant requires id, orderId, orderReferenceId, and fulfillmentStatus as non-whitespace strings and event as order_status_updated with optional surrounding whitespace. Authenticated objects with a missing or unsupported event are acknowledged as ignored without persistence and may carry null, malformed, or omitted supported-event fields. connectedOrderIds may be null or an array; non-array values are rejected only for the supported variant, and non-string array entries are filtered by the parser.",
+        "oneOf": [
+          {
+            "properties": {
+              "connectedOrderIds": {
+                "oneOf": [
+                  {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "pattern": "\\S",
+                          "type": "string"
+                        },
+                        {
+                          "not": {
+                            "type": "string"
+                          }
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "event": {
+                "pattern": "^\\s*order_status_updated\\s*$",
+                "type": "string"
+              },
+              "fulfillmentStatus": {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "id": {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "orderId": {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "orderReferenceId": {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "event",
+              "orderId",
+              "orderReferenceId",
+              "fulfillmentStatus"
+            ],
+            "title": "Supported order status update"
+          },
+          {
+            "not": {
+              "properties": {
+                "event": {
+                  "pattern": "^\\s*order_status_updated\\s*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "event"
+              ]
+            },
+            "title": "Unsupported or missing event"
+          }
+        ],
+        "properties": {
+          "connectedOrderIds": {
+            "description": "Optional connected Gelato order identifiers. On unsupported or missing events this field is not validated. For the supported variant, null or an array is accepted, a non-array value is rejected, and non-string array entries are filtered."
+          },
+          "event": {
+            "description": "Provider event type. Values other than order_status_updated, including missing or blank values, are ignored without persistence."
+          },
+          "fulfillmentStatus": {
+            "description": "Provider fulfillment status. Required as a non-empty string only for the supported variant."
+          },
+          "id": {
+            "description": "Gelato event identifier. Required as a non-empty string only for the supported order_status_updated variant."
+          },
+          "orderId": {
+            "description": "Gelato order identifier. Required as a non-empty string only for the supported variant."
+          },
+          "orderReferenceId": {
+            "description": "Merchant order reference. Required as a non-empty string only for the supported variant."
+          }
+        },
+        "type": "object"
+      },
+      "StripeWebhookAcknowledgementResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "duplicate": {
+            "description": "True when an existing persisted event was found. Only a terminal replay is guaranteed to short-circuit; a nonterminal or concurrent duplicate may continue processing.",
+            "type": "boolean"
+          },
+          "event_id": {
+            "description": "Stripe event identifier when available.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "ok": {
+            "const": true,
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "processed",
+              "ignored",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "duplicate",
+          "event_id",
+          "event_type",
+          "status"
+        ],
+        "type": "object"
+      },
+      "StripeWebhookEventRequest": {
+        "additionalProperties": true,
+        "description": "Conservative subset of a verified Stripe event after signature verification. id and type are the only top-level fields required for persistence and acknowledgement. data and data.object are optional at the ingress boundary: a verified unsupported event may omit them and still be acknowledged as ignored, while supported processors inspect data.object when present. Unknown Stripe properties are retained rather than modeled as a complete Stripe.Event.",
+        "properties": {
+          "account": {
+            "description": "Optional connected Stripe account identifier.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "data": {
+            "additionalProperties": true,
+            "description": "Optional Stripe event data envelope. Omitted or incomplete data is accepted at the route boundary for verified unsupported events.",
+            "properties": {
+              "object": {
+                "description": "Optional provider object inspected by supported event processors. Provider-specific fields are intentionally not expanded here."
+              }
+            },
+            "type": "object"
+          },
+          "id": {
+            "description": "Stripe event identifier.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "livemode": {
+            "description": "Optional Stripe live-mode marker.",
+            "type": "boolean"
+          },
+          "type": {
+            "description": "Supported event types. A correctly signed event with another type is acknowledged as ignored.",
+            "type": "string",
+            "x-supported-event-types": [
+              "payment_intent.succeeded",
+              "payment_intent.payment_failed",
+              "payment_intent.canceled",
+              "refund.created",
+              "refund.updated",
+              "refund.failed",
+              "charge.refunded"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "type": "object"
+      },
+      "WebhookErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable webhook rejection code.",
+            "type": "string"
+          },
+          "ok": {
+            "const": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "code"
+        ],
+        "type": "object"
+      },
+      "WebhookFrameworkError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Optional machine-readable error code when present.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "Human-readable sanitized error message.",
+            "type": "string"
+          },
+          "type": {
+            "description": "Medusa or project error type code.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "message"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "gelatoWebhookSecret": {
+        "description": "Shared secret in the canonical Gelato webhook authentication header.",
+        "in": "header",
+        "name": "x-gelato-webhook-secret",
+        "type": "apiKey"
+      },
+      "stripeSignature": {
+        "description": "Stripe signature header used to verify the exact preserved request bytes before provider event processing.",
+        "in": "header",
+        "name": "stripe-signature",
+        "type": "apiKey"
+      }
+    }
   },
   "info": {
     "contact": {
@@ -20,11 +349,239 @@
     "version": "1.0.0"
   },
   "openapi": "3.1.2",
-  "paths": {},
+  "paths": {
+    "/hooks/gelato": {
+      "post": {
+        "description": "Authenticates Gelato webhook payloads and supports only order_status_updated. The canonical authentication header is x-gelato-webhook-secret and runtime can override it through GELATO_WEBHOOK_AUTH_HEADER_NAME. The committed OpenAPI contract documents the canonical default header name. Future runtime exposure of this document must remain disabled when a configured header-name override would make the committed contract inaccurate. Authentication compares equal-length secret values with timingSafeEqual; a length mismatch rejects immediately, so the entire rejection path is not claimed to be constant-time. Unsupported or missing event types are acknowledged as ignored without persistence. A final event replay returns duplicate true and the stored status without a new fulfillment update. A non-final duplicate returns duplicate true if it completes but may continue processing; this endpoint does not claim a broad duplicate no-op.",
+        "operationId": "webhookGelatoReceive",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GelatoWebhookRequest"
+              }
+            }
+          },
+          "description": "Authenticated Gelato webhook object. Only the order_status_updated variant is processed.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/GelatoWebhookAcknowledgementResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/GelatoWebhookIgnoredResponse"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Authenticated event acknowledged. Unsupported or missing events are ignored without persistence; supported events return their processed, ignored, or failed terminal status.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/WebhookXCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/WebhookErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WebhookFrameworkError"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Route-level controlled rejection when the body is null or not an object, or a supported event has malformed required fields (codes gelato_webhook_payload_invalid or the lowercase parser code). Framework-level invalid-data failure when webhook module resolution or record update rejects the request with the Medusa error envelope.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/WebhookXCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookErrorResponse"
+                }
+              }
+            },
+            "description": "The canonical Gelato authentication header is absent. The code is gelato_webhook_auth_header_required.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/WebhookXCorrelationId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookErrorResponse"
+                }
+              }
+            },
+            "description": "The canonical Gelato authentication header value is invalid. The code is gelato_webhook_auth_header_invalid.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/WebhookXCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookFrameworkError"
+                }
+              }
+            },
+            "description": "Unexpected framework or infrastructure failure outside the route's controlled webhook rejection envelope."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookErrorResponse"
+                }
+              }
+            },
+            "description": "The Gelato webhook verification secret is not configured. The code is gelato_webhook_secret_not_configured.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/WebhookXCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "gelatoWebhookSecret": []
+          }
+        ],
+        "summary": "Receive an authenticated Gelato webhook",
+        "tags": [
+          "Gelato Webhooks"
+        ]
+      }
+    },
+    "/hooks/stripe": {
+      "post": {
+        "description": "Authenticates and records Stripe webhook events. Supported events are payment_intent.succeeded, payment_intent.payment_failed, payment_intent.canceled, refund.created, refund.updated, refund.failed, and charge.refunded. A verified unsupported event is persisted as ignored. payment_intent.succeeded triggers the order-creation entrypoint after the payment-confirmation path; checkout routes are not represented as creating an Order. charge.refunded is informational and is not claimed as the final source of financial truth. Terminal event replays return the stored status with duplicate true and create no new side effect. A same-event nonterminal or concurrent duplicate also returns duplicate true if it completes, but may continue processing; this endpoint does not claim exclusive single-flight behavior.",
+        "operationId": "webhookStripeReceive",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StripeWebhookEventRequest"
+              }
+            }
+          },
+          "description": "The request body must be the exact preserved request bytes used for Stripe signature verification before provider event processing. Parsed or reserialized JSON is not a substitute.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeWebhookAcknowledgementResponse"
+                }
+              }
+            },
+            "description": "Signed event acknowledged. The terminal result is processed, ignored, or failed; processing failures after persistence are acknowledged as failed and are not retried by replaying that terminal event.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/WebhookXCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/WebhookErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WebhookFrameworkError"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Route-level controlled rejection when the exact raw body is missing, the stripe-signature header is missing, or signature verification failed (codes stripe_raw_body_required, stripe_signature_required, stripe_signature_invalid). Framework-level invalid-data failure when webhook module resolution or record update rejects the request with the Medusa error envelope.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/WebhookXCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookFrameworkError"
+                }
+              }
+            },
+            "description": "Unexpected framework or infrastructure failure outside the route's controlled webhook rejection envelope."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookErrorResponse"
+                }
+              }
+            },
+            "description": "Stripe ingestion is disabled or the verification secret is not configured. These pre-verification configuration failures do not persist or process an event. Codes are stripe_webhook_ingestion_disabled and stripe_webhook_secret_not_configured.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/WebhookXCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "stripeSignature": []
+          }
+        ],
+        "summary": "Receive a signed Stripe webhook",
+        "tags": [
+          "Stripe Webhooks"
+        ]
+      }
+    }
+  },
   "servers": [
     {
       "description": "Same-origin",
       "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Gelato Webhooks"
+    },
+    {
+      "name": "Stripe Webhooks"
     }
   ],
   "x-medusa-version": "2.16.0"

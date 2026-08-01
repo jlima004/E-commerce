@@ -9,6 +9,9 @@ import { registerStoreSecuritySchemes } from "./security-schemes"
 import { registerAdminErrorSchemas } from "./errors"
 import { registerAdminResponseHeaders } from "./headers"
 import { registerAdminSecuritySchemes } from "./security-schemes"
+import { registerWebhookErrorSchemas } from "./errors"
+import { registerWebhookResponseHeaders } from "./headers"
+import { registerWebhookSecuritySchemes } from "./security-schemes"
 
 export function registerSharedComponent<K extends ComponentTypeKey>(
   registry: ContractRegistryBundle,
@@ -35,14 +38,26 @@ export function registerAdminSharedComponents(
   registerAdminErrorSchemas(registry)
 }
 
+export function registerWebhookSharedComponents(
+  registry: ContractRegistryBundle
+): void {
+  registerWebhookSecuritySchemes(registry)
+  registerWebhookResponseHeaders(registry)
+  registerWebhookErrorSchemas(registry)
+}
+
 export { storeErrorResponse } from "./errors"
 export {
   adminErrorResponse,
   adminUnauthorizedResponse,
+  webhookErrorResponse,
+  webhookControlledOrFrameworkErrorResponse,
+  webhookFrameworkErrorResponse,
 } from "./errors"
 export {
   STORE_X_CORRELATION_ID_RESPONSE_HEADERS,
   ADMIN_X_CORRELATION_ID_RESPONSE_HEADERS,
+  WEBHOOK_X_CORRELATION_ID_RESPONSE_HEADERS,
 } from "./headers"
 export {
   STORE_OPTIONAL_CUSTOMER,
@@ -50,6 +65,8 @@ export {
   STORE_REQUIRED_CUSTOMER,
   ADMIN_NATIVE_SECURITY,
   ADMIN_USER_SECURITY,
+  STRIPE_SIGNATURE_SECURITY,
+  GELATO_WEBHOOK_SECRET_SECURITY,
 } from "./security-schemes"
 export {
   CORRELATION_ID_HEADER,

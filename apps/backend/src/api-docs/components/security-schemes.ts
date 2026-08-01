@@ -54,6 +54,14 @@ export const ADMIN_USER_SECURITY = [
   { adminSession: [] },
 ] as const
 
+export const STRIPE_SIGNATURE_SECURITY = [
+  { stripeSignature: [] },
+] as const
+
+export const GELATO_WEBHOOK_SECRET_SECURITY = [
+  { gelatoWebhookSecret: [] },
+] as const
+
 export function registerAdminSecuritySchemes(
   registry: ContractRegistryBundle
 ): void {
@@ -76,5 +84,25 @@ export function registerAdminSecuritySchemes(
     scheme: "basic",
     description:
       "Medusa secret Admin API key supplied as the HTTP Basic username. Accepted only by native Admin operations; project user-only operations reject API-key actors.",
+  })
+}
+
+export function registerWebhookSecuritySchemes(
+  registry: ContractRegistryBundle
+): void {
+  registry.registerComponent("webhooks", "securitySchemes", "stripeSignature", {
+    type: "apiKey",
+    in: "header",
+    name: "stripe-signature",
+    description:
+      "Stripe signature header used to verify the exact preserved request bytes before provider event processing.",
+  })
+
+  registry.registerComponent("webhooks", "securitySchemes", "gelatoWebhookSecret", {
+    type: "apiKey",
+    in: "header",
+    name: "x-gelato-webhook-secret",
+    description:
+      "Shared secret in the canonical Gelato webhook authentication header.",
   })
 }

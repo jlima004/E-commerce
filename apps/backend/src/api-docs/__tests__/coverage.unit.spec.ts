@@ -212,14 +212,12 @@ describe("OpenAPI route coverage foundation", () => {
     ).toThrow("missing reason")
   })
 
-  it("passes Store/Admin scoped coverage while keeping Webhooks pending", () => {
+  it("passes scoped coverage for all three populated surfaces", () => {
     const registry = createFoundationRegistry()
     expect(() => verifyCoverage("foundation", registry)).not.toThrow()
     expect(() => verifyCoverage("store", registry)).not.toThrow()
     expect(() => verifyCoverage("admin", registry)).not.toThrow()
-    expect(() => verifyCoverage("webhooks", registry)).toThrow(
-      "coverage is incomplete"
-    )
+    expect(() => verifyCoverage("webhooks", registry)).not.toThrow()
   })
 
   it("accepts bidirectional local and native Store coverage", () => {

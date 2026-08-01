@@ -39,7 +39,7 @@ function syntheticOperation(
 }
 
 describe("OpenAPI foundation generation", () => {
-  it("builds three deterministic OpenAPI 3.1.2 documents with Store and Admin populated", () => {
+  it("builds three deterministic populated OpenAPI 3.1.2 documents", () => {
     const first = buildContracts()
     const second = buildContracts()
 
@@ -92,7 +92,10 @@ describe("OpenAPI foundation generation", () => {
       "/admin/products/{id}/variants/{variant_id}",
       "/admin/refunds/request",
     ])
-    expect(webhooks?.document.paths).toEqual({})
+    expect(Object.keys(webhooks?.document.paths ?? {}).sort()).toEqual([
+      "/hooks/gelato",
+      "/hooks/stripe",
+    ])
   })
 
   it("uses an explicit operation description and otherwise falls back to summary", () => {
