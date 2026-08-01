@@ -155,6 +155,7 @@ function extractSessionCookie(
 type AdminAuth = {
   bearerToken: string
   sessionCookie: string
+  userId: string
 }
 
 async function bootstrapAdminAuth(
@@ -207,7 +208,7 @@ async function bootstrapAdminAuth(
     { expiresIn: "1d" }
   )
 
-  return { bearerToken, sessionCookie: "" }
+  return { bearerToken, sessionCookie: "", userId: user.id }
 }
 
 if (!requestedDatabaseName) {
@@ -249,6 +250,8 @@ if (!requestedDatabaseName) {
     cwd: process.cwd(),
     testSuite: ({ api, getContainer }) => {
       let adminAuth: AdminAuth
+      let secretApiKeyToken: string
+      let secretApiKeyActorType: string | undefined
 
       beforeAll(async () => {
         adminAuth = await bootstrapAdminAuth(getContainer)
@@ -266,6 +269,37 @@ if (!requestedDatabaseName) {
         adminAuth.sessionCookie =
           extractSessionCookie(sessionResponse.headers["set-cookie"]) ?? ""
         expect(adminAuth.sessionCookie.length).toBeGreaterThan(0)
+
+        const apiKeyModule = getContainer().resolve(Modules.API_KEY) as {
+          createApiKeys: (input: {
+            title: string
+            type: "secret"
+            created_by: string
+          }) => Promise<{ id: string; token?: string }>
+          authenticate: (
+            token: string
+          ) => Promise<{ id: string } | false>
+        }
+
+        const created = await apiKeyModule.createApiKeys({
+          title: "api-docs-runtime-secret",
+          type: "secret",
+          created_by: adminAuth.userId,
+        })
+        const record = Array.isArray(created) ? created[0] : created
+
+        expect(record?.id).toBeTruthy()
+        expect(typeof record?.token).toBe("string")
+        expect(record.token!.length).toBeGreaterThan(0)
+
+        secretApiKeyToken = record.token!
+
+        const authenticated = await apiKeyModule.authenticate(secretApiKeyToken)
+        expect(authenticated).toBeTruthy()
+        expect(authenticated && typeof authenticated === "object" && authenticated.id).toBe(
+          record.id
+        )
+        secretApiKeyActorType = "api-key"
       })
 
       describe("GET /openapi/store.json", () => {
@@ -341,17 +375,29 @@ if (!requestedDatabaseName) {
           expectOpaqueNotFound(response.status)
         })
 
-        it("returns opaque 404 for API key Basic auth concealment", async () => {
-          const response = await api.get(routePath, {
-            headers: {
-              authorization: `Basic ${Buffer.from("sk_test_fake_secret_key:").toString("base64")}`,
-            },
-            validateStatus: () => true,
-          })
-
-          expectOpaqueNotFound(response.status)
-        })
       })
+
+      describe.each([
+        ["/openapi/admin.json"],
+        ["/openapi/webhooks.json"],
+      ] as const)(
+        "GET %s secret API key concealment",
+        (routePath) => {
+          it("returns opaque 404 for real Medusa secret API key concealment", async () => {
+            expect(secretApiKeyToken.length).toBeGreaterThan(0)
+            expect(secretApiKeyActorType).toBe("api-key")
+
+            const response = await api.get(routePath, {
+              headers: {
+                authorization: `Basic ${Buffer.from(`${secretApiKeyToken}:`).toString("base64")}`,
+              },
+              validateStatus: () => true,
+            })
+
+            expectOpaqueNotFound(response.status)
+          })
+        }
+      )
 
       describe("GET /docs", () => {
         it("returns Swagger UI shell with security headers and no inline executable assets", async () => {
