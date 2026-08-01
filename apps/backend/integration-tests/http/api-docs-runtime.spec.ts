@@ -251,7 +251,6 @@ if (!requestedDatabaseName) {
     testSuite: ({ api, getContainer }) => {
       let adminAuth: AdminAuth
       let secretApiKeyToken: string
-      let secretApiKeyActorType: string | undefined
 
       beforeAll(async () => {
         adminAuth = await bootstrapAdminAuth(getContainer)
@@ -299,7 +298,6 @@ if (!requestedDatabaseName) {
         expect(authenticated && typeof authenticated === "object" && authenticated.id).toBe(
           record.id
         )
-        secretApiKeyActorType = "api-key"
       })
 
       describe("GET /openapi/store.json", () => {
@@ -385,7 +383,6 @@ if (!requestedDatabaseName) {
         (routePath) => {
           it("returns opaque 404 for real Medusa secret API key concealment", async () => {
             expect(secretApiKeyToken.length).toBeGreaterThan(0)
-            expect(secretApiKeyActorType).toBe("api-key")
 
             const response = await api.get(routePath, {
               headers: {
