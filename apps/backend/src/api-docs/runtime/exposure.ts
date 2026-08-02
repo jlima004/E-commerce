@@ -1,0 +1,168 @@
+export type ApiDocsSurface = "ui" | "store" | "admin" | "webhooks"
+
+export type ApiDocsFlags = {
+  API_DOCS_ENABLED: boolean
+  API_DOCS_UI_ENABLED: boolean
+  API_DOCS_PUBLIC_ENABLED: boolean
+  API_DOCS_INTERNAL_ENABLED: boolean
+}
+
+/**
+ * Header name documented by the committed Webhooks OpenAPI contract.
+ * Runtime may override via GELATO_WEBHOOK_AUTH_HEADER_NAME; exposure of
+ * /openapi/webhooks.json must stay disabled when the override diverges.
+ */
+export const CANONICAL_GELATO_WEBHOOK_AUTH_HEADER_NAME =
+  "x-gelato-webhook-secret"
+
+/**
+ * Case-insensitive match against the committed Gelato webhook auth header.
+ * Pure helper — no env singleton access.
+ */
+export function matchesCanonicalGelatoWebhookAuthHeader(
+  configuredHeaderName: string | null | undefined
+): boolean {
+  if (typeof configuredHeaderName !== "string") {
+    return false
+  }
+
+  return (
+    configuredHeaderName.trim().toLowerCase() ===
+    CANONICAL_GELATO_WEBHOOK_AUTH_HEADER_NAME
+  )
+}
+
+/**
+ * Actor identity for internal documentation surfaces.
+ * Prefer injecting a plain object from the request auth context —
+ * never read the env singleton inside these policy helpers.
+ */
+export type ApiDocsActor = {
+  authenticated?: boolean
+  actor_type?: string | null
+  actor_id?: string | null
+  auth_via?: "session" | "bearer" | string
+} | null | undefined
+
+const PRODUCTION_DEFAULTS: ApiDocsFlags = {
+  API_DOCS_ENABLED: false,
+  API_DOCS_UI_ENABLED: false,
+  API_DOCS_PUBLIC_ENABLED: false,
+  API_DOCS_INTERNAL_ENABLED: false,
+}
+
+/**
+ * NODE_ENV-aware defaults for the four API docs flags.
+ * Unknown environments fail closed (same as production).
+ */
+export function resolveApiDocsFlagDefaults(nodeEnv: string): ApiDocsFlags {
+  if (nodeEnv === "development") {
+    return {
+      API_DOCS_ENABLED: true,
+      API_DOCS_UI_ENABLED: true,
+      API_DOCS_PUBLIC_ENABLED: true,
+      API_DOCS_INTERNAL_ENABLED: true,
+    }
+  }
+
+  if (nodeEnv === "test") {
+    return {
+      API_DOCS_ENABLED: true,
+      API_DOCS_UI_ENABLED: false,
+      API_DOCS_PUBLIC_ENABLED: true,
+      API_DOCS_INTERNAL_ENABLED: true,
+    }
+  }
+
+  return { ...PRODUCTION_DEFAULTS }
+}
+
+function isAuthenticatedAdminUser(actor: ApiDocsActor): boolean {
+  if (!actor || actor.authenticated !== true) {
+    return false
+  }
+
+  if (actor.actor_type !== "user") {
+    return false
+  }
+
+  // Require a non-empty user identity; auth_via never substitutes.
+  if (typeof actor.actor_id !== "string" || actor.actor_id.trim().length === 0) {
+    return false
+  }
+
+  return true
+}
+
+/**
+ * Pure exposure policy for API documentation surfaces.
+ * Master flag always prevails. No HTTP, OpenAPI, or env singleton access.
+ */
+export function canExposeApiDocs(
+  flags: ApiDocsFlags,
+  surface: ApiDocsSurface,
+  actor?: ApiDocsActor
+): boolean {
+  if (!flags.API_DOCS_ENABLED) {
+    return false
+  }
+
+  if (surface === "ui") {
+    return flags.API_DOCS_UI_ENABLED
+  }
+
+  if (surface === "store") {
+    return flags.API_DOCS_PUBLIC_ENABLED
+  }
+
+  // admin | webhooks — internal only, user actor required
+  if (!flags.API_DOCS_INTERNAL_ENABLED) {
+    return false
+  }
+
+  return isAuthenticatedAdminUser(actor)
+}
+
+export type ApiDocsSelectorUrl = {
+  name: "Store" | "Admin" | "Webhooks"
+  url: "/openapi/store.json" | "/openapi/admin.json" | "/openapi/webhooks.json"
+}
+
+const SELECTOR_CATALOG: ReadonlyArray<{
+  surface: Exclude<ApiDocsSurface, "ui">
+  name: ApiDocsSelectorUrl["name"]
+  url: ApiDocsSelectorUrl["url"]
+}> = [
+  { surface: "store", name: "Store", url: "/openapi/store.json" },
+  { surface: "admin", name: "Admin", url: "/openapi/admin.json" },
+  { surface: "webhooks", name: "Webhooks", url: "/openapi/webhooks.json" },
+]
+
+/**
+ * Build the Swagger selector list for the current flags + actor + Gelato header guard.
+ * Pure helper — no env singleton, tokens, cookies, or actor identity in the result.
+ */
+export function listAuthorizedApiDocsSelectorUrls(
+  flags: ApiDocsFlags,
+  actor: ApiDocsActor,
+  gelatoWebhookAuthHeaderName: string | null | undefined
+): ApiDocsSelectorUrl[] {
+  const authorized: ApiDocsSelectorUrl[] = []
+
+  for (const entry of SELECTOR_CATALOG) {
+    if (!canExposeApiDocs(flags, entry.surface, actor)) {
+      continue
+    }
+
+    if (
+      entry.surface === "webhooks" &&
+      !matchesCanonicalGelatoWebhookAuthHeader(gelatoWebhookAuthHeaderName)
+    ) {
+      continue
+    }
+
+    authorized.push({ name: entry.name, url: entry.url })
+  }
+
+  return authorized
+}

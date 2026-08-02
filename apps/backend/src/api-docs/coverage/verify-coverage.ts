@@ -11,6 +11,19 @@ import { NATIVE_EXTENSIONS } from "./native-routes"
 
 export type CoverageScope = ContractSurface | "foundation" | "global"
 
+/**
+ * Meta documentation routes serve committed OpenAPI artifacts / Swagger UI.
+ * They are not Store/Admin/Webhooks business-contract operations and must be
+ * omitted from bidirectional OpenAPI coverage matching.
+ */
+export function isOpenApiDocumentationRoute(route: DiscoveredRoute): boolean {
+  return (
+    route.path === "/docs" ||
+    route.path.startsWith("/docs/") ||
+    route.path.startsWith("/openapi/")
+  )
+}
+
 function routeBelongsToSurface(route: DiscoveredRoute, surface: ContractSurface) {
   if (surface === "store") {
     return route.path.startsWith("/store/") || route.path.startsWith("/health/")
@@ -59,10 +72,13 @@ export function verifyCoverage(
     }
   }
 
+  const contractRoutes = discovered.filter(
+    (route) => !isOpenApiDocumentationRoute(route)
+  )
   const exclusionKeys = new Set(ROUTE_EXCLUSIONS.map(operationKey))
   const operations = registry.getOperations()
   const discoveredIdentities = new Set(
-    discovered.map((route) =>
+    contractRoutes.map((route) =>
       operationIdentity({ ...route, surface: routeSurface(route) })
     )
   )
@@ -96,8 +112,8 @@ export function verifyCoverage(
   const registryIdentities = new Set(operations.map(operationIdentity))
   const expectedRoutes =
     scope === "global"
-      ? discovered
-      : discovered.filter((route) =>
+      ? contractRoutes
+      : contractRoutes.filter((route) =>
           routeBelongsToSurface(route, scope as ContractSurface)
         )
 

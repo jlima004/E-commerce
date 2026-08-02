@@ -1,5 +1,6 @@
 import { loadEnv } from "@medusajs/framework/utils"
 import { z } from "zod"
+import { resolveApiDocsFlagDefaults } from "../api-docs/runtime/exposure"
 import {
   resolveRuntimeVersion,
   type RuntimeVersionSource,
@@ -63,6 +64,10 @@ export type AppEnv = {
   TRACKING_TOKEN_PEPPER: string | undefined
   ADMIN_REFUND_REQUEST_ENABLED: boolean
   ADMIN_EXCHANGE_REQUEST_ENABLED: boolean
+  API_DOCS_ENABLED: boolean
+  API_DOCS_UI_ENABLED: boolean
+  API_DOCS_PUBLIC_ENABLED: boolean
+  API_DOCS_INTERNAL_ENABLED: boolean
 }
 
 function isProduction(input: Record<string, string | undefined>): boolean {
@@ -333,6 +338,7 @@ export function parseEnv(
     normalized.GELATO_DISPATCH_ENABLED,
     "GELATO_DISPATCH_ENABLED"
   )
+  const apiDocsDefaults = resolveApiDocsFlagDefaults(data.NODE_ENV)
 
   return {
     NODE_ENV: data.NODE_ENV,
@@ -400,6 +406,26 @@ export function parseEnv(
       normalized.ADMIN_EXCHANGE_REQUEST_ENABLED,
       "ADMIN_EXCHANGE_REQUEST_ENABLED",
       true
+    ),
+    API_DOCS_ENABLED: parseBoolean(
+      normalized.API_DOCS_ENABLED,
+      "API_DOCS_ENABLED",
+      apiDocsDefaults.API_DOCS_ENABLED
+    ),
+    API_DOCS_UI_ENABLED: parseBoolean(
+      normalized.API_DOCS_UI_ENABLED,
+      "API_DOCS_UI_ENABLED",
+      apiDocsDefaults.API_DOCS_UI_ENABLED
+    ),
+    API_DOCS_PUBLIC_ENABLED: parseBoolean(
+      normalized.API_DOCS_PUBLIC_ENABLED,
+      "API_DOCS_PUBLIC_ENABLED",
+      apiDocsDefaults.API_DOCS_PUBLIC_ENABLED
+    ),
+    API_DOCS_INTERNAL_ENABLED: parseBoolean(
+      normalized.API_DOCS_INTERNAL_ENABLED,
+      "API_DOCS_INTERNAL_ENABLED",
+      apiDocsDefaults.API_DOCS_INTERNAL_ENABLED
     ),
   }
 }

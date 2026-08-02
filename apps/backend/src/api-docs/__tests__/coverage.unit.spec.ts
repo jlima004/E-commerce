@@ -108,7 +108,7 @@ function completeStoreRegistry(): ContractRegistryBundle {
 describe("OpenAPI route coverage foundation", () => {
   it("discovers all current route files and bracket segments through the TypeScript AST", () => {
     const routes = discoverRoutes()
-    expect(routes).toHaveLength(17)
+    expect(routes).toHaveLength(22)
     expect(routes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -120,6 +120,16 @@ describe("OpenAPI route coverage foundation", () => {
           method: "POST",
           path: "/hooks/stripe",
           exportKind: "const",
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/docs",
+          exportKind: "function",
+        }),
+        expect.objectContaining({
+          method: "GET",
+          path: "/openapi/store.json",
+          exportKind: "function",
         }),
       ])
     )

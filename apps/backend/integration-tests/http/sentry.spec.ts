@@ -294,6 +294,10 @@ function createEnvFixture(
     APP_VERSION_SOURCE: "development_default",
     WORKER_MODE: "shared",
     ADMIN_DISABLED: false,
+    API_DOCS_ENABLED: true,
+    API_DOCS_UI_ENABLED: true,
+    API_DOCS_PUBLIC_ENABLED: true,
+    API_DOCS_INTERNAL_ENABLED: true,
     ...overrides,
   }
 }

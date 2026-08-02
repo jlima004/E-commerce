@@ -52,6 +52,10 @@ function createEnv(overrides: Partial<AppEnv> = {}): AppEnv {
     APP_VERSION_SOURCE: "app_version",
     WORKER_MODE: "server",
     ADMIN_DISABLED: false,
+    API_DOCS_ENABLED: true,
+    API_DOCS_UI_ENABLED: false,
+    API_DOCS_PUBLIC_ENABLED: true,
+    API_DOCS_INTERNAL_ENABLED: true,
     ...overrides,
   }
 }
