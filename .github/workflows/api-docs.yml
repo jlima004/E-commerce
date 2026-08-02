@@ -47,6 +47,9 @@ jobs:
           src/api-docs/__tests__/exposure.unit.spec.ts
           src/api-docs/__tests__/money-units.unit.spec.ts
           src/api-docs/__tests__/native-extensions.unit.spec.ts
+          src/api-docs/__tests__/store-contract.unit.spec.ts
+          src/api-docs/__tests__/admin-contract.unit.spec.ts
+          src/api-docs/__tests__/webhooks-contract.unit.spec.ts
 
       - name: Test API Docs HTTP exposure
         run: >-

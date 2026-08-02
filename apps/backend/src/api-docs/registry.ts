@@ -45,7 +45,7 @@ const SENSITIVE_EXAMPLE_PATTERNS = [
   /\b\d{16,}\b/,
 ]
 
-const SENSITIVE_EXAMPLE_KEY_SEGMENTS = /(?:^|_)(?:id|ids|identifier|identifiers|provider|address|street|city|postal(?:_code)?|zip|email|phone|telephone|mobile|cpf|cnpj|tax(?:_id|_number)?|document(?:_id|_number)?|token|secret|signature|api_key|client_secret|pix|qr_code|copy_paste)(?:_|$)/
+const SENSITIVE_EXAMPLE_KEY_SEGMENTS = /(?:^|_)(?:id|ids|identifier|identifiers|provider|address|street|city|postal(?:_code)?|zip|email|phone|telephone|mobile|cpf|cnpj|tax(?:_id|_number)?|document(?:_id|_number)?|authorization|token|secret|signature|api_key|client_secret|pix|qr_code|copy_paste)(?:_|$)/
 
 function isSensitiveExampleKey(key: string): boolean {
   const normalized = key

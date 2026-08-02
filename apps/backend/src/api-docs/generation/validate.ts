@@ -21,6 +21,7 @@ const SENSITIVE_PATTERNS = [
   /\bpi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+/i,
   /\bpostgres(?:ql)?:\/\//i,
   /\bredis(?:s)?:\/\//i,
+  /\b(?:cpf|cnpj)\b/i,
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
   /\b(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?9?\d{4}[-\s]?\d{4}\b/,
   /\b000201(?:\d|[A-Z]){12,}\b/i,
@@ -29,7 +30,7 @@ const SENSITIVE_PATTERNS = [
   /\b\d{16,}\b/,
 ]
 
-const SENSITIVE_EXAMPLE_KEY_SEGMENTS = /(?:^|_)(?:id|ids|identifier|identifiers|provider|address|street|city|postal(?:_code)?|zip|email|phone|telephone|mobile|cpf|cnpj|tax(?:_id|_number)?|document(?:_id|_number)?|token|secret|signature|api_key|client_secret|pix|qr_code|copy_paste)(?:_|$)/
+const SENSITIVE_EXAMPLE_KEY_SEGMENTS = /(?:^|_)(?:id|ids|identifier|identifiers|provider|address|street|city|postal(?:_code)?|zip|email|phone|telephone|mobile|cpf|cnpj|tax(?:_id|_number)?|document(?:_id|_number)?|authorization|token|secret|signature|api_key|client_secret|pix|qr_code|copy_paste)(?:_|$)/
 
 function isSensitiveExampleKey(key: string): boolean {
   const normalized = key

@@ -237,6 +237,10 @@ describe("OpenAPI foundation generation", () => {
   it("rejects unsafe examples", () => {
     const unsafeExamples = [
       { authorization: "Bearer token-value" },
+      { authorization: "******" },
+      { authorization: "redacted" },
+      { note: "cpf informado" },
+      { description: "cnpj presente" },
       { email: "shopper@example.test" },
       { phone: "+55 11 91234-5678" },
       { address_1: "Rua Exemplo, 123" },
