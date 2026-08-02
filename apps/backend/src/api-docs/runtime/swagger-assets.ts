@@ -30,14 +30,31 @@ export type ResolveSwaggerAssetOptions = {
 
 const ALLOWED_ASSETS = new Set<string>(SWAGGER_ASSET_NAMES)
 
-const PACKAGE_ASSET_RESOLVERS: Record<
-  Exclude<SwaggerAssetName, "api-docs-initializer.js">,
-  string
-> = {
+type StaticSwaggerAssetName = Exclude<
+  SwaggerAssetName,
+  "api-docs-initializer.js"
+>
+
+const PACKAGE_ASSET_RESOLVERS: Record<StaticSwaggerAssetName, string> = {
   "swagger-ui.css": "swagger-ui-dist/swagger-ui.css",
   "swagger-ui-bundle.js": "swagger-ui-dist/swagger-ui-bundle.js",
   "swagger-ui-standalone-preset.js":
     "swagger-ui-dist/swagger-ui-standalone-preset.js",
+}
+
+const staticAssetBodyCache = new Map<StaticSwaggerAssetName, Buffer>()
+
+function getStaticAssetBody(name: StaticSwaggerAssetName): Buffer {
+  const cached = staticAssetBodyCache.get(name)
+  if (cached) {
+    return cached
+  }
+
+  const packagePath = PACKAGE_ASSET_RESOLVERS[name]
+  const absolutePath = requirePackage.resolve(packagePath)
+  const body = readFileSync(absolutePath)
+  staticAssetBodyCache.set(name, body)
+  return body
 }
 
 function isExactAllowlistedAssetName(value: string): value is SwaggerAssetName {
@@ -100,13 +117,9 @@ export function resolveSwaggerAsset(
     }
   }
 
-  const packagePath = PACKAGE_ASSET_RESOLVERS[assetParam]
-  const absolutePath = requirePackage.resolve(packagePath)
-  const body = readFileSync(absolutePath)
-
   return {
     name: assetParam,
     contentType: contentTypeForAsset(assetParam),
-    body,
+    body: getStaticAssetBody(assetParam),
   }
 }

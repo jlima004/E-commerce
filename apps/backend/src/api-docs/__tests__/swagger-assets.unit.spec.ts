@@ -36,6 +36,19 @@ describe("resolveSwaggerAsset", () => {
     }
   })
 
+  it.each(
+    SWAGGER_ASSET_NAMES.filter((name) => name !== "api-docs-initializer.js")
+  )("returns the same cached buffer for repeated static asset %s requests", (name) => {
+    const first = resolveSwaggerAsset(name)
+    const second = resolveSwaggerAsset(name)
+
+    expect(first).not.toBeNull()
+    expect(second).not.toBeNull()
+    expect(first!.body.length).toBeGreaterThan(0)
+    expect(second!.body.length).toBeGreaterThan(0)
+    expect(first!.body).toBe(second!.body)
+  })
+
   it("resolves initializer only when authorized urls are provided", () => {
     expect(resolveSwaggerAsset("api-docs-initializer.js")).toBeNull()
 
@@ -56,6 +69,8 @@ describe("resolveSwaggerAsset", () => {
     expect(body).toContain('name: "Admin"')
     expect(body).toContain('name: "Webhooks"')
     expect(body).not.toMatch(/https?:\/\//)
+    expect(empty!.body).not.toBe(full!.body)
+    expect(empty!.body.toString("utf8")).not.toBe(body)
   })
 
   it("returns null for unknown asset names", () => {
