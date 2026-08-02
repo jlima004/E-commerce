@@ -1,8 +1,8 @@
 import type {
   ComponentTypeKey,
   ComponentTypeOf,
-} from "@asteasolutions/zod-to-openapi"
-import type { ContractRegistryBundle } from "../registry"
+  ContractRegistryBundle,
+} from "../registry"
 import { registerStoreErrorSchemas } from "./errors"
 import { registerStoreResponseHeaders } from "./headers"
 import { registerStoreSecuritySchemes } from "./security-schemes"

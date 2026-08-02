@@ -1,11 +1,14 @@
-import type { ContractRegistryBundle } from "../registry"
+import type {
+  ComponentTypeOf,
+  ContractRegistryBundle,
+} from "../registry"
 import { STORE_X_CORRELATION_ID_RESPONSE_HEADERS } from "./headers"
 import { ADMIN_X_CORRELATION_ID_RESPONSE_HEADERS } from "./headers"
 import { WEBHOOK_X_CORRELATION_ID_RESPONSE_HEADERS } from "./headers"
 
 const nullableString = {
   type: ["string", "null"],
-} as const
+} satisfies ComponentTypeOf<"schemas">
 
 export function registerStoreErrorSchemas(
   registry: ContractRegistryBundle

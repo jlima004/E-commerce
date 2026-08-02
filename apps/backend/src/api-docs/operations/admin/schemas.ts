@@ -1,14 +1,22 @@
 import { ADMIN_X_CORRELATION_ID_RESPONSE_HEADERS } from "../../components"
-import type { ContractRegistryBundle } from "../../registry"
+import type {
+  ComponentTypeOf,
+  ContractRegistryBundle,
+} from "../../registry"
 
-const nullableString = { type: ["string", "null"] } as const
-const nullableNumber = { type: ["number", "null"] } as const
-const nullableInteger = { type: ["integer", "null"] } as const
-const dateTimeString = { type: "string", format: "date-time" } as const
+type AdminSchemaComponent = ComponentTypeOf<"schemas">
+
+const nullableString = { type: ["string", "null"] } satisfies AdminSchemaComponent
+const nullableNumber = { type: ["number", "null"] } satisfies AdminSchemaComponent
+const nullableInteger = { type: ["integer", "null"] } satisfies AdminSchemaComponent
+const dateTimeString = {
+  type: "string",
+  format: "date-time",
+} satisfies AdminSchemaComponent
 const nullableDateTime = {
   type: ["string", "null"],
   format: "date-time",
-} as const
+} satisfies AdminSchemaComponent
 
 const productStatuses = ["draft", "proposed", "published", "rejected"]
 const exchangeReasons = ["defect", "wrong_product"]
@@ -40,7 +48,7 @@ const additionalData = {
     { type: "null" },
   ],
   description: "Optional Medusa additional_data object.",
-} as const
+} satisfies AdminSchemaComponent
 
 const normalizableString = (description: string) => ({
   description,
@@ -52,9 +60,12 @@ const normalizableString = (description: string) => ({
     { type: "object", additionalProperties: true },
     { type: "array", items: {} },
   ],
-})
+} satisfies AdminSchemaComponent)
 
-const normalizableEnum = (values: string[], description: string) => ({
+const normalizableEnum = (
+  values: string[],
+  description: string
+) => ({
   description,
   oneOf: [
     { type: "string", enum: values },
@@ -64,7 +75,7 @@ const normalizableEnum = (values: string[], description: string) => ({
     { type: "object", additionalProperties: true },
     { type: "array", items: {} },
   ],
-})
+} satisfies AdminSchemaComponent)
 
 export function adminJsonResponse(
   description: string,
@@ -142,7 +153,7 @@ function registerProductSchemas(registry: ContractRegistryBundle): void {
         },
       },
     },
-  }
+  } satisfies Record<string, AdminSchemaComponent>
 
   const updateVariantProperties = {
     id: { type: "string" },
@@ -166,7 +177,7 @@ function registerProductSchemas(registry: ContractRegistryBundle): void {
     metadata: { oneOf: [{ type: "object", additionalProperties: true }, { type: "null" }] },
     prices: { type: "array", items: { $ref: "#/components/schemas/AdminProductVariantPriceUpdate" } },
     options: { type: "object", additionalProperties: { type: "string" } },
-  }
+  } satisfies Record<string, AdminSchemaComponent>
 
   registry.registerComponent("admin", "schemas", "AdminProductVariantCreateInput", {
     type: "object",

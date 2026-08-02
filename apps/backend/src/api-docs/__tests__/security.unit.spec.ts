@@ -1,5 +1,80 @@
 import { buildContracts } from "../generation/build-documents"
 import { createFoundationRegistry } from "../registry"
+import {
+  ADMIN_NATIVE_SECURITY,
+  ADMIN_USER_SECURITY,
+  GELATO_WEBHOOK_SECRET_SECURITY,
+  STORE_OPTIONAL_CUSTOMER,
+  STORE_PUBLISHABLE_ONLY,
+  STORE_REQUIRED_CUSTOMER,
+  STRIPE_SIGNATURE_SECURITY,
+} from "../components/security-schemes"
+
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends
+  (<T>() => T extends B ? 1 : 2)
+    ? (<T>() => T extends B ? 1 : 2) extends
+      (<T>() => T extends A ? 1 : 2)
+      ? true
+      : false
+    : false
+
+const readonlySecurityTupleProofs: [
+  Equal<
+    typeof STORE_PUBLISHABLE_ONLY,
+    readonly [{ readonly publishableApiKey: readonly [] }]
+  >,
+  Equal<
+    typeof STORE_OPTIONAL_CUSTOMER,
+    readonly [
+      { readonly publishableApiKey: readonly [] },
+      {
+        readonly publishableApiKey: readonly []
+        readonly customerBearer: readonly []
+      },
+      {
+        readonly publishableApiKey: readonly []
+        readonly customerSession: readonly []
+      },
+    ]
+  >,
+  Equal<
+    typeof STORE_REQUIRED_CUSTOMER,
+    readonly [
+      {
+        readonly publishableApiKey: readonly []
+        readonly customerBearer: readonly []
+      },
+      {
+        readonly publishableApiKey: readonly []
+        readonly customerSession: readonly []
+      },
+    ]
+  >,
+  Equal<
+    typeof ADMIN_NATIVE_SECURITY,
+    readonly [
+      { readonly adminBearer: readonly [] },
+      { readonly adminSession: readonly [] },
+      { readonly adminApiKey: readonly [] },
+    ]
+  >,
+  Equal<
+    typeof ADMIN_USER_SECURITY,
+    readonly [
+      { readonly adminBearer: readonly [] },
+      { readonly adminSession: readonly [] },
+    ]
+  >,
+  Equal<
+    typeof STRIPE_SIGNATURE_SECURITY,
+    readonly [{ readonly stripeSignature: readonly [] }]
+  >,
+  Equal<
+    typeof GELATO_WEBHOOK_SECRET_SECURITY,
+    readonly [{ readonly gelatoWebhookSecret: readonly [] }]
+  >,
+] = [true, true, true, true, true, true, true]
 
 const X_CORRELATION_ID_HEADER_REF = "#/components/headers/XCorrelationId"
 const WEBHOOK_X_CORRELATION_ID_HEADER_REF =
@@ -18,6 +93,18 @@ describe("OpenAPI Store security contract and surface isolation", () => {
   const webhooksDocument = contracts.find(
     (contract) => contract.surface === "webhooks"
   )?.document
+
+  it("keeps exported security requirements as deeply readonly literal tuples", () => {
+    expect(readonlySecurityTupleProofs).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ])
+  })
 
   it("registers populated and isolated Store, Admin, and Webhooks surfaces", () => {
     expect(storeOperations).toHaveLength(10)

@@ -1,7 +1,13 @@
 import { WEBHOOK_X_CORRELATION_ID_RESPONSE_HEADERS } from "../../components"
-import type { ContractRegistryBundle } from "../../registry"
+import type {
+  ComponentTypeOf,
+  ContractRegistryBundle,
+} from "../../registry"
 
-const terminalWebhookStatuses = ["processed", "ignored", "failed"] as const
+const terminalWebhookStatusSchema = {
+  type: "string",
+  enum: ["processed", "ignored", "failed"],
+} satisfies ComponentTypeOf<"schemas">
 const GELATO_SUPPORTED_EVENT_PATTERN =
   "^\\s*order_status_updated\\s*$"
 
@@ -94,10 +100,7 @@ export function registerWebhookSchemas(
           description: "Stripe event identifier when available.",
         },
         event_type: { type: "string" },
-        status: {
-          type: "string",
-          enum: terminalWebhookStatuses,
-        },
+        status: terminalWebhookStatusSchema,
       },
     }
   )
@@ -215,10 +218,7 @@ export function registerWebhookSchemas(
           type: "string",
           const: "order_status_updated",
         },
-        status: {
-          type: "string",
-          enum: terminalWebhookStatuses,
-        },
+        status: terminalWebhookStatusSchema,
       },
     }
   )
