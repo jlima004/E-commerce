@@ -21,6 +21,8 @@ export type SourceClassification =
   | "native-consumed"
   | "synthetic-test"
 
+export type SecurityRequirement = Readonly<Record<string, readonly string[]>>
+
 export type OperationMetadata = {
   surface: ContractSurface
   method: HttpMethod
@@ -29,7 +31,7 @@ export type OperationMetadata = {
   summary: string
   description?: string
   tags: string[]
-  security: Array<Record<string, string[]>>
+  security: readonly SecurityRequirement[]
   parameters: unknown[]
   requestBody: RouteConfig["request"] extends { body?: infer T } ? T | null : unknown
   responses: RouteConfig["responses"]

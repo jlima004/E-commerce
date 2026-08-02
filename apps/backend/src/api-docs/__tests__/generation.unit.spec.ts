@@ -6,7 +6,11 @@ import { CONTRACT_TITLES } from "../document"
 import { buildContracts } from "../generation/build-documents"
 import { canonicalize } from "../generation/canonicalize"
 import { serializeDocument } from "../generation/serialize"
-import { ContractRegistryBundle, createFoundationRegistry } from "../registry"
+import {
+  ContractRegistryBundle,
+  createFoundationRegistry,
+  type DirectionSafeSchema,
+} from "../registry"
 import { parseGenerateArguments } from "../../../scripts/openapi/generate"
 
 function syntheticOperation(
@@ -258,7 +262,15 @@ describe("OpenAPI foundation generation", () => {
     )
     expect(registered.parse({ value: "safe" })).toEqual({ value: "safe" })
 
-    const transformed = z.string().transform((value) => value.length)
+    const staticallyRejected = z.string().transform((value) => value.length)
+    const staticBarrierProof: DirectionSafeSchema<
+      typeof staticallyRejected
+    > extends never
+      ? true
+      : false = true
+    expect(staticBarrierProof).toBe(true)
+
+    const transformed: ZodType = staticallyRejected
     expect(() =>
       registry.registerSchema("shared", "TransformedSynthetic", transformed, "shared")
     ).toThrow("cannot coerce, preprocess, transform, or default")
@@ -347,12 +359,23 @@ describe("OpenAPI foundation generation", () => {
   })
 
   it("imports only public zod-to-openapi entry points", () => {
-    const source = fs.readFileSync(
+    const registrySource = fs.readFileSync(
       path.join(__dirname, "..", "registry.ts"),
       "utf8"
     )
-    expect(source).toContain('from "@asteasolutions/zod-to-openapi"')
-    expect(source).not.toMatch(/@asteasolutions\/zod-to-openapi\//)
+    const componentsSource = fs.readFileSync(
+      path.join(__dirname, "..", "components", "index.ts"),
+      "utf8"
+    )
+
+    expect(registrySource).toContain('from "@asteasolutions/zod-to-openapi"')
+    expect(registrySource).toContain('OpenAPIRegistry["registerComponent"]')
+    expect(`${registrySource}\n${componentsSource}`).not.toMatch(
+      /@asteasolutions\/zod-to-openapi\//
+    )
+    expect(componentsSource).not.toContain(
+      'from "@asteasolutions/zod-to-openapi"'
+    )
   })
 
   it("serializes the same document to identical bytes twice", () => {

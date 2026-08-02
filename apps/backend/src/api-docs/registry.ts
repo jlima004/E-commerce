@@ -1,8 +1,6 @@
 import {
   extendZodWithOpenApi,
   OpenAPIRegistry,
-  type ComponentTypeKey,
-  type ComponentTypeOf,
 } from "@asteasolutions/zod-to-openapi"
 import { z, ZodType } from "zod"
 import {
@@ -18,6 +16,13 @@ extendZodWithOpenApi(z)
 
 type RegistryScope = ContractSurface | "shared"
 type SchemaDirection = "shared" | "request" | "response"
+
+declare const registerComponentSignature: OpenAPIRegistry["registerComponent"]
+
+export type ComponentTypeKey = Parameters<typeof registerComponentSignature>[0]
+export type ComponentTypeOf<K extends ComponentTypeKey> = Parameters<
+  typeof registerComponentSignature<K>
+>[2]
 
 type RegistryState = {
   openapi: OpenAPIRegistry
@@ -220,6 +225,16 @@ function validateOperationMetadata(
   assertSafeExamples(operation)
 }
 
+function mutableSecurityRequirements(
+  security: OperationMetadata["security"]
+): Array<Record<string, string[]>> {
+  return security.map((requirement) =>
+    Object.fromEntries(
+      Object.entries(requirement).map(([scheme, scopes]) => [scheme, [...scopes]])
+    )
+  )
+}
+
 export class ContractRegistryBundle {
   readonly shared = new OpenAPIRegistry()
   readonly surfaces: Record<ContractSurface, RegistryState>
@@ -231,15 +246,16 @@ export class ContractRegistryBundle {
   private readonly securitySchemes = new Set<string>()
 
   constructor() {
-    this.surfaces = Object.fromEntries(
-      CONTRACT_SURFACES.map((surface) => [
-        surface,
-        {
-          openapi: new OpenAPIRegistry([this.shared]),
-          operations: [],
-        },
-      ])
-    ) as Record<ContractSurface, RegistryState>
+    const createSurfaceState = (): RegistryState => ({
+      openapi: new OpenAPIRegistry([this.shared]),
+      operations: [],
+    })
+
+    this.surfaces = {
+      store: createSurfaceState(),
+      admin: createSurfaceState(),
+      webhooks: createSurfaceState(),
+    }
   }
 
   registerComponent<K extends ComponentTypeKey>(
@@ -353,7 +369,7 @@ export class ContractRegistryBundle {
       summary: operation.summary,
       description: operation.description ?? operation.summary,
       tags: operation.tags,
-      security: operation.security,
+      security: mutableSecurityRequirements(operation.security),
       parameters: operation.parameters as never,
       request:
         operation.requestBody === null

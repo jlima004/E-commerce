@@ -1,18 +1,21 @@
 import { CLIENT_MONEY_BODY_FIELDS } from "../../../api/store/carts/payment-attempts/validators"
 import { STORE_X_CORRELATION_ID_RESPONSE_HEADERS } from "../../components/headers"
-import type { ContractRegistryBundle } from "../../registry"
+import type {
+  ComponentTypeOf,
+  ContractRegistryBundle,
+} from "../../registry"
 
 const nullableString = {
   type: ["string", "null"],
-} as const
+} satisfies ComponentTypeOf<"schemas">
 
 const nullableNumber = {
   type: ["number", "null"],
-} as const
+} satisfies ComponentTypeOf<"schemas">
 
 const nullableInteger = {
   type: ["integer", "null"],
-} as const
+} satisfies ComponentTypeOf<"schemas">
 
 function jsonSchemaRef(name: string) {
   return {
