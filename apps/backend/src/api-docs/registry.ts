@@ -37,7 +37,13 @@ const SENSITIVE_EXAMPLE_PATTERNS = [
   /\bredis(?:s)?:\/\//i,
   /\bpi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+/i,
   /\b(?:cpf|cnpj)\b/i,
+  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
+  /\b(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?9?\d{4}[-\s]?\d{4}\b/,
+  /\b000201(?:\d|[A-Z]){12,}\b/i,
+  /\b(?:evt|ch|cus|pm|prod|price)_[A-Za-z0-9]{12,}\b/i,
 ]
+
+const SENSITIVE_EXAMPLE_KEYS = /^(?:address(?:_\d+)?|street|city|postal_?code|zip|email|phone|telephone|mobile|cpf|cnpj|tax_?id|tracking_?(?:access_?)?token|stripe[-_]?signature|signature|api[-_]?key|client_?secret|pix_?(?:payload|copy_?paste)|copy_?paste)$/i
 
 type ZodInternals = {
   def?: {
@@ -170,7 +176,16 @@ function assertSafeExamples(value: unknown, insideExample = false): void {
   }
 
   for (const [key, child] of Object.entries(value)) {
-    assertSafeExamples(child, insideExample || /^examples?$/i.test(key))
+    const childInsideExample = insideExample || /^examples?$/i.test(key)
+    if (
+      insideExample &&
+      SENSITIVE_EXAMPLE_KEYS.test(key) &&
+      child !== null &&
+      child !== undefined
+    ) {
+      throw new Error("OpenAPI metadata contains an unsafe example")
+    }
+    assertSafeExamples(child, childInsideExample)
   }
 }
 

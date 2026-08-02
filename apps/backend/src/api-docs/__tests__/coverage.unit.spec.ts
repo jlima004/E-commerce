@@ -222,12 +222,13 @@ describe("OpenAPI route coverage foundation", () => {
     ).toThrow("missing reason")
   })
 
-  it("passes scoped coverage for all three populated surfaces", () => {
+  it("passes foundation, surface-scoped, and Wave 6 global coverage", () => {
     const registry = createFoundationRegistry()
     expect(() => verifyCoverage("foundation", registry)).not.toThrow()
     expect(() => verifyCoverage("store", registry)).not.toThrow()
     expect(() => verifyCoverage("admin", registry)).not.toThrow()
     expect(() => verifyCoverage("webhooks", registry)).not.toThrow()
+    expect(() => verifyCoverage("global", registry)).not.toThrow()
   })
 
   it("accepts bidirectional local and native Store coverage", () => {

@@ -1,11 +1,12 @@
 import fs from "fs"
 import path from "path"
 import { z, type ZodType } from "zod"
-import type { OperationMetadata } from "../contracts"
+import type { OpenApiDocument, OperationMetadata } from "../contracts"
 import { CONTRACT_TITLES } from "../document"
 import { buildContracts } from "../generation/build-documents"
 import { canonicalize } from "../generation/canonicalize"
 import { serializeDocument } from "../generation/serialize"
+import { validateDocument } from "../generation/validate"
 import {
   ContractRegistryBundle,
   createFoundationRegistry,
@@ -234,22 +235,42 @@ describe("OpenAPI foundation generation", () => {
   })
 
   it("rejects unsafe examples", () => {
-    expect(() =>
-      new ContractRegistryBundle().registerOperation(
-        syntheticOperation({
-          responses: {
-            "200": {
-              description: "Unsafe",
-              content: {
-                "application/json": {
-                  example: { authorization: "Bearer token-value" },
+    const unsafeExamples = [
+      { authorization: "Bearer token-value" },
+      { email: "shopper@example.test" },
+      { phone: "+55 11 91234-5678" },
+      { address_1: "Rua Exemplo, 123" },
+      { copy_paste: "00020126580014BRGOVBCBPIX" },
+      { tracking_token: "synthetic-token" },
+      { signature: "synthetic-signature" },
+      { api_key: "synthetic-api-key" },
+      { event_id: "evt_1234567890abcdef" },
+    ]
+
+    for (const example of unsafeExamples) {
+      expect(() =>
+        new ContractRegistryBundle().registerOperation(
+          syntheticOperation({
+            responses: {
+              "200": {
+                description: "Unsafe",
+                content: {
+                  "application/json": { example },
                 },
               },
             },
-          },
-        })
+          })
+        )
+      ).toThrow("unsafe example")
+
+      const document = structuredClone(
+        buildContracts()[0].document
+      ) as OpenApiDocument & { example?: unknown }
+      document.example = example
+      expect(() => validateDocument("store", document)).toThrow(
+        "Sensitive OpenAPI example"
       )
-    ).toThrow("unsafe example")
+    }
   })
 
   it("shares only direction-safe Zod schemas", () => {
