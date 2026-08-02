@@ -2,9 +2,28 @@ import storeDocument from "../generated/store.openapi.json"
 import adminDocument from "../generated/admin.openapi.json"
 import webhooksDocument from "../generated/webhooks.openapi.json"
 
-const storeOpenApiDocument = Object.freeze(storeDocument)
-const adminOpenApiDocument = Object.freeze(adminDocument)
-const webhooksOpenApiDocument = Object.freeze(webhooksDocument)
+function deepFreeze<T>(value: T): Readonly<T> {
+  if (value === null || typeof value !== "object") {
+    return value
+  }
+
+  if (!Object.isFrozen(value)) {
+    Object.freeze(value)
+  }
+
+  for (const key of Reflect.ownKeys(value)) {
+    const property = (value as Record<string | symbol, unknown>)[key]
+    if (property !== null && typeof property === "object") {
+      deepFreeze(property)
+    }
+  }
+
+  return value
+}
+
+const storeOpenApiDocument = deepFreeze(storeDocument)
+const adminOpenApiDocument = deepFreeze(adminDocument)
+const webhooksOpenApiDocument = deepFreeze(webhooksDocument)
 
 /**
  * Immutable accessors for committed OpenAPI artifacts.

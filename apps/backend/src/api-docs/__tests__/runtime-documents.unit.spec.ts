@@ -43,6 +43,56 @@ describe("runtime documents", () => {
     expect(Object.isFrozen(first)).toBe(true)
   })
 
+  it("deep-freezes root, info, paths, operations, and nested arrays", () => {
+    const store = getStoreOpenApiDocument()
+    const admin = getAdminOpenApiDocument()
+    const webhooks = getWebhooksOpenApiDocument()
+
+    for (const doc of [store, admin, webhooks]) {
+      expect(Object.isFrozen(doc)).toBe(true)
+      expect(Object.isFrozen(doc.info)).toBe(true)
+      expect(Object.isFrozen(doc.paths)).toBe(true)
+
+      const firstPathKey = Object.keys(doc.paths ?? {})[0]
+      expect(firstPathKey).toBeDefined()
+
+      const pathItem = doc.paths?.[firstPathKey as keyof typeof doc.paths]
+      expect(Object.isFrozen(pathItem)).toBe(true)
+
+      const firstOperationKey = Object.keys(pathItem ?? {}).find(
+        (key) => typeof (pathItem as Record<string, unknown>)[key] === "object"
+      )
+      expect(firstOperationKey).toBeDefined()
+
+      const operation = (pathItem as Record<string, unknown>)[
+        firstOperationKey as string
+      ] as Record<string, unknown>
+      expect(Object.isFrozen(operation)).toBe(true)
+
+      if (Array.isArray(operation.tags)) {
+        expect(Object.isFrozen(operation.tags)).toBe(true)
+      }
+    }
+  })
+
+  it("rejects nested mutation attempts without altering the document", () => {
+    const store = getStoreOpenApiDocument()
+    const snapshot = structuredClone(store)
+
+    expect(() => {
+      ;(store.info as { title?: string }).title = "mutated"
+    }).toThrow()
+
+    expect(() => {
+      const firstPathKey = Object.keys(store.paths ?? {})[0]
+      const pathItem = store.paths?.[firstPathKey as keyof typeof store.paths]
+      ;(pathItem as Record<string, unknown>).description = "mutated"
+    }).toThrow()
+
+    expect(store).toEqual(snapshot)
+    expect(getStoreOpenApiDocument()).toEqual(storeArtifact)
+  })
+
   it("does not import generation, registry, or buildContracts in documents.ts", () => {
     const source = readFileSync(
       resolve(__dirname, "../runtime/documents.ts"),
