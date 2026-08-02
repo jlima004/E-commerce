@@ -40,10 +40,18 @@ const SENSITIVE_EXAMPLE_PATTERNS = [
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
   /\b(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?9?\d{4}[-\s]?\d{4}\b/,
   /\b000201(?:\d|[A-Z]){12,}\b/i,
-  /\b(?:evt|ch|cus|pm|prod|price)_[A-Za-z0-9]{12,}\b/i,
+  /\b(?:pi|evt|ch|cus|pm|prod|price)_[A-Za-z0-9]{12,}\b/i,
 ]
 
-const SENSITIVE_EXAMPLE_KEYS = /^(?:address(?:_\d+)?|(?:shipping|billing)_address|street|city|postal_?code|zip|email|phone|telephone|mobile|cpf|cnpj|tax_?id|token|tracking_?(?:access_?)?token|stripe[-_]?signature|signature|api[-_]?key|client_?secret|pix_?(?:payload|copy_?paste|qr_?code)|copy_?paste|qr_?code)$/i
+const SENSITIVE_EXAMPLE_KEY_SEGMENTS = /(?:^|_)(?:address|street|city|postal(?:_code)?|zip|email|phone|telephone|mobile|cpf|cnpj|tax(?:_id|_number)?|document(?:_id|_number)?|token|secret|signature|api_key|client_secret|pix|qr_code|copy_paste)(?:_|$)/
+
+function isSensitiveExampleKey(key: string): boolean {
+  const normalized = key
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .toLowerCase()
+  return SENSITIVE_EXAMPLE_KEY_SEGMENTS.test(normalized)
+}
 
 type ZodInternals = {
   def?: {
@@ -179,7 +187,7 @@ function assertSafeExamples(value: unknown, insideExample = false): void {
     const childInsideExample = insideExample || /^examples?$/i.test(key)
     if (
       insideExample &&
-      SENSITIVE_EXAMPLE_KEYS.test(key) &&
+      isSensitiveExampleKey(key) &&
       child !== null &&
       child !== undefined
     ) {
