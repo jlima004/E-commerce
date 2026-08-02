@@ -75,7 +75,11 @@ function walk(
   }
 }
 
-function assertSafeExamples(value: unknown, insideExample = false): void {
+function assertSafeExamples(
+  value: unknown,
+  insideExample = false,
+  schemaPropertyName?: string
+): void {
   if (typeof value === "string" && insideExample) {
     if (SENSITIVE_PATTERNS.some((pattern) => pattern.test(value))) {
       throw new Error("Sensitive OpenAPI example detected")
@@ -84,7 +88,7 @@ function assertSafeExamples(value: unknown, insideExample = false): void {
   }
   if (Array.isArray(value)) {
     for (const item of value) {
-      assertSafeExamples(item, insideExample)
+      assertSafeExamples(item, insideExample, schemaPropertyName)
     }
     return
   }
@@ -94,14 +98,30 @@ function assertSafeExamples(value: unknown, insideExample = false): void {
   for (const [key, child] of Object.entries(value)) {
     const childInsideExample = insideExample || /^examples?$/i.test(key)
     if (
-      insideExample &&
-      isSensitiveExampleKey(key) &&
-      child !== null &&
-      child !== undefined
+      (!insideExample &&
+        /^examples?$/i.test(key) &&
+        schemaPropertyName !== undefined &&
+        isSensitiveExampleKey(schemaPropertyName)) ||
+      (insideExample &&
+        isSensitiveExampleKey(key) &&
+        child !== null &&
+        child !== undefined)
     ) {
       throw new Error("Sensitive OpenAPI example detected")
     }
-    assertSafeExamples(child, childInsideExample)
+    if (
+      !insideExample &&
+      key === "properties" &&
+      child &&
+      typeof child === "object" &&
+      !Array.isArray(child)
+    ) {
+      for (const [propertyName, propertySchema] of Object.entries(child)) {
+        assertSafeExamples(propertySchema, false, propertyName)
+      }
+      continue
+    }
+    assertSafeExamples(child, childInsideExample, schemaPropertyName)
   }
 }
 

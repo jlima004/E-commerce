@@ -10,6 +10,7 @@ import { validateDocument } from "../generation/validate"
 import {
   ContractRegistryBundle,
   createFoundationRegistry,
+  type ComponentTypeOf,
   type DirectionSafeSchema,
 } from "../registry"
 import { parseGenerateArguments } from "../../../scripts/openapi/generate"
@@ -41,6 +42,12 @@ function syntheticOperation(
     nonInteractive: true,
     ...overrides,
   }
+}
+
+function schemaComponent(
+  schema: ComponentTypeOf<"schemas">
+): ComponentTypeOf<"schemas"> {
+  return schema
 }
 
 describe("OpenAPI foundation generation", () => {
@@ -289,6 +296,160 @@ describe("OpenAPI foundation generation", () => {
         "Sensitive OpenAPI example"
       )
     }
+  })
+
+  describe.each([
+    {
+      boundary: "ContractRegistryBundle",
+      expectedError: "unsafe example",
+      exercise: (name: string, schema: unknown) => {
+        const registry = new ContractRegistryBundle()
+        Reflect.apply(
+          registry.registerComponent,
+          registry,
+          ["shared", "schemas", name, schema]
+        )
+      },
+    },
+    {
+      boundary: "validateDocument",
+      expectedError: "Sensitive OpenAPI example",
+      exercise: (name: string, schema: unknown) => {
+        const document = structuredClone(buildContracts()[0].document)
+        Object.defineProperty(document.components.schemas, name, {
+          configurable: true,
+          enumerable: true,
+          value: schema,
+        })
+        validateDocument("store", document)
+      },
+    },
+  ])("rejects examples owned by sensitive properties at $boundary", ({
+    expectedError,
+    exercise,
+  }) => {
+    it.each([
+      {
+        componentName: "SensitivePaymentIntentExample",
+        label: "payment_intent_id with a singular example",
+        schema: schemaComponent({
+          type: "object",
+          properties: {
+            payment_intent_id: {
+              type: "string",
+              example: "synthetic-reference",
+            },
+          },
+        }),
+      },
+      {
+        componentName: "SensitiveTrackingTokenExamples",
+        label: "trackingToken with an examples array",
+        schema: schemaComponent({
+          type: "object",
+          properties: {
+            trackingToken: {
+              type: "string",
+              examples: ["synthetic-reference"],
+            },
+          },
+        }),
+      },
+      {
+        componentName: "SensitiveTrackingTokenExample",
+        label: "tracking_token with an opaque singular example",
+        schema: schemaComponent({
+          type: "object",
+          properties: {
+            tracking_token: {
+              type: "string",
+              example: "actual-opaque-tracking-value",
+            },
+          },
+        }),
+      },
+      {
+        componentName: "SensitiveAuthorizationExamples",
+        label: "authorization with a redacted examples array",
+        schema: {
+          type: "object",
+          properties: {
+            authorization: {
+              type: "string",
+              examples: ["redacted"],
+            },
+          },
+        },
+      },
+      {
+        componentName: "NestedSensitivePropertyExample",
+        label: "a sensitive property nested in an object",
+        schema: schemaComponent({
+          type: "object",
+          properties: {
+            envelope: {
+              type: "object",
+              properties: {
+                tracking_token: {
+                  type: "string",
+                  example: "nested-opaque-tracking-value",
+                },
+              },
+            },
+          },
+        }),
+      },
+      {
+        componentName: "SensitivePropertyExamplesMap",
+        label: "authorization with examples represented as a map",
+        schema: {
+          type: "object",
+          properties: {
+            authorization: {
+              type: "string",
+              examples: {
+                publicSample: {
+                  value: "redacted",
+                },
+              },
+            },
+          },
+        },
+      },
+    ])("rejects $label", ({ componentName, schema }) => {
+      expect(() => exercise(componentName, schema)).toThrow(expectedError)
+    })
+
+    it.each([
+      {
+        componentName: "SafeStatusExample",
+        label: "status with a singular example",
+        schema: schemaComponent({
+          type: "object",
+          properties: {
+            status: {
+              type: "string",
+              example: "pending",
+            },
+          },
+        }),
+      },
+      {
+        componentName: "SafeStatusExamples",
+        label: "status with an examples array",
+        schema: schemaComponent({
+          type: "object",
+          properties: {
+            status: {
+              type: "string",
+              examples: ["pending"],
+            },
+          },
+        }),
+      },
+    ])("accepts $label", ({ componentName, schema }) => {
+      expect(() => exercise(componentName, schema)).not.toThrow()
+    })
   })
 
   it("shares only direction-safe Zod schemas", () => {

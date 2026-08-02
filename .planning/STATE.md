@@ -6,9 +6,9 @@ current_phase: none
 current_phase_name: Milestone complete
 status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
 stopped_at: Milestone v1.0 archived, tagged and released / awaiting next milestone decision
-last_updated: "2026-07-30"
-last_activity: 2026-07-30
-last_activity_desc: GitHub Release v1.0 published
+last_updated: "2026-08-02"
+last_activity: 2026-08-02
+last_activity_desc: Completed quick task 260802-q1o for PR 20 API Docs property-level examples
 progress:
   total_phases: 13
   completed_phases: 13
@@ -170,7 +170,7 @@ Produção: saudável
 Phase: none — Milestone v1.0 complete / closed / archived / tagged / released
 Plan: —; 62/62 milestone plans complete
 Status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
-Last activity: 2026-07-30 - GitHub Release v1.0 published
+Last activity: 2026-08-02 - Completed quick task 260802-q1o for PR 20 API Docs property-level examples
 Next: human decision on the next milestone
 
 Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived, tagged and released; next milestone and Phase 13 remain blocked
@@ -350,6 +350,7 @@ rollback, or move or recreate tag `v1.0`.
 
 | Date | Task | Summary |
 |------|------|---------|
+| 2026-08-02 | 260802-q1o-corrigir-p2-da-pr-20-rejeitando-exemplos | Preserved schema-property ownership through `example`/`examples` in both API Docs security gates; paired regressions cover singular, array, map and nested forms while safe status examples remain accepted; artifacts unchanged. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R4 | Moved stale/reclaim policy to pure `checkout-completion/staleness.ts`; OperationalAlert consumes it; money path no longer imports alert module; focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R3 | Restricted OperationalAlert Admin reads to user actors via `requireAdminActor`; API-key actors rejected; focused HTTP/Unit + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R2 | Removed runtime `rtk` dependency from disposable PostgreSQL Docker harness; Cursor/WSL2 Docker proven; serial PG 5/5 + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |

@@ -173,7 +173,11 @@ function assertRepresentable(value: unknown, seen = new Set<object>()): void {
   seen.delete(value)
 }
 
-function assertSafeExamples(value: unknown, insideExample = false): void {
+function assertSafeExamples(
+  value: unknown,
+  insideExample = false,
+  schemaPropertyName?: string
+): void {
   if (typeof value === "string" && insideExample) {
     if (SENSITIVE_EXAMPLE_PATTERNS.some((pattern) => pattern.test(value))) {
       throw new Error("OpenAPI metadata contains an unsafe example")
@@ -188,14 +192,30 @@ function assertSafeExamples(value: unknown, insideExample = false): void {
   for (const [key, child] of Object.entries(value)) {
     const childInsideExample = insideExample || /^examples?$/i.test(key)
     if (
-      insideExample &&
-      isSensitiveExampleKey(key) &&
-      child !== null &&
-      child !== undefined
+      (!insideExample &&
+        /^examples?$/i.test(key) &&
+        schemaPropertyName !== undefined &&
+        isSensitiveExampleKey(schemaPropertyName)) ||
+      (insideExample &&
+        isSensitiveExampleKey(key) &&
+        child !== null &&
+        child !== undefined)
     ) {
       throw new Error("OpenAPI metadata contains an unsafe example")
     }
-    assertSafeExamples(child, childInsideExample)
+    if (
+      !insideExample &&
+      key === "properties" &&
+      child &&
+      typeof child === "object" &&
+      !Array.isArray(child)
+    ) {
+      for (const [propertyName, propertySchema] of Object.entries(child)) {
+        assertSafeExamples(propertySchema, false, propertyName)
+      }
+      continue
+    }
+    assertSafeExamples(child, childInsideExample, schemaPropertyName)
   }
 }
 
