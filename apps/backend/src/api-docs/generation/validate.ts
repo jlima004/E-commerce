@@ -27,7 +27,7 @@ const SENSITIVE_PATTERNS = [
   /\b(?:evt|ch|cus|pm|prod|price)_[A-Za-z0-9]{12,}\b/i,
 ]
 
-const SENSITIVE_EXAMPLE_KEYS = /^(?:address(?:_\d+)?|street|city|postal_?code|zip|email|phone|telephone|mobile|cpf|cnpj|tax_?id|tracking_?(?:access_?)?token|stripe[-_]?signature|signature|api[-_]?key|client_?secret|pix_?(?:payload|copy_?paste)|copy_?paste)$/i
+const SENSITIVE_EXAMPLE_KEYS = /^(?:address(?:_\d+)?|(?:shipping|billing)_address|street|city|postal_?code|zip|email|phone|telephone|mobile|cpf|cnpj|tax_?id|token|tracking_?(?:access_?)?token|stripe[-_]?signature|signature|api[-_]?key|client_?secret|pix_?(?:payload|copy_?paste|qr_?code)|copy_?paste|qr_?code)$/i
 
 function resolveJsonPointer(document: unknown, reference: string): unknown {
   if (!reference.startsWith("#/")) {

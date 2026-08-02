@@ -31,7 +31,9 @@ jobs:
         run: npm ci
 
       - name: Verify committed OpenAPI first
-        run: npm run openapi:check
+        run: |
+          node -e 'const manifest = require("./package.json"); if (manifest.scarfSettings?.enabled !== false) throw new Error("scarfSettings.enabled must be false")'
+          npm run openapi:check
 
       - name: Lint OpenAPI
         run: npm run openapi:lint
