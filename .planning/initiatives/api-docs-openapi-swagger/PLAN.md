@@ -924,7 +924,7 @@ package or repository commands.
 npm run openapi:check
 npm run openapi:lint
 npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/generation.unit.spec.ts src/api-docs/__tests__/coverage.unit.spec.ts src/api-docs/__tests__/security.unit.spec.ts src/api-docs/__tests__/exposure.unit.spec.ts
-npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/money-units.contract.spec.ts src/api-docs/__tests__/native-extensions.contract.spec.ts
+npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/money-units.unit.spec.ts src/api-docs/__tests__/native-extensions.unit.spec.ts
 npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/api-docs.spec.ts
 npm run lint -w @dtc/backend
 npm run build -w @dtc/backend
@@ -958,8 +958,8 @@ not include the generated JSON and exact local UI assets.
 | Unit — coverage | `apps/backend/src/api-docs/__tests__/coverage.unit.spec.ts` | foundation/Store/Admin/Webhook partial scopes, Wave 6 global scope, route discovery, bracket normalization, methods, re-exports, exclusions |
 | Unit — security | `apps/backend/src/api-docs/__tests__/security.unit.spec.ts` | auth schemes, no sensitive examples, internal partitioning, Store/Admin/Webhook non-interactive |
 | Unit — exposure | `apps/backend/src/api-docs/__tests__/exposure.unit.spec.ts` | environment defaults and complete flag matrix |
-| Contract — monetary units | `apps/backend/src/api-docs/__tests__/money-units.contract.spec.ts` | PaymentAttempt/refund integer BRL minor units remain distinct from Cart/PaymentSession major units |
-| Contract — six native extensions | `apps/backend/src/api-docs/__tests__/native-extensions.contract.spec.ts` | official provenance, conservative fingerprints, and local behavior for two Store plus four Admin operations |
+| Contract — monetary units | `apps/backend/src/api-docs/__tests__/money-units.unit.spec.ts` | PaymentAttempt/refund integer BRL minor units remain distinct from Cart/PaymentSession major units |
+| Contract — six native extensions | `apps/backend/src/api-docs/__tests__/native-extensions.unit.spec.ts` | official provenance, conservative fingerprints, and local behavior for two Store plus four Admin operations |
 | Existing env/config fixtures | `env.unit.spec.ts`, `medusa-config.unit.spec.ts`, and every discovered complete `AppEnv` fixture including Sentry HTTP when applicable | four defaults parse correctly and no complete fixture silently omits the new flags |
 | HTTP | `apps/backend/integration-tests/http/api-docs.spec.ts` | exact `.json` paths, extensionless `404`, auth, headers, JSON bodies, globally non-interactive UI, exact assets, CSP, disabled production |
 | Contract characterization | existing route/serializer tests plus focused additions only where needed | registry schema matches actual accepted input and serialized output |

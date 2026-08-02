@@ -193,6 +193,27 @@ Architecture not yet mapped. Follow existing patterns found in the codebase.
 No project skills found. Add skills to any of: `.cursor/skills/`, `.agents/skills/`, `.cursor/skills/`, `.github/skills/`, or `.codex/skills/` with a `SKILL.md` index file.
 <!-- gsd-skills-end -->
 
+<!-- api-docs-contract-start -->
+
+## API Docs Contract
+
+- O registry TypeScript em `apps/backend/src/api-docs/` é a autoridade dos
+  contratos Store, Admin e Webhooks. Nunca edite os JSON gerados manualmente.
+- Toda rota, middleware, validator ou serializer que altere contrato HTTP deve
+  atualizar o registry e sua evidência. Uma rota intencionalmente não
+  documentada exige exclusão explícita, com motivo, owner e gatilho de revisão.
+- Gere apenas com `npm run openapi:generate -- --surface all|store|admin|webhooks`,
+  revise o diff e execute `npm run openapi:lint`.
+- O gate global final é `npm run openapi:check`: ele é somente leitura, exige
+  checkout limpo e compara bytes dos três artefatos. Não execute o writer
+  imediatamente antes ou dentro desse gate.
+- Exemplos devem ser sintéticos e não podem conter credenciais, assinaturas,
+  payload Pix, tracking token, identificadores de provedor ou dados pessoais.
+- A Swagger UI permanece globalmente não interativa e a exposição em produção
+  depende de gate humano separado; não introduza bypass ou flag de interatividade.
+
+<!-- api-docs-contract-end -->
+
 <!-- gsd-workflow-start source:GSD defaults -->
 
 ## GSD Workflow Enforcement

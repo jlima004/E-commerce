@@ -133,3 +133,28 @@ export default defineMiddlewares({
 ```
 
 The `matcher` property can be either a string or a regular expression. The `middlewares` property accepts an array of middleware functions.
+
+## OpenAPI registration
+
+Every project-owned HTTP operation must be represented in the TypeScript
+registry under `src/api-docs/operations/` or have an explicit entry in
+`src/api-docs/coverage/exclusions.ts`. An exclusion must identify the source
+file, reason, owner, and review trigger; filesystem discovery alone never
+infers schemas, authentication, responses, or status codes.
+
+Native Medusa routes modified by middleware are registered as reviewed native
+extensions in `src/api-docs/coverage/native-routes.ts`, with the exact Medusa
+version, official reference, local evidence and committed fingerprints. Do not
+copy the complete native API or accept a new digest automatically.
+
+When a route, middleware, validator or serializer changes:
+
+1. update the correct Store, Admin or Webhooks operation and its provenance;
+2. reuse Zod only when the same runtime schema and direction are proven;
+3. run the surface verifier and `npm run openapi:lint`;
+4. run `npm run openapi:generate -- --surface <surface>` only when the committed
+   artifact must change, then review its diff;
+5. run `npm run openapi:check` from a clean checkout before publication.
+
+The generated JSON files are build artifacts and must never be edited by hand.
+See `docs/openapi/README.md` for the complete contributor workflow.
