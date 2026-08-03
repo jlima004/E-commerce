@@ -971,6 +971,32 @@ describe("OpenAPI foundation generation", () => {
       },
     },
     {
+      componentName: "SensitiveBroadTokenPatternExample",
+      label: "sensitive literal token inside a broad pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^.*token.*$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveApiKeyPatternExample",
+      label: "separator character class in api_key pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^api[._-]key$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
       componentName: "SensitiveTrackingPatternExamples",
       label: "patternProperties trackingToken direct examples",
       schema: {
@@ -989,6 +1015,32 @@ describe("OpenAPI foundation generation", () => {
       schema: {
         type: "string",
         example: "opaque-reference",
+      },
+    },
+    {
+      componentName: "PublicEnvelopeWithSensitiveDefinition",
+      label: "sensitive local $defs schema name",
+      schema: {
+        type: "object",
+        $defs: {
+          TrackingToken: {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "PublicEnvelopeWithSensitiveDependentSchema",
+      label: "sensitive dependentSchemas property name",
+      schema: {
+        type: "object",
+        dependentSchemas: {
+          tracking_token: {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
       },
     },
     {
@@ -1135,6 +1187,58 @@ describe("OpenAPI foundation generation", () => {
           "^.*$": {
             type: "string",
             example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SafeNamedGroupPatternExample",
+      label: "named regex group is not a semantic name",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(?<id>.*)$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SafeCharacterClassPatternExample",
+      label: "character class contents are not a semantic name",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^[token]$": {
+            type: "string",
+            example: "t",
+          },
+        },
+      },
+    },
+    {
+      componentName: "TrackingTokenWithSafeDefinition",
+      label: "sensitive component does not contaminate a safe $defs schema",
+      schema: {
+        type: "object",
+        $defs: {
+          PublicStatus: {
+            type: "string",
+            example: "pending",
+          },
+        },
+      },
+    },
+    {
+      componentName: "TrackingTokenWithSafeDependentSchema",
+      label: "sensitive component does not contaminate a safe dependent schema",
+      schema: {
+        type: "object",
+        dependentSchemas: {
+          status: {
+            type: "string",
+            example: "pending",
           },
         },
       },

@@ -103,7 +103,7 @@ function normalizePatternPropertyName(pattern: string): string | undefined {
   }
 
   normalized = normalized
-    .replace(/\[_-\]|\[-_\]/g, "_")
+    .replace(/\[[._-]+\]/g, "_")
     .replace(/[()]/g, "")
 
   const regexMetaCharacters = new Set([
@@ -137,8 +137,11 @@ function isSensitivePatternPropertyName(
     return true
   }
 
-  const literalTokens =
-    pattern.match(/[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*/g) ?? []
+  const literalTokens = pattern
+    .replace(/\[(?:\\.|[^\]])*\]/g, "")
+    .replace(/\(\?(?:P<|<)[^>]*>/g, "(")
+    .replace(/\\k<[^>]*>/g, "")
+    .match(/[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*/g) ?? []
   return literalTokens.some((token) => isSensitiveSemanticName(token))
 }
 
@@ -394,8 +397,8 @@ function nextState(
       return {
         location: "schema",
         insideExample: childInsideExample,
-        semanticName,
-        sensitiveAncestor: inheritedSensitiveAncestor,
+        semanticName: key,
+        sensitiveAncestor: isSensitiveSemanticName(key),
       }
     case "schema":
       if (key === "properties") {
@@ -418,8 +421,7 @@ function nextState(
         return {
           location: "schemaMap",
           insideExample: childInsideExample,
-          semanticName,
-          sensitiveAncestor: inheritedSensitiveAncestor,
+          sensitiveAncestor: false,
         }
       }
       if (
