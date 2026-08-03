@@ -1353,8 +1353,14 @@ Local global gate:
 GitHub Actions clean-checkout gate:
   PASS
 
+Merge status:
+  PR #20 merged into `main` at `4fe414f12d82dc0692ba1c39b7bbf848f9f1d1fb`
+
+Initiative closure:
+  API-DOCS-01 closed documentally — see `CLOSURE.md`
+
 Current state:
-  pending human review and merge of PR #20
+  initiative complete; no mandatory technical debt open
 
 Production enablement/deployment:
   not authorized; requires a separate human operational gate
@@ -1383,9 +1389,8 @@ Decisions already taken by the corrected R2 plan:
 
 Human approval is still required before:
 
-1. reviewing and merging PR #20;
-2. enabling Store, Admin, Webhook, or Swagger UI documentation in production;
-3. deploying or changing production configuration.
+1. enabling Store, Admin, Webhook, or Swagger UI documentation in production;
+2. deploying or changing production configuration for the API-docs surface.
 
 Approval of this plan authorizes only the explicitly reviewed implementation
 scope. It does not authorize deployment, production flags, provider access,

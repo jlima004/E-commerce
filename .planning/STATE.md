@@ -8,7 +8,7 @@ status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
 stopped_at: Milestone v1.0 archived, tagged and released / awaiting next milestone decision
 last_updated: "2026-08-03"
 last_activity: 2026-08-03
-last_activity_desc: Completing quick task 260803-nla for PR 20 nested lookaround P2; local API Docs 304/304 and full unit 1257/1257; push done in commit: `c775842`.
+last_activity_desc: API-DOCS-01 documentary closure after PR #20 merge at 4fe414f; initiative closed in CLOSURE.md; no code/tests/deploy.
 progress:
   total_phases: 13
   completed_phases: 13
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-30)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Milestone v1.0 is complete, closed, archived, tagged and released. The GitHub Release `v1.0 — Backend MVP` is published at https://github.com/jlima004/E-commerce/releases/tag/v1.0. Earlier BLOCKED attempts and corrections remain historical and superseded by approved corrective lineage. PR #9 is merged; the repository archive identity and immutable tag target remain `fbe986160535c1ba9d2a5f41ad9255e91cd13914`; current main after the prior documentary reconciliation is `de095d76a83e99faa0b459a58fc8b68200f02686`; runtime remains Heroku `v78` at `18d809e4169daa301839542191f0d6794b02d695`. The next milestone is not defined or started. Phase 13 and frontend remain blocked, not started and not authorized.
+**Current focus:** Milestone v1.0 is complete, closed, archived, tagged and released. The GitHub Release `v1.0 — Backend MVP` is published at https://github.com/jlima004/E-commerce/releases/tag/v1.0. Earlier BLOCKED attempts and corrections remain historical and superseded by approved corrective lineage. PR #9 is merged; the repository archive identity and immutable tag target remain `fbe986160535c1ba9d2a5f41ad9255e91cd13914`; current `main` after API-DOCS-01 merge (PR #20) is `4fe414f12d82dc0692ba1c39b7bbf848f9f1d1fb`; runtime remains Heroku `v78` at `18d809e4169daa301839542191f0d6794b02d695`. Initiative API-DOCS-01 is closed documentally (`.planning/initiatives/api-docs-openapi-swagger/CLOSURE.md`); OpenAPI/Swagger UI remain production-disabled by default. The next milestone is not defined or started. Phase 13 and frontend remain blocked, not started and not authorized.
 
 ## Execution Policy
 
@@ -170,10 +170,10 @@ Produção: saudável
 Phase: none — Milestone v1.0 complete / closed / archived / tagged / released
 Plan: —; 62/62 milestone plans complete
 Status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
-Last activity: 2026-08-03 - Completed quick task 260803-nla for PR 20 nested-lookaround P2; API Docs 304/304, full unit 1257/1257, push completed in c775842
+Last activity: 2026-08-03 - API-DOCS-01 documentary closure after PR #20 merge (4fe414f); initiative CLOSURE.md; documentary PR pending human review
 Next: human decision on the next milestone
 
-Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived, tagged and released; next milestone and Phase 13 remain blocked
+Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived, tagged and released; API-DOCS-01 closed; next milestone and Phase 13 remain blocked
 
 ## Performance Metrics
 
@@ -350,6 +350,7 @@ rollback, or move or recreate tag `v1.0`.
 
 | Date | Task | Summary |
 |------|------|---------|
+| 2026-08-03 | api-docs-01-documentary-closure | Closed API-DOCS-01 documentally after PR #20 merge (4fe414f); CLOSURE.md records Waves 1–6 PASS, 304/304 API Docs, 1257/1257 unit, gates PASS; no code/tests/deploy; Phase 13 and frontend remain blocked. |
 | 2026-08-03 | 260803-nla-nested-lookaround-fail-closed | Normalização recursiva limitada de lookarounds positivos aninhados (depth≤4, fail-closed); bypass tracking_token/api_key fechado nas duas fronteiras; API Docs 304/304, unit 1257/1257; CI/thread deliberadamente não aguardados. |
 | 2026-08-03 | 260803-1el-corrigir-os-dois-p2-residuais-do-re-revi | Corrigidos os bypasses de patternProperties e componentes schemas/responses, incluindo separadores, tokens e classes literais escapados; matriz API Docs 272/272, unit completa 1225/1225, CI 30795192149 em execução, PR atualizada, thread final pendente e sem merge. |
 | 2026-08-02 | 260802-wjn-corrigir-os-dois-p2-de-seguran-a-da-pr-2 | Corrigidos os bypasses de ancestral sensível em propriedades aninhadas e de `patternProperties` nos dois gates; matriz API Docs 231/231, gates locais e CI verde; PR atualizada, threads respondidos/resolvidos e novos reviews Codex/Copilot solicitados. |
