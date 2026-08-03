@@ -1147,6 +1147,32 @@ describe("OpenAPI foundation generation", () => {
       },
     },
     {
+      componentName: "SensitiveHexEscapedTrackingClassPatternExample",
+      label: "hex escaped singleton class in tracking_token pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^tracking_[\\x74]oken$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveUnicodeEscapedApiKeyClassPatternExample",
+      label: "unicode escaped singleton class in api_key pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^api_[\\u006b]ey$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
       componentName: "SensitiveTrackingPatternExamples",
       label: "patternProperties trackingToken direct examples",
       schema: {

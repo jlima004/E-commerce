@@ -154,9 +154,17 @@ function isSensitivePatternPropertyName(
   const patternWithSemanticSeparators = decodeEscapedSemanticSeparators(pattern).replace(
     /\[(?:\\.|[^\]])*\]/g,
     (characterClass) => {
+      const rawContents = characterClass.slice(1, -1)
       const contents = characterClass
         .slice(1, -1)
         .replace(/\\(.)/g, "$1")
+      if (
+        contents.length === 1 &&
+        /^[A-Za-z0-9]$/.test(contents) &&
+        !rawContents.includes("\\")
+      ) {
+        return contents
+      }
       return /^[._-]+$/.test(contents) ? "_" : ""
     }
   )
