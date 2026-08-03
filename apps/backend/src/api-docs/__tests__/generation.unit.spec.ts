@@ -1173,6 +1173,32 @@ describe("OpenAPI foundation generation", () => {
       },
     },
     {
+      componentName: "SensitiveGroupedTrackingPatternExample",
+      label: "noncapturing group inside tracking_token pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^tracking_(?:t)oken$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveGroupedApiKeyPatternExample",
+      label: "noncapturing group inside api_key pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^api_(?:k)ey$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
       componentName: "SensitiveTrackingPatternExamples",
       label: "patternProperties trackingToken direct examples",
       schema: {

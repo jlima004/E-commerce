@@ -151,9 +151,10 @@ function isSensitivePatternPropertyName(
     return true
   }
 
-  const patternWithSemanticSeparators = decodeEscapedSemanticSeparators(pattern).replace(
-    /\[(?:\\.|[^\]])*\]/g,
-    (characterClass) => {
+  const patternWithSemanticSeparators = decodeEscapedSemanticSeparators(pattern)
+    .replace(/\(\?(?:P<|<)[^>]*>|\(\?:/g, "")
+    .replace(/[()]/g, "")
+    .replace(/\[(?:\\.|[^\]])*\]/g, (characterClass) => {
       const rawContents = characterClass.slice(1, -1)
       const contents = characterClass
         .slice(1, -1)
@@ -166,10 +167,8 @@ function isSensitivePatternPropertyName(
         return contents
       }
       return /^[._-]+$/.test(contents) ? "_" : ""
-    }
-  )
+    })
   const literalTokens = patternWithSemanticSeparators
-    .replace(/\(\?(?:P<|<)[^>]*>/g, "(")
     .replace(/\\k<[^>]*>/g, "")
     .match(/[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*/g) ?? []
   return (
