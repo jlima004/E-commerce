@@ -330,7 +330,9 @@ function nextState(
       return {
         location: "response",
         insideExample: childInsideExample,
-        sensitiveAncestor: inheritedSensitiveAncestor,
+        semanticName: key,
+        sensitiveAncestor:
+          inheritedSensitiveAncestor || isSensitiveSemanticName(key),
       }
     case "response":
       if (key === "headers") {

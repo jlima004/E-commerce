@@ -588,6 +588,24 @@ describe("OpenAPI foundation generation", () => {
       exercise: () =>
         new ContractRegistryBundle().registerComponent(
           "shared",
+          "responses",
+          "TrackingTokenResponse",
+          {
+            description: "Synthetic response",
+            content: {
+              "application/json": {
+                example: "opaque-reference",
+              },
+            },
+          }
+        ),
+      expectedError: "unsafe example",
+    },
+    {
+      boundary: "ContractRegistryBundle",
+      exercise: () =>
+        new ContractRegistryBundle().registerComponent(
+          "shared",
           "headers",
           "authorization",
           { example: "redacted" }
@@ -612,6 +630,22 @@ describe("OpenAPI foundation generation", () => {
       exercise: () => {
         const document = structuredClone(buildContracts()[0].document)
         document.components.headers.authorization = { example: "redacted" }
+        validateDocument("store", document)
+      },
+      expectedError: "Sensitive OpenAPI example",
+    },
+    {
+      boundary: "validateDocument",
+      exercise: () => {
+        const document = structuredClone(buildContracts()[0].document)
+        document.components.responses.TrackingTokenResponse = {
+          description: "Synthetic response",
+          content: {
+            "application/json": {
+              example: "opaque-reference",
+            },
+          },
+        }
         validateDocument("store", document)
       },
       expectedError: "Sensitive OpenAPI example",
