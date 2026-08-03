@@ -1,7 +1,7 @@
 ---
 name: corrigir-os-dois-p2-de-seguranca-da-pr-20
 created: 2026-08-03
-status: in-progress
+status: complete
 ---
 
 # Corrigir os dois P2 do Codex na PR #20
