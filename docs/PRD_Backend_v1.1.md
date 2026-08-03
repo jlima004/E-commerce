@@ -1,753 +1,814 @@
-# PRD — Backend E-commerce POD de Camisetas
+# PRD — Backend E-commerce POD da Indicio Cult
 
 | Campo | Valor |
 |---|---|
 | Documento | Product Requirements Document — Backend |
-| Projeto | E-commerce Headless Print-on-Demand de Camisetas |
-| Versão | 1.1 |
-| Base | SRS v1.5 |
-| Data | 2026-06-21 |
-| Status | Draft Canônico |
+| Projeto | E-commerce headless Print-on-Demand da Indicio Cult |
+| Versão | 1.1 — revisão as-built |
+| Data da revisão | 2026-08-03 |
+| Status | Canônico — backend MVP entregue |
 | Responsável | Jefferson |
-| Stack | Medusa v2 · Node.js · TypeScript · PostgreSQL/Supabase · Supabase Storage · Redis · Stripe · Resend · Gelato · Sentry · PostHog |
-| Deploy | VPS Linux |
-| Mercado Inicial | Brasil |
-| Moeda Inicial | BRL |
+| Mercado inicial | Brasil |
+| Moeda | BRL |
+| Runtime atual | Heroku (`release`, `web` e `worker`) |
+| Persistência | Supabase PostgreSQL |
+| Cache e processamento assíncrono | Redis |
+| Integrações | Stripe, Resend, Gelato, PostHog, Sentry e Supabase Storage |
+| Contratos de API | OpenAPI 3.1.2 — Store, Admin e Webhooks |
 
-> **Nota da versão 1.1:** `purchase_completed` passa a ser tratado como evento de domínio persistido localmente em outbox/`AnalyticsEventLog`. O fulfillment Gelato depende do registro durável local, não do sucesso de entrega ao PostHog.
-
----
-
-## 1. Objetivo
-
-Construir o backend headless do e-commerce POD de camisetas, usando Medusa v2 como motor comercial, PostgreSQL/Supabase como banco transacional, Supabase Storage para imagens, Redis para filas/workflows, Stripe para pagamentos, Resend para e-mails, Gelato para produção/envio e Correios para registro operacional de logística reversa.
-
-O backend deve ser a fonte de verdade para carrinho, checkout, pagamento, pedido, fulfillment, tracking, clientes, produtos, trocas, webhooks, idempotência, logs, alertas e integrações externas.
+> **Autoridade deste documento:** esta revisão descreve o comportamento efetivamente entregue no milestone `v1.0`. Quando houver conflito com redações históricas, prevalecem o código versionado, os contratos OpenAPI, o modelo de dados vigente e as decisões registradas em `.planning/`.
 
 ---
 
-## 2. Escopo do Backend
+## 1. Resumo executivo
 
-### 2.1 Incluído
+O backend da Indicio Cult é uma plataforma headless para comércio eletrônico Print-on-Demand no Brasil. Ele concentra as regras de catálogo, carrinho, checkout, pagamento, criação de pedidos, fulfillment, tracking, reembolsos, trocas, auditoria e observabilidade.
 
-- Setup Medusa v2.
-- APIs consumidas pela storefront.
-- Admin Dashboard em subdomínio próprio.
-- Produtos, variantes, preços e publicação.
-- Metadados Gelato em variantes.
-- Integração Supabase Storage para imagens.
-- Região Brasil e moeda BRL.
-- Carrinho.
-- Checkout convidado e autenticado.
-- Payment Collection/Payment Session.
-- Integração Stripe para cartão e Pix.
-- Webhook Stripe.
-- Criação de Order somente após webhook canônico aprovado.
-- Registro durável server-side de `purchase_completed` em outbox/`AnalyticsEventLog`.
-- E-mail de confirmação via Resend antes da tentativa de fulfillment.
-- Módulo customizado Gelato.
-- Cotação de frete.
-- Criação de pedido Gelato.
-- Webhook Gelato.
-- Tracking.
-- Cancelamento quando possível.
-- Reembolso via Admin com confirmação por webhook Stripe.
-- Worker para filas/workflows.
-- Alertas operacionais críticos por e-mail.
-- Sentry backend.
-- PostHog backend com entrega assíncrona/reprocessável a partir de evento local durável.
-- Registro manual/semiautomático de logística reversa dos Correios.
-- Solicitações de troca no Admin.
-- Idempotência de webhooks e operações críticas.
-- Logs estruturados.
-- Health check.
+O valor central do produto é proteger a cadeia financeira e operacional:
 
-### 2.2 Fora do Escopo do Backend MVP
+> Um `Order` só existe após confirmação confiável, validada e idempotente do pagamento pelo webhook canônico da Stripe. A Gelato só recebe um pedido após o `Order` confirmado e os registros locais obrigatórios terem sido persistidos.
 
-- Estoque físico.
-- Produção própria.
-- Multi-fornecedor POD.
-- Integração automatizada com API dos Correios.
-- Automação de desfechos de troca sem intervenção do admin.
-- ERP.
-- Marketplace.
-- Venda internacional.
-- Multi-moeda.
-- Métodos de pagamento além de cartão e Pix.
-- Editor de produto.
-- Upload de arte pelo cliente.
+Essa regra evita:
+
+- cobrança confirmada sem pedido;
+- pedido sem pagamento confirmado;
+- criação duplicada de `Order` por reentrega de webhook;
+- fulfillment duplicado;
+- envio prematuro à produção;
+- dependência indevida de serviços externos para preservar a verdade transacional.
+
+O milestone `v1.0 Backend MVP` está completo, fechado, arquivado, versionado e publicado. O storefront ainda não foi iniciado e deve consumir os contratos estáveis expostos pela Store API.
 
 ---
 
-## 3. Arquitetura Backend
+## 2. Objetivos do produto
+
+### 2.1 Objetivos principais
+
+1. Expor uma API estável para uma storefront futura.
+2. Permitir operação interna pelo Admin Medusa.
+3. Garantir que estados pré-pagamento permaneçam em `Cart`, `PaymentCollection`, `PaymentSession` e `PaymentAttempt`.
+4. Criar `Order` somente após o evento Stripe canônico de sucesso.
+5. Tornar webhooks e efeitos downstream idempotentes e reprocessáveis.
+6. Separar a verdade transacional da entrega a PostHog, Resend e Gelato.
+7. Permitir tracking seguro para compradores convidados.
+8. Permitir reembolsos e trocas por fluxos administrativos auditáveis.
+9. Operar com processos HTTP e worker separados.
+10. Disponibilizar contratos OpenAPI determinísticos e documentação Swagger somente leitura.
+
+### 2.2 Métricas de sucesso
+
+- zero `Order` criado sem pagamento canônico confirmado;
+- zero duplicidade de `Order` para o mesmo pagamento;
+- zero dispatch Gelato antes da elegibilidade local;
+- webhooks duplicados sem efeitos colaterais duplicados;
+- recuperação operacional possível após falhas temporárias;
+- health checks representando corretamente processo, PostgreSQL e Redis;
+- contratos Store, Admin e Webhooks sem drift em relação ao runtime.
+
+---
+
+## 3. Escopo entregue
+
+### 3.1 Incluído no backend MVP
+
+- Medusa v2 com Node.js e TypeScript;
+- catálogo com produtos, variantes, preços em BRL e metadados Gelato;
+- imagens públicas por Supabase Storage via interface S3;
+- carrinho convidado e autenticado;
+- associação segura de carrinho convidado a cliente autenticado;
+- checkout brasileiro com dados e endereço necessários;
+- `PaymentAttempt` para tentativas de cartão e Pix;
+- Stripe em modo de teste para iniciação controlada;
+- webhook Stripe com raw body, assinatura e idempotência;
+- criação pós-webhook e concorrente do `Order`;
+- `AnalyticsEventLog` para `purchase_completed`;
+- `EmailDeliveryLog` para confirmação transacional;
+- `GelatoFulfillment` para elegibilidade, dispatch e reconciliação;
+- webhook Gelato;
+- tracking público por token opaco armazenado somente como hash;
+- solicitação de reembolso no Admin e confirmação por webhook Stripe;
+- trocas operacionais e logística reversa manual/semiautomática;
+- alertas operacionais persistidos;
+- auditoria de ações administrativas sensíveis;
+- logs estruturados, Sentry e health checks;
+- contratos OpenAPI 3.1.2 de Store, Admin e Webhooks;
+- Swagger UI local, protegido e não interativo;
+- runtime Heroku com processos `release`, `web` e `worker`.
+
+### 3.2 Fora do escopo atual
+
+- storefront/frontend;
+- estoque físico ou produção própria;
+- múltiplos fornecedores POD;
+- editor visual e upload de arte pelo cliente;
+- venda internacional e multi-moeda;
+- integração automática com API dos Correios;
+- ERP ou marketplace;
+- automação integral de trocas pelo cliente;
+- métodos de pagamento além de cartão e Pix;
+- execução interativa de operações pela Swagger UI.
+
+### 3.3 Limitações operacionais não bloqueantes
+
+- Pix depende da elegibilidade da conta Stripe;
+- envio real pelo Resend ainda não foi comprovado externamente;
+- dispatch real para Gelato ainda não foi comprovado externamente;
+- evento real no PostHog ainda não foi comprovado externamente;
+- exercício externo do Sentry ainda não foi comprovado;
+- rollback real não foi executado;
+- Correios permanece manual/semiautomático.
+
+Essas limitações não reabrem o milestone `v1.0`.
+
+---
+
+## 4. Usuários e papéis
+
+| Papel | Necessidade | Superfície principal |
+|---|---|---|
+| Comprador convidado | Navegar, montar carrinho, pagar e acompanhar pedido | Store API + token de tracking |
+| Cliente autenticado | Preservar carrinho, comprar e acessar dados autorizados | Store API + JWT ou sessão |
+| Operador Admin | Gerenciar catálogo, pedidos, reembolsos, trocas e alertas | Admin Dashboard + Admin API |
+| Stripe | Confirmar estados financeiros por webhook confiável | Webhook Stripe |
+| Gelato | Receber pedidos elegíveis e reportar estados | API Gelato + webhook Gelato |
+| Worker | Executar relays, retries, dispatch e scanners | Processo `worker` |
+| Operador técnico | Validar saúde, logs, contratos e release | Health, logs, Sentry, OpenAPI |
+
+---
+
+## 5. Arquitetura atual
 
 ```text
-Storefront Next.js
-  │
-  │ Store API
-  ▼
-Backend Medusa v2 na VPS
-  │
-  ├── Admin Dashboard
-  ├── Worker
-  ├── PostgreSQL via Supabase
-  ├── Supabase Storage
-  ├── Redis
-  ├── Stripe
-  ├── Resend
-  ├── Gelato API
-  ├── Sentry
-  ├── PostHog
-  └── Correios Logística Reversa manual/semiautomática
+Storefront futura / cliente HTTP
+            │
+            │ Store API
+            ▼
+       Heroku web.1
+       Medusa Server
+            │
+            ├── Admin Dashboard em /app
+            ├── Store API
+            ├── Admin API
+            ├── Webhooks Stripe/Gelato
+            ├── Swagger UI /docs
+            ├── Health /health/live e /health/ready
+            │
+            ├── Supabase PostgreSQL
+            ├── Redis
+            ├── Supabase Storage
+            └── Sentry
+
+       Heroku worker.1
+            │
+            ├── Analytics relay → PostHog
+            ├── E-mail relay → Resend
+            ├── Dispatch/reconciliação → Gelato
+            └── Scanners e alertas operacionais
+
+       Heroku release
+            └── db:migrate:safe antes da nova formação
 ```
 
-### 3.1 Componentes
+### 5.1 Componentes persistentes
 
 | Componente | Responsabilidade |
 |---|---|
-| Medusa Server | APIs, Admin, produtos, carrinhos, clientes, pedidos, pagamentos, fulfillment. |
-| Worker | Workflows, filas, retries, e-mails, fulfillment, alertas. |
-| PostgreSQL/Supabase | Persistência transacional. |
-| Supabase Storage | Imagens e assets de produto. |
-| Redis | Event bus, filas, cache e workflows. |
-| Stripe Module | Cartão, Pix, webhooks, reembolsos. |
-| Gelato Fulfillment Module | Frete, produção, cancelamento, status, tracking. |
-| Resend Module | E-mails transacionais e alertas operacionais. |
-| Returns/Exchange Module | Registro operacional de trocas e logística reversa. |
-| Observability Module | Logs, Sentry, PostHog e health checks. |
+| `PaymentAttempt` | Tentativa de pagamento, método, valores, status e vínculo com Stripe |
+| `WebhookEventLog` | Ingestão, deduplicação e rastreabilidade de webhooks |
+| `CheckoutCompletionLog` | Coordenação idempotente e concorrente da criação do `Order` |
+| `AnalyticsEventLog` | Outbox durável de `purchase_completed` |
+| `EmailDeliveryLog` | Outbox durável de e-mails transacionais |
+| `GelatoFulfillment` | Elegibilidade, dispatch, status e tracking da produção |
+| `TrackingAccessToken` | Capability token armazenado por hash |
+| `RefundRequest` | Solicitação e confirmação de reembolso |
+| `ExchangeRequest` | Fluxo administrativo de troca |
+| `OperationalAlert` | Falhas que exigem intervenção humana |
+| `AdminActionLog` | Auditoria de ações administrativas sensíveis |
+
+### 5.2 Processos
+
+| Processo | Responsabilidade |
+|---|---|
+| `release` | Executar migrações seguras antes da nova release |
+| `web` | Servir HTTP, Admin, webhooks, health e documentação |
+| `worker` | Executar jobs assíncronos, retries, dispatch e reconciliações |
 
 ---
 
-## 4. Fluxos Backend Críticos
+## 6. Contratos de API
 
-### 4.1 Checkout e Cartão
+O backend mantém três documentos OpenAPI 3.1.2 independentes:
 
-```text
-Storefront cria/atualiza carrinho
-→ Backend calcula frete
-→ Backend cria Payment Collection/Payment Session
-→ Backend cria PaymentIntent Stripe
-→ Cliente paga no Stripe
-→ Stripe envia webhook payment_intent.succeeded
-→ Backend valida assinatura e idempotência
-→ Backend conclui checkout no Medusa
-→ Backend cria/confirma Order
-→ Backend registra duravelmente purchase_completed em outbox/AnalyticsEventLog
-→ Backend enfileira entrega assíncrona de purchase_completed ao PostHog
-→ Backend envia e-mail de confirmação via Resend
-→ Backend inicia workflow de fulfillment Gelato sem depender do sucesso de entrega ao PostHog
-```
+| Superfície | Endpoint quando habilitado | Uso |
+|---|---|---|
+| Store | `/openapi/store.json` | Consumidores e storefront |
+| Admin | `/openapi/admin.json` | Operadores autenticados |
+| Webhooks | `/openapi/webhooks.json` | Ingressos Stripe e Gelato |
 
-### 4.2 Checkout e Pix
+A autoridade dos contratos é o registry TypeScript em `apps/backend/src/api-docs/`. Os JSONs gerados são determinísticos, versionados e não devem ser editados manualmente.
 
-```text
-Storefront cria/atualiza carrinho
-→ Backend calcula frete
-→ Backend cria Payment Collection/Payment Session
-→ Backend cria PaymentIntent Pix
-→ Storefront exibe QR/copia-e-cola
-→ Enquanto Pix está pendente, Order não existe
-→ Stripe envia webhook canônico de pagamento aprovado
-→ Backend valida assinatura e idempotência
-→ Backend conclui checkout no Medusa
-→ Backend cria/confirma Order
-→ Backend registra duravelmente purchase_completed em outbox/AnalyticsEventLog
-→ Backend enfileira entrega assíncrona de purchase_completed ao PostHog
-→ Backend envia e-mail de confirmação
-→ Backend inicia fulfillment Gelato sem depender do sucesso de entrega ao PostHog
-```
+### 6.1 Swagger UI
 
-### 4.3 Falha no Pagamento
+- disponível localmente em `/docs` quando habilitada;
+- usa somente assets locais e same-origin;
+- não envia cookies para operações documentadas;
+- não persiste autorização;
+- não habilita `Try it out`;
+- não permite submissão de métodos HTTP;
+- serve como documentação somente leitura;
+- em produção permanece desabilitada por padrão;
+- Admin e Webhooks exigem usuário Medusa autenticado para serem incluídos no seletor.
 
-```text
-Stripe envia payment_failed/canceled/expiração equivalente
-→ Backend registra evento
-→ Backend mantém carrinho/Payment Collection disponível quando aplicável
-→ Backend não cria Order
-→ Backend não inicia fulfillment
-→ Backend permite nova tentativa
-```
+### 6.2 Autenticação
 
-### 4.4 Fulfillment Gelato
+| Superfície | Mecanismos |
+|---|---|
+| Store | Publishable API key; JWT/sessão de cliente quando exigido |
+| Admin nativo | Sessão, JWT e API key conforme contrato nativo |
+| Admin customizado sensível | Usuário Admin autenticado; atores API key podem ser rejeitados |
+| Documentação Admin/Webhooks | Usuário autenticado do tipo `user` com `actor_id` válido |
+| Webhook Stripe | Header de assinatura Stripe + raw body preservado |
+| Webhook Gelato | Header canônico configurado + segredo correspondente |
+
+---
+
+## 7. Fluxos de uso
+
+## 7.1 Navegação de catálogo
+
+**Ator:** comprador convidado ou autenticado.
 
 ```text
-Order confirmado + purchase_completed registrado duravelmente
-→ Entrega ao PostHog segue assíncrona e não bloqueia Gelato
-→ Worker inicia workflow de fulfillment
-→ Backend valida metadados Gelato
-→ Backend cria pedido Gelato
-→ Backend persiste gelato_order_id
-→ Gelato processa produção/envio
-→ Gelato envia webhook
-→ Backend atualiza fulfillment/order status
-→ Backend salva tracking
-→ Backend envia e-mail de tracking
+Cliente solicita produtos publicados
+→ Store API aplica o conjunto público fechado de campos
+→ Backend filtra variantes não vendáveis
+→ Backend retorna produtos, imagens, opções, variantes e preços em BRL
+→ Dados internos Gelato não são expostos
 ```
 
-### 4.5 Falha na Gelato
+Regras:
+
+- apenas produtos publicados e variantes vendáveis são apresentados;
+- a resposta pública não expõe credenciais, templates internos ou payloads de provider;
+- preços do catálogo seguem o contrato monetário documentado;
+- o cliente precisa enviar publishable API key nas rotas Store aplicáveis.
+
+## 7.2 Criação e recuperação do carrinho ativo
+
+**Ator:** convidado ou cliente autenticado.
+
+```text
+Cliente chama POST /store/carts/active
+→ Backend identifica sessão convidada ou cliente autenticado
+→ Se houver carrinho ativo reutilizável, retorna 200
+→ Caso contrário, cria carrinho BRL e retorna 201
+→ Carrinho permanece estado pré-Order
+```
+
+O carrinho público retorna itens, totais, endereço sanitizado, cliente quando autorizado e o indicador derivado `checkout_data_complete`.
+
+## 7.3 Associação do carrinho convidado
+
+**Ator:** cliente que iniciou compra como convidado e depois se autenticou.
+
+```text
+Cliente autentica
+→ Storefront chama POST /store/customers/me/cart/attach
+→ Backend valida sessão, cliente e propriedade do carrinho convidado
+→ Se o cliente já possui carrinho válido, preserva o carrinho do cliente
+→ Caso contrário, associa o carrinho convidado autorizado
+→ Resultado informa attach ou preservação
+```
+
+O backend não permite anexar carrinho de outra sessão ou substituir silenciosamente um carrinho de cliente válido.
+
+## 7.4 Preparação do checkout brasileiro
+
+```text
+Cliente atualiza e-mail e endereço
+→ Backend valida país BR e os campos obrigatórios
+→ CPF/CNPJ é aceito conforme contrato, mas nunca retornado integralmente
+→ Frete, impostos e totais são recalculados
+→ checkout_data_complete é derivado pelo servidor
+→ Nenhum Order é criado
+```
+
+Regras:
+
+- valores monetários são derivados no servidor;
+- o cliente não pode definir totais confiáveis;
+- identificador fiscal completo não deve aparecer em resposta pública, logs ou exemplos OpenAPI;
+- o carrinho continua sendo a entidade principal até a confirmação canônica do pagamento.
+
+## 7.5 Iniciação de pagamento por cartão
+
+```text
+Storefront chama POST /store/carts/{id}/payment-attempts/card
+→ Backend valida acesso ao carrinho e completude do checkout
+→ Backend deriva valor e moeda do carrinho
+→ Backend cria ou reutiliza Payment Collection/Session conforme o fluxo
+→ Backend cria PaymentAttempt idempotente
+→ Stripe cria PaymentIntent de teste
+→ Backend retorna client_secret efêmero
+→ Storefront confirma o pagamento diretamente com Stripe.js
+→ Order ainda não existe
+```
+
+Regras:
+
+- `client_secret` nunca é persistido em logs ou exemplos;
+- a confirmação do cliente não é autoridade para criar `Order`;
+- o valor persistido segue contrato explícito de unidade monetária;
+- nova tentativa deve invalidar ou coordenar tentativas anteriores conforme o estado.
+
+## 7.6 Iniciação de pagamento Pix
+
+```text
+Storefront chama POST /store/carts/{id}/payment-attempts/pix
+→ Backend valida carrinho e elegibilidade
+→ Stripe cria PaymentIntent Pix
+→ Backend retorna QR, copia-e-cola e/ou URL de instruções
+→ PaymentAttempt fica pendente
+→ Enquanto não houver webhook canônico de sucesso, Order não existe
+```
+
+Pix está implementado no contrato, mas sua ativação operacional depende da elegibilidade da conta Stripe.
+
+## 7.7 Webhook Stripe e criação do Order
+
+**Evento canônico:** `payment_intent.succeeded`.
+
+```text
+Stripe envia webhook
+→ Backend preserva raw body
+→ Backend valida assinatura
+→ WebhookEventLog registra ou deduplica o evento
+→ Backend localiza PaymentAttempt e contexto do carrinho
+→ CheckoutCompletionLog coordena concorrência e idempotência
+→ Backend conclui checkout e cria um único Order
+→ Backend registra purchase_completed em AnalyticsEventLog
+→ Backend registra intenção de e-mail em EmailDeliveryLog
+→ Backend cria/elege o registro de fulfillment Gelato
+→ Resposta ao webhook não depende da entrega externa aos providers
+```
+
+Invariantes:
+
+- reentrega do mesmo webhook não duplica efeitos;
+- concorrência não cria dois pedidos;
+- falha do PostHog, Resend ou Gelato não desfaz o `Order` pago;
+- efeitos externos são processados por jobs reexecutáveis;
+- a verdade transacional é local.
+
+## 7.8 Falha, cancelamento ou expiração do pagamento
+
+```text
+Stripe envia evento canônico de falha/cancelamento
+→ Backend registra o evento de forma idempotente
+→ PaymentAttempt é atualizado conforme a transição permitida
+→ Carrinho pode permanecer utilizável para nova tentativa
+→ Order não é criado
+→ purchase_completed não é registrado
+→ Fulfillment não é criado ou enviado
+```
+
+## 7.9 Entrega de analytics
 
 ```text
 Order confirmado
-→ purchase_completed registrado duravelmente
-→ e-mail de confirmação enviado
-→ Workflow tenta criar pedido Gelato
-→ Gelato retorna erro/timeout
-→ Retry com backoff
-→ Se persistir, fulfillment = failed
-→ Order pode ir para requires_attention
-→ Sentry registra erro
-→ Alerta operacional por e-mail ao admin
-→ Admin pode reprocessar ou cancelar/reembolsar
+→ AnalyticsEventLog contém purchase_completed único
+→ Worker busca eventos pendentes
+→ Worker envia payload sanitizado ao PostHog
+→ Sucesso marca o evento como entregue
+→ Falha agenda retry e gera observabilidade
 ```
 
-### 4.6 Retorno Assíncrono do Checkout
+O dispatch Gelato depende do registro local durável de `purchase_completed`, não do sucesso no PostHog.
 
-O backend deve expor endpoint ou mecanismo equivalente para a storefront consultar se o Order já foi criado após retorno do Stripe.
+## 7.10 E-mail de confirmação
 
-O endpoint deve:
+```text
+Order confirmado
+→ EmailDeliveryLog registra a entrega esperada
+→ Worker envia pelo Resend
+→ Sucesso marca a entrega como concluída
+→ Falha permanece reprocessável
+```
 
-- aceitar referência segura (`cart_id`, `payment_intent_id` ou token equivalente);
-- não expor dados sensíveis;
-- retornar estado de confirmação;
-- retornar Order somente quando existir e for autorizado;
-- suportar timeout/retry pelo frontend.
+A falha de e-mail não cancela pedido pago e não deve corromper o estado financeiro.
 
----
+## 7.11 Fulfillment Gelato
 
-## 5. Requisitos Funcionais — Backend
+```text
+Order confirmado + purchase_completed local registrado
+→ GelatoFulfillment é avaliado
+→ Backend valida snapshot/metadados dos itens
+→ Worker reserva o dispatch de forma idempotente
+→ Worker envia pedido à Gelato
+→ Backend persiste identificador externo e status
+→ Gelato produz e envia
+→ Webhook Gelato atualiza estados e tracking
+```
 
-### 5.1 Produtos e Catálogo
+Regras:
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| BE-PR-001 | Criar produtos no Admin. | Must Have | Admin cadastra título, descrição, imagens, preço e variantes. |
-| BE-PR-002 | Editar produtos. | Must Have | Alterações refletem na storefront após atualização/cache. |
-| BE-PR-003 | Publicar/despublicar produtos. | Must Have | Produto despublicado não aparece na storefront. |
-| BE-PR-004 | Configurar variantes. | Must Have | Variante contém tamanho, cor, SKU, preço em BRL e metadados Gelato. |
-| BE-PR-005 | Bloquear variante sem mapeamento Gelato. | Must Have | Variante sem metadados obrigatórios não é vendável. |
-| BE-PR-006 | Bloquear publicação sem template Gelato válido. | Must Have | Produto incompleto não é vendido sem override consciente. |
-| BE-PR-007 | Expor APIs de catálogo para storefront. | Must Have | Storefront recebe produtos publicados, preços e variantes válidas. |
-| BE-PR-008 | Validar mapeamentos Gelato pré-go-live. | Must Have | Script/rotina lista variantes sem metadados obrigatórios. |
-| BE-PR-009 | Suportar coleções/categorias. | Should Have | Produtos podem ser filtrados por coleção/categoria. |
-| BE-PR-010 | Suportar busca textual. | Could Have | Busca por nome/termo relevante. |
+- um pedido não gera múltiplos dispatches ativos indevidos;
+- falhas transitórias são reprocessáveis;
+- falhas permanentes produzem `OperationalAlert`;
+- payload externo deriva de snapshot estável dos itens do pedido;
+- alteração posterior do catálogo não modifica o pedido já confirmado.
 
----
+## 7.12 Webhook Gelato
 
-### 5.2 Storage de Imagens
+```text
+Gelato envia evento
+→ Backend valida o header de autenticação canônico
+→ WebhookEventLog registra ou deduplica
+→ Backend localiza GelatoFulfillment
+→ Transição de status é validada
+→ Tracking é persistido quando disponível
+→ Estados do fulfillment/pedido são reconciliados
+→ Evento duplicado não repete efeitos
+```
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| BE-ST-001 | Usar Supabase Storage para imagens. | Must Have | Imagens cadastradas no Admin são armazenadas no bucket definido. |
-| BE-ST-002 | Gerar URLs consumíveis pela storefront. | Must Have | MVP usa URLs públicas com políticas de leitura adequadas. |
-| BE-ST-003 | Suportar thumbnail e galeria. | Must Have | Produto tem imagem principal e adicionais. |
-| BE-ST-004 | Validar tipo e tamanho. | Should Have | Upload inválido é recusado com mensagem clara. |
-| BE-ST-005 | Organizar arquivos por ambiente. | Should Have | Produção, staging e dev não compartilham paths críticos sem controle. |
-| BE-ST-006 | Evitar exposição de secrets em bucket público. | Must Have | Bucket público não contém documentos sensíveis ou credenciais. |
+## 7.13 Tracking para convidado
 
----
+```text
+Backend gera token opaco
+→ Somente o hash é persistido
+→ Token é entregue ao cliente por canal autorizado
+→ Cliente envia token no corpo de POST /store/tracking/lookup
+→ Backend valida token e expiração
+→ Resposta pública reduzida retorna referência, estados e itens sanitizados
+```
 
-### 5.3 Carrinho e Checkout
+Regras:
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| BE-CH-001 | Criar carrinho para visitante. | Must Have | Cart é criado ao adicionar primeiro item. |
-| BE-CH-002 | Persistir carrinho. | Must Have | Carrinho pode ser recuperado durante a sessão. |
-| BE-CH-003 | Adicionar/alterar/remover itens. | Must Have | Totais são recalculados corretamente. |
-| BE-CH-004 | Validar endereço brasileiro. | Must Have | País deve ser `BR`; endereços fora do Brasil são rejeitados. |
-| BE-CH-005 | Calcular frete antes do pagamento. | Must Have | Backend retorna opções compatíveis com Gelato/endereço. |
-| BE-CH-006 | Criar Payment Collection/Payment Session. | Must Have | Criada sem criar Order antecipadamente. |
-| BE-CH-007 | Manter estado pré-pagamento no carrinho/Payment Collection. | Must Have | Order não existe antes de webhook aprovado. |
-| BE-CH-008 | Suportar checkout autenticado. | Must Have | Order confirmado fica associado à conta quando cliente está logado. |
-| BE-CH-009 | Suportar checkout convidado. | Must Have | Order confirmado pode ser acompanhado por token. |
-| BE-CH-010 | Expor estado de confirmação assíncrona. | Must Have | Storefront consulta se Order já foi criado após retorno Stripe. |
+- token não aparece em path ou query;
+- token nunca é logado;
+- resposta não expõe endereço, e-mail, CPF/CNPJ ou dados internos;
+- token inválido não permite enumeração útil de pedidos.
 
----
+## 7.14 Reembolso administrativo
 
-### 5.4 Pagamentos Stripe
+```text
+Operador autenticado solicita reembolso no Admin
+→ Backend valida ator, pedido, valor disponível e idempotency key
+→ RefundRequest é criado ou reutilizado
+→ Stripe recebe a solicitação
+→ Estado local permanece pendente de confirmação financeira
+→ Stripe envia webhook confiável
+→ Backend confirma o reembolso e recalcula estado financeiro
+→ AdminActionLog registra a ação
+```
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| BE-PG-001 | Integrar Stripe como provedor. | Must Have | Backend cria PaymentIntent válido para cartão e Pix. |
-| BE-PG-002 | Suportar cartão. | Must Have | Pagamento por cartão funciona em produção. |
-| BE-PG-003 | Suportar Pix. | Must Have | Pix funciona em produção. |
-| BE-PG-004 | Não processar dados sensíveis de cartão. | Must Have | Dados de cartão são tratados pelo Stripe. |
-| BE-PG-005 | Validar webhook Stripe. | Must Have | Assinatura inválida é rejeitada e não altera estado. |
-| BE-PG-006 | Processar pagamento aprovado. | Must Have | Webhook aprovado conclui checkout, cria Order, registra duravelmente `purchase_completed` em outbox/`AnalyticsEventLog`, enfileira entrega ao PostHog e inicia e-mail/fulfillment sem depender do sucesso do PostHog. |
-| BE-PG-007 | Processar pagamento falho/expirado/cancelado. | Must Have | Não cria Order nem fulfillment. |
-| BE-PG-008 | Implementar idempotência do webhook. | Must Have | Evento duplicado não duplica Order, e-mail, fulfillment ou tracking. |
-| BE-PG-009 | Implementar idempotência de criação do Order. | Must Have | Chave: `payment_intent_id` ou `cart_id + payment_intent_id`. |
-| BE-PG-010 | Permitir reembolso via Admin. | Must Have | Admin inicia reembolso; status só atualiza após webhook Stripe. |
-| BE-PG-011 | Não forçar cancelamento por reembolso. | Must Have | Reembolso altera estado financeiro, não `order_status` automaticamente. |
-| BE-PG-012 | Registrar eventos de pagamento. | Must Have | Logs/auditoria incluem PaymentIntent, método, status, cart e order quando existir. |
+Regras:
 
----
+- identidade do operador vem do contexto autenticado, não do body;
+- valores usam centavos nas superfícies administrativas documentadas;
+- reembolso não altera automaticamente `order_status` para `canceled`;
+- confirmação financeira depende do webhook Stripe.
 
-### 5.5 Pedidos
+## 7.15 Troca e logística reversa
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| BE-OR-001 | Criar Order somente após pagamento confirmado. | Must Have | Order nasce após webhook Stripe canônico aprovado. |
-| BE-OR-002 | Atribuir número identificável. | Must Have | Cliente e admin conseguem referenciar pedido. |
-| BE-OR-003 | Exibir pedidos no Admin. | Must Have | Lista e detalhe exibem dados necessários. |
-| BE-OR-004 | Manter status de pagamento. | Must Have | Estados financeiros seguem definição do SRS. |
-| BE-OR-005 | Manter status de pedido. | Must Have | Estados: confirmed, in_fulfillment, shipped, delivered, completed, canceled, requires_attention. |
-| BE-OR-006 | Manter status de fulfillment. | Must Have | Estados mapeiam Gelato para interno. |
-| BE-OR-007 | Registrar tracking. | Must Have | Tracking number/url são salvos quando disponíveis. |
-| BE-OR-008 | Gerar token seguro de tracking. | Must Have | Token é único, imprevisível, server-side e expira em 365 dias. |
-| BE-OR-009 | Incluir token em e-mails. | Must Have | Token vai no e-mail de confirmação e no e-mail de envio/rastreio. |
-| BE-OR-010 | Cancelar pedido pelo Admin. | Must Have | Cancelamento respeita status Gelato. |
-| BE-OR-011 | Exibir histórico de eventos. | Should Have | Admin audita mudanças relevantes. |
-| BE-OR-012 | Exportar pedidos. | Could Have | CSV pós-MVP. |
-| BE-OR-013 | Associar trocas ao pedido. | Must Have | Detalhe do pedido exibe histórico de trocas. |
+```text
+Operador cria ExchangeRequest para um Order elegível
+→ Backend valida ator, motivo, itens e dados permitidos
+→ Sistema identifica responsabilidade pelo frete
+→ Operador registra dados de logística reversa obtidos externamente
+→ Status segue o grafo permitido
+→ Histórico e auditoria são preservados
+```
 
----
+A integração com Correios é manual/semiautomática. O backend armazena as referências e decisões operacionais, mas não cria automaticamente uma autorização por API.
 
-### 5.6 Estados de Pedido
+## 7.16 Alertas operacionais
 
-| Estado | Descrição |
-|---|---|
-| `confirmed` | Pedido criado/confirmado após pagamento capturado por webhook Stripe. |
-| `in_fulfillment` | Pedido em processo de produção/envio. |
-| `shipped` | Pedido despachado; produto pode estar em trânsito. |
-| `delivered` | Pedido entregue, se evento de entrega disponível. |
-| `completed` | Ciclo operacional encerrado após entrega ou fechamento pós-entrega. |
-| `canceled` | Pedido cancelado. |
-| `requires_attention` | Pedido exige intervenção administrativa. |
+```text
+Scanner detecta pagamento travado ou fulfillment falho
+→ OperationalAlert é criado ou agregado por chave estável
+→ Severidade, entidade, contagem e timestamps são atualizados
+→ Operador consulta lista/detalhe no Admin
+→ Operador reconhece, resolve ou ignora conforme o fluxo
+→ AdminActionLog preserva ações sensíveis
+```
 
-Regra: `completed` não deve ser usado apenas porque o pedido foi despachado.
+O DTO de alerta é fechado e sanitizado; payloads crus, headers e segredos não são expostos.
 
----
+## 7.17 Operação e health checks
 
-### 5.7 Gelato Fulfillment Module
+```text
+GET /health/live
+→ confirma que o processo HTTP responde
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| BE-GL-001 | Implementar módulo customizado Gelato. | Must Have | Integrado ao fluxo de fulfillment do Medusa. |
-| BE-GL-002 | Mapear variantes para templates fixos Gelato. | Must Have | Cada variante vendável possui metadados obrigatórios. |
-| BE-GL-003 | Validar metadados antes do fulfillment. | Must Have | Falta de metadados bloqueia fulfillment e pode mover pedido para `requires_attention`. |
-| BE-GL-004 | Criar pedido Gelato após Order + `purchase_completed` registrado duravelmente. | Must Have | Fulfillment não inicia antes do registro local durável de `purchase_completed`; falha temporária do PostHog não bloqueia Gelato. |
-| BE-GL-005 | Persistir `gelato_order_id`. | Must Have | ID externo salvo para rastreamento. |
-| BE-GL-006 | Consultar cotação de frete. | Must Have | Checkout recebe opções compatíveis. |
-| BE-GL-007 | Processar webhooks Gelato. | Must Have | Eventos atualizam fulfillment correspondente. |
-| BE-GL-008 | Registrar tracking recebido. | Must Have | Tracking salvo e exposto à storefront/e-mail. |
-| BE-GL-009 | Cancelar pedido Gelato quando possível. | Must Have | Cancelamento só ocorre se produção permitir. |
-| BE-GL-010 | Implementar retries. | Must Have | Falhas temporárias são reprocessadas com backoff. |
-| BE-GL-011 | Registrar logs de chamadas Gelato. | Must Have | Request/response/status/correlation ID sem secrets. |
-| BE-GL-012 | Reprocessar fulfillment manualmente. | Must Have | Admin reprocessa pedido falho respeitando idempotência. |
-| BE-GL-013 | Sincronizar catálogo Gelato. | Should Have | Rotina auxiliar para verificar/importar produtos. |
+GET /health/ready
+→ testa PostgreSQL e Redis em paralelo com timeout
+→ retorna 200 quando dependências obrigatórias estão disponíveis
+→ retorna 503 com resposta sanitizada quando alguma dependência falha
+```
+
+A identidade de versão é resolvida por metadados da plataforma; `APP_VERSION` atua como fallback. Localmente, a versão padrão é `dev`.
 
 ---
 
-### 5.8 E-mails e Alertas
+## 8. Requisitos funcionais consolidados
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| BE-EM-001 | Enviar e-mail de confirmação. | Must Have | Enviado após Order confirmado e antes da tentativa Gelato. |
-| BE-EM-002 | Enviar e-mail de envio/rastreio. | Must Have | Enviado quando tracking estiver disponível. |
-| BE-EM-003 | Enviar e-mail de cancelamento. | Must Have | Cliente é notificado quando pedido for cancelado. |
-| BE-EM-004 | Enviar e-mail de reembolso. | Must Have | Apenas após confirmação do reembolso por webhook Stripe. |
-| BE-EM-005 | Enviar boas-vindas. | Should Have | Cliente registrado recebe confirmação. |
-| BE-EM-006 | Enviar recuperação de senha. | Must Have | Link com validade limitada. |
-| BE-EM-007 | Registrar falha de e-mail. | Must Have | Falha é logada e reprocessável. |
-| BE-EM-008 | Falha de e-mail não cancela pedido pago. | Must Have | Pedido pago permanece válido. |
-| BE-EM-009 | Enviar alertas críticos ao admin. | Must Have | Falhas críticas geram e-mail operacional. |
-| BE-EM-010 | Enviar instruções de troca. | Must Have | Cliente recebe código/instruções após aprovação. |
+### 8.1 Catálogo e mídia
 
----
-
-### 5.9 Admin Backend
-
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| BE-AD-001 | Admin em subdomínio próprio. | Must Have | Acesso protegido por autenticação. |
-| BE-AD-002 | Gerenciar produtos. | Must Have | Criar, editar, publicar/despublicar. |
-| BE-AD-003 | Gerenciar variantes. | Must Have | Tamanho, cor, SKU, preço e metadados Gelato. |
-| BE-AD-004 | Visualizar pedidos. | Must Have | Lista e detalhe de pedidos. |
-| BE-AD-005 | Cancelar pedido. | Must Have | Aciona lógica Gelato/reembolso/e-mail quando aplicável. |
-| BE-AD-006 | Gerenciar clientes. | Should Have | Visualizar cliente e histórico de compras. |
-| BE-AD-007 | Configurar Brasil/BRL. | Must Have | Região principal Brasil e moeda BRL. |
-| BE-AD-008 | Configurar métodos de envio. | Must Have | Compatíveis com Gelato. |
-| BE-AD-009 | Configurar promoções/cupons. | Should Have | Cupom com valor, validade e limite. |
-| BE-AD-010 | Registrar trocas. | Must Have | Admin cria e acompanha solicitações de troca. |
-| BE-AD-011 | Filtrar pedidos `requires_attention`. | Must Have | Admin identifica pedidos que exigem ação. |
-| BE-AD-012 | Reprocessar fulfillment Gelato. | Must Have | Ação registra log de auditoria. |
-| BE-AD-013 | Visualizar alertas críticos. | Could Have | Alertas podem iniciar apenas por e-mail. |
-
----
-
-### 5.10 Trocas e Logística Reversa
-
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| BE-RT-001 | Registrar solicitação de troca. | Must Have | Registro vinculado ao pedido original. |
-| BE-RT-002 | Identificar primeira troca. | Must Have | Primeira troca marca frete pago pela empresa. |
-| BE-RT-003 | Identificar trocas adicionais. | Must Have | Troca adicional marca frete pago pelo cliente. |
-| BE-RT-004 | Registrar autorização Correios. | Must Have | Código, prazo e instruções quando disponíveis. |
-| BE-RT-005 | Disparar e-mail de troca aprovada. | Must Have | E-mail após aprovação e instruções disponíveis. |
-| BE-RT-006 | Manter histórico de troca. | Must Have | Admin audita status e decisões. |
-| BE-RT-007 | Suportar status de troca. | Must Have | requested, approved, awaiting_posting, posted, received, completed, rejected, canceled. |
-| BE-RT-008 | Operar Correios manual/semiautomático. | Must Have | Admin registra dados obtidos fora do sistema; sistema armazena e envia e-mail. |
-
----
-
-### 5.11 Analytics e Monitoramento Backend
-
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| BE-AN-001 | Registrar `purchase_completed` pelo backend. | Must Have | Evento registrado de forma durável após Order confirmado; único evento de receita/conversão. Entrega ao PostHog é assíncrona e reprocessável. |
-| BE-AN-002 | Usar identificador analítico seguro. | Must Have | Não enviar `order_id` interno ao PostHog. |
-| BE-AN-003 | Integrar Sentry backend. | Must Have | Exceções backend e falhas críticas reportadas. |
-| BE-AN-004 | Registrar logs estruturados. | Must Have | Logs contêm contexto, evento, pedido, fulfillment e correlation ID. |
-| BE-AN-005 | Enviar alertas críticos por e-mail. | Must Have | Falhas operacionais severas chegam ao admin. |
-
-#### Regra de outbox para `purchase_completed`
-
-O backend deve tratar `purchase_completed` em duas etapas:
-
-1. **Registro local durável:** criar ou localizar um `AnalyticsEventLog`/outbox com chave idempotente, por exemplo `purchase_completed:{order_id}`.
-2. **Entrega externa assíncrona:** enfileirar envio ao PostHog com retry/backoff.
-
-O workflow de fulfillment Gelato pode iniciar após o registro local durável de `purchase_completed`. Ele não deve aguardar `sent`/sucesso de entrega ao PostHog. Falhas temporárias do PostHog devem gerar retry e observabilidade, mas não bloquear produção de pedido pago.
-
-
----
-
-## 6. Webhooks e Idempotência
-
-### 6.1 Webhook Stripe
-
-Requisitos:
-
-- Validar assinatura.
-- Persistir ID do evento.
-- Ignorar evento duplicado.
-- Processar apenas eventos confirmados em sandbox.
-- Não criar Order antes de pagamento confirmado.
-- Não iniciar fulfillment em Pix pendente, expirado, cancelado ou falho.
-- Atualizar reembolso apenas após evento confiável.
-
-Efeitos permitidos:
-
-- Atualizar PaymentIntent/Payment Session.
-- Concluir checkout.
-- Criar Order confirmado.
-- Registrar duravelmente `purchase_completed` em outbox/`AnalyticsEventLog`.
-- Enfileirar entrega assíncrona de `purchase_completed` ao PostHog.
-- Enviar e-mail de confirmação.
-- Iniciar fulfillment após pré-condições.
-- Registrar falhas/expirações/cancelamentos.
-
-### 6.2 Webhook Gelato
-
-Requisitos:
-
-- Validar autenticidade.
-- Persistir ID ou hash do evento.
-- Localizar fulfillment por `gelato_order_id`.
-- Ignorar duplicados.
-- Não retroceder status sem regra explícita.
-- Registrar payload mínimo.
-- Reportar falhas ao Sentry.
-- Enviar alerta em falhas persistentes.
-
-### 6.3 Idempotency Keys
-
-| Operação | Chave Recomendada |
-|---|---|
-| Processar webhook Stripe | `stripe_event_id` |
-| Concluir checkout / criar Order Medusa | `payment_intent_id` ou `cart_id + payment_intent_id` |
-| Criar pedido Gelato | `medusa_order_id` |
-| Enviar e-mail de confirmação | `order_id + email_type` |
-| Enviar alerta operacional | `alert_type + entity_id + date_bucket` |
-| Processar webhook Gelato | `gelato_event_id` ou hash do payload |
-| Reembolso | `order_id + refund_id` |
-| Criar/atualizar troca | `order_id + exchange_id` ou `order_id + exchange_number` |
-
----
-
-## 7. Requisitos Não Funcionais — Backend
-
-| ID | Requisito | Critério |
+| ID | Requisito | Estado |
 |---|---|---|
-| BE-NFR-PERF-001 | APIs críticas devem responder com baixa latência. | P95 inferior a 500ms para operações simples em condições normais. |
-| BE-NFR-PERF-002 | Webhooks devem responder rapidamente. | Stripe/Gelato recebem HTTP em até 5s sempre que possível. |
-| BE-NFR-PERF-003 | Operações longas devem ser assíncronas. | Fulfillment, retries, e-mails e alertas usam worker/fila. |
-| BE-NFR-SEC-001 | HTTPS obrigatório. | API/Admin com TLS válido em produção. |
-| BE-NFR-SEC-002 | Secrets em variáveis de ambiente. | Chaves não são versionadas. |
-| BE-NFR-SEC-003 | CORS restrito. | Apenas domínios autorizados. |
-| BE-NFR-SEC-004 | Rate limiting em endpoints sensíveis. | Login, checkout, webhook e formulários protegidos. |
-| BE-NFR-SEC-005 | Logs sem dados sensíveis. | Secrets, tokens e dados de cartão não aparecem em logs. |
-| BE-NFR-AVL-001 | Backend reinicia após falha. | PM2 ou equivalente mantém processos vivos. |
-| BE-NFR-AVL-002 | Redis monitorado. | Falha gera Sentry e alerta por e-mail. |
-| BE-NFR-AVL-003 | Workflows com retry. | Falhas temporárias reprocessáveis. |
-| BE-NFR-AVL-004 | Webhooks idempotentes. | Duplicatas não causam efeitos colaterais. |
-| BE-NFR-AVL-005 | Health check. | Endpoint de saúde monitorável. |
-| BE-NFR-SCL-001 | Server e worker separados. | Worker escala sem escalar API. |
-| BE-NFR-SCL-002 | Pooling de banco. | Evita esgotamento de conexões Supabase. |
-| BE-NFR-MNT-001 | TypeScript. | Evitar JS não tipado em código de aplicação. |
-| BE-NFR-MNT-002 | Testes para código crítico. | Gelato, Stripe, Pix, storage, payloads e webhooks cobertos. |
-| BE-NFR-MNT-003 | `.env.example`. | Todas variáveis obrigatórias documentadas. |
-| BE-NFR-LGPD-001 | Coleta mínima de dados. | Checkout pede apenas dados necessários. |
-| BE-NFR-LGPD-002 | Sentry com scrubbing. | Dados sensíveis removidos de eventos. |
-| BE-NFR-LGPD-003 | PostHog sem dados sensíveis. | Payloads não contêm dados pessoais desnecessários. |
+| BE-CAT-001 | Gerenciar produtos, variantes, preços e publicação pelo Admin | Entregue |
+| BE-CAT-002 | Expor somente variantes vendáveis na Store API | Entregue |
+| BE-CAT-003 | Exigir metadados Gelato para elegibilidade operacional | Entregue |
+| BE-CAT-004 | Servir imagens públicas por Supabase Storage | Entregue |
+| BE-CAT-005 | Preservar snapshot Gelato nos itens do pedido | Entregue |
 
----
+### 8.2 Carrinho, checkout e cliente
 
-## 8. Observabilidade Backend
-
-### 8.1 Logs Obrigatórios
-
-| Evento | Dados Mínimos |
-|---|---|
-| Criação de carrinho | `cart_id`, `session_id` |
-| Início de checkout | `cart_id`, `email`, `region` |
-| Criação de Payment Collection/Session | `cart_id`, `payment_collection_id`, `payment_session_id`, `payment_method_type` |
-| Criação de pagamento | `cart_id`, `payment_intent_id`, `payment_method_type` |
-| Retorno aguardando confirmação | `cart_id`, `payment_intent_id`, `confirmation_state`, `timeout_status` |
-| Webhook Stripe | `event_id`, `type`, `status` |
-| Order criado após pagamento | `order_id`, `display_id`, `payment_status`, `total` |
-| `purchase_completed` registrado | `order_id`, `order_analytics_id`, `total`, `payment_method_type`, `analytics_event_log_id`, `delivery_status` |
-| Fulfillment iniciado | `order_id`, `fulfillment_id` |
-| Chamada Gelato | `order_id`, `operation`, `status_code`, `latency_ms` |
-| Webhook Gelato | `event_id`, `gelato_order_id`, `status` |
-| E-mail enviado | `order_id`, `template`, `recipient`, `status` |
-| Alerta operacional | `alert_type`, `severity`, `recipient`, `entity_id` |
-| Upload de imagem | `product_id`, `bucket`, `path`, `size` |
-| Solicitação de troca | `order_id`, `exchange_id`, `shipping_cost_owner` |
-| Erro crítico | `error_code`, `message`, `correlation_id`, `sentry_event_id` |
-
-### 8.2 Alertas Mínimos
-
-| Alerta | Canal | Severidade |
+| ID | Requisito | Estado |
 |---|---|---|
-| Backend indisponível | E-mail | Crítica |
-| Redis indisponível | E-mail | Crítica |
-| Pedido pago sem fulfillment criado | E-mail | Crítica |
-| Falha recorrente Gelato API | E-mail | Alta |
-| Falha recorrente Stripe webhook | E-mail | Alta |
-| Falha recorrente em e-mails | E-mail | Média |
-| Pool de conexões próximo do limite | E-mail | Média |
-| CPU/memória elevada na VPS | E-mail | Média |
-| Erro crítico no Sentry | E-mail/Sentry | Alta |
-| Falha de upload Supabase Storage | E-mail/Sentry | Média |
+| BE-CHK-001 | Criar e recuperar carrinho ativo convidado/autenticado | Entregue |
+| BE-CHK-002 | Associar carrinho convidado com segurança | Entregue |
+| BE-CHK-003 | Validar checkout brasileiro e derivar completude | Entregue |
+| BE-CHK-004 | Manter todos os estados pré-pagamento fora de `Order` | Entregue |
+| BE-CHK-005 | Não aceitar valores monetários autoritativos do cliente | Entregue |
+
+### 8.3 Pagamento e pedido
+
+| ID | Requisito | Estado |
+|---|---|---|
+| BE-PAY-001 | Iniciar cartão e Pix por `PaymentAttempt` | Entregue |
+| BE-PAY-002 | Validar assinatura Stripe e preservar raw body | Entregue |
+| BE-PAY-003 | Deduplicar webhooks | Entregue |
+| BE-PAY-004 | Criar `Order` somente após webhook de sucesso | Entregue |
+| BE-PAY-005 | Impedir duplicidade sob concorrência | Entregue |
+| BE-PAY-006 | Não criar `Order` em falha/cancelamento/expiração | Entregue |
+| BE-PAY-007 | Manter Pix condicionado à elegibilidade operacional | Implementado, ativação diferida |
+
+### 8.4 Downstream
+
+| ID | Requisito | Estado |
+|---|---|---|
+| BE-DWN-001 | Registrar `purchase_completed` local e idempotente | Entregue |
+| BE-DWN-002 | Entregar analytics de forma assíncrona | Entregue |
+| BE-DWN-003 | Entregar e-mail de forma assíncrona | Entregue |
+| BE-DWN-004 | Despachar Gelato somente após elegibilidade local | Entregue |
+| BE-DWN-005 | Processar webhook Gelato e tracking | Entregue |
+| BE-DWN-006 | Manter falhas reprocessáveis e observáveis | Entregue |
+
+### 8.5 Pós-venda e operação
+
+| ID | Requisito | Estado |
+|---|---|---|
+| BE-OPS-001 | Tracking público por token seguro | Entregue |
+| BE-OPS-002 | Solicitar reembolso no Admin | Entregue |
+| BE-OPS-003 | Confirmar reembolso somente por webhook | Entregue |
+| BE-OPS-004 | Registrar trocas e logística reversa | Entregue |
+| BE-OPS-005 | Persistir e consultar alertas operacionais | Entregue |
+| BE-OPS-006 | Auditar ações administrativas sensíveis | Entregue |
+
+### 8.6 Documentação de API
+
+| ID | Requisito | Estado |
+|---|---|---|
+| BE-DOC-001 | Manter contratos Store, Admin e Webhooks separados | Entregue |
+| BE-DOC-002 | Garantir geração determinística e verificação de drift | Entregue |
+| BE-DOC-003 | Expor Swagger local somente leitura | Entregue |
+| BE-DOC-004 | Manter documentação desabilitada por padrão em produção | Entregue |
+| BE-DOC-005 | Exigir autenticação de usuário para contratos internos | Entregue |
 
 ---
 
-## 9. Variáveis de Ambiente — Backend
+## 9. Requisitos não funcionais
 
-```env
-NODE_ENV=
-DATABASE_URL=
-REDIS_URL=
-JWT_SECRET=
-COOKIE_SECRET=
-STORE_CORS=
-ADMIN_CORS=
-AUTH_CORS=
+| Categoria | Requisito |
+|---|---|
+| Segurança | Secrets somente em ambiente; nenhuma credencial ou token em logs |
+| Privacidade | Coleta mínima; CPF/CNPJ mascarado nas respostas públicas |
+| Idempotência | Webhooks, criação do `Order`, outboxes, dispatch e reembolso protegidos |
+| Concorrência | Criação do pedido e reservas operacionais coordenadas por estado persistente/locks |
+| Resiliência | Jobs reprocessáveis, retries e alertas para falhas persistentes |
+| Observabilidade | Logs JSON em produção, correlation ID, Sentry sanitizado e health checks |
+| Escalabilidade | Processos `web` e `worker` separados |
+| Banco | Runtime por conexão apropriada e migração por conexão direta/session segura |
+| Redis | Contratos separados para cache, eventos, workflows e locking |
+| Manutenibilidade | TypeScript, testes críticos e contratos OpenAPI versionados |
+| Operação | Migrações no processo `release`; deploy e rollback manualmente autorizados |
+| Documentação | Swagger não interativo e contratos internos protegidos |
 
-STRIPE_API_KEY=
-STRIPE_WEBHOOK_SECRET=
+---
 
-RESEND_API_KEY=
-RESEND_FROM_EMAIL=
-ADMIN_ALERT_EMAIL=
+## 10. Estados e invariantes
 
-GELATO_API_KEY=
-GELATO_API_BASE_URL=
-GELATO_WEBHOOK_SECRET=
+### 10.1 Pagamento
 
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_STORAGE_BUCKET_PRODUCT_IMAGES=
+Estados detalhados pertencem a `PaymentAttempt` e aos objetos Medusa/Stripe associados. A transição canônica de sucesso deve resultar em um único `Order`.
 
-SENTRY_DSN=
-SENTRY_ENVIRONMENT=
+### 10.2 Pedido e fulfillment
 
-POSTHOG_API_KEY=
-POSTHOG_HOST=
+O backend não deve comprimir todos os estados operacionais em um único campo. Estado financeiro, estado do pedido, estado do fulfillment e estado Gelato são conceitos separados.
 
-MEDUSA_BACKEND_URL=
-STORE_FRONTEND_URL=
-ADMIN_URL=
+Regras:
+
+- `shipped` não equivale automaticamente a `completed`;
+- reembolso não equivale automaticamente a cancelamento do pedido;
+- falha de e-mail ou analytics não invalida pagamento confirmado;
+- falha de Gelato exige atenção e reprocessamento, não duplicação automática;
+- status não deve regredir sem regra explícita.
+
+### 10.3 Unidades monetárias
+
+- contratos Store públicos documentam explicitamente quando usam BRL em unidade maior;
+- tentativas de pagamento e operações Admin sensíveis podem usar BRL em unidade menor;
+- cada schema OpenAPI deve declarar sua unidade;
+- conversões devem ocorrer em fronteiras explícitas e testadas.
+
+---
+
+## 11. Observabilidade e auditoria
+
+### 11.1 Logs
+
+Os logs usam allowlist. Não registrar:
+
+- body completo por padrão;
+- dados de cartão;
+- `client_secret`;
+- QR ou copia-e-cola Pix;
+- cookies;
+- `Authorization`;
+- tokens de tracking;
+- secrets de webhook;
+- payloads de provider sem sanitização.
+
+### 11.2 Eventos mínimos observáveis
+
+- criação e atualização de carrinho;
+- início de `PaymentAttempt`;
+- ingestão e deduplicação de webhook;
+- criação ou reutilização de `Order`;
+- registro de `purchase_completed`;
+- entrega ou retry de analytics/e-mail;
+- elegibilidade e dispatch Gelato;
+- atualização de tracking;
+- solicitação e confirmação de reembolso;
+- criação e transição de troca;
+- criação, agregação e resolução de alerta;
+- falhas de PostgreSQL, Redis e integrações.
+
+### 11.3 Auditoria Admin
+
+Ações administrativas sensíveis devem preservar:
+
+- ator autenticado;
+- tipo de ação;
+- entidade afetada;
+- timestamp;
+- correlation ID quando aplicável;
+- fatos sanitizados necessários à auditoria.
+
+A identidade do operador nunca é aceita do corpo da requisição.
+
+---
+
+## 12. Ambientes, configuração e execução
+
+### 12.1 Ambientes
+
+- **Local:** desenvolvimento com PostgreSQL e Redis acessíveis; Admin habilitado; docs podem ser habilitadas explicitamente.
+- **Produção:** Heroku com Supabase PostgreSQL e Redis; docs desabilitadas por padrão.
+- **Staging:** convenção documentada, não ambiente formalmente provisionado.
+
+### 12.2 Variáveis principais
+
+| Grupo | Variáveis |
+|---|---|
+| Runtime | `NODE_ENV`, `APP_VERSION`, `WORKER_MODE`, `ADMIN_DISABLED` |
+| Banco | `DATABASE_URL`, `DATABASE_MIGRATION_URL` |
+| Redis | `REDIS_URL`, `CACHE_REDIS_URL`, `EVENTS_REDIS_URL`, `WE_REDIS_URL` |
+| HTTP/Auth | `API_PUBLIC_URL`, `STORE_CORS`, `ADMIN_CORS`, `AUTH_CORS`, `JWT_SECRET`, `COOKIE_SECRET` |
+| Storage | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FILE_URL` |
+| Stripe | chaves de teste, webhook e flags de ativação |
+| Resend | chave, remetente, reply-to e flag de ativação |
+| Gelato | chave, método de envio, webhook e flag de dispatch |
+| Observabilidade | `SENTRY_DSN` e configuração PostHog |
+| API Docs | `API_DOCS_ENABLED`, `API_DOCS_UI_ENABLED`, `API_DOCS_PUBLIC_ENABLED`, `API_DOCS_INTERNAL_ENABLED` |
+
+O arquivo `.env.template` é o contrato versionado. Valores reais não devem ser commitados.
+
+---
+
+## 13. Testes e gates
+
+A estratégia de validação inclui:
+
+- testes unitários de módulos, workflows, jobs, validadores e segurança;
+- integração HTTP real das rotas Store, Admin, health e webhooks;
+- integração de módulos Medusa;
+- PostgreSQL descartável para constraints, locks e concorrência;
+- invariantes de pagamento → webhook → `Order` → downstream;
+- idempotência e reentrega de webhooks;
+- contratos OpenAPI e geração determinística;
+- lint e build;
+- validação operacional de release, health e identidade de versão.
+
+### 13.1 Gates OpenAPI
+
+```bash
+npm run openapi:verify:store
+npm run openapi:verify:admin
+npm run openapi:verify:webhooks
+npm run openapi:lint
+npm run openapi:check
 ```
 
----
-
-## 10. Testes — Backend
-
-### 10.1 Testes Unitários
-
-Devem cobrir:
-
-- Montagem de payload Gelato.
-- Validação de metadados Gelato.
-- Mapeamento de status Gelato.
-- Idempotência Stripe.
-- Idempotência de criação do Order.
-- Pix pendente/expirado/falho não cria Order.
-- Pix confirmado cria Order.
-- Reembolso só atualiza após webhook.
-- `purchase_completed` registrado em outbox/`AnalyticsEventLog`.
-- Token de tracking.
-- Regras de troca.
-- Upload/path Supabase Storage.
-- Cálculo de totais.
-
-### 10.2 Testes de Integração
-
-Devem cobrir:
-
-- Criação de carrinho.
-- Checkout com endereço Brasil.
-- Payment Collection/Session sem Order.
-- Cartão modo teste.
-- Pix modo teste.
-- Webhook cartão aprovado criando Order.
-- Webhook Pix aprovado criando Order.
-- Pix expirado sem Order.
-- Bloqueio de fulfillment antes de pagamento.
-- Registro durável de `purchase_completed`.
-- E-mail de confirmação antes de Gelato.
-- Criação de pedido Gelato.
-- Webhook Gelato.
-- Upload Supabase.
-- E-mail Resend.
-- Reembolso confirmado por Stripe.
-- Alertas operacionais.
-- Sentry.
-- PostHog.
-
-### 10.3 Testes E2E Backend
-
-Fluxo cartão:
-
-```text
-Carrinho criado
-→ Frete calculado
-→ Payment Session criada
-→ Pagamento cartão aprovado por webhook
-→ Order criado
-→ purchase_completed registrado duravelmente
-→ E-mail confirmação enviado
-→ Gelato fulfillment criado
-→ Tracking salvo
-```
-
-Fluxo Pix:
-
-```text
-Carrinho criado
-→ Frete calculado
-→ Payment Session Pix criada
-→ Pix pendente sem Order
-→ Pix aprovado por webhook
-→ Order criado
-→ purchase_completed registrado duravelmente
-→ E-mail confirmação enviado
-→ Gelato fulfillment criado
-```
-
-Fluxo troca:
-
-```text
-Order entregue
-→ Admin cria troca
-→ Sistema identifica primeira troca
-→ Frete empresa
-→ Admin registra Correios
-→ Sistema envia instruções
-→ Histórico fica no pedido
-```
+`openapi:check` é read-only, gera os documentos em memória, compara bytes e verifica cobertura, metadados, segurança e fingerprints nativos.
 
 ---
 
-## 11. Deploy e Operação
+## 14. Deploy, release e rollback
 
-### 11.1 Backend
+### 14.1 Release atual
 
-- VPS Linux.
-- Node.js compatível.
-- Redis ativo.
-- Medusa server gerenciado por PM2 ou equivalente.
-- Worker separado.
-- Nginx ou equivalente com HTTPS.
-- API em subdomínio próprio.
-- Admin em subdomínio próprio.
-- Health check.
-- Logs persistentes.
-- Sentry backend.
-- Alertas por e-mail.
+- tag anotada: `v1.0`;
+- release GitHub: `v1.0 — Backend MVP`;
+- runtime validado: Heroku;
+- processos: `release`, `web`, `worker`;
+- saúde validada por `/health/live` e `/health/ready`;
+- SHA retornado pelo runtime deve ser comparado com a release atual.
 
-### 11.2 Banco
+### 14.2 Deploy
 
-- Supabase configurado.
-- Banco produção separado de dev/staging.
-- Pooling em produção.
-- Backups ativos.
-- Migrações versionadas.
-- Acesso restrito.
+O deploy deve:
 
-### 11.3 Storage
+1. selecionar explicitamente o candidate SHA;
+2. executar migrações seguras no processo `release`;
+3. iniciar `web` e `worker`;
+4. validar health, PostgreSQL, Redis e identidade de versão;
+5. executar smokes read-only autorizados;
+6. preservar evidências sanitizadas.
 
-- Bucket Supabase para imagens.
-- Políticas de acesso configuradas.
-- Separação por ambiente.
-- Validação de upload.
-- URLs funcionais para storefront.
-- Estratégia para imagens órfãs.
+### 14.3 Rollback
+
+O alvo de rollback deve ser a release anterior compatível, registrada antes do deploy. Rollback real requer autorização humana e não foi exercitado no fechamento do milestone.
 
 ---
 
-## 12. Critérios de Aceite do PRD Backend
+## 15. Critérios de aceite do backend
 
-O backend será considerado pronto quando:
+O backend é considerado entregue quando:
 
-- Medusa v2 estiver rodando em VPS.
-- Admin estiver em subdomínio próprio com autenticação.
-- Produtos e variantes forem gerenciáveis.
-- Variante sem metadados Gelato não for vendável.
-- Produto sem template Gelato válido não puder ser publicado.
-- Supabase PostgreSQL estiver conectado.
-- Supabase Storage estiver integrado.
-- Redis estiver ativo.
-- Brasil/BRL configurados.
-- Carrinho e checkout funcionarem.
-- Payment Collection/Payment Session forem criadas sem criar Order antecipado.
-- Cartão funcionar em produção.
-- Pix funcionar em produção.
-- Pix pendente/expirado/cancelado/falho não criar Order.
-- Webhook Stripe aprovado criar Order idempotentemente.
-- `purchase_completed` for registrado duravelmente pelo backend após Order confirmado.
-- E-mail de confirmação for enviado antes da tentativa Gelato.
-- Fulfillment Gelato iniciar apenas após Order + `purchase_completed` registrado localmente, sem depender de PostHog.
-- Webhook Gelato atualizar status.
-- Pedido despachado usar `shipped`, não `completed`.
-- `completed` só ocorrer após entrega ou fechamento operacional pós-entrega.
-- Reembolso não forçar `order_status = canceled`.
-- Token de tracking for seguro e incluído nos e-mails exigidos.
-- Admin registrar e acompanhar trocas.
-- Primeira troca marcar frete empresa.
-- Troca adicional marcar frete cliente.
-- Correios operar manual/semiautomático no Admin.
-- Sentry capturar erros.
-- Alertas críticos por e-mail funcionarem.
-- Logs estruturados existirem.
-- Webhooks e criação de Order forem idempotentes.
-- Secrets não estiverem expostos.
-- Smoke test ponta a ponta passar.
+- catálogo e mídia estão operacionais em BRL;
+- carrinho convidado e autenticado funcionam;
+- checkout brasileiro é validado;
+- `Order` não existe antes do webhook Stripe canônico;
+- criação de pedido é idempotente sob reentrega e concorrência;
+- `purchase_completed` é persistido localmente;
+- e-mail e analytics são entregues por outboxes reprocessáveis;
+- Gelato só recebe pedido elegível;
+- tracking convidado usa token seguro;
+- reembolso depende de confirmação Stripe;
+- trocas e logística reversa são auditáveis;
+- alertas operacionais podem ser consultados e tratados;
+- logs e Sentry não expõem dados sensíveis;
+- health checks representam PostgreSQL e Redis;
+- contratos OpenAPI estão completos, determinísticos e protegidos;
+- processos `web` e `worker` permanecem ativos;
+- release e identidade de versão são verificáveis.
+
+Esses critérios foram atendidos no milestone `v1.0`, respeitadas as limitações operacionais externas registradas neste documento.
 
 ---
 
-## 13. Questões Abertas Relacionadas ao Backend
+## 16. Próximos passos de produto
 
-| ID | Questão | Impacto | Prazo |
-|---|---|---|---|
-| BE-Q-001 | Nome final do bucket Supabase Storage. | Env vars, storage, deploy. | Antes da fase backend. |
-| BE-Q-002 | Prefixo final da API. | CORS, webhooks, deploy. | Antes de staging. |
-| BE-Q-003 | Prefixo final do Admin. | Segurança, CORS, deploy. | Antes de staging. |
-| BE-Q-004 | E-mail remetente transacional. | Resend, domínio, reputação. | Antes de go-live. |
-| BE-Q-005 | E-mail destinatário de alertas operacionais. | Operação. | Antes de staging. |
-| BE-Q-006 | Política detalhada de troca. | Admin, e-mails, operação. | Antes de go-live. |
-| BE-Q-007 | Canal e fluxo LGPD. | Privacidade, atendimento, operação. | Antes de go-live. |
+O próximo milestone ainda depende de decisão humana. A direção recomendada é construir a storefront sobre os contratos Store existentes, sem reabrir os invariantes do backend.
+
+Antes de alterar um contrato do backend, o próximo ciclo deve:
+
+1. identificar a jornada da storefront afetada;
+2. confirmar que o contrato atual é insuficiente;
+3. atualizar registry, testes e artefato OpenAPI correspondente;
+4. preservar compatibilidade ou documentar a quebra;
+5. executar os gates globais de API Docs;
+6. atualizar este PRD quando a mudança representar comportamento de produto.
 
 ---
+
+## 17. Referências canônicas
+
+- `.planning/PROJECT.md` — valor central, decisões e resultado do milestone;
+- `.planning/STATE.md` — estado atual e gates de governança;
+- `docs/DB_MODEL_v1.21.md` — modelo de dados;
+- `docs/openapi/README.md` — manutenção dos contratos;
+- `ops/API_DOCS.md` — exposição e segurança da documentação;
+- `apps/backend/src/api-docs/generated/store.openapi.json`;
+- `apps/backend/src/api-docs/generated/admin.openapi.json`;
+- `apps/backend/src/api-docs/generated/webhooks.openapi.json`;
+- `apps/backend/.env.template` — contrato de ambiente;
+- `Procfile` — topologia Heroku.
+
+---
+
+*Última revisão: 2026-08-03 — documento atualizado para refletir o backend v1.0 efetivamente entregue, o runtime Heroku atual, os contratos OpenAPI e os fluxos de uso vigentes.*
