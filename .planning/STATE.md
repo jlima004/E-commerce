@@ -8,7 +8,7 @@ status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
 stopped_at: Milestone v1.0 archived, tagged and released / awaiting next milestone decision
 last_updated: "2026-08-03"
 last_activity: 2026-08-03
-last_activity_desc: Completing quick task 260803-nla for PR 20 nested lookaround P2; local API Docs 304/304 and full unit 1257/1257; push pending, CI/thread deliberately not awaited
+last_activity_desc: Completing quick task 260803-nla for PR 20 nested lookaround P2; local API Docs 304/304 and full unit 1257/1257; push done in commit: `c775842`.
 progress:
   total_phases: 13
   completed_phases: 13
