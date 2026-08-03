@@ -1,7 +1,7 @@
 ---
 name: corrigir-os-dois-p2-residuais-do-re-review-codex
 created: 2026-08-03
-status: in-progress
+status: complete
 ---
 
 # Corrigir os dois P2 residuais do re-review Codex na PR #20
@@ -36,10 +36,16 @@ lockfile, manifests, migrations, secrets, providers, produção, deploy e merge.
 5. Auditar independentemente, publicar, aguardar CI, responder/resolver apenas
    estas duas threads residuais e atualizar os artefatos de closeout.
 
+Durante a auditoria final surgiu um bypass real no mesmo escopo: separadores
+escapados/opcionais e curingas entre tokens (api_key e provider_order_id). O
+item foi corrigido com regressões adicionais, sem alterar a política sensível.
+
 ## Evidência esperada
 
 - `^(provider_order_id)$` e `^provider[_-]order[_-]id$` rejeitados nas duas
   fronteiras;
+- `^.*api[._-]?key.*$`, `^provider[\\._-]order[\\._-]id$` e
+  `^.*provider[_-]order[_-]id.*$` rejeitados nas duas fronteiras;
 - `components.schemas.TrackingToken` rejeitado nas duas fronteiras;
 - `^.*$`, `^status$` e `^publicField$` continuam permitidos;
 - nenhuma nova lista sensível, supressão ou cast inseguro;
