@@ -170,7 +170,7 @@ Produção: saudável
 Phase: none — Milestone v1.0 complete / closed / archived / tagged / released
 Plan: —; 62/62 milestone plans complete
 Status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
-Last activity: 2026-08-03 - API-DOCS-01 documentary closure after PR #20 merge (4fe414f); initiative CLOSURE.md; documentary PR pending human review
+Last activity: 2026-08-03 - API-DOCS-01 closed documentally after PR #20 merge (4fe414f); Waves 1–6 accepted; no code/tests/deploy
 Next: human decision on the next milestone
 
 Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived, tagged and released; API-DOCS-01 closed; next milestone and Phase 13 remain blocked
