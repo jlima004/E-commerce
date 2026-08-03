@@ -452,6 +452,31 @@ describe("OpenAPI foundation generation", () => {
     })
   })
 
+  it("keeps response status keys non-semantic after responseMap propagation", () => {
+    const response = {
+      description: "Synthetic response",
+      content: {
+        "application/json": { example: "opaque-reference" },
+      },
+    }
+    const responses = { "200": response, default: response }
+
+    expect(() =>
+      new ContractRegistryBundle().registerOperation(
+        syntheticOperation({ responses })
+      )
+    ).not.toThrow()
+
+    const document = structuredClone(buildContracts()[0].document)
+    document.paths["/store/synthetic"] = {
+      get: {
+        operationId: "storeSyntheticResponseStatusExamples",
+        responses,
+      },
+    }
+    expect(() => validateDocument("store", document)).not.toThrow()
+  })
+
   describe.each([
     {
       label: "tracking_token parameter example",
