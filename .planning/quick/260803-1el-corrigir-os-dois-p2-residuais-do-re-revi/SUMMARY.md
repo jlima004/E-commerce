@@ -1,83 +1,135 @@
-# Corrigir os dois P2 residuais do re-review Codex na PR #20
+# Relatório da conversa — PR #20, remediação de P2s da API Docs
 
-## Resultado local
+**Estado no encerramento desta conversa:** `PENDING MANUAL REVIEW`.
 
-**PASS local; fechamento externo pendente.** Os dois bypasses do re-review
-original foram corrigidos no walker compartilhado. As revisões Codex seguintes
-encontraram quatro variantes concretas do mesmo escopo — resposta reutilizável,
-separadores escapados, letras escapadas e classes unitárias escapadas — e cada
-uma recebeu correção e regressão pareada. O contexto de schemas permaneceu
-isolado e os artefatos OpenAPI gerados não mudaram.
+O último re-review do Codex encontrou um P2 novo, concreto e ainda **não
+corrigido**. Por solicitação explícita do usuário, a implementação foi
+interrompida antes de qualquer patch para esse achado. Este arquivo registra o
+histórico completo, as evidências e o ponto exato para checagem manual.
 
-Base do residual: `92415036faa08dedcc4b2425290f2c6dfec9280f`.
+## Escopo e limites respeitados
 
-Commits de código desta sequência:
+- PR: [#20](https://github.com/jlima004/E-commerce/pull/20), branch
+  `gsd/api-docs-wave-6-global-closure`;
+- código limitado ao walker compartilhado de exemplos seguros e às regressões
+  de geração em `apps/backend/src/api-docs/`;
+- nenhum contrato de negócio, artefato OpenAPI gerado, dependência, lockfile,
+  migration, secret, provider, produção, deploy ou merge foi alterado;
+- nenhuma tentativa de corrigir o P2 final pendente foi iniciada;
+- worktree local estava limpo antes desta atualização documental.
 
-- `ab7093d` — nomes de componentes schemas e padrões agrupados/separados;
-- `1e8b8f5` — isolamento de schema maps e padrões amplos;
-- `b4e17a4` — separadores escapados/opcionais e curingas;
-- `59d99a7` — nomes de componentes responses e mapa de respostas;
-- `6e872e0` — controle positivo para status `200`/`default`;
-- `2a63644` — separadores literais `\\x`/`\\u`;
-- `5be1b94` — letras literais `\\xNN`/`\\uNNNN`;
-- `4080626` — classes unitárias literais escapadas.
+## Linha do tempo de correções publicadas
 
-## Auditorias
+Os dois P2s originais e os bypasses concretos subsequentes identificados pelo
+Codex foram tratados no mesmo walker de `patternProperties`, sem criar uma
+segunda política de nomes sensíveis.
 
-- Root-cause: confirmou o descarte de nomes de componentes e os formatos regex
-  que não chegavam à política semântica.
-- Security-design: exigiu resetar contexto em `$defs`/`dependentSchemas` e
-  avaliar nomes locais sem criar nova lista sensível.
-- Test-auditor: reproduziu RED e confirmou GREEN nas duas fronteiras.
-- Auditorias finais anteriores: encontraram bypasses reproduzíveis e foram
-  incorporadas à sequência acima.
-- Nova revisão Codex do HEAD `4080626` será solicitada após o CI verde.
+| Commit | Correção publicada |
+| --- | --- |
+| `2bbb0f4` | Propagou ancestrais sensíveis por subárvores aninhadas e passou a tratar chaves de `patternProperties` como nomes semânticos. |
+| `ab7093d` / `1e8b8f5` / `b4e17a4` | Cobriu padrões agrupados, separadores, curingas e preservação isolada de nomes em componentes/schema maps. |
+| `59d99a7` / `6e872e0` | Preservou nomes de componentes `responses` e adicionou os controles para chaves de status `200` e `default`. |
+| `2a63644` | Decodificou separadores literais em escapes `\\xNN` e `\\uNNNN`. |
+| `5be1b94` | Decodificou letras literais em escapes dentro de tokens sensíveis. |
+| `4080626` | Preservou classes unitárias alfanuméricas após a decodificação. |
+| `e92fb5f` | Removeu sintaxe de grupos regex sem perder literais adjacentes. |
+| `919ad8b` | Normalizou assertions de lookaround balanceadas antes da tokenização. |
+| `a508e60` | Reteve o conteúdo de assertions positivas como candidatos semânticos independentes, cobrindo nomes inteiros fornecidos por lookahead. |
 
-## Correção e regressões
+## P2 respondido e resolvido nesta conversa
 
-- `components.schemas` e `components.responses` preservam a chave do
-  componente como nome semântico no registry e no walker final.
-- `$defs` e `dependentSchemas` começam contexto próprio; nomes locais sensíveis
-  são avaliados sem contaminar siblings seguros.
-- `patternProperties` preserva tokens semânticos reconhecíveis em agrupamentos,
-  classes separadoras, separadores opcionais, curingas e escapes literais.
-- O decoder converte `\\xNN`/`\\uNNNN` antes da extração, e classes unitárias
-  alfanuméricas equivalentes permanecem no token.
-- A política existente `isSensitiveExampleKey` permanece a única fonte de
-  classificação sensível.
-- Rejeitados nas duas fronteiras: `provider_order_id`, `trackingToken`,
-  `api[._-]?key`, padrões entre curingas, `TrackingToken`,
-  `TrackingTokenResponse`, `^tracking\\x5ftoken$`, `^api\\u005Fkey$`,
-  `^tracking_[\\x74]oken$` e `^api_[\\u006b]ey$`.
-- Permitidos e protegidos por regressões: `status`, `publicField`, `^.*$`,
-  status `200`/`default`, grupos sem nome semântico, classes compostas e
-  siblings seguros sob `$defs`/`dependentSchemas`.
+O P2 anterior reportava que padrões como `^(?=tracking_token$).+$` e
+`^(?=api_key$).+$` perdiam o nome semântico quando o lookaround era removido.
 
-## Gates locais
+O commit `a508e60` alterou `stripRegexLookaroundAssertions(...)` para retornar:
 
-- `openapi:check`: PASS em checkout limpo, somente leitura.
-- `openapi:lint`: PASS sem warning Spectral.
-- `openapi:verify:foundation`: PASS.
-- Matriz API Docs: 9/9 suítes, `272/272` testes PASS.
-- Geração focada: `128/128` PASS.
-- Unit completa: 68 suítes, `1225/1225` testes PASS.
-- Lint backend: PASS, 0 erros e 261 avisos existentes.
-- Build backend: PASS.
-- `git diff --check`: PASS.
-- Store/Admin/Webhooks gerados: sem diff.
+- o padrão consumido sem assertions; e
+- uma lista de conteúdo de assertions positivas.
 
-## Limites
+O detector então avalia ambos como candidatos independentes. Isto evita a
+concatenação artificial de literais do padrão externo com o conteúdo da
+assertion e faz os dois gates compartilhados rejeitarem os exemplos opacos
+sob os padrões sensíveis.
 
-Somente `safe-examples.ts`, `registry.ts`, `generation.unit.spec.ts` e os
-artefatos GSD deste quick/STATE foram tocados. Não houve alteração de
-contratos de negócio, dependências, lockfile, manifests, migrations, secrets,
-providers, produção, deploy, merge ou artefatos OpenAPI gerados.
+Regressões adicionadas em
+`apps/backend/src/api-docs/__tests__/generation.unit.spec.ts`:
 
-## Publicação e PR
+- `^(?=tracking_token$).+$`;
+- `^(?=api_key$).+$`.
 
-O código foi publicado no branch `gsd/api-docs-wave-6-global-closure` no SHA
-`4080626fd2f6d85c2c2ec38f436de2794c7de951`. O workflow API Docs
-`30795192149` ainda está em execução neste closeout. O corpo da PR foi
-atualizado para `272/272` e `1225/1225`. A thread corrente é
-`PRRT_kwDOTEQ5Nc6V5Uky` (`3702148563`), ainda pendente de resposta/resolução
-após o CI. Sem merge.
+O comentário P2 `3704010125` recebeu resposta com as evidências e o thread
+`PRRT_kwDOTEQ5Nc6V-TQF` foi resolvido após o CI verde.
+
+## Evidência executada no HEAD publicado
+
+HEAD local e remoto no momento do relatório:
+
+```text
+a508e608ea71ec0c4c003aeaa6c68e624bac5498
+```
+
+Resultados locais no commit `a508e60`:
+
+- geração focada: `140/140` PASS;
+- matriz API Docs: `9/9` suítes, `284/284` testes PASS;
+- unit completa: `68/68` suítes, `1237/1237` testes PASS;
+- `npm run openapi:lint`: PASS;
+- `npm run openapi:verify:foundation`: PASS;
+- `npm run openapi:check`: PASS em checkout limpo e somente leitura;
+- `npm run lint`: `0` erros e `261` avisos preexistentes;
+- `npm run build`: PASS;
+- `git diff --check`: PASS; artefatos Store/Admin/Webhooks sem diff.
+
+CI remoto:
+
+- workflow API Docs
+  [`30815940441`](https://github.com/jlima004/E-commerce/actions/runs/30815940441):
+  **PASS** no SHA `a508e60`;
+- o job completou check do OpenAPI publicado, lint OpenAPI, contratos,
+  exposição HTTP, lint backend, build, verificação de packaging/Swagger e
+  checkout limpo.
+
+## Follow-through na PR realizado
+
+- a PR permanece aberta, sem merge;
+- o corpo da PR foi atualizado para refletir `284/284`, `1237/1237` e o CI
+  verde;
+- foi solicitado `@codex review` para o SHA `a508e60` após a resolução do P2
+  anterior;
+- o Codex submeteu a revisão `4844561533` sobre o SHA correto.
+
+## P2 aberto para checagem manual
+
+**Thread aberto:** `PRRT_kwDOTEQ5Nc6V_HxN` em
+`apps/backend/src/api-docs/safe-examples.ts` (linhas 231–234 do diff da PR).
+
+**Título do Codex:** “Normalize nested assertions inside positive lookarounds”.
+
+**Reprodução reportada:**
+
+```text
+^(?=tracking_(?=token)token$).+$
+```
+
+Esse regex corresponde apenas a `tracking_token`, mas a implementação de
+`a508e60` retém a assertion externa positiva como um candidato e ainda passa a
+assertion interna diretamente à tokenização. O resultado fica equivalente a
+fragmentos `tracking` e `tokentoken`, que não são classificados como nome
+sensível; portanto, um exemplo opaco abaixo do padrão pode passar pelos dois
+gates compartilhados.
+
+O P2 recomenda uma das duas abordagens abaixo:
+
+1. normalizar recursivamente assertions positivas retidas; ou
+2. falhar fechado quando uma assertion positiva retida contém outra assertion.
+
+Nenhuma delas foi aplicada nesta conversa. Não há regressão para esse padrão
+aninhado, nem commit, push, resposta ou resolução do thread pendente.
+
+## Próximo passo deliberadamente não executado
+
+Após a checagem manual, caso o P2 seja confirmado, a menor correção esperada
+é limitar-se ao mesmo walker, adicionar regressões para
+`^(?=tracking_(?=token)token$).+$` e a variante `api_key`, então repetir os
+gates, publicar, responder/resolver o thread e pedir novo re-review. Nada
+disso foi autorizado ou iniciado aqui.
