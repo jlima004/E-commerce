@@ -452,6 +452,405 @@ describe("OpenAPI foundation generation", () => {
     })
   })
 
+  describe.each([
+    {
+      label: "tracking_token parameter example",
+      parameter: {
+        name: "tracking_token",
+        in: "query",
+        example: "actual-opaque-value",
+      },
+    },
+    {
+      label: "camelCase trackingToken examples array",
+      parameter: {
+        name: "trackingToken",
+        in: "query",
+        examples: ["actual-opaque-value"],
+      },
+    },
+    {
+      label: "provider_order_id header examples map",
+      parameter: {
+        name: "provider_order_id",
+        in: "header",
+        examples: {
+          syntheticReference: { value: "synthetic-reference" },
+        },
+      },
+    },
+    {
+      label: "authorization header parameter example",
+      parameter: {
+        name: "authorization",
+        in: "header",
+        example: "redacted",
+      },
+    },
+  ])("rejects named parameter examples at $label", ({ parameter }) => {
+    it.each([
+      {
+        boundary: "ContractRegistryBundle",
+        exercise: () =>
+          new ContractRegistryBundle().registerOperation(
+            syntheticOperation({ parameters: [parameter] })
+          ),
+        expectedError: "unsafe example",
+      },
+      {
+        boundary: "validateDocument",
+        exercise: () => {
+          const document = structuredClone(buildContracts()[0].document)
+          document.paths["/store/synthetic"] = {
+            get: {
+              operationId: "storeSyntheticNamedExample",
+              parameters: [parameter],
+              responses: { "200": { description: "Synthetic response" } },
+            },
+          }
+          validateDocument("store", document)
+        },
+        expectedError: "Sensitive OpenAPI example",
+      },
+    ])("rejects at $boundary", ({ exercise, expectedError }) => {
+      expect(exercise).toThrow(expectedError)
+    })
+  })
+
+  describe.each([
+    {
+      label: "authorization response header example",
+      headerName: "authorization",
+      header: { example: "redacted" },
+    },
+    {
+      label: "provider_order_id response header examples map",
+      headerName: "provider_order_id",
+      header: {
+        examples: { syntheticReference: { value: "synthetic-reference" } },
+      },
+    },
+  ])("rejects named response headers at $label", ({ headerName, header }) => {
+    it.each([
+      {
+        boundary: "ContractRegistryBundle",
+        exercise: () => {
+          const operation = syntheticOperation()
+          Reflect.set(operation.responses["200"], "headers", {
+            [headerName]: header,
+          })
+          new ContractRegistryBundle().registerOperation(operation)
+        },
+        expectedError: "unsafe example",
+      },
+      {
+        boundary: "validateDocument",
+        exercise: () => {
+          const document = structuredClone(buildContracts()[0].document)
+          document.paths["/store/synthetic"] = {
+            get: {
+              operationId: "storeSyntheticHeaderExample",
+              responses: {
+                "200": {
+                  description: "Synthetic response",
+                  headers: { [headerName]: header },
+                },
+              },
+            },
+          }
+          validateDocument("store", document)
+        },
+        expectedError: "Sensitive OpenAPI example",
+      },
+    ])("rejects at $boundary", ({ exercise, expectedError }) => {
+      expect(exercise).toThrow(expectedError)
+    })
+  })
+
+  describe.each([
+    {
+      boundary: "ContractRegistryBundle",
+      exercise: () =>
+        new ContractRegistryBundle().registerComponent(
+          "shared",
+          "parameters",
+          "TrackingTokenParameter",
+          {
+            name: "tracking_token",
+            in: "query",
+            example: "actual-opaque-value",
+          }
+        ),
+      expectedError: "unsafe example",
+    },
+    {
+      boundary: "ContractRegistryBundle",
+      exercise: () =>
+        new ContractRegistryBundle().registerComponent(
+          "shared",
+          "headers",
+          "authorization",
+          { example: "redacted" }
+        ),
+      expectedError: "unsafe example",
+    },
+    {
+      boundary: "validateDocument",
+      exercise: () => {
+        const document = structuredClone(buildContracts()[0].document)
+        document.components.parameters.TrackingTokenParameter = {
+          name: "tracking_token",
+          in: "query",
+          example: "actual-opaque-value",
+        }
+        validateDocument("store", document)
+      },
+      expectedError: "Sensitive OpenAPI example",
+    },
+    {
+      boundary: "validateDocument",
+      exercise: () => {
+        const document = structuredClone(buildContracts()[0].document)
+        document.components.headers.authorization = { example: "redacted" }
+        validateDocument("store", document)
+      },
+      expectedError: "Sensitive OpenAPI example",
+    },
+  ])("rejects named components at $boundary", ({ exercise, expectedError }) => {
+    expect(exercise).toThrow(expectedError)
+  })
+
+  describe.each([
+    {
+      label: "requestBody content schema property",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                tracking_token: {
+                  type: "string",
+                  example: "actual-opaque-value",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      label: "response content schema property",
+      responseContent: {
+        "application/json": {
+          schema: {
+            type: "object",
+            properties: {
+              authorization: {
+                type: "string",
+                examples: ["redacted"],
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      label: "requestBody dependent and pattern schemas",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              dependentSchemas: {
+                metadata: {
+                  patternProperties: {
+                    "^token$": {
+                      type: "object",
+                      properties: {
+                        tracking_token: {
+                          type: "string",
+                          example: "actual-opaque-value",
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      label: "response content and unevaluated schemas",
+      responseContent: {
+        "application/json": {
+          schema: {
+            type: "object",
+            contentSchema: {
+              type: "object",
+              unevaluatedProperties: {
+                type: "object",
+                properties: {
+                  authorization: {
+                    type: "string",
+                    example: "redacted",
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      label: "requestBody defs schema",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "array",
+              items: { $ref: "#/$defs/Item" },
+              $defs: {
+                Item: {
+                  type: "object",
+                  properties: {
+                    tracking_token: {
+                      type: "string",
+                      example: "actual-opaque-value",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      label: "response content and unevaluated items",
+      responseContent: {
+        "application/json": {
+          schema: {
+            type: "array",
+            unevaluatedItems: {
+              type: "object",
+              properties: {
+                authorization: {
+                  type: "string",
+                  example: "redacted",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  ])("rejects sensitive properties in $label", ({ requestBody, responseContent }) => {
+    it.each([
+      {
+        boundary: "ContractRegistryBundle",
+        exercise: () => {
+          const operation = syntheticOperation()
+          if (requestBody) {
+            Reflect.set(operation, "requestBody", requestBody)
+          }
+          if (responseContent) {
+            Reflect.set(operation.responses["200"], "content", responseContent)
+          }
+          new ContractRegistryBundle().registerOperation(operation)
+        },
+        expectedError: "unsafe example",
+      },
+      {
+        boundary: "validateDocument",
+        exercise: () => {
+          const document = structuredClone(buildContracts()[0].document)
+          document.paths["/store/synthetic"] = {
+            get: {
+              operationId: "storeSyntheticSchemaExample",
+              ...(requestBody ? { requestBody } : {}),
+              responses: {
+                "200": {
+                  description: "Synthetic response",
+                  ...(responseContent ? { content: responseContent } : {}),
+                },
+              },
+            },
+          }
+          validateDocument("store", document)
+        },
+        expectedError: "Sensitive OpenAPI example",
+      },
+    ])("rejects at $boundary", ({ exercise, expectedError }) => {
+      expect(exercise).toThrow(expectedError)
+    })
+  })
+
+  describe.each([
+    {
+      label: "safe status parameter example",
+      parameter: { name: "status", in: "query", example: "pending" },
+    },
+    {
+      label: "safe fields parameter examples array",
+      parameter: { name: "fields", in: "query", examples: ["id,title"] },
+    },
+    {
+      label: "safe examples map name",
+      parameter: {
+        name: "status",
+        in: "query",
+        examples: { authorization: { value: "redacted" } },
+      },
+    },
+    {
+      label: "arbitrary name outside a parameter",
+      responseContentExample: {
+        metadata: { name: "tracking_token", example: "opaque-value" },
+      },
+    },
+  ])("accepts non-semantic names in $label", ({ parameter, responseContentExample }) => {
+    it("accepts at both boundaries", () => {
+      expect(() =>
+        new ContractRegistryBundle().registerOperation(
+          syntheticOperation({
+            parameters: parameter ? [parameter] : [],
+            responses: {
+              "200": {
+                description: "Synthetic response",
+                content: responseContentExample
+                  ? { "application/json": { example: responseContentExample } }
+                  : undefined,
+              },
+            },
+          })
+        )
+      ).not.toThrow()
+
+      const document = structuredClone(buildContracts()[0].document)
+      document.paths["/store/synthetic"] = {
+        get: {
+          operationId: "storeSyntheticSafeNamedExample",
+          parameters: parameter ? [parameter] : [],
+          responses: {
+            "200": {
+              description: "Synthetic response",
+              content: responseContentExample
+                ? { "application/json": { example: responseContentExample } }
+                : undefined,
+            },
+          },
+        },
+      }
+      expect(() => validateDocument("store", document)).not.toThrow()
+    })
+  })
+
   it("shares only direction-safe Zod schemas", () => {
     const registry = new ContractRegistryBundle()
     const shared = z.strictObject({ value: z.string() })

@@ -3,6 +3,7 @@ import type {
   OpenApiDocument,
   OperationMetadata,
 } from "../contracts"
+import { assertSafeExamples } from "../safe-examples"
 
 const HTTP_METHOD_KEYS = new Set([
   "get",
@@ -29,16 +30,6 @@ const SENSITIVE_PATTERNS = [
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i,
   /\b\d{16,}\b/,
 ]
-
-const SENSITIVE_EXAMPLE_KEY_SEGMENTS = /(?:^|_)(?:id|ids|identifier|identifiers|provider|address|street|city|postal(?:_code)?|zip|email|phone|telephone|mobile|cpf|cnpj|tax(?:_id|_number)?|document(?:_id|_number)?|authorization|token|secret|signature|api_key|client_secret|pix|qr_code|copy_paste)(?:_|$)/
-
-function isSensitiveExampleKey(key: string): boolean {
-  const normalized = key
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .replace(/[^A-Za-z0-9]+/g, "_")
-    .toLowerCase()
-  return SENSITIVE_EXAMPLE_KEY_SEGMENTS.test(normalized)
-}
 
 function resolveJsonPointer(document: unknown, reference: string): unknown {
   if (!reference.startsWith("#/")) {
@@ -72,56 +63,6 @@ function walk(
     for (const [childKey, child] of Object.entries(value)) {
       walk(child, visitor, childKey, value)
     }
-  }
-}
-
-function assertSafeExamples(
-  value: unknown,
-  insideExample = false,
-  schemaPropertyName?: string
-): void {
-  if (typeof value === "string" && insideExample) {
-    if (SENSITIVE_PATTERNS.some((pattern) => pattern.test(value))) {
-      throw new Error("Sensitive OpenAPI example detected")
-    }
-    return
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      assertSafeExamples(item, insideExample, schemaPropertyName)
-    }
-    return
-  }
-  if (!value || typeof value !== "object") {
-    return
-  }
-  for (const [key, child] of Object.entries(value)) {
-    const childInsideExample = insideExample || /^examples?$/i.test(key)
-    if (
-      (!insideExample &&
-        /^examples?$/i.test(key) &&
-        schemaPropertyName !== undefined &&
-        isSensitiveExampleKey(schemaPropertyName)) ||
-      (insideExample &&
-        isSensitiveExampleKey(key) &&
-        child !== null &&
-        child !== undefined)
-    ) {
-      throw new Error("Sensitive OpenAPI example detected")
-    }
-    if (
-      !insideExample &&
-      key === "properties" &&
-      child &&
-      typeof child === "object" &&
-      !Array.isArray(child)
-    ) {
-      for (const [propertyName, propertySchema] of Object.entries(child)) {
-        assertSafeExamples(propertySchema, false, propertyName)
-      }
-      continue
-    }
-    assertSafeExamples(child, childInsideExample, schemaPropertyName)
   }
 }
 
@@ -165,7 +106,12 @@ export function validateDocument(
   }
 
   validateSurfacePartition(surface, document.paths)
-  assertSafeExamples(document)
+  assertSafeExamples(document, {
+    isUnsafeExampleValue: (value) =>
+      SENSITIVE_PATTERNS.some((pattern) => pattern.test(value)),
+    errorMessage: "Sensitive OpenAPI example detected",
+    rootLocation: "document",
+  })
   const operationIds: string[] = []
   const securitySchemes = new Set(
     Object.keys(document.components.securitySchemes ?? {})

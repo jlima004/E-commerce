@@ -8,7 +8,7 @@ status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
 stopped_at: Milestone v1.0 archived, tagged and released / awaiting next milestone decision
 last_updated: "2026-08-02"
 last_activity: 2026-08-02
-last_activity_desc: Completed quick task 260802-q1o for PR 20 API Docs property-level examples
+last_activity_desc: Completed quick task 260802-u9e for PR 20 API Docs named-example P2
 progress:
   total_phases: 13
   completed_phases: 13
@@ -170,7 +170,7 @@ Produção: saudável
 Phase: none — Milestone v1.0 complete / closed / archived / tagged / released
 Plan: —; 62/62 milestone plans complete
 Status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
-Last activity: 2026-08-02 - Completed quick task 260802-q1o for PR 20 API Docs property-level examples
+Last activity: 2026-08-02 - Completed quick task 260802-u9e for PR 20 API Docs named-example P2
 Next: human decision on the next milestone
 
 Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived, tagged and released; next milestone and Phase 13 remain blocked
@@ -350,6 +350,7 @@ rollback, or move or recreate tag `v1.0`.
 
 | Date | Task | Summary |
 |------|------|---------|
+| 2026-08-02 | 260802-u9e-corrigir-p2-da-pr-20-preservar-nomes-sen | Preserved semantic names for parameters, headers, components and nested schema vocabularies in both API Docs safety gates; paired regressions pass 205/205, OpenAPI/lint/build pass, generated artifacts unchanged; publish/review follow-through authorized and tracked in the quick SUMMARY. |
 | 2026-08-02 | 260802-q1o-corrigir-p2-da-pr-20-rejeitando-exemplos | Preserved schema-property ownership through `example`/`examples` in both API Docs security gates; paired regressions cover singular, array, map and nested forms while safe status examples remain accepted; artifacts unchanged. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R4 | Moved stale/reclaim policy to pure `checkout-completion/staleness.ts`; OperationalAlert consumes it; money path no longer imports alert module; focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R3 | Restricted OperationalAlert Admin reads to user actors via `requireAdminActor`; API-key actors rejected; focused HTTP/Unit + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
