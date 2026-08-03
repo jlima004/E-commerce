@@ -851,6 +851,293 @@ describe("OpenAPI foundation generation", () => {
     })
   })
 
+  describe.each([
+    {
+      componentName: "SensitiveTrackingTokenDescendantExample",
+      label: "tracking_token.properties.value.example",
+      schema: {
+        type: "object",
+        properties: {
+          tracking_token: {
+            type: "object",
+            properties: {
+              value: {
+                type: "string",
+                example: "synthetic-reference",
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveTrackingTokenCamelDescendantExamples",
+      label: "trackingToken.properties.value.examples array",
+      schema: {
+        type: "object",
+        properties: {
+          trackingToken: {
+            type: "object",
+            properties: {
+              value: {
+                type: "string",
+                examples: ["synthetic-reference", "synthetic-reference-2"],
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveTrackingTokenDescendantExamplesMap",
+      label: "tracking_token.properties.value.examples map",
+      schema: {
+        type: "object",
+        properties: {
+          tracking_token: {
+            type: "object",
+            properties: {
+              value: {
+                type: "string",
+                examples: {
+                  publicSample: { value: "synthetic-reference" },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveTrackingTokenDeepDescendantExample",
+      label: "tracking_token with a deeper descendant example",
+      schema: {
+        type: "object",
+        properties: {
+          tracking_token: {
+            type: "object",
+            properties: {
+              envelope: {
+                type: "object",
+                properties: {
+                  value: {
+                    type: "string",
+                    example: "synthetic-reference",
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveProviderOrderPatternExample",
+      label: "patternProperties provider_order_id direct example",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^provider_order_id$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveTrackingPatternExamples",
+      label: "patternProperties trackingToken direct examples",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^trackingToken$": {
+            type: "string",
+            examples: ["opaque-reference", "opaque-reference-2"],
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveProviderOrderPatternDescendantExample",
+      label: "sensitive patternProperties descendant example",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^provider_order_id$": {
+            type: "object",
+            properties: {
+              value: {
+                type: "string",
+                example: "opaque-reference",
+              },
+            },
+          },
+        },
+      },
+    },
+  ])("rejects nested sensitive examples at both boundaries: $label", ({
+    componentName,
+    schema,
+  }) => {
+    it.each([
+      {
+        boundary: "ContractRegistryBundle",
+        exercise: () => {
+          const registry = new ContractRegistryBundle()
+          Reflect.apply(
+            registry.registerComponent,
+            registry,
+            ["shared", "schemas", componentName, schema]
+          )
+        },
+        expectedError: "unsafe example",
+      },
+      {
+        boundary: "validateDocument",
+        exercise: () => {
+          const document = structuredClone(buildContracts()[0].document)
+          Object.defineProperty(document.components.schemas, componentName, {
+            configurable: true,
+            enumerable: true,
+            value: schema,
+          })
+          validateDocument("store", document)
+        },
+        expectedError: "Sensitive OpenAPI example",
+      },
+    ])("rejects at $boundary", ({ exercise, expectedError }) => {
+      expect(exercise).toThrow(expectedError)
+    })
+  })
+
+  describe.each([
+    {
+      componentName: "SafeStatusDescendantExample",
+      label: "status.properties.value.example",
+      schema: {
+        type: "object",
+        properties: {
+          status: {
+            type: "object",
+            properties: {
+              value: {
+                type: "string",
+                example: "pending",
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      componentName: "SafeMetadataStatusExamples",
+      label: "metadata.properties.status.examples",
+      schema: {
+        type: "object",
+        properties: {
+          metadata: {
+            type: "object",
+            properties: {
+              status: {
+                type: "string",
+                examples: ["pending", "complete"],
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      componentName: "SafeStatusPatternExample",
+      label: "patternProperties ^status$ example",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^status$": {
+            type: "string",
+            example: "pending",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SafePublicFieldPatternExamples",
+      label: "patternProperties ^publicField$ examples",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^publicField$": {
+            type: "string",
+            examples: ["public"],
+          },
+        },
+      },
+    },
+    {
+      componentName: "SafeSiblingOutsideSensitiveSubtree",
+      label: "sibling outside the sensitive subtree",
+      schema: {
+        type: "object",
+        properties: {
+          tracking_token: {
+            type: "object",
+            properties: {
+              value: { type: "string" },
+            },
+          },
+          publicField: {
+            type: "string",
+            example: "public",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SafeMetacharacterPatternExample",
+      label: "pattern with metacharacters is not a semantic name",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^.*$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+  ])("accepts safe nested examples at both boundaries: $label", ({
+    componentName,
+    schema,
+  }) => {
+    it.each([
+      {
+        boundary: "ContractRegistryBundle",
+        exercise: () => {
+          const registry = new ContractRegistryBundle()
+          Reflect.apply(
+            registry.registerComponent,
+            registry,
+            ["shared", "schemas", componentName, schema]
+          )
+        },
+      },
+      {
+        boundary: "validateDocument",
+        exercise: () => {
+          const document = structuredClone(buildContracts()[0].document)
+          Object.defineProperty(document.components.schemas, componentName, {
+            configurable: true,
+            enumerable: true,
+            value: schema,
+          })
+          validateDocument("store", document)
+        },
+      },
+    ])("accepts at $boundary", ({ exercise }) => {
+      expect(exercise).not.toThrow()
+    })
+  })
+
   it("shares only direction-safe Zod schemas", () => {
     const registry = new ContractRegistryBundle()
     const shared = z.strictObject({ value: z.string() })

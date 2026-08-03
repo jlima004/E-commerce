@@ -34,12 +34,14 @@ type TraversalLocation =
   | "schemaMap"
   | "schema"
   | "propertyMap"
+  | "patternPropertyMap"
 
 type TraversalState = {
   location: TraversalLocation
   insideExample: boolean
   exampleMapContainer?: boolean
   semanticName?: string
+  sensitiveAncestor: boolean
 }
 
 export type SafeExampleRoot =
@@ -89,6 +91,39 @@ function isSensitiveExampleKey(key: string): boolean {
   )
 }
 
+function isSensitiveSemanticName(name: string | undefined): boolean {
+  return name !== undefined && isSensitiveExampleKey(name)
+}
+
+function normalizePatternPropertyName(pattern: string): string | undefined {
+  const normalized = pattern.replace(/^\^/, "").replace(/\$$/, "")
+  if (!normalized) {
+    return undefined
+  }
+
+  const regexMetaCharacters = new Set([
+    "\\",
+    "^",
+    "$",
+    ".",
+    "*",
+    "+",
+    "?",
+    "(",
+    ")",
+    "[",
+    "]",
+    "{",
+    "}",
+    "|",
+  ])
+  if ([...normalized].some((character) => regexMetaCharacters.has(character))) {
+    return undefined
+  }
+
+  return normalized
+}
+
 function componentRootLocation(type: string): SafeExampleRoot {
   if (type === "parameters") {
     return "parameter"
@@ -113,13 +148,18 @@ function nextState(
   key: string,
   child: unknown,
   semanticName: string | undefined,
-  childInsideExample: boolean
+  childInsideExample: boolean,
+  sensitiveAncestor: boolean
 ): TraversalState {
+  const inheritedSensitiveAncestor =
+    state.sensitiveAncestor || sensitiveAncestor
+
   if (state.insideExample) {
     return {
       location: "unknown",
       insideExample: childInsideExample,
       semanticName,
+      sensitiveAncestor: inheritedSensitiveAncestor,
     }
   }
 
@@ -129,55 +169,108 @@ function nextState(
       insideExample: false,
       exampleMapContainer: true,
       semanticName,
+      sensitiveAncestor: inheritedSensitiveAncestor,
     }
   }
 
   switch (state.location) {
     case "document":
       if (key === "components") {
-        return { location: "components", insideExample: childInsideExample }
+        return {
+          location: "components",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       if (key === "paths") {
-        return { location: "pathMap", insideExample: childInsideExample }
+        return {
+          location: "pathMap",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       break
     case "components":
       if (key === "parameters") {
-        return { location: "parameterMap", insideExample: childInsideExample }
+        return {
+          location: "parameterMap",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       if (key === "headers") {
-        return { location: "headerMap", insideExample: childInsideExample }
+        return {
+          location: "headerMap",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       if (key === "responses") {
-        return { location: "responseMap", insideExample: childInsideExample }
+        return {
+          location: "responseMap",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       if (key === "requestBodies") {
-        return { location: "requestBodyMap", insideExample: childInsideExample }
+        return {
+          location: "requestBodyMap",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       if (key === "schemas") {
-        return { location: "schemaMap", insideExample: childInsideExample }
+        return {
+          location: "schemaMap",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       break
     case "pathMap":
-      return { location: "pathItem", insideExample: childInsideExample }
+      return {
+        location: "pathItem",
+        insideExample: childInsideExample,
+        sensitiveAncestor: inheritedSensitiveAncestor,
+      }
     case "pathItem":
       if (HTTP_METHOD_KEYS.has(key)) {
-        return { location: "operation", insideExample: childInsideExample }
+        return {
+          location: "operation",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       if (key === "parameters") {
-        return { location: "parameterArray", insideExample: childInsideExample }
+        return {
+          location: "parameterArray",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       break
     case "operation":
     case "operationMetadata":
       if (key === "parameters") {
-        return { location: "parameterArray", insideExample: childInsideExample }
+        return {
+          location: "parameterArray",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       if (key === "responses") {
-        return { location: "responseMap", insideExample: childInsideExample }
+        return {
+          location: "responseMap",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       if (key === "requestBody") {
-        return { location: "requestBody", insideExample: childInsideExample }
+        return {
+          location: "requestBody",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       break
     case "parameterArray":
@@ -186,6 +279,9 @@ function nextState(
         location: "parameter",
         insideExample: childInsideExample,
         semanticName: parameterName(child),
+        sensitiveAncestor:
+          inheritedSensitiveAncestor ||
+          isSensitiveSemanticName(parameterName(child)),
       }
     case "parameter":
       if (key === "schema") {
@@ -193,17 +289,30 @@ function nextState(
           location: "schema",
           insideExample: childInsideExample,
           semanticName,
+          sensitiveAncestor: inheritedSensitiveAncestor,
         }
       }
       break
     case "responseMap":
-      return { location: "response", insideExample: childInsideExample }
+      return {
+        location: "response",
+        insideExample: childInsideExample,
+        sensitiveAncestor: inheritedSensitiveAncestor,
+      }
     case "response":
       if (key === "headers") {
-        return { location: "headerMap", insideExample: childInsideExample }
+        return {
+          location: "headerMap",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       if (key === "content") {
-        return { location: "contentMap", insideExample: childInsideExample }
+        return {
+          location: "contentMap",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       break
     case "headerMap":
@@ -211,6 +320,8 @@ function nextState(
         location: "header",
         insideExample: childInsideExample,
         semanticName: key,
+        sensitiveAncestor:
+          inheritedSensitiveAncestor || isSensitiveSemanticName(key),
       }
     case "header":
       if (key === "schema") {
@@ -218,24 +329,38 @@ function nextState(
           location: "schema",
           insideExample: childInsideExample,
           semanticName,
+          sensitiveAncestor: inheritedSensitiveAncestor,
         }
       }
       break
     case "requestBodyMap":
-      return { location: "requestBody", insideExample: childInsideExample }
+      return {
+        location: "requestBody",
+        insideExample: childInsideExample,
+        sensitiveAncestor: inheritedSensitiveAncestor,
+      }
     case "requestBody":
       if (key === "content") {
-        return { location: "contentMap", insideExample: childInsideExample }
+        return {
+          location: "contentMap",
+          insideExample: childInsideExample,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
       break
     case "contentMap":
-      return { location: "mediaType", insideExample: childInsideExample }
+      return {
+        location: "mediaType",
+        insideExample: childInsideExample,
+        sensitiveAncestor: inheritedSensitiveAncestor,
+      }
     case "mediaType":
       if (key === "schema") {
         return {
           location: "schema",
           insideExample: childInsideExample,
           semanticName,
+          sensitiveAncestor: inheritedSensitiveAncestor,
         }
       }
       break
@@ -244,20 +369,31 @@ function nextState(
         location: "schema",
         insideExample: childInsideExample,
         semanticName,
+        sensitiveAncestor: inheritedSensitiveAncestor,
       }
     case "schema":
       if (key === "properties") {
-        return { location: "propertyMap", insideExample: childInsideExample }
+        return {
+          location: "propertyMap",
+          insideExample: childInsideExample,
+          semanticName,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
       }
-      if (
-        key === "$defs" ||
-        key === "patternProperties" ||
-        key === "dependentSchemas"
-      ) {
+      if (key === "patternProperties") {
+        return {
+          location: "patternPropertyMap",
+          insideExample: childInsideExample,
+          semanticName,
+          sensitiveAncestor: inheritedSensitiveAncestor,
+        }
+      }
+      if (key === "$defs" || key === "dependentSchemas") {
         return {
           location: "schemaMap",
           insideExample: childInsideExample,
           semanticName,
+          sensitiveAncestor: inheritedSensitiveAncestor,
         }
       }
       if (
@@ -281,6 +417,7 @@ function nextState(
           location: "schema",
           insideExample: childInsideExample,
           semanticName,
+          sensitiveAncestor: inheritedSensitiveAncestor,
         }
       }
       break
@@ -289,7 +426,20 @@ function nextState(
         location: "schema",
         insideExample: childInsideExample,
         semanticName: key,
+        sensitiveAncestor:
+          inheritedSensitiveAncestor || isSensitiveSemanticName(key),
       }
+    case "patternPropertyMap": {
+      const normalizedPattern = normalizePatternPropertyName(key)
+      return {
+        location: "schema",
+        insideExample: childInsideExample,
+        semanticName: normalizedPattern,
+        sensitiveAncestor:
+          inheritedSensitiveAncestor ||
+          isSensitiveSemanticName(normalizedPattern),
+      }
+    }
     default:
       break
   }
@@ -298,6 +448,7 @@ function nextState(
     location: "unknown",
     insideExample: childInsideExample,
     semanticName,
+    sensitiveAncestor: inheritedSensitiveAncestor,
   }
 }
 
@@ -322,6 +473,9 @@ export function assertSafeExamples(
                 location: "parameter",
                 insideExample: state.insideExample,
                 semanticName: parameterName(item),
+                sensitiveAncestor:
+                  state.sensitiveAncestor ||
+                  isSensitiveSemanticName(parameterName(item)),
               }
             : state
         )
@@ -338,6 +492,7 @@ export function assertSafeExamples(
         visit(example, {
           location: "unknown",
           insideExample: true,
+          sensitiveAncestor: state.sensitiveAncestor,
         })
       }
       return
@@ -347,6 +502,8 @@ export function assertSafeExamples(
       state.location === "parameter"
         ? parameterName(current) ?? state.semanticName
         : state.semanticName
+    const currentSensitiveAncestor =
+      state.sensitiveAncestor || isSensitiveSemanticName(currentSemanticName)
 
     for (const [key, child] of Object.entries(current)) {
       const isExampleKey = /^examples?$/i.test(key)
@@ -355,8 +512,9 @@ export function assertSafeExamples(
       if (
         (!state.insideExample &&
           isExampleKey &&
-          currentSemanticName !== undefined &&
-          isSensitiveExampleKey(currentSemanticName)) ||
+          child !== null &&
+          child !== undefined &&
+          currentSensitiveAncestor) ||
         (state.insideExample &&
           isSensitiveExampleKey(key) &&
           child !== null &&
@@ -372,7 +530,8 @@ export function assertSafeExamples(
           key,
           child,
           currentSemanticName,
-          childInsideExample
+          childInsideExample,
+          currentSensitiveAncestor
         )
       )
     }
@@ -382,6 +541,7 @@ export function assertSafeExamples(
     location: options.rootLocation,
     insideExample: false,
     semanticName: options.rootSemanticName,
+    sensitiveAncestor: isSensitiveSemanticName(options.rootSemanticName),
   })
 }
 
