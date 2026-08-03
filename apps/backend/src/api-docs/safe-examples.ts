@@ -96,6 +96,25 @@ function isSensitiveSemanticName(name: string | undefined): boolean {
   return name !== undefined && isSensitiveExampleKey(name)
 }
 
+function decodeEscapedSemanticSeparators(pattern: string): string {
+  const separatorMap: Record<string, string> = {
+    "\\x2d": "-",
+    "\\x2e": ".",
+    "\\x5f": "_",
+    "\\u002d": "-",
+    "\\u002e": ".",
+    "\\u005f": "_",
+    "\\-": "-",
+    "\\.": ".",
+    "\\_": "_",
+  }
+
+  return pattern.replace(
+    /\\(?:x(?:2d|2e|5f)|u(?:002d|002e|005f)|[._-])/gi,
+    (escape) => separatorMap[escape.toLowerCase()] ?? escape
+  )
+}
+
 function normalizePatternPropertyName(pattern: string): string | undefined {
   let normalized = pattern.replace(/^\^/, "").replace(/\$$/, "")
   if (!normalized) {
@@ -137,7 +156,7 @@ function isSensitivePatternPropertyName(
     return true
   }
 
-  const patternWithSemanticSeparators = pattern.replace(
+  const patternWithSemanticSeparators = decodeEscapedSemanticSeparators(pattern).replace(
     /\[(?:\\.|[^\]])*\]/g,
     (characterClass) => {
       const contents = characterClass
