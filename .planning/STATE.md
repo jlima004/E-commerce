@@ -170,7 +170,7 @@ Produção: saudável
 Phase: none — Milestone v1.0 complete / closed / archived / tagged / released
 Plan: —; 62/62 milestone plans complete
 Status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
-Last activity: 2026-08-02 - Completed quick task 260802-u9e for PR 20 API Docs named-example P2
+Last activity: 2026-08-03 - Completed quick task 260803-nla for PR 20 nested-lookaround P2; API Docs 304/304, full unit 1257/1257, push completed in c775842
 Next: human decision on the next milestone
 
 Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived, tagged and released; next milestone and Phase 13 remain blocked
