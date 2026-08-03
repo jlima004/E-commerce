@@ -115,9 +115,17 @@ interface LookaroundStrippingResult {
   positiveAssertions: string[]
 }
 
+/** Max nesting of retained positive lookarounds; exceeding fails closed. */
+const MAX_LOOKAROUND_NESTING_DEPTH = 4
+
 function stripRegexLookaroundAssertions(
-  pattern: string
+  pattern: string,
+  depth = 0
 ): LookaroundStrippingResult | undefined {
+  if (depth > MAX_LOOKAROUND_NESTING_DEPTH) {
+    return undefined
+  }
+
   let result = ""
   const positiveAssertions: string[] = []
 
@@ -136,7 +144,7 @@ function stripRegexLookaroundAssertions(
       continue
     }
 
-    let depth = 0
+    let groupDepth = 0
     let inCharacterClass = false
     let closed = false
     for (let cursor = index; cursor < pattern.length; cursor += 1) {
@@ -157,13 +165,25 @@ function stripRegexLookaroundAssertions(
         continue
       }
       if (character === "(") {
-        depth += 1
+        groupDepth += 1
       } else if (character === ")") {
-        depth -= 1
-        if (depth === 0) {
+        groupDepth -= 1
+        if (groupDepth === 0) {
           if (positiveAssertionPrefixLength > 0) {
+            const assertionBody = pattern.slice(
+              index + positiveAssertionPrefixLength,
+              cursor
+            )
+            const nested = stripRegexLookaroundAssertions(
+              assertionBody,
+              depth + 1
+            )
+            if (nested === undefined) {
+              return undefined
+            }
             positiveAssertions.push(
-              pattern.slice(index + positiveAssertionPrefixLength, cursor)
+              nested.pattern,
+              ...nested.positiveAssertions
             )
           }
           index = cursor

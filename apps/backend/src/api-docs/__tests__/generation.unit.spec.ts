@@ -1251,6 +1251,112 @@ describe("OpenAPI foundation generation", () => {
       },
     },
     {
+      componentName: "SensitiveNestedLookaheadTrackingPatternExample",
+      label: "nested positive lookahead reconstructing tracking_token pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(?=tracking_(?=token)token$).+$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveNestedLookaheadApiKeyPatternExample",
+      label: "nested positive lookahead reconstructing api_key pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(?=api_(?=key)key$).+$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveDeeperNestedLookaheadTrackingPatternExample",
+      label: "deeper nested positive lookahead reconstructing tracking_token",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(?=tracking_(?=tok(?=en)en)token$).+$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveNestedLookbehindTrackingPatternExample",
+      label: "nested positive lookbehind reconstructing tracking_token pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(?<=tracking_(?=token)token).+$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveMalformedNestedLookaheadPatternExample",
+      label: "unclosed nested positive lookahead fails closed",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(?=tracking_(?=token)token$.+$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveNestedLookaheadDepthLimitPatternExample",
+      label: "five nested positive lookaheads exceed depth limit",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(?=(?=(?=(?=(?=status)status)status)status)status).+$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveNestedLookaheadTrackingPatternExamples",
+      label: "nested positive lookahead tracking_token examples array",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(?=tracking_(?=token)token$).+$": {
+            type: "string",
+            examples: ["opaque-reference", "opaque-reference-2"],
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveNestedLookaheadApiKeyPatternExamplesMap",
+      label: "nested positive lookahead api_key examples map",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(?=api_(?=key)key$).+$": {
+            type: "string",
+            examples: {
+              publicSample: { value: "opaque-reference" },
+            },
+          },
+        },
+      },
+    },
+    {
       componentName: "SensitiveTrackingPatternExamples",
       label: "patternProperties trackingToken direct examples",
       schema: {
@@ -1493,6 +1599,32 @@ describe("OpenAPI foundation generation", () => {
           status: {
             type: "string",
             example: "pending",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SafeNestedLookaheadPublicStatusPatternExample",
+      label: "nested positive lookahead reconstructing public_status pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(?=public_(?=status)status$).+$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SafeNestedLookaheadDisplayNamePatternExample",
+      label: "nested positive lookahead reconstructing display_name pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(?=display_(?=name)name$).+$": {
+            type: "string",
+            example: "opaque-reference",
           },
         },
       },
