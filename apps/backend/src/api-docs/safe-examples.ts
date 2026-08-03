@@ -137,12 +137,24 @@ function isSensitivePatternPropertyName(
     return true
   }
 
-  const literalTokens = pattern
-    .replace(/\[(?:\\.|[^\]])*\]/g, "")
+  const patternWithSemanticSeparators = pattern.replace(
+    /\[(?:\\.|[^\]])*\]/g,
+    (characterClass) => {
+      const contents = characterClass
+        .slice(1, -1)
+        .replace(/\\(.)/g, "$1")
+      return /^[._-]+$/.test(contents) ? "_" : ""
+    }
+  )
+  const literalTokens = patternWithSemanticSeparators
     .replace(/\(\?(?:P<|<)[^>]*>/g, "(")
     .replace(/\\k<[^>]*>/g, "")
     .match(/[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*/g) ?? []
-  return literalTokens.some((token) => isSensitiveSemanticName(token))
+  return (
+    literalTokens.some((token) => isSensitiveSemanticName(token)) ||
+    (literalTokens.length > 1 &&
+      isSensitiveSemanticName(literalTokens.join("_")))
+  )
 }
 
 function componentRootLocation(type: string): SafeExampleRoot {

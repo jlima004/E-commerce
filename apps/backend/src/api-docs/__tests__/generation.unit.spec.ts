@@ -997,6 +997,45 @@ describe("OpenAPI foundation generation", () => {
       },
     },
     {
+      componentName: "SensitiveBroadApiKeyPatternExample",
+      label: "optional separator in a broad api_key pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^.*api[._-]?key.*$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveEscapedProviderOrderPatternExample",
+      label: "escaped separator class in provider_order_id pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^provider[\\._-]order[\\._-]id$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveBroadProviderOrderPatternExample",
+      label: "broad provider_order_id pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^.*provider[_-]order[_-]id.*$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
       componentName: "SensitiveTrackingPatternExamples",
       label: "patternProperties trackingToken direct examples",
       schema: {
