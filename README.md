@@ -278,6 +278,26 @@ desenvolvimento, a ausência desses valores resulta na versão `dev`.
 Readiness consulta PostgreSQL e Redis com limites de tempo. Se uma dependência
 obrigatória não estiver pronta, a rota retorna `503` com resposta sanitizada.
 
+## Contratos OpenAPI
+
+O backend mantém três contratos OpenAPI `3.1.2` separados e versionados:
+
+| Superfície | Artefato | Endpoint quando habilitado |
+|---|---|---|
+| Store | `store.openapi.json` | `GET /openapi/store.json` |
+| Admin | `admin.openapi.json` | `GET /openapi/admin.json` |
+| Webhooks | `webhooks.openapi.json` | `GET /openapi/webhooks.json` |
+
+`GET /docs` serve uma Swagger UI com assets locais e sem execução de operações.
+Todas as rotas de documentação ficam desabilitadas por padrão em produção;
+Admin e Webhooks também exigem autenticação de usuário quando habilitados.
+
+O registry TypeScript em `apps/backend/src/api-docs/` é a autoridade. Não edite
+os JSON gerados manualmente. Use `npm run openapi:generate -- --surface <alvo>`
+somente para atualizar artefatos, revise o diff e execute `npm run openapi:check`
+em checkout limpo. A manutenção está em [`docs/openapi/README.md`](docs/openapi/README.md)
+e a operação em [`ops/API_DOCS.md`](ops/API_DOCS.md).
+
 ## Testes
 
 A estratégia de testes cobre:
@@ -324,6 +344,8 @@ portável VPS/PM2/Nginx.
 | [`docs/PRD_Backend_v1.1.md`](docs/PRD_Backend_v1.1.md) | Requisitos de produto do backend |
 | [`docs/SRS_v1.5.md`](docs/SRS_v1.5.md) | Especificação de software |
 | [`docs/DB_MODEL_v1.21.md`](docs/DB_MODEL_v1.21.md) | Modelo de dados |
+| [`docs/openapi/README.md`](docs/openapi/README.md) | Manutenção dos contratos OpenAPI |
+| [`ops/API_DOCS.md`](ops/API_DOCS.md) | Exposição, segurança e rollback da documentação |
 | [`AGENTS.md`](AGENTS.md) | Contexto para desenvolvimento assistido |
 | [GitHub Release `v1.0`](https://github.com/jlima004/E-commerce/releases/tag/v1.0) | Versão publicada |
 

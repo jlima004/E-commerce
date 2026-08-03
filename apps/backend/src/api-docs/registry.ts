@@ -11,6 +11,10 @@ import {
 import { registerStoreContract } from "./operations/store"
 import { registerAdminContract } from "./operations/admin"
 import { registerWebhookContract } from "./operations/webhooks"
+import {
+  assertSafeExamples,
+  componentRootLocation,
+} from "./safe-examples"
 
 extendZodWithOpenApi(z)
 
@@ -37,6 +41,12 @@ const SENSITIVE_EXAMPLE_PATTERNS = [
   /\bredis(?:s)?:\/\//i,
   /\bpi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+/i,
   /\b(?:cpf|cnpj)\b/i,
+  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
+  /\b(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?9?\d{4}[-\s]?\d{4}\b/,
+  /\b000201(?:\d|[A-Z]){12,}\b/i,
+  /\b[a-z][a-z0-9]{1,11}_[A-Za-z0-9]{12,}\b/i,
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i,
+  /\b\d{16,}\b/,
 ]
 
 type ZodInternals = {
@@ -157,23 +167,6 @@ function assertRepresentable(value: unknown, seen = new Set<object>()): void {
   seen.delete(value)
 }
 
-function assertSafeExamples(value: unknown, insideExample = false): void {
-  if (typeof value === "string" && insideExample) {
-    if (SENSITIVE_EXAMPLE_PATTERNS.some((pattern) => pattern.test(value))) {
-      throw new Error("OpenAPI metadata contains an unsafe example")
-    }
-    return
-  }
-
-  if (!value || typeof value !== "object" || value instanceof ZodType) {
-    return
-  }
-
-  for (const [key, child] of Object.entries(value)) {
-    assertSafeExamples(child, insideExample || /^examples?$/i.test(key))
-  }
-}
-
 function requireNonEmpty(value: string, field: string): void {
   if (!value.trim()) {
     throw new Error(`Operation metadata is missing ${field}`)
@@ -222,7 +215,12 @@ function validateOperationMetadata(
   }
 
   assertRepresentable(operation)
-  assertSafeExamples(operation)
+  assertSafeExamples(operation, {
+    isUnsafeExampleValue: (value) =>
+      SENSITIVE_EXAMPLE_PATTERNS.some((pattern) => pattern.test(value)),
+    errorMessage: "OpenAPI metadata contains an unsafe example",
+    rootLocation: "operationMetadata",
+  })
 }
 
 function mutableSecurityRequirements(
@@ -279,7 +277,16 @@ export class ContractRegistryBundle {
     }
 
     assertRepresentable(component)
-    assertSafeExamples(component)
+    assertSafeExamples(component, {
+      isUnsafeExampleValue: (value) =>
+        SENSITIVE_EXAMPLE_PATTERNS.some((pattern) => pattern.test(value)),
+      errorMessage: "OpenAPI metadata contains an unsafe example",
+      rootLocation: componentRootLocation(type),
+      rootSemanticName:
+        type === "headers" || type === "responses" || type === "schemas"
+          ? name
+          : undefined,
+    })
     this.componentKeys.add(key)
     scopes.add(scope)
     this.componentScopes.set(componentIdentity, scopes)

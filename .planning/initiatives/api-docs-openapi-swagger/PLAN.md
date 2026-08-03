@@ -1,9 +1,9 @@
-# API-DOCS-01 — Implementation Plan
+# API-DOCS-01 — Implementation Plan and Closure Record
 
 ## Goal
 
-Implement a verifiable OpenAPI contract and a locally served Swagger UI for the
-completed backend MVP, without changing business behavior.
+This initiative implements a verifiable OpenAPI contract and a locally served
+Swagger UI for the completed backend MVP, without changing business behavior.
 
 The implementation will:
 
@@ -22,9 +22,10 @@ The implementation will:
 - fail CI when registry output, route coverage, security classification, or
   committed artifacts drift.
 
-This plan is implementation planning only. No implementation, dependency
-installation, test execution, migration, deployment, or provider operation is
-authorized by this artifact.
+This plan records the reviewed implementation and its validation evidence. Its
+remaining authorization boundary covers human review/merge only; production
+enablement, deployment, migrations, secrets, and provider operations remain
+outside scope.
 
 ## Non-Goals
 
@@ -49,7 +50,8 @@ authorized by this artifact.
 
 ## Preconditions
 
-Implementation may start only when all of the following are true:
+The following were the implementation preconditions and remain useful as
+historical traceability for the completed Waves 1–6:
 
 1. Human review explicitly approves:
    - `.planning/initiatives/api-docs-openapi-swagger/RESEARCH.md`;
@@ -74,14 +76,12 @@ Implementation may start only when all of the following are true:
    exclusions because they are scaffold/example routes. They are not included
    in the initial contracts. Physical removal is outside this initiative and
    requires a separate cleanup decision.
-6. The missing per-operation Medusa `2.16.0` official-reference URLs are an
-   explicit, currently unsatisfied Wave 1 documentary task, not an assumed
-   precondition. Wave 2 is blocked until all six local native extensions have
-   reviewed URLs, inclusion reasons, local evidence, and committed
-   fingerprints.
+6. The six per-operation Medusa `2.16.0` official-reference URLs, inclusion
+   reasons, local evidence, and committed fingerprints were reviewed across
+   Waves 1–6.
 7. `swagger-ui-dist@5.32.11` is the exact approved UI asset package. Any proposed
-   patch change requires human review before Wave 1; installation must never
-   use a version range or `latest`.
+   patch change requires renewed human review; installation must never use a
+   version range or `latest`.
 8. Package versions are installed exactly as approved below and recorded in
    `package-lock.json`; no unpinned `latest` install is allowed.
 9. Production documentation remains disabled until a later, explicit human
@@ -295,7 +295,8 @@ Differences from the initial illustrative structure are intentional:
 
 ## Dependency Changes
 
-All changes below occur only after the human approval gate.
+The approved dependency changes were applied within the reviewed
+implementation scope.
 
 | Manifest | Package | Classification | Exact selection | Purpose |
 | --- | --- | --- | --- | --- |
@@ -303,7 +304,7 @@ All changes below occur only after the human approval gate.
 | `apps/backend/package.json` | `@stoplight/spectral-cli` | `devDependency` | `6.16.2` exactly | Selected local OpenAPI 3.1 lint baseline |
 | `apps/backend/package.json` | `swagger-ui-dist` | runtime `dependency` | `5.32.11` exactly | Local Swagger UI HTML/JS/CSS assets |
 
-The future dependency change must also add this root manifest setting:
+The dependency change also added this root manifest setting:
 
 ```json
 {
@@ -907,12 +908,12 @@ npm run openapi:lint
    - `ops/API_DOCS.md`.
 6. Document generation, operation registration, explicit exclusions, native
    Medusa review, security review, production enablement, and disable/rollback.
-7. Run the complete binary gate below from a clean checkout containing the
-   reviewed implementation commit and stop for human review. Do not deploy.
-   If drift is reported, leave the failed gate, run the explicit writer only in
-   an implementation workspace, review and commit the result, then restart the
-   gate from a fresh clean checkout. Never generate immediately before or
-   inside the drift check.
+7. The complete binary gate was run from a clean checkout containing the
+   reviewed implementation commit and passed. Deployment remains unauthorized.
+   If future drift is reported, leave the failed gate, run the explicit writer
+   only in an implementation workspace, review and commit the result, then
+   restart the gate from a fresh clean checkout. Never generate immediately
+   before or inside the drift check.
 
 #### Final verification commands
 
@@ -924,7 +925,7 @@ package or repository commands.
 npm run openapi:check
 npm run openapi:lint
 npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/generation.unit.spec.ts src/api-docs/__tests__/coverage.unit.spec.ts src/api-docs/__tests__/security.unit.spec.ts src/api-docs/__tests__/exposure.unit.spec.ts
-npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/money-units.contract.spec.ts src/api-docs/__tests__/native-extensions.contract.spec.ts
+npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/money-units.unit.spec.ts src/api-docs/__tests__/native-extensions.unit.spec.ts
 npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/api-docs.spec.ts
 npm run lint -w @dtc/backend
 npm run build -w @dtc/backend
@@ -958,8 +959,8 @@ not include the generated JSON and exact local UI assets.
 | Unit — coverage | `apps/backend/src/api-docs/__tests__/coverage.unit.spec.ts` | foundation/Store/Admin/Webhook partial scopes, Wave 6 global scope, route discovery, bracket normalization, methods, re-exports, exclusions |
 | Unit — security | `apps/backend/src/api-docs/__tests__/security.unit.spec.ts` | auth schemes, no sensitive examples, internal partitioning, Store/Admin/Webhook non-interactive |
 | Unit — exposure | `apps/backend/src/api-docs/__tests__/exposure.unit.spec.ts` | environment defaults and complete flag matrix |
-| Contract — monetary units | `apps/backend/src/api-docs/__tests__/money-units.contract.spec.ts` | PaymentAttempt/refund integer BRL minor units remain distinct from Cart/PaymentSession major units |
-| Contract — six native extensions | `apps/backend/src/api-docs/__tests__/native-extensions.contract.spec.ts` | official provenance, conservative fingerprints, and local behavior for two Store plus four Admin operations |
+| Contract — monetary units | `apps/backend/src/api-docs/__tests__/money-units.unit.spec.ts` | PaymentAttempt/refund integer BRL minor units remain distinct from Cart/PaymentSession major units |
+| Contract — six native extensions | `apps/backend/src/api-docs/__tests__/native-extensions.unit.spec.ts` | official provenance, conservative fingerprints, and local behavior for two Store plus four Admin operations |
 | Existing env/config fixtures | `env.unit.spec.ts`, `medusa-config.unit.spec.ts`, and every discovered complete `AppEnv` fixture including Sentry HTTP when applicable | four defaults parse correctly and no complete fixture silently omits the new flags |
 | HTTP | `apps/backend/integration-tests/http/api-docs.spec.ts` | exact `.json` paths, extensionless `404`, auth, headers, JSON bodies, globally non-interactive UI, exact assets, CSP, disabled production |
 | Contract characterization | existing route/serializer tests plus focused additions only where needed | registry schema matches actual accepted input and serialized output |
@@ -1137,7 +1138,7 @@ fails.
 
 ## Documentation Updates
 
-Future implementation updates:
+Implementation documentation updates:
 
 - `README.md`:
   - list the three contracts and `/docs`;
@@ -1343,7 +1344,20 @@ Files and surfaces not expected to change:
 
 ## Human Approval Gate
 
-Implementation status: **not started**.
+Implementation status:
+  Waves 1–6 implemented and validated.
+
+Local global gate:
+  PASS
+
+GitHub Actions clean-checkout gate:
+  PASS
+
+Current state:
+  pending human review and merge of PR #20
+
+Production enablement/deployment:
+  not authorized; requires a separate human operational gate
 
 Decisions already taken by the corrected R2 plan:
 
@@ -1369,12 +1383,9 @@ Decisions already taken by the corrected R2 plan:
 
 Human approval is still required before:
 
-1. accepting the final corrected R2 artifacts;
-2. accepting all six Medusa URLs and native-extension fingerprints;
-3. installing dependencies, modifying manifests/source, and executing Wave 1;
-4. changing any approved package/runtime version;
-5. enabling Store, Admin, Webhook, or Swagger UI documentation in production;
-6. deploying.
+1. reviewing and merging PR #20;
+2. enabling Store, Admin, Webhook, or Swagger UI documentation in production;
+3. deploying or changing production configuration.
 
 Approval of this plan authorizes only the explicitly reviewed implementation
 scope. It does not authorize deployment, production flags, provider access,

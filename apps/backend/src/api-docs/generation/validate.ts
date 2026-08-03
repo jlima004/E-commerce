@@ -3,6 +3,7 @@ import type {
   OpenApiDocument,
   OperationMetadata,
 } from "../contracts"
+import { assertSafeExamples } from "../safe-examples"
 
 const HTTP_METHOD_KEYS = new Set([
   "get",
@@ -21,6 +22,13 @@ const SENSITIVE_PATTERNS = [
   /\bpi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+/i,
   /\bpostgres(?:ql)?:\/\//i,
   /\bredis(?:s)?:\/\//i,
+  /\b(?:cpf|cnpj)\b/i,
+  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
+  /\b(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?9?\d{4}[-\s]?\d{4}\b/,
+  /\b000201(?:\d|[A-Z]){12,}\b/i,
+  /\b[a-z][a-z0-9]{1,11}_[A-Za-z0-9]{12,}\b/i,
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i,
+  /\b\d{16,}\b/,
 ]
 
 function resolveJsonPointer(document: unknown, reference: string): unknown {
@@ -55,27 +63,6 @@ function walk(
     for (const [childKey, child] of Object.entries(value)) {
       walk(child, visitor, childKey, value)
     }
-  }
-}
-
-function assertSafeExamples(value: unknown, insideExample = false): void {
-  if (typeof value === "string" && insideExample) {
-    if (SENSITIVE_PATTERNS.some((pattern) => pattern.test(value))) {
-      throw new Error("Sensitive OpenAPI example detected")
-    }
-    return
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      assertSafeExamples(item, insideExample)
-    }
-    return
-  }
-  if (!value || typeof value !== "object") {
-    return
-  }
-  for (const [key, child] of Object.entries(value)) {
-    assertSafeExamples(child, insideExample || /^examples?$/i.test(key))
   }
 }
 
@@ -119,7 +106,12 @@ export function validateDocument(
   }
 
   validateSurfacePartition(surface, document.paths)
-  assertSafeExamples(document)
+  assertSafeExamples(document, {
+    isUnsafeExampleValue: (value) =>
+      SENSITIVE_PATTERNS.some((pattern) => pattern.test(value)),
+    errorMessage: "Sensitive OpenAPI example detected",
+    rootLocation: "document",
+  })
   const operationIds: string[] = []
   const securitySchemes = new Set(
     Object.keys(document.components.securitySchemes ?? {})

@@ -6,9 +6,9 @@ current_phase: none
 current_phase_name: Milestone complete
 status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
 stopped_at: Milestone v1.0 archived, tagged and released / awaiting next milestone decision
-last_updated: "2026-07-30"
-last_activity: 2026-07-30
-last_activity_desc: GitHub Release v1.0 published
+last_updated: "2026-08-03"
+last_activity: 2026-08-03
+last_activity_desc: Completing quick task 260803-nla for PR 20 nested lookaround P2; local API Docs 304/304 and full unit 1257/1257; push done in commit: `c775842`.
 progress:
   total_phases: 13
   completed_phases: 13
@@ -170,7 +170,7 @@ Produção: saudável
 Phase: none — Milestone v1.0 complete / closed / archived / tagged / released
 Plan: —; 62/62 milestone plans complete
 Status: milestone-v1-0-archived-tagged-released-next-milestone-blocked
-Last activity: 2026-07-30 - GitHub Release v1.0 published
+Last activity: 2026-08-03 - Completed quick task 260803-nla for PR 20 nested-lookaround P2; API Docs 304/304, full unit 1257/1257, push completed in c775842
 Next: human decision on the next milestone
 
 Progress: [██████████] 100% phases (13/13); 62/62 plans complete; milestone v1.0 archived, tagged and released; next milestone and Phase 13 remain blocked
@@ -350,6 +350,11 @@ rollback, or move or recreate tag `v1.0`.
 
 | Date | Task | Summary |
 |------|------|---------|
+| 2026-08-03 | 260803-nla-nested-lookaround-fail-closed | Normalização recursiva limitada de lookarounds positivos aninhados (depth≤4, fail-closed); bypass tracking_token/api_key fechado nas duas fronteiras; API Docs 304/304, unit 1257/1257; CI/thread deliberadamente não aguardados. |
+| 2026-08-03 | 260803-1el-corrigir-os-dois-p2-residuais-do-re-revi | Corrigidos os bypasses de patternProperties e componentes schemas/responses, incluindo separadores, tokens e classes literais escapados; matriz API Docs 272/272, unit completa 1225/1225, CI 30795192149 em execução, PR atualizada, thread final pendente e sem merge. |
+| 2026-08-02 | 260802-wjn-corrigir-os-dois-p2-de-seguran-a-da-pr-2 | Corrigidos os bypasses de ancestral sensível em propriedades aninhadas e de `patternProperties` nos dois gates; matriz API Docs 231/231, gates locais e CI verde; PR atualizada, threads respondidos/resolvidos e novos reviews Codex/Copilot solicitados. |
+| 2026-08-02 | 260802-u9e-corrigir-p2-da-pr-20-preservar-nomes-sen | Preserved semantic names for parameters, headers, components and nested schema vocabularies in both API Docs safety gates; paired regressions pass 205/205, OpenAPI/lint/build pass, generated artifacts unchanged; publish/review follow-through authorized and tracked in the quick SUMMARY. |
+| 2026-08-02 | 260802-q1o-corrigir-p2-da-pr-20-rejeitando-exemplos | Preserved schema-property ownership through `example`/`examples` in both API Docs security gates; paired regressions cover singular, array, map and nested forms while safe status examples remain accepted; artifacts unchanged. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R4 | Moved stale/reclaim policy to pure `checkout-completion/staleness.ts`; OperationalAlert consumes it; money path no longer imports alert module; focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R3 | Restricted OperationalAlert Admin reads to user actors via `requireAdminActor`; API-key actors rejected; focused HTTP/Unit + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R2 | Removed runtime `rtk` dependency from disposable PostgreSQL Docker harness; Cursor/WSL2 Docker proven; serial PG 5/5 + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |

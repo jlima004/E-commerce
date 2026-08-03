@@ -1,0 +1,97 @@
+name: API Docs
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  global-closure:
+    name: Global closure gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SCARF_ANALYTICS: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact lockfile
+        run: npm ci
+
+      - name: Verify committed OpenAPI first
+        run: |
+          node -e 'const manifest = require("./package.json"); if (manifest.scarfSettings?.enabled !== false) throw new Error("scarfSettings.enabled must be false")'
+          npm run openapi:check
+
+      - name: Lint OpenAPI
+        run: npm run openapi:lint
+
+      - name: Test API Docs contracts
+        run: >-
+          npm run test:unit -w @dtc/backend -- --runTestsByPath
+          src/api-docs/__tests__/generation.unit.spec.ts
+          src/api-docs/__tests__/coverage.unit.spec.ts
+          src/api-docs/__tests__/security.unit.spec.ts
+          src/api-docs/__tests__/exposure.unit.spec.ts
+          src/api-docs/__tests__/money-units.unit.spec.ts
+          src/api-docs/__tests__/native-extensions.unit.spec.ts
+          src/api-docs/__tests__/store-contract.unit.spec.ts
+          src/api-docs/__tests__/admin-contract.unit.spec.ts
+          src/api-docs/__tests__/webhooks-contract.unit.spec.ts
+
+      - name: Test API Docs HTTP exposure
+        run: >-
+          npm run test:integration:http -w @dtc/backend -- --runTestsByPath
+          integration-tests/http/api-docs.spec.ts
+
+      - name: Lint backend
+        run: npm run lint -w @dtc/backend
+
+      - name: Build backend
+        run: npm run build -w @dtc/backend
+
+      - name: Verify packaged contracts and local Swagger assets
+        run: |
+          test -f apps/backend/.medusa/server/src/api-docs/generated/store.openapi.json
+          test -f apps/backend/.medusa/server/src/api-docs/generated/admin.openapi.json
+          test -f apps/backend/.medusa/server/src/api-docs/generated/webhooks.openapi.json
+          test -f apps/backend/.medusa/server/src/api-docs/runtime/swagger-assets.js
+          node - <<'NODE'
+          const path = require("node:path")
+          const { createRequire } = require("node:module")
+          const serverManifest = require("./apps/backend/.medusa/server/package.json")
+          if (serverManifest.dependencies?.["swagger-ui-dist"] !== "5.32.11") {
+            throw new Error("Built server must pin swagger-ui-dist@5.32.11")
+          }
+          const serverRequire = createRequire(
+            path.resolve("apps/backend/.medusa/server/package.json")
+          )
+          for (const asset of [
+            "swagger-ui-dist/swagger-ui.css",
+            "swagger-ui-dist/swagger-ui-bundle.js",
+            "swagger-ui-dist/swagger-ui-standalone-preset.js",
+          ]) {
+            serverRequire.resolve(asset)
+          }
+          NODE
+
+      - name: Verify tracked artifacts and clean checkout
+        run: |
+          git ls-files --error-unmatch \
+            apps/backend/src/api-docs/generated/store.openapi.json \
+            apps/backend/src/api-docs/generated/admin.openapi.json \
+            apps/backend/src/api-docs/generated/webhooks.openapi.json
+          git diff --check
+          test -z "$(git status --porcelain=v1)"
