@@ -945,6 +945,32 @@ describe("OpenAPI foundation generation", () => {
       },
     },
     {
+      componentName: "SensitiveGroupedProviderOrderPatternExample",
+      label: "grouped sensitive patternProperties direct example",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^(provider_order_id)$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveSeparatedProviderOrderPatternExample",
+      label: "separator character class in sensitive patternProperties",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^provider[_-]order[_-]id$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
       componentName: "SensitiveTrackingPatternExamples",
       label: "patternProperties trackingToken direct examples",
       schema: {
@@ -955,6 +981,14 @@ describe("OpenAPI foundation generation", () => {
             examples: ["opaque-reference", "opaque-reference-2"],
           },
         },
+      },
+    },
+    {
+      componentName: "TrackingToken",
+      label: "sensitive schema component name",
+      schema: {
+        type: "string",
+        example: "opaque-reference",
       },
     },
     {

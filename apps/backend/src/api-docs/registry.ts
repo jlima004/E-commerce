@@ -282,7 +282,8 @@ export class ContractRegistryBundle {
         SENSITIVE_EXAMPLE_PATTERNS.some((pattern) => pattern.test(value)),
       errorMessage: "OpenAPI metadata contains an unsafe example",
       rootLocation: componentRootLocation(type),
-      rootSemanticName: type === "headers" ? name : undefined,
+      rootSemanticName:
+        type === "headers" || type === "schemas" ? name : undefined,
     })
     this.componentKeys.add(key)
     scopes.add(scope)

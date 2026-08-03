@@ -32,6 +32,7 @@ type TraversalLocation =
   | "contentMap"
   | "mediaType"
   | "schemaMap"
+  | "schemaComponentMap"
   | "schema"
   | "propertyMap"
   | "patternPropertyMap"
@@ -96,10 +97,14 @@ function isSensitiveSemanticName(name: string | undefined): boolean {
 }
 
 function normalizePatternPropertyName(pattern: string): string | undefined {
-  const normalized = pattern.replace(/^\^/, "").replace(/\$$/, "")
+  let normalized = pattern.replace(/^\^/, "").replace(/\$$/, "")
   if (!normalized) {
     return undefined
   }
+
+  normalized = normalized
+    .replace(/\[_-\]|\[-_\]/g, "_")
+    .replace(/[()]/g, "")
 
   const regexMetaCharacters = new Set([
     "\\",
@@ -122,6 +127,19 @@ function normalizePatternPropertyName(pattern: string): string | undefined {
   }
 
   return normalized
+}
+
+function isSensitivePatternPropertyName(
+  pattern: string,
+  normalizedPattern: string | undefined
+): boolean {
+  if (isSensitiveSemanticName(normalizedPattern)) {
+    return true
+  }
+
+  const literalTokens =
+    pattern.match(/[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*/g) ?? []
+  return literalTokens.some((token) => isSensitiveSemanticName(token))
 }
 
 function componentRootLocation(type: string): SafeExampleRoot {
@@ -221,7 +239,7 @@ function nextState(
       }
       if (key === "schemas") {
         return {
-          location: "schemaMap",
+          location: "schemaComponentMap",
           insideExample: childInsideExample,
           sensitiveAncestor: inheritedSensitiveAncestor,
         }
@@ -364,6 +382,14 @@ function nextState(
         }
       }
       break
+    case "schemaComponentMap":
+      return {
+        location: "schema",
+        insideExample: childInsideExample,
+        semanticName: key,
+        sensitiveAncestor:
+          inheritedSensitiveAncestor || isSensitiveSemanticName(key),
+      }
     case "schemaMap":
       return {
         location: "schema",
@@ -437,7 +463,7 @@ function nextState(
         semanticName: normalizedPattern,
         sensitiveAncestor:
           inheritedSensitiveAncestor ||
-          isSensitiveSemanticName(normalizedPattern),
+          isSensitivePatternPropertyName(key, normalizedPattern),
       }
     }
     default:
