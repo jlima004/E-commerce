@@ -110,6 +110,59 @@ function decodeEscapedSemanticSeparators(pattern: string): string {
   return decodeEscapedRegexLiterals(pattern).replace(/\\([._-])/g, "$1")
 }
 
+function stripRegexLookaroundAssertions(pattern: string): string | undefined {
+  let result = ""
+
+  for (let index = 0; index < pattern.length; index += 1) {
+    const isLookaround =
+      pattern.startsWith("(?=", index) ||
+      pattern.startsWith("(?!", index) ||
+      pattern.startsWith("(?<=", index) ||
+      pattern.startsWith("(?<!", index)
+    if (!isLookaround) {
+      result += pattern[index]
+      continue
+    }
+
+    let depth = 0
+    let inCharacterClass = false
+    let closed = false
+    for (let cursor = index; cursor < pattern.length; cursor += 1) {
+      const character = pattern[cursor]
+      if (character === "\\") {
+        cursor += 1
+        continue
+      }
+      if (character === "[") {
+        inCharacterClass = true
+        continue
+      }
+      if (character === "]") {
+        inCharacterClass = false
+        continue
+      }
+      if (inCharacterClass) {
+        continue
+      }
+      if (character === "(") {
+        depth += 1
+      } else if (character === ")") {
+        depth -= 1
+        if (depth === 0) {
+          index = cursor
+          closed = true
+          break
+        }
+      }
+    }
+    if (!closed) {
+      return undefined
+    }
+  }
+
+  return result
+}
+
 function normalizePatternPropertyName(pattern: string): string | undefined {
   let normalized = pattern.replace(/^\^/, "").replace(/\$$/, "")
   if (!normalized) {
@@ -151,7 +204,13 @@ function isSensitivePatternPropertyName(
     return true
   }
 
-  const patternWithSemanticSeparators = decodeEscapedSemanticSeparators(pattern)
+  const patternWithoutLookarounds = stripRegexLookaroundAssertions(
+    decodeEscapedSemanticSeparators(pattern)
+  )
+  if (patternWithoutLookarounds === undefined) {
+    return true
+  }
+  const patternWithSemanticSeparators = patternWithoutLookarounds
     .replace(/\(\?(?:P<|<)[^>]*>|\(\?:/g, "")
     .replace(/[()]/g, "")
     .replace(/\[(?:\\.|[^\]])*\]/g, (characterClass) => {

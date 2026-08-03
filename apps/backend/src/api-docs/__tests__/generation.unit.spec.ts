@@ -1199,6 +1199,32 @@ describe("OpenAPI foundation generation", () => {
       },
     },
     {
+      componentName: "SensitiveLookaheadTrackingPatternExample",
+      label: "lookahead inside tracking_token pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^tracking_(?=token)token$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
+      componentName: "SensitiveLookaheadApiKeyPatternExample",
+      label: "lookahead inside api_key pattern",
+      schema: {
+        type: "object",
+        patternProperties: {
+          "^api_(?=key)key$": {
+            type: "string",
+            example: "opaque-reference",
+          },
+        },
+      },
+    },
+    {
       componentName: "SensitiveTrackingPatternExamples",
       label: "patternProperties trackingToken direct examples",
       schema: {
