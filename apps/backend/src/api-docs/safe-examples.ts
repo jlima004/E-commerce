@@ -110,14 +110,26 @@ function decodeEscapedSemanticSeparators(pattern: string): string {
   return decodeEscapedRegexLiterals(pattern).replace(/\\([._-])/g, "$1")
 }
 
-function stripRegexLookaroundAssertions(pattern: string): string | undefined {
+interface LookaroundStrippingResult {
+  pattern: string
+  positiveAssertions: string[]
+}
+
+function stripRegexLookaroundAssertions(
+  pattern: string
+): LookaroundStrippingResult | undefined {
   let result = ""
+  const positiveAssertions: string[] = []
 
   for (let index = 0; index < pattern.length; index += 1) {
+    const positiveAssertionPrefixLength = pattern.startsWith("(?=", index)
+      ? 3
+      : pattern.startsWith("(?<=", index)
+        ? 4
+        : 0
     const isLookaround =
-      pattern.startsWith("(?=", index) ||
+      positiveAssertionPrefixLength > 0 ||
       pattern.startsWith("(?!", index) ||
-      pattern.startsWith("(?<=", index) ||
       pattern.startsWith("(?<!", index)
     if (!isLookaround) {
       result += pattern[index]
@@ -149,6 +161,11 @@ function stripRegexLookaroundAssertions(pattern: string): string | undefined {
       } else if (character === ")") {
         depth -= 1
         if (depth === 0) {
+          if (positiveAssertionPrefixLength > 0) {
+            positiveAssertions.push(
+              pattern.slice(index + positiveAssertionPrefixLength, cursor)
+            )
+          }
           index = cursor
           closed = true
           break
@@ -160,7 +177,7 @@ function stripRegexLookaroundAssertions(pattern: string): string | undefined {
     }
   }
 
-  return result
+  return { pattern: result, positiveAssertions }
 }
 
 function normalizePatternPropertyName(pattern: string): string | undefined {
@@ -204,37 +221,43 @@ function isSensitivePatternPropertyName(
     return true
   }
 
-  const patternWithoutLookarounds = stripRegexLookaroundAssertions(
+  const lookaroundStripping = stripRegexLookaroundAssertions(
     decodeEscapedSemanticSeparators(pattern)
   )
-  if (patternWithoutLookarounds === undefined) {
+  if (lookaroundStripping === undefined) {
     return true
   }
-  const patternWithSemanticSeparators = patternWithoutLookarounds
-    .replace(/\(\?(?:P<|<)[^>]*>|\(\?:/g, "")
-    .replace(/[()]/g, "")
-    .replace(/\[(?:\\.|[^\]])*\]/g, (characterClass) => {
-      const rawContents = characterClass.slice(1, -1)
-      const contents = characterClass
-        .slice(1, -1)
-        .replace(/\\(.)/g, "$1")
-      if (
-        contents.length === 1 &&
-        /^[A-Za-z0-9]$/.test(contents) &&
-        !rawContents.includes("\\")
-      ) {
-        return contents
-      }
-      return /^[._-]+$/.test(contents) ? "_" : ""
-    })
-  const literalTokens = patternWithSemanticSeparators
-    .replace(/\\k<[^>]*>/g, "")
-    .match(/[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*/g) ?? []
-  return (
-    literalTokens.some((token) => isSensitiveSemanticName(token)) ||
-    (literalTokens.length > 1 &&
-      isSensitiveSemanticName(literalTokens.join("_")))
-  )
+
+  return [
+    lookaroundStripping.pattern,
+    ...lookaroundStripping.positiveAssertions,
+  ].some((patternCandidate) => {
+    const patternWithSemanticSeparators = patternCandidate
+      .replace(/\(\?(?:P<|<)[^>]*>|\(\?:/g, "")
+      .replace(/[()]/g, "")
+      .replace(/\[(?:\\.|[^\]])*\]/g, (characterClass) => {
+        const rawContents = characterClass.slice(1, -1)
+        const contents = characterClass
+          .slice(1, -1)
+          .replace(/\\(.)/g, "$1")
+        if (
+          contents.length === 1 &&
+          /^[A-Za-z0-9]$/.test(contents) &&
+          !rawContents.includes("\\")
+        ) {
+          return contents
+        }
+        return /^[._-]+$/.test(contents) ? "_" : ""
+      })
+    const literalTokens = patternWithSemanticSeparators
+      .replace(/\\k<[^>]*>/g, "")
+      .match(/[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*/g) ?? []
+    return (
+      literalTokens.some((token) => isSensitiveSemanticName(token)) ||
+      (literalTokens.length > 1 &&
+        isSensitiveSemanticName(literalTokens.join("_")))
+    )
+  })
 }
 
 function componentRootLocation(type: string): SafeExampleRoot {
