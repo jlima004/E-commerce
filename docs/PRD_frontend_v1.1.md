@@ -380,16 +380,18 @@ O Store OpenAPI atual possui dez operações documentadas. Elas representam o es
 
 | operationId | Método e rota | Estado |
 |---|---|---|
-| `healthLive` | `GET /health/live` | existente |
-| `healthReady` | `GET /health/ready` | existente |
-| `listStoreProducts` | `GET /store/products` | existente |
-| `getStoreProduct` | `GET /store/products/{id}` | existente |
-| `getActiveStoreCart` | `GET /store/carts/active` | existente |
-| `createActiveStoreCart` | `POST /store/carts/active` | existente; será estendido |
-| `attachCustomerCart` | `POST /store/customers/me/cart/attach` | existente; será deprecated |
-| `createCardPaymentAttempt` | `POST /store/carts/{id}/payment-attempts/card` | existente; será estendido |
-| `createPixPaymentAttempt` | `POST /store/carts/{id}/payment-attempts/pix` | existente; fora do milestone |
-| `lookupTracking` | `POST /store/tracking/lookup` | existente; fora do milestone |
+| `storeHealthGetLive` | `GET /health/live` | existente |
+| `storeHealthGetReady` | `GET /health/ready` | existente |
+| `storeProductsList` | `GET /store/products` | existente |
+| `storeProductsRetrieve` | `GET /store/products/{id}` | existente |
+| `storeCartGetActive` | `GET /store/carts/active` | existente |
+| `storeCartCreateOrGetActive` | `POST /store/carts/active` | existente; será estendido |
+| `storeCustomerCartAttach` | `POST /store/customers/me/cart/attach` | existente; será deprecated |
+| `storePaymentAttemptCreateCard` | `POST /store/carts/{id}/payment-attempts/card` | existente; será estendido |
+| `storePaymentAttemptCreatePix` | `POST /store/carts/{id}/payment-attempts/pix` | existente; fora do milestone |
+| `storeTrackingLookup` | `POST /store/tracking/lookup` | existente; fora do milestone |
+
+> Os `operationId` desta seção são reproduzidos literalmente do Store registry atual. Os identificadores da seção de contrato-alvo permanecem prospectivos até sua inclusão no registry e no OpenAPI gerado.
 
 Regras atuais de dinheiro:
 
