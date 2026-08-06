@@ -462,6 +462,7 @@ Busca de CEP é BFF-only e não integra o Store OpenAPI.
 | `createCardPaymentAttempt` | `POST` | `/store/carts/{id}/payment-attempts/card` |
 | `getPaymentAttemptStatus` | `POST` | `/store/carts/{id}/payment-attempts/status` |
 | `invalidatePaymentAttempt` | `POST` | `/store/carts/{id}/payment-attempts/invalidate` |
+| `exchangePaymentConfirmationToken` | `POST` | `/store/payment-confirmations/exchange` |
 | `getPaymentConfirmationStatus` | `POST` | `/store/payment-confirmations/status` |
 | `getConfirmedOrderSummary` | `GET` | `/store/orders/{orderReference}/confirmation` |
 
@@ -543,6 +544,8 @@ O registry deverá incluir, no mínimo:
 - `PaymentAttemptStatusResponse`;
 - `PaymentAttemptInvalidationRequest`;
 - `PaymentAttemptInvalidationResponse`;
+- `PaymentConfirmationExchangeRequest`;
+- `PaymentConfirmationExchangeResponse`;
 - `PaymentConfirmationStatusRequest`;
 - `PaymentConfirmationStatusResponse`;
 - `ConfirmedOrderItem`;
@@ -872,9 +875,15 @@ Client Component
 → Server Action
 → If-Match no fetch BFF → Medusa
 → cria/recupera PaymentAttempt compatível
-→ retorna client_secret em memória
+→ backend retorna client_secret e confirmationToken somente ao BFF
+→ BFF troca confirmationToken server-side
+→ backend consome o token e retorna confirmationSessionRef opaca
+→ BFF cria indicio_confirmation_session HttpOnly
+→ BFF retorna ao navegador somente client_secret e DTO público
 → monta Payment Element
 ```
+
+Se a troca do token ou a criação do cookie falhar, o BFF não devolve o `client_secret` e o navegador não chama `stripe.confirmPayment`. `confirmationToken` e `confirmationSessionRef` nunca integram a resposta browser-facing.
 
 Pré-condições:
 
@@ -901,6 +910,8 @@ O browser nunca envia:
 - PAN/CVC trafegam entre Stripe Elements e Stripe;
 - `client_secret` somente em memória;
 - `redirect: "if_required"`;
+- `return_url` fixo em `https://www.indiciocult.com.br/checkout/processando`;
+- `return_url` sem token, capability, referência operacional ou query string sensível;
 - 3DS suportado;
 - sucesso client-side leva a processamento, nunca a “pedido confirmado”.
 
@@ -952,24 +963,41 @@ Webhook tardio de tentativa invalidada:
 
 ### 9.16 Confirmação assíncrona
 
+Estabelecimento da sessão antes de `stripe.confirmPayment`:
+
+```text
+createCardPaymentAttempt
+→ backend emite confirmationToken BFF-only
+→ BFF chama POST /store/payment-confirmations/exchange
+→ backend consome o token atomicamente
+→ backend retorna confirmationSessionRef opaca + expiresAt
+→ BFF cria indicio_confirmation_session HttpOnly
+→ navegador recebe somente client_secret e DTO público
+```
+
+A troca exige `x-publishable-api-key`, Customer JWT e `Idempotency-Key`. Repetição com a mesma chave retorna a mesma sessão válida; token consumido por outra operação é rejeitado sem revelar estado financeiro.
+
 Retorno:
 
 ```text
 Stripe
-→ /checkout/processando?token=<confirmationToken>
-→ Next.js troca token server-side
-→ cria indicio_confirmation_session
-→ redirect para URL limpa
+→ /checkout/processando
+→ Next.js valida indicio_confirmation_session
+→ BFF consulta o status da confirmação
 → polling
 ```
 
-Token:
+A URL é limpa desde o primeiro request recebido pela infraestrutura da storefront. O fluxo de pagamento que não exige redirect navega para a mesma rota limpa usando o cookie já estabelecido.
 
-- 32 bytes CSPRNG;
-- backend armazena somente SHA-256;
-- uso único;
-- TTL 30 minutos;
-- vinculado a Customer, tentativa e versão do carrinho.
+Token e referência de sessão:
+
+- `confirmationToken` possui 32 bytes CSPRNG;
+- backend armazena somente SHA-256 do token;
+- token é de uso único e TTL de 30 minutos;
+- token é vinculado a Customer, tentativa e versão do carrinho;
+- token trafega somente no corpo HTTPS BFF → Medusa;
+- `confirmationSessionRef` é opaca e permanece somente no envelope criptografado do cookie;
+- token e referência são proibidos em URL, HTML, JavaScript, analytics, Sentry e logs.
 
 Cookie:
 
@@ -1347,6 +1375,7 @@ Todos:
 - paymentAttemptRef;
 - `client_secret`;
 - confirmation token;
+- `confirmationSessionRef`;
 - `guestCartToken`;
 - `orderReference`;
 - endereço completo.
@@ -1382,6 +1411,7 @@ Todos:
 - rate limit por IP/sessão;
 - CSP segmentada;
 - URLs sanitizadas;
+- `return_url` de pagamento sem tokens, capabilities ou referências operacionais;
 - `Referrer-Policy` restritiva;
 - tokens removidos antes de scripts terceiros;
 - capabilities marcadas `x-sensitive: true`;
@@ -1516,6 +1546,8 @@ Bloqueia PR:
 - checkout draft/final;
 - frete disponível/indisponível;
 - PaymentAttempt;
+- troca server-side do token de confirmação;
+- cookie de confirmação criado antes de `confirmPayment`;
 - 3DS;
 - recusa;
 - erro incerto;
@@ -1537,6 +1569,8 @@ Validar:
 - masking;
 - códigos de erro;
 - ausência de campos proibidos;
+- ausência de token ou referência de confirmação em URLs e respostas browser-facing;
+- consumo único e retry idempotente de `exchangePaymentConfirmationToken`;
 - equivalência OpenAPI/Zod.
 
 ### 18.4 E2E
@@ -1566,6 +1600,7 @@ Cenários obrigatórios:
 - cotação expirada;
 - provider indisponível;
 - cartão recusado;
+- retorno 3DS para URL limpa com cookie preexistente;
 - erro de rede após confirmação;
 - refresh;
 - múltiplas abas;
@@ -1669,6 +1704,8 @@ O Milestone 1 será aceito quando:
 - frete for autoritativo e revogável;
 - Stripe Payment Element e 3DS funcionarem;
 - `client_secret` permanecer efêmero;
+- `confirmationToken` nunca aparecer em URL ou resposta browser-facing;
+- sessão de confirmação ser criada em cookie HttpOnly antes de `stripe.confirmPayment`;
 - erro incerto consultar status antes de retry;
 - `Order` depender de webhook;
 - confirmação sobreviver a refresh;
