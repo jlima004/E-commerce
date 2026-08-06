@@ -4,9 +4,9 @@
 |---|---|
 | Documento | Product Requirements Document — Backend |
 | Projeto | E-commerce headless Print-on-Demand da Indicio Cult |
-| Versão | 1.1 — revisão as-built |
-| Data da revisão | 2026-08-03 |
-| Status | Canônico — backend MVP entregue |
+| Versão | 1.1.1 — requisitos do Frontend Milestone 1 |
+| Data da revisão | 2026-08-06 |
+| Status | Canônico de requisitos — backend v1.0 entregue; extensão Storefront M1 aprovada e pendente de materialização |
 | Responsável | Jefferson |
 | Mercado inicial | Brasil |
 | Moeda | BRL |
@@ -14,706 +14,1268 @@
 | Persistência | Supabase PostgreSQL |
 | Cache e processamento assíncrono | Redis |
 | Integrações | Stripe, Resend, Gelato, PostHog, Sentry e Supabase Storage |
+| Consumidor público | BFF same-origin do frontend Next.js |
 | Contratos de API | OpenAPI 3.1.2 — Store, Admin e Webhooks |
+| Base de alinhamento | PRD Frontend v1.1.2 · SRS v1.5 · DB Model v1.21 · decisões dos Blocos A–J e R |
 
-> **Autoridade deste documento:** esta revisão descreve o comportamento efetivamente entregue no milestone `v1.0`. Quando houver conflito com redações históricas, prevalecem o código versionado, os contratos OpenAPI, o modelo de dados vigente e as decisões registradas em `.planning/`.
+> **Autoridade e estado:** este documento combina dois estados distintos. O backend `v1.0` descrito como **Entregue** corresponde ao sistema já implementado. Os requisitos marcados como **Aprovado — pendente** formam o contrato-alvo necessário ao Frontend Milestone 1 e não podem ser tratados como implementados antes de código, OpenAPI, schemas, fixtures e testes existirem.
+
+> **Gate vigente:** `DECISIONS COMPLETE, ARTIFACTS PENDING`. A atualização deste PRD fecha a especificação do backend para o frontend, mas não concede `PASS DOCUMENTAL`, `PASS PARA MOCK DEVELOPMENT` nem `PASS PARA INTEGRAÇÃO`.
+
+> **Regra central:** a storefront nunca cria, confirma ou infere um `Order`. Um `Order` só existe após confirmação canônica, validada e idempotente do pagamento pelo webhook da Stripe.
+
+---
+
+## Sumário
+
+1. [Resumo executivo](#1-resumo-executivo)
+2. [Objetivos e métricas](#2-objetivos-e-métricas)
+3. [Estado e escopo](#3-estado-e-escopo)
+4. [Usuários, consumidores e limites](#4-usuários-consumidores-e-limites)
+5. [Arquitetura atual e arquitetura-alvo](#5-arquitetura-atual-e-arquitetura-alvo)
+6. [Contratos e versionamento](#6-contratos-e-versionamento)
+7. [Contrato-alvo para o Frontend Milestone 1](#7-contrato-alvo-para-o-frontend-milestone-1)
+8. [Fluxos funcionais](#8-fluxos-funcionais)
+9. [Requisitos funcionais consolidados](#9-requisitos-funcionais-consolidados)
+10. [Dados, dinheiro e concorrência](#10-dados-dinheiro-e-concorrência)
+11. [Segurança, privacidade e retenção](#11-segurança-privacidade-e-retenção)
+12. [Erros e semântica HTTP](#12-erros-e-semântica-http)
+13. [Observabilidade e eventos](#13-observabilidade-e-eventos)
+14. [Integrações externas](#14-integrações-externas)
+15. [Testes e artefatos obrigatórios](#15-testes-e-artefatos-obrigatórios)
+16. [Deploy e operação](#16-deploy-e-operação)
+17. [Critérios de aceite](#17-critérios-de-aceite)
+18. [Rastreabilidade com o frontend](#18-rastreabilidade-com-o-frontend)
+19. [Pendências e gates](#19-pendências-e-gates)
+20. [Referências canônicas](#20-referências-canônicas)
 
 ---
 
 ## 1. Resumo executivo
 
-O backend da Indicio Cult é uma plataforma headless para comércio eletrônico Print-on-Demand no Brasil. Ele concentra as regras de catálogo, carrinho, checkout, pagamento, criação de pedidos, fulfillment, tracking, reembolsos, trocas, auditoria e observabilidade.
+O backend da Indicio Cult é a autoridade transacional e operacional do e-commerce Print-on-Demand. Ele concentra catálogo, carrinho, identidade de cliente, checkout, frete, pagamento, criação de pedidos, fulfillment, tracking, reembolsos, trocas, auditoria e observabilidade.
 
-O valor central do produto é proteger a cadeia financeira e operacional:
+O backend `v1.0` já protege a cadeia financeira e operacional:
 
-> Um `Order` só existe após confirmação confiável, validada e idempotente do pagamento pelo webhook canônico da Stripe. A Gelato só recebe um pedido após o `Order` confirmado e os registros locais obrigatórios terem sido persistidos.
+```text
+Pagamento confirmado por webhook canônico
+→ coordenação idempotente e concorrente
+→ criação de um único Order
+→ persistência das outboxes locais
+→ efeitos externos reprocessáveis
+→ dispatch Gelato somente quando elegível
+```
 
-Essa regra evita:
+O Frontend Milestone 1 exige ampliar a Store API para suportar uma storefront Next.js com BFF same-origin. O navegador não chamará o Medusa diretamente. O BFF será o único consumidor público e deverá receber contratos suficientes para:
 
-- cobrança confirmada sem pedido;
-- pedido sem pagamento confirmado;
-- criação duplicada de `Order` por reentrega de webhook;
-- fulfillment duplicado;
-- envio prematuro à produção;
-- dependência indevida de serviços externos para preservar a verdade transacional.
+- catálogo e produto;
+- carrinho convidado protegido por capability;
+- mutações concorrentes com `ETag`;
+- cadastro, login, reset e verificação flexível de e-mail;
+- merge transacional de carrinhos;
+- checkout brasileiro autenticado;
+- CPF protegido e consentimentos versionados;
+- cotação e seleção autoritativa de frete;
+- pagamento por cartão via Stripe Payment Element;
+- invalidação e consulta segura de tentativas;
+- confirmação assíncrona por sessão opaca;
+- resumo reduzido do pedido confirmado;
+- revalidação assinada do catálogo;
+- erros estáveis, idempotência e rastreabilidade.
 
-O milestone `v1.0 Backend MVP` está completo, fechado, arquivado, versionado e publicado. O storefront ainda não foi iniciado e deve consumir os contratos estáveis expostos pela Store API.
+A extensão não modifica os invariantes financeiros do backend `v1.0`. Ela materializa interfaces seguras para o frontend utilizar esses invariantes.
 
 ---
 
-## 2. Objetivos do produto
+## 2. Objetivos e métricas
 
-### 2.1 Objetivos principais
+### 2.1 Objetivos
 
-1. Expor uma API estável para uma storefront futura.
-2. Permitir operação interna pelo Admin Medusa.
-3. Garantir que estados pré-pagamento permaneçam em `Cart`, `PaymentCollection`, `PaymentSession` e `PaymentAttempt`.
-4. Criar `Order` somente após o evento Stripe canônico de sucesso.
-5. Tornar webhooks e efeitos downstream idempotentes e reprocessáveis.
-6. Separar a verdade transacional da entrega a PostHog, Resend e Gelato.
-7. Permitir tracking seguro para compradores convidados.
-8. Permitir reembolsos e trocas por fluxos administrativos auditáveis.
-9. Operar com processos HTTP e worker separados.
-10. Disponibilizar contratos OpenAPI determinísticos e documentação Swagger somente leitura.
+1. Expor todas as operações necessárias ao Frontend Milestone 1 em contrato OpenAPI executável.
+2. Manter o BFF como único consumidor da Store API pela storefront.
+3. Impedir acesso indevido a carrinhos convidados por meio de capability opaca.
+4. Permitir mutações idempotentes e concorrentes sem sobrescrita silenciosa.
+5. Exigir autenticação antes de endereço, frete e pagamento.
+6. Preservar a política flexível de verificação de e-mail aprovada.
+7. Armazenar CPF com proteção de campo e retornar somente valor mascarado.
+8. Tornar frete, totais, elegibilidade e versões autoritativos no backend.
+9. Entregar apenas o `client_secret` necessário ao Stripe.js e manter tokens auxiliares restritos ao BFF.
+10. Suportar refresh, 3DS, múltiplas abas e erros incertos sem cobrança duplicada.
+11. Expor confirmação de pedido somente após `Order` real.
+12. Emitir `purchase_completed` exclusivamente pelo backend.
+13. Manter OpenAPI, Zod, fixtures, mocks e contract tests sem drift.
 
 ### 2.2 Métricas de sucesso
 
-- zero `Order` criado sem pagamento canônico confirmado;
-- zero duplicidade de `Order` para o mesmo pagamento;
-- zero dispatch Gelato antes da elegibilidade local;
-- webhooks duplicados sem efeitos colaterais duplicados;
-- recuperação operacional possível após falhas temporárias;
-- health checks representando corretamente processo, PostgreSQL e Redis;
-- contratos Store, Admin e Webhooks sem drift em relação ao runtime.
+- zero `Order` criado antes do webhook Stripe canônico;
+- zero cobrança iniciada com versão, frete ou total incompatível;
+- zero mutação destrutiva aplicada sobre `ETag` desatualizado;
+- zero `guestCartToken`, `confirmationToken`, `confirmationSessionRef`, `client_secret`, JWT ou CPF em logs, URLs ou analytics;
+- 100% das operações BFF → backend presentes no OpenAPI aprovado;
+- 100% das respostas críticas validadas por schema executável;
+- 100% das mutações repetíveis protegidas por `Idempotency-Key`;
+- 100% dos erros de contrato com código estável e `correlationId` sanitizado;
+- confirmação assíncrona recuperável após refresh e mudança de aba;
+- ausência de drift entre registry, OpenAPI gerado, Zod, fixtures e contract tests.
 
 ---
 
-## 3. Escopo entregue
+## 3. Estado e escopo
 
-### 3.1 Incluído no backend MVP
+### 3.1 Legenda de estado
+
+| Estado | Significado |
+|---|---|
+| Entregue | Implementado no backend v1.0 e coberto pelos gates aceitos |
+| Aprovado — pendente | Decisão fechada para o Frontend M1, ainda sem todos os artefatos executáveis |
+| Implementado, ativação diferida | Código existente, mas dependente de habilitação externa |
+| Posterior | Fora do Frontend Milestone 1 |
+| Fora do escopo | Não pertence ao produto atual |
+
+### 3.2 Backend v1.0 entregue
 
 - Medusa v2 com Node.js e TypeScript;
-- catálogo com produtos, variantes, preços em BRL e metadados Gelato;
-- imagens públicas por Supabase Storage via interface S3;
+- catálogo, variantes, preços em BRL e metadados Gelato;
+- imagens públicas por Supabase Storage;
 - carrinho convidado e autenticado;
-- associação segura de carrinho convidado a cliente autenticado;
-- checkout brasileiro com dados e endereço necessários;
-- `PaymentAttempt` para tentativas de cartão e Pix;
-- Stripe em modo de teste para iniciação controlada;
+- associação segura de carrinho;
+- checkout brasileiro base;
+- `PaymentAttempt` para cartão e Pix;
 - webhook Stripe com raw body, assinatura e idempotência;
-- criação pós-webhook e concorrente do `Order`;
-- `AnalyticsEventLog` para `purchase_completed`;
-- `EmailDeliveryLog` para confirmação transacional;
-- `GelatoFulfillment` para elegibilidade, dispatch e reconciliação;
-- webhook Gelato;
-- tracking público por token opaco armazenado somente como hash;
-- solicitação de reembolso no Admin e confirmação por webhook Stripe;
-- trocas operacionais e logística reversa manual/semiautomática;
-- alertas operacionais persistidos;
-- auditoria de ações administrativas sensíveis;
-- logs estruturados, Sentry e health checks;
-- contratos OpenAPI 3.1.2 de Store, Admin e Webhooks;
-- Swagger UI local, protegido e não interativo;
-- runtime Heroku com processos `release`, `web` e `worker`.
+- criação pós-webhook de um único `Order`;
+- outboxes de analytics e e-mail;
+- fulfillment e webhook Gelato;
+- tracking público por token;
+- reembolsos, trocas, alertas e auditoria;
+- health checks, Sentry, logs estruturados;
+- OpenAPI Store, Admin e Webhooks;
+- processos Heroku `release`, `web` e `worker`.
 
-### 3.2 Fora do escopo atual
+### 3.3 Extensão obrigatória para o Frontend Milestone 1
 
-- storefront/frontend;
-- estoque físico ou produção própria;
-- múltiplos fornecedores POD;
-- editor visual e upload de arte pelo cliente;
-- venda internacional e multi-moeda;
-- integração automática com API dos Correios;
-- ERP ou marketplace;
-- automação integral de trocas pelo cliente;
-- métodos de pagamento além de cartão e Pix;
-- execução interativa de operações pela Swagger UI.
-
-### 3.3 Limitações operacionais não bloqueantes
-
-- Pix depende da elegibilidade da conta Stripe;
-- envio real pelo Resend ainda não foi comprovado externamente;
-- dispatch real para Gelato ainda não foi comprovado externamente;
-- evento real no PostHog ainda não foi comprovado externamente;
-- exercício externo do Sentry ainda não foi comprovado;
-- rollback real não foi executado;
-- Correios permanece manual/semiautomático.
-
-Essas limitações não reabrem o milestone `v1.0`.
-
----
-
-## 4. Usuários e papéis
-
-| Papel | Necessidade | Superfície principal |
-|---|---|---|
-| Comprador convidado | Navegar, montar carrinho, pagar e acompanhar pedido | Store API + token de tracking |
-| Cliente autenticado | Preservar carrinho, comprar e acessar dados autorizados | Store API + JWT ou sessão |
-| Operador Admin | Gerenciar catálogo, pedidos, reembolsos, trocas e alertas | Admin Dashboard + Admin API |
-| Stripe | Confirmar estados financeiros por webhook confiável | Webhook Stripe |
-| Gelato | Receber pedidos elegíveis e reportar estados | API Gelato + webhook Gelato |
-| Worker | Executar relays, retries, dispatch e scanners | Processo `worker` |
-| Operador técnico | Validar saúde, logs, contratos e release | Health, logs, Sentry, OpenAPI |
-
----
-
-## 5. Arquitetura atual
-
-```text
-Storefront futura / cliente HTTP
-            │
-            │ Store API
-            ▼
-       Heroku web.1
-       Medusa Server
-            │
-            ├── Admin Dashboard em /app
-            ├── Store API
-            ├── Admin API
-            ├── Webhooks Stripe/Gelato
-            ├── Swagger UI /docs
-            ├── Health /health/live e /health/ready
-            │
-            ├── Supabase PostgreSQL
-            ├── Redis
-            ├── Supabase Storage
-            └── Sentry
-
-       Heroku worker.1
-            │
-            ├── Analytics relay → PostHog
-            ├── E-mail relay → Resend
-            ├── Dispatch/reconciliação → Gelato
-            └── Scanners e alertas operacionais
-
-       Heroku release
-            └── db:migrate:safe antes da nova formação
-```
-
-### 5.1 Componentes persistentes
-
-| Componente | Responsabilidade |
+| Área | Entrega-alvo |
 |---|---|
-| `PaymentAttempt` | Tentativa de pagamento, método, valores, status e vínculo com Stripe |
-| `WebhookEventLog` | Ingestão, deduplicação e rastreabilidade de webhooks |
-| `CheckoutCompletionLog` | Coordenação idempotente e concorrente da criação do `Order` |
-| `AnalyticsEventLog` | Outbox durável de `purchase_completed` |
-| `EmailDeliveryLog` | Outbox durável de e-mails transacionais |
-| `GelatoFulfillment` | Elegibilidade, dispatch, status e tracking da produção |
-| `TrackingAccessToken` | Capability token armazenado por hash |
-| `RefundRequest` | Solicitação e confirmação de reembolso |
-| `ExchangeRequest` | Fluxo administrativo de troca |
-| `OperationalAlert` | Falhas que exigem intervenção humana |
-| `AdminActionLog` | Auditoria de ações administrativas sensíveis |
+| Autenticação | cadastro, login guardado, refresh, reset e verificação flexível |
+| Carrinho convidado | capability opaca, hash persistido, rotação/revogação e criação idempotente |
+| Carrinho | adicionar, atualizar, remover, esvaziar, merge e revisão |
+| Concorrência | `ETag`, `If-Match`, versão canônica e erro `412` |
+| Checkout | draft parcial, validação final, endereço BR, CPF e consentimentos |
+| Frete | cotação, expiração, seleção opaca e invalidação por mudança |
+| Pagamento | criação compatível, status e invalidação |
+| Confirmação | token BFF-only, troca atômica, sessão opaca e polling |
+| Pedido | resumo reduzido e autorizado por referência não sequencial |
+| Catálogo | contrato público estável e evento assinado de revalidação |
+| Plataforma | erros fechados, rate limit, correlation ID e idempotência |
+| Contratos | OpenAPI 1.1.0, schemas, fixtures, mocks e contract tests |
 
-### 5.2 Processos
+### 3.4 Fora do Frontend Milestone 1
 
-| Processo | Responsabilidade |
+- checkout convidado;
+- Pix na storefront;
+- histórico completo de pedidos;
+- endereços salvos;
+- cupons, gift cards e promoções;
+- pedidos de total zero;
+- solicitação automatizada de troca;
+- tracking público na storefront;
+- conta empresarial e CNPJ;
+- múltiplas moedas ou países;
+- fallback logístico;
+- upload de arte e personalização;
+- reviews, chat e afiliados.
+
+Pix permanece implementado no backend com ativação operacional diferida.
+
+---
+
+## 4. Usuários, consumidores e limites
+
+| Ator/consumidor | Permissão |
 |---|---|
-| `release` | Executar migrações seguras antes da nova release |
-| `web` | Servir HTTP, Admin, webhooks, health e documentação |
-| `worker` | Executar jobs assíncronos, retries, dispatch e reconciliações |
+| Visitante | catálogo e carrinho convidado |
+| Cliente em cadastro | identidade, criação do Customer e sessão inicial |
+| Cliente autenticado | merge, checkout, frete, pagamento e confirmação |
+| BFF Next.js | único consumidor storefront → Medusa; guarda credenciais e capabilities |
+| Navegador | chama somente o BFF; nunca recebe JWT, guest capability ou referências internas |
+| Operador Admin | fluxos administrativos existentes |
+| Stripe | processamento e webhooks financeiros |
+| Worker | jobs, retries, relays, scanners e reconciliação |
+
+### 4.1 Limite BFF
+
+O backend DEVE assumir que o BFF:
+
+- mantém `x-publishable-api-key` server-side;
+- envia `Authorization` com JWT de Customer;
+- mantém `x-indicio-guest-cart-token` em cookie `HttpOnly`;
+- cria `Idempotency-Key`;
+- propaga `If-Match`;
+- cria e propaga `x-correlation-id`;
+- valida a resposta upstream;
+- converte contratos em DTOs browser-facing.
+
+O backend NÃO DEVE depender de segredo armazenado no navegador para proteger carrinho, confirmação ou identidade.
+
+### 4.2 Operações fora do Store OpenAPI
+
+- logout do dispositivo atual é operação do BFF que remove cookies locais;
+- busca de CEP via ViaCEP/BrasilAPI é responsabilidade do BFF;
+- eventos de analytics de interface pertencem ao frontend;
+- `purchase_completed` pertence exclusivamente ao backend.
 
 ---
 
-## 6. Contratos de API
+## 5. Arquitetura atual e arquitetura-alvo
 
-O backend mantém três documentos OpenAPI 3.1.2 independentes:
+### 5.1 Topologia-alvo
 
-| Superfície | Endpoint quando habilitado | Uso |
-|---|---|---|
-| Store | `/openapi/store.json` | Consumidores e storefront |
-| Admin | `/openapi/admin.json` | Operadores autenticados |
-| Webhooks | `/openapi/webhooks.json` | Ingressos Stripe e Gelato |
+```text
+Navegador
+  │ same-origin
+  ▼
+Next.js BFF — www.indiciocult.com.br
+  ├── cookies HttpOnly
+  ├── publishable key
+  ├── Customer JWT
+  ├── guest cart capability
+  ├── confirmation session envelope
+  ├── Zod + adapters
+  └── correlation/idempotency
+  │ HTTPS
+  ▼
+Heroku web.1 — Medusa
+  ├── /auth
+  ├── Store API
+  ├── Admin API
+  ├── webhooks Stripe/Gelato
+  ├── OpenAPI/Swagger
+  ├── health
+  ├── Supabase PostgreSQL
+  ├── Redis
+  ├── Supabase Storage
+  └── Sentry
 
-A autoridade dos contratos é o registry TypeScript em `apps/backend/src/api-docs/`. Os JSONs gerados são determinísticos, versionados e não devem ser editados manualmente.
+Heroku worker.1
+  ├── PostHog relay
+  ├── Resend relay
+  ├── Gelato dispatch/reconciliation
+  ├── scanners
+  └── outbound catalog revalidation
 
-### 6.1 Swagger UI
+Heroku release
+  └── db:migrate:safe
+```
 
-- disponível localmente em `/docs` quando habilitada;
-- usa somente assets locais e same-origin;
-- não envia cookies para operações documentadas;
-- não persiste autorização;
-- não habilita `Try it out`;
-- não permite submissão de métodos HTTP;
-- serve como documentação somente leitura;
-- em produção permanece desabilitada por padrão;
-- Admin e Webhooks exigem usuário Medusa autenticado para serem incluídos no seletor.
+### 5.2 Evento de revalidação do catálogo
 
-### 6.2 Autenticação
+Quando produto, variante, preço, disponibilidade, publicação ou mídia pública relevante mudar, o backend DEVE poder emitir evento assinado para:
 
-| Superfície | Mecanismos |
+```text
+POST https://www.indiciocult.com.br/api/webhooks/medusa/catalog-revalidation
+```
+
+Headers:
+
+- `x-indicio-event-id`;
+- `x-indicio-event-type`;
+- `x-indicio-signature`;
+- `x-indicio-timestamp`.
+
+O evento DEVE:
+
+- ser idempotente por `event-id`;
+- usar assinatura HMAC e tolerância de timestamp documentada;
+- não incluir metadata Gelato ou dados privados;
+- identificar tags `catalog` e/ou `product:<id>`;
+- ser reprocessável pelo worker;
+- registrar falha persistente sem bloquear mutações administrativas.
+
+---
+
+## 6. Contratos e versionamento
+
+### 6.1 Documentos
+
+| Superfície | Artefato |
 |---|---|
-| Store | Publishable API key; JWT/sessão de cliente quando exigido |
-| Admin nativo | Sessão, JWT e API key conforme contrato nativo |
-| Admin customizado sensível | Usuário Admin autenticado; atores API key podem ser rejeitados |
-| Documentação Admin/Webhooks | Usuário autenticado do tipo `user` com `actor_id` válido |
-| Webhook Stripe | Header de assinatura Stripe + raw body preservado |
-| Webhook Gelato | Header canônico configurado + segredo correspondente |
+| Store | `apps/backend/src/api-docs/generated/store.openapi.json` |
+| Admin | `apps/backend/src/api-docs/generated/admin.openapi.json` |
+| Webhooks | `apps/backend/src/api-docs/generated/webhooks.openapi.json` |
 
----
+O registry TypeScript em `apps/backend/src/api-docs/` é a fonte de geração. JSON gerado não deve ser editado manualmente.
 
-## 7. Fluxos de uso
+### 6.2 Estado atual da Store API
 
-## 7.1 Navegação de catálogo
+O contrato atual contém dez operações as-built:
 
-**Ator:** comprador convidado ou autenticado.
-
-```text
-Cliente solicita produtos publicados
-→ Store API aplica o conjunto público fechado de campos
-→ Backend filtra variantes não vendáveis
-→ Backend retorna produtos, imagens, opções, variantes e preços em BRL
-→ Dados internos Gelato não são expostos
-```
-
-Regras:
-
-- apenas produtos publicados e variantes vendáveis são apresentados;
-- a resposta pública não expõe credenciais, templates internos ou payloads de provider;
-- preços do catálogo seguem o contrato monetário documentado;
-- o cliente precisa enviar publishable API key nas rotas Store aplicáveis.
-
-## 7.2 Criação e recuperação do carrinho ativo
-
-**Ator:** convidado ou cliente autenticado.
-
-```text
-Cliente chama POST /store/carts/active
-→ Backend identifica sessão convidada ou cliente autenticado
-→ Se houver carrinho ativo reutilizável, retorna 200
-→ Caso contrário, cria carrinho BRL e retorna 201
-→ Carrinho permanece estado pré-Order
-```
-
-O carrinho público retorna itens, totais, endereço sanitizado, cliente quando autorizado e o indicador derivado `checkout_data_complete`.
-
-## 7.3 Associação do carrinho convidado
-
-**Ator:** cliente que iniciou compra como convidado e depois se autenticou.
-
-```text
-Cliente autentica
-→ Storefront chama POST /store/customers/me/cart/attach
-→ Backend valida sessão, cliente e propriedade do carrinho convidado
-→ Se o cliente já possui carrinho válido, preserva o carrinho do cliente
-→ Caso contrário, associa o carrinho convidado autorizado
-→ Resultado informa attach ou preservação
-```
-
-O backend não permite anexar carrinho de outra sessão ou substituir silenciosamente um carrinho de cliente válido.
-
-## 7.4 Preparação do checkout brasileiro
-
-```text
-Cliente atualiza e-mail e endereço
-→ Backend valida país BR e os campos obrigatórios
-→ CPF/CNPJ é aceito conforme contrato, mas nunca retornado integralmente
-→ Frete, impostos e totais são recalculados
-→ checkout_data_complete é derivado pelo servidor
-→ Nenhum Order é criado
-```
-
-Regras:
-
-- valores monetários são derivados no servidor;
-- o cliente não pode definir totais confiáveis;
-- identificador fiscal completo não deve aparecer em resposta pública, logs ou exemplos OpenAPI;
-- o carrinho continua sendo a entidade principal até a confirmação canônica do pagamento.
-
-## 7.5 Iniciação de pagamento por cartão
-
-```text
-Storefront chama POST /store/carts/{id}/payment-attempts/card
-→ Backend valida acesso ao carrinho e completude do checkout
-→ Backend deriva valor e moeda do carrinho
-→ Backend cria ou reutiliza Payment Collection/Session conforme o fluxo
-→ Backend cria PaymentAttempt idempotente
-→ Stripe cria PaymentIntent de teste
-→ Backend retorna client_secret efêmero
-→ Storefront confirma o pagamento diretamente com Stripe.js
-→ Order ainda não existe
-```
-
-Regras:
-
-- `client_secret` nunca é persistido em logs ou exemplos;
-- a confirmação do cliente não é autoridade para criar `Order`;
-- o valor persistido segue contrato explícito de unidade monetária;
-- nova tentativa deve invalidar ou coordenar tentativas anteriores conforme o estado.
-
-## 7.6 Iniciação de pagamento Pix
-
-```text
-Storefront chama POST /store/carts/{id}/payment-attempts/pix
-→ Backend valida carrinho e elegibilidade
-→ Stripe cria PaymentIntent Pix
-→ Backend retorna QR, copia-e-cola e/ou URL de instruções
-→ PaymentAttempt fica pendente
-→ Enquanto não houver webhook canônico de sucesso, Order não existe
-```
-
-Pix está implementado no contrato, mas sua ativação operacional depende da elegibilidade da conta Stripe.
-
-## 7.7 Webhook Stripe e criação do Order
-
-**Evento canônico:** `payment_intent.succeeded`.
-
-```text
-Stripe envia webhook
-→ Backend preserva raw body
-→ Backend valida assinatura
-→ WebhookEventLog registra ou deduplica o evento
-→ Backend localiza PaymentAttempt e contexto do carrinho
-→ CheckoutCompletionLog coordena concorrência e idempotência
-→ Backend conclui checkout e cria um único Order
-→ Backend registra purchase_completed em AnalyticsEventLog
-→ Backend registra intenção de e-mail em EmailDeliveryLog
-→ Backend cria/elege o registro de fulfillment Gelato
-→ Resposta ao webhook não depende da entrega externa aos providers
-```
-
-Invariantes:
-
-- reentrega do mesmo webhook não duplica efeitos;
-- concorrência não cria dois pedidos;
-- falha do PostHog, Resend ou Gelato não desfaz o `Order` pago;
-- efeitos externos são processados por jobs reexecutáveis;
-- a verdade transacional é local.
-
-## 7.8 Falha, cancelamento ou expiração do pagamento
-
-```text
-Stripe envia evento canônico de falha/cancelamento
-→ Backend registra o evento de forma idempotente
-→ PaymentAttempt é atualizado conforme a transição permitida
-→ Carrinho pode permanecer utilizável para nova tentativa
-→ Order não é criado
-→ purchase_completed não é registrado
-→ Fulfillment não é criado ou enviado
-```
-
-## 7.9 Entrega de analytics
-
-```text
-Order confirmado
-→ AnalyticsEventLog contém purchase_completed único
-→ Worker busca eventos pendentes
-→ Worker envia payload sanitizado ao PostHog
-→ Sucesso marca o evento como entregue
-→ Falha agenda retry e gera observabilidade
-```
-
-O dispatch Gelato depende do registro local durável de `purchase_completed`, não do sucesso no PostHog.
-
-## 7.10 E-mail de confirmação
-
-```text
-Order confirmado
-→ EmailDeliveryLog registra a entrega esperada
-→ Worker envia pelo Resend
-→ Sucesso marca a entrega como concluída
-→ Falha permanece reprocessável
-```
-
-A falha de e-mail não cancela pedido pago e não deve corromper o estado financeiro.
-
-## 7.11 Fulfillment Gelato
-
-```text
-Order confirmado + purchase_completed local registrado
-→ GelatoFulfillment é avaliado
-→ Backend valida snapshot/metadados dos itens
-→ Worker reserva o dispatch de forma idempotente
-→ Worker envia pedido à Gelato
-→ Backend persiste identificador externo e status
-→ Gelato produz e envia
-→ Webhook Gelato atualiza estados e tracking
-```
-
-Regras:
-
-- um pedido não gera múltiplos dispatches ativos indevidos;
-- falhas transitórias são reprocessáveis;
-- falhas permanentes produzem `OperationalAlert`;
-- payload externo deriva de snapshot estável dos itens do pedido;
-- alteração posterior do catálogo não modifica o pedido já confirmado.
-
-## 7.12 Webhook Gelato
-
-```text
-Gelato envia evento
-→ Backend valida o header de autenticação canônico
-→ WebhookEventLog registra ou deduplica
-→ Backend localiza GelatoFulfillment
-→ Transição de status é validada
-→ Tracking é persistido quando disponível
-→ Estados do fulfillment/pedido são reconciliados
-→ Evento duplicado não repete efeitos
-```
-
-## 7.13 Tracking para convidado
-
-```text
-Backend gera token opaco
-→ Somente o hash é persistido
-→ Token é entregue ao cliente por canal autorizado
-→ Cliente envia token no corpo de POST /store/tracking/lookup
-→ Backend valida token e expiração
-→ Resposta pública reduzida retorna referência, estados e itens sanitizados
-```
-
-Regras:
-
-- token não aparece em path ou query;
-- token nunca é logado;
-- resposta não expõe endereço, e-mail, CPF/CNPJ ou dados internos;
-- token inválido não permite enumeração útil de pedidos.
-
-## 7.14 Reembolso administrativo
-
-```text
-Operador autenticado solicita reembolso no Admin
-→ Backend valida ator, pedido, valor disponível e idempotency key
-→ RefundRequest é criado ou reutilizado
-→ Stripe recebe a solicitação
-→ Estado local permanece pendente de confirmação financeira
-→ Stripe envia webhook confiável
-→ Backend confirma o reembolso e recalcula estado financeiro
-→ AdminActionLog registra a ação
-```
-
-Regras:
-
-- identidade do operador vem do contexto autenticado, não do body;
-- valores usam centavos nas superfícies administrativas documentadas;
-- reembolso não altera automaticamente `order_status` para `canceled`;
-- confirmação financeira depende do webhook Stripe.
-
-## 7.15 Troca e logística reversa
-
-```text
-Operador cria ExchangeRequest para um Order elegível
-→ Backend valida ator, motivo, itens e dados permitidos
-→ Sistema identifica responsabilidade pelo frete
-→ Operador registra dados de logística reversa obtidos externamente
-→ Status segue o grafo permitido
-→ Histórico e auditoria são preservados
-```
-
-A integração com Correios é manual/semiautomática. O backend armazena as referências e decisões operacionais, mas não cria automaticamente uma autorização por API.
-
-## 7.16 Alertas operacionais
-
-```text
-Scanner detecta pagamento travado ou fulfillment falho
-→ OperationalAlert é criado ou agregado por chave estável
-→ Severidade, entidade, contagem e timestamps são atualizados
-→ Operador consulta lista/detalhe no Admin
-→ Operador reconhece, resolve ou ignora conforme o fluxo
-→ AdminActionLog preserva ações sensíveis
-```
-
-O DTO de alerta é fechado e sanitizado; payloads crus, headers e segredos não são expostos.
-
-## 7.17 Operação e health checks
-
-```text
-GET /health/live
-→ confirma que o processo HTTP responde
-
-GET /health/ready
-→ testa PostgreSQL e Redis em paralelo com timeout
-→ retorna 200 quando dependências obrigatórias estão disponíveis
-→ retorna 503 com resposta sanitizada quando alguma dependência falha
-```
-
-A identidade de versão é resolvida por metadados da plataforma; `APP_VERSION` atua como fallback. Localmente, a versão padrão é `dev`.
-
----
-
-## 8. Requisitos funcionais consolidados
-
-### 8.1 Catálogo e mídia
-
-| ID | Requisito | Estado |
-|---|---|---|
-| BE-CAT-001 | Gerenciar produtos, variantes, preços e publicação pelo Admin | Entregue |
-| BE-CAT-002 | Expor somente variantes vendáveis na Store API | Entregue |
-| BE-CAT-003 | Exigir metadados Gelato para elegibilidade operacional | Entregue |
-| BE-CAT-004 | Servir imagens públicas por Supabase Storage | Entregue |
-| BE-CAT-005 | Preservar snapshot Gelato nos itens do pedido | Entregue |
-
-### 8.2 Carrinho, checkout e cliente
-
-| ID | Requisito | Estado |
-|---|---|---|
-| BE-CHK-001 | Criar e recuperar carrinho ativo convidado/autenticado | Entregue |
-| BE-CHK-002 | Associar carrinho convidado com segurança | Entregue |
-| BE-CHK-003 | Validar checkout brasileiro e derivar completude | Entregue |
-| BE-CHK-004 | Manter todos os estados pré-pagamento fora de `Order` | Entregue |
-| BE-CHK-005 | Não aceitar valores monetários autoritativos do cliente | Entregue |
-
-### 8.3 Pagamento e pedido
-
-| ID | Requisito | Estado |
-|---|---|---|
-| BE-PAY-001 | Iniciar cartão e Pix por `PaymentAttempt` | Entregue |
-| BE-PAY-002 | Validar assinatura Stripe e preservar raw body | Entregue |
-| BE-PAY-003 | Deduplicar webhooks | Entregue |
-| BE-PAY-004 | Criar `Order` somente após webhook de sucesso | Entregue |
-| BE-PAY-005 | Impedir duplicidade sob concorrência | Entregue |
-| BE-PAY-006 | Não criar `Order` em falha/cancelamento/expiração | Entregue |
-| BE-PAY-007 | Manter Pix condicionado à elegibilidade operacional | Implementado, ativação diferida |
-
-### 8.4 Downstream
-
-| ID | Requisito | Estado |
-|---|---|---|
-| BE-DWN-001 | Registrar `purchase_completed` local e idempotente | Entregue |
-| BE-DWN-002 | Entregar analytics de forma assíncrona | Entregue |
-| BE-DWN-003 | Entregar e-mail de forma assíncrona | Entregue |
-| BE-DWN-004 | Despachar Gelato somente após elegibilidade local | Entregue |
-| BE-DWN-005 | Processar webhook Gelato e tracking | Entregue |
-| BE-DWN-006 | Manter falhas reprocessáveis e observáveis | Entregue |
-
-### 8.5 Pós-venda e operação
-
-| ID | Requisito | Estado |
-|---|---|---|
-| BE-OPS-001 | Tracking público por token seguro | Entregue |
-| BE-OPS-002 | Solicitar reembolso no Admin | Entregue |
-| BE-OPS-003 | Confirmar reembolso somente por webhook | Entregue |
-| BE-OPS-004 | Registrar trocas e logística reversa | Entregue |
-| BE-OPS-005 | Persistir e consultar alertas operacionais | Entregue |
-| BE-OPS-006 | Auditar ações administrativas sensíveis | Entregue |
-
-### 8.6 Documentação de API
-
-| ID | Requisito | Estado |
-|---|---|---|
-| BE-DOC-001 | Manter contratos Store, Admin e Webhooks separados | Entregue |
-| BE-DOC-002 | Garantir geração determinística e verificação de drift | Entregue |
-| BE-DOC-003 | Expor Swagger local somente leitura | Entregue |
-| BE-DOC-004 | Manter documentação desabilitada por padrão em produção | Entregue |
-| BE-DOC-005 | Exigir autenticação de usuário para contratos internos | Entregue |
-
----
-
-## 9. Requisitos não funcionais
-
-| Categoria | Requisito |
+| operationId atual | Rota |
 |---|---|
-| Segurança | Secrets somente em ambiente; nenhuma credencial ou token em logs |
-| Privacidade | Coleta mínima; CPF/CNPJ mascarado nas respostas públicas |
-| Idempotência | Webhooks, criação do `Order`, outboxes, dispatch e reembolso protegidos |
-| Concorrência | Criação do pedido e reservas operacionais coordenadas por estado persistente/locks |
-| Resiliência | Jobs reprocessáveis, retries e alertas para falhas persistentes |
-| Observabilidade | Logs JSON em produção, correlation ID, Sentry sanitizado e health checks |
-| Escalabilidade | Processos `web` e `worker` separados |
-| Banco | Runtime por conexão apropriada e migração por conexão direta/session segura |
-| Redis | Contratos separados para cache, eventos, workflows e locking |
-| Manutenibilidade | TypeScript, testes críticos e contratos OpenAPI versionados |
-| Operação | Migrações no processo `release`; deploy e rollback manualmente autorizados |
-| Documentação | Swagger não interativo e contratos internos protegidos |
+| `storeHealthGetLive` | `GET /health/live` |
+| `storeHealthGetReady` | `GET /health/ready` |
+| `storeProductsList` | `GET /store/products` |
+| `storeProductsRetrieve` | `GET /store/products/{id}` |
+| `storeCartGetActive` | `GET /store/carts/active` |
+| `storeCartCreateOrGetActive` | `POST /store/carts/active` |
+| `storeCustomerCartAttach` | `POST /store/customers/me/cart/attach` |
+| `storePaymentAttemptCreateCard` | `POST /store/carts/{id}/payment-attempts/card` |
+| `storePaymentAttemptCreatePix` | `POST /store/carts/{id}/payment-attempts/pix` |
+| `storeTrackingLookup` | `POST /store/tracking/lookup` |
+
+`storeCustomerCartAttach` será deprecated para a nova storefront. Pix e tracking público ficam fora do Frontend M1.
+
+### 6.3 Versão-alvo
+
+- primeiro contrato executável para o Frontend M1: `1.1.0`;
+- tag coordenada prevista: `v1.1.0`;
+- breaking change de auth ou dinheiro: `2.0.0`;
+- depreciação: ao menos uma release coordenada ou 30 dias, prevalecendo o maior prazo.
+
+### 6.4 Regra de consumo
+
+Uma operação só pode ser consumida pelo frontend quando:
+
+1. existir no registry;
+2. existir no JSON OpenAPI gerado;
+3. possuir schemas e exemplos seguros;
+4. possuir teste de contrato;
+5. possuir Zod/fixture correspondente;
+6. passar os gates de drift.
 
 ---
 
-## 10. Estados e invariantes
+## 7. Contrato-alvo para o Frontend Milestone 1
 
-### 10.1 Pagamento
+### 7.1 Autenticação e Customer
 
-Estados detalhados pertencem a `PaymentAttempt` e aos objetos Medusa/Stripe associados. A transição canônica de sucesso deve resultar em um único `Order`.
-
-### 10.2 Pedido e fulfillment
-
-O backend não deve comprimir todos os estados operacionais em um único campo. Estado financeiro, estado do pedido, estado do fulfillment e estado Gelato são conceitos separados.
+| operationId | Método | Rota | Estado |
+|---|---|---|---|
+| `registerCustomerIdentity` | POST | `/auth/customer/emailpass/register` | Aprovado — pendente de contrato |
+| `createCustomer` | POST | `/store/customers` | Aprovado — pendente de contrato |
+| `customerLogin` | POST | `/auth/customer/emailpass` | Aprovado — guard adicional |
+| `getCustomerMe` | GET | `/store/customers/me` | Aprovado — pendente de contrato |
+| `requestPasswordReset` | POST | `/auth/customer/emailpass/reset-password` | Aprovado — Medusa 2.16+ |
+| `resetPassword` | POST | `/auth/customer/emailpass/update` | Aprovado — pendente de contrato |
+| `refreshCustomerToken` | POST | `/auth/token/refresh` | Aprovado — guard adicional |
+| `requestEmailVerification` | POST | `/store/customers/me/verify` | Aprovado — customizado |
+| `resendEmailVerification` | POST | `/store/customers/me/verify/resend` | Aprovado — customizado |
+| `confirmEmailVerification` | POST | `/store/customers/verify` | Aprovado — customizado |
+| `getEmailVerificationStatus` | GET | `/store/customers/me/verify/status` | Aprovado — customizado |
 
 Regras:
 
-- `shipped` não equivale automaticamente a `completed`;
-- reembolso não equivale automaticamente a cancelamento do pedido;
-- falha de e-mail ou analytics não invalida pagamento confirmado;
-- falha de Gelato exige atenção e reprocessamento, não duplicação automática;
-- status não deve regredir sem regra explícita.
+- cadastro ocorre em duas etapas: identidade → registration JWT → Customer;
+- sessão inicial pode concluir compra mesmo com e-mail ainda não verificado;
+- novo login após logout ou expiração completa exige e-mail verificado;
+- falha no envio do e-mail não bloqueia compra da sessão inicial;
+- refresh exige JWT válido e não revogado;
+- alteração de senha revoga tokens anteriores;
+- respostas de auth não expõem se um e-mail inexistente está cadastrado;
+- endpoints de verificação e reset possuem rate limit e resposta anti-enumeração;
+- JWT nunca é retornado em exemplos de contrato com valor reutilizável;
+- logout não é endpoint do backend para o M1; o BFF elimina a sessão local.
 
-### 10.3 Unidades monetárias
+### 7.2 Carrinho convidado e capability
 
-- contratos Store públicos documentam explicitamente quando usam BRL em unidade maior;
-- tentativas de pagamento e operações Admin sensíveis podem usar BRL em unidade menor;
-- cada schema OpenAPI deve declarar sua unidade;
-- conversões devem ocorrer em fronteiras explícitas e testadas.
+| operationId | Método | Rota |
+|---|---|---|
+| `getActiveStoreCart` | GET | `/store/carts/active` |
+| `createActiveStoreCart` | POST | `/store/carts/active` |
 
----
+Na criação de carrinho convidado:
 
-## 11. Observabilidade e auditoria
+```http
+201 Created
+ETag: "<cart-version>"
+x-indicio-guest-cart-token: "<opaque-capability>"
+```
 
-### 11.1 Logs
+Requisitos:
 
-Os logs usam allowlist. Não registrar:
+- token gerado com no mínimo 32 bytes CSPRNG;
+- persistência somente do SHA-256;
+- header marcado como sensível no contrato;
+- token vinculado ao carrinho e ao contexto permitido;
+- mesma `Idempotency-Key` retorna o mesmo contexto ainda válido;
+- token nunca aparece em body, URL, query, logs, traces ou analytics;
+- capability inválida retorna erro não enumerável;
+- merge bem-sucedido consome e revoga a capability;
+- carrinho expirado ou completado revoga o acesso convidado.
 
-- body completo por padrão;
-- dados de cartão;
-- `client_secret`;
-- QR ou copia-e-cola Pix;
-- cookies;
-- `Authorization`;
-- tokens de tracking;
-- secrets de webhook;
-- payloads de provider sem sanitização.
+### 7.3 Mutações do carrinho
 
-### 11.2 Eventos mínimos observáveis
+| operationId | Método | Rota |
+|---|---|---|
+| `addCartLineItem` | POST | `/store/carts/{id}/line-items` |
+| `updateCartLineItem` | POST | `/store/carts/{id}/line-items/{item_id}` |
+| `removeCartLineItem` | DELETE | `/store/carts/{id}/line-items/{item_id}` |
+| `clearCartLineItems` | DELETE | `/store/carts/{id}/line-items` |
+| `mergeCustomerCart` | POST | `/store/customers/me/cart/merge` |
+| `acknowledgeCartReview` | POST | `/store/carts/{id}/review/acknowledge` |
 
-- criação e atualização de carrinho;
-- início de `PaymentAttempt`;
-- ingestão e deduplicação de webhook;
-- criação ou reutilização de `Order`;
-- registro de `purchase_completed`;
-- entrega ou retry de analytics/e-mail;
-- elegibilidade e dispatch Gelato;
-- atualização de tracking;
-- solicitação e confirmação de reembolso;
-- criação e transição de troca;
-- criação, agregação e resolução de alerta;
-- falhas de PostgreSQL, Redis e integrações.
+Regras:
 
-### 11.3 Auditoria Admin
+- quantidade inteira de 1 a 99;
+- quantidade zero na atualização equivale à remoção;
+- backend deriva produto, preço, moeda e elegibilidade a partir da variante;
+- cart ID, preço ou metadata enviados no body além do schema são rejeitados;
+- todas as respostas retornam carrinho canônico e novo `ETag`;
+- mutações exigem `If-Match` quando o carrinho já possui versão;
+- mismatch retorna `412 CART_VERSION_MISMATCH` com carrinho canônico opcional;
+- não há repetição automática de mutação destrutiva;
+- alteração de itens revoga cotação, seleção de frete e tentativa de pagamento incompatíveis.
 
-Ações administrativas sensíveis devem preservar:
+### 7.4 Merge transacional
 
-- ator autenticado;
-- tipo de ação;
-- entidade afetada;
+`mergeCustomerCart` DEVE:
+
+- exigir Customer JWT e guest capability válida;
+- executar em transação;
+- somar quantidades iguais até o limite de 99;
+- rejeitar itens individualmente quando não vendáveis;
+- preservar carrinho autenticado válido quando aplicável;
+- consumir a capability apenas no resultado comprometido;
+- retornar um dos outcomes:
+  - `MERGED`;
+  - `MERGED_PARTIAL`;
+  - `GUEST_CART_ATTACHED`;
+  - `CUSTOMER_CART_PRESERVED`;
+  - `NO_ITEMS`;
+- retornar `rejectedItems`;
+- definir `requiresReview=true` quando a intervenção do usuário for necessária;
+- impedir checkout enquanto a revisão não for reconhecida;
+- tornar `acknowledgeCartReview` persistente, idempotente e versionado.
+
+`POST /store/customers/me/cart/attach` permanece suportado apenas durante a janela de depreciação.
+
+### 7.5 Checkout brasileiro
+
+| operationId | Método | Rota |
+|---|---|---|
+| `patchCartCheckoutDetails` | PATCH | `/store/carts/{id}/checkout-details` |
+| `validateCartCheckoutDetails` | POST | `/store/carts/{id}/checkout-details/validate` |
+
+Pré-condições:
+
+- Customer autenticado;
+- carrinho associado, não vazio e vendável;
+- `requiresReview=false`;
+- versão atual;
+- nenhuma tentativa incompatível em estado bloqueante.
+
+Draft:
+
+- persiste somente campos presentes e válidos;
+- não persiste CPF inválido;
+- recalcula `checkout_data_complete`;
+- retorna todos os campos públicos sanitizados e novo `ETag`.
+
+Validação final:
+
+- valida a etapa completa de forma atômica;
+- não aplica persistência parcial em caso de erro;
+- retorna todos os `fieldErrors`;
+- libera cotação de frete e pagamento apenas após sucesso.
+
+Campos de pessoa física no Brasil:
+
+- nome;
+- sobrenome;
+- e-mail da conta read-only;
+- telefone;
+- CPF;
+- CEP;
+- rua;
+- número ou `S/N`;
+- bairro;
+- cidade;
+- UF;
+- país fixo `BR`;
+- complemento opcional.
+
+O backend mantém endereço estruturado no domínio e realiza o mapeamento necessário para os modelos Medusa/providers.
+
+### 7.6 CPF e consentimentos
+
+CPF:
+
+- validado no backend;
+- persistido em campo próprio com AES-256-GCM ou mecanismo equivalente aprovado;
+- chave fora do banco e gerenciada por serviço de chaves;
+- resposta Store retorna somente `MaskedFederalTaxId`;
+- proibido em Stripe, Gelato, PostHog, Sentry e logs;
+- CPF de carrinho abandonado é purgado após 7 dias;
+- snapshot necessário do pedido permanece criptografado e acessível apenas em fluxo auditado.
+
+Consentimentos obrigatórios:
+
+- Termos de Compra;
+- Política de Trocas;
+- ciência da Política de Privacidade.
+
+Cada `ConsentReceipt` deve registrar:
+
+- tipo/finalidade;
+- versão do documento;
 - timestamp;
-- correlation ID quando aplicável;
-- fatos sanitizados necessários à auditoria.
+- Customer;
+- cart;
+- correlation ID;
+- IP somente quando juridicamente necessário.
 
-A identidade do operador nunca é aceita do corpo da requisição.
+User agent não é armazenado. Retenção permanece sujeita a revisão jurídica antes do go-live.
 
----
+### 7.7 Frete
 
-## 12. Ambientes, configuração e execução
+| operationId | Método | Rota |
+|---|---|---|
+| `quoteShippingOptions` | POST | `/store/carts/{id}/shipping-options/quote` |
+| `selectShippingOption` | PUT | `/store/carts/{id}/shipping-option` |
 
-### 12.1 Ambientes
+Cotação:
 
-- **Local:** desenvolvimento com PostgreSQL e Redis acessíveis; Admin habilitado; docs podem ser habilitadas explicitamente.
-- **Produção:** Heroku com Supabase PostgreSQL e Redis; docs desabilitadas por padrão.
-- **Staging:** convenção documentada, não ambiente formalmente provisionado.
+- exige checkout validado e endereço completo;
+- usa itens, destino e versão atuais;
+- retorna referência opaca, preço, prazo total em dias úteis e expiração;
+- oculta provider interno;
+- TTL máximo de 30 minutos;
+- pode indicar transportadora pública quando disponível;
+- não oferece fallback no M1;
+- falha de provider não altera carrinho nem cria pagamento.
 
-### 12.2 Variáveis principais
+Seleção:
 
-| Grupo | Variáveis |
+- exige `shippingOptionRef` opaca, vigente e pertencente ao carrinho;
+- recalcula totais;
+- persiste seleção e novo `ETag`;
+- mudança de endereço, item, quantidade, preço ou publicação revoga cotação/seleção;
+- opção anterior nunca é restaurada automaticamente;
+- mudança relevante invalida tentativa de pagamento incompatível.
+
+### 7.8 Pagamento por cartão
+
+| operationId | Método | Rota |
+|---|---|---|
+| `createCardPaymentAttempt` | POST | `/store/carts/{id}/payment-attempts/card` |
+| `getPaymentAttemptStatus` | POST | `/store/carts/{id}/payment-attempts/status` |
+| `invalidatePaymentAttempt` | POST | `/store/carts/{id}/payment-attempts/invalidate` |
+
+`createCardPaymentAttempt`:
+
+- exige checkout completo, frete válido, consentimentos, total maior que zero e versão atual;
+- deriva `amount`, `currency`, cart, Customer e PaymentIntent;
+- nunca aceita valores autoritativos do consumidor;
+- cria ou reutiliza tentativa compatível pela `Idempotency-Key`;
+- retorna `client_secret` efêmero e `confirmationToken` BFF-only;
+- marca ambos como sensíveis no contrato;
+- nunca inclui PaymentIntent ID em DTO público;
+- preserva a regra de que sucesso client-side não cria `Order`.
+
+Estados reutilizáveis:
+
+- `requires_payment_method`;
+- `requires_confirmation`;
+- `requires_action`.
+
+Estados bloqueantes:
+
+- `processing`;
+- `succeeded`;
+- `canceled`;
+- `invalidated`;
+- `expired`.
+
+`getPaymentAttemptStatus`:
+
+- usa POST para evitar referências em URL;
+- exige autorização e vínculo ao carrinho/Customer;
+- retorna estado público reduzido e ação permitida;
+- orienta consulta antes de retry após erro de rede incerto.
+
+`invalidatePaymentAttempt`:
+
+- é idempotente;
+- marca tentativa incompatível como invalidada;
+- cancela PaymentIntent em best effort;
+- não apaga evidências;
+- impede reutilização de `client_secret`;
+- é acionada por mudança estrutural de carrinho/endereço/frete.
+
+Webhook tardio de tentativa invalidada:
+
+```text
+ingerir e deduplicar
+→ responder 2xx
+→ não criar Order a partir do carrinho atual
+→ registrar PAYMENT_SUCCEEDED_FOR_INVALIDATED_ATTEMPT
+→ marcar RECONCILIATION_REQUIRED
+→ criar alerta crítico
+```
+
+### 7.9 Confirmação assíncrona
+
+| operationId | Método | Rota |
+|---|---|---|
+| `exchangePaymentConfirmationToken` | POST | `/store/payment-confirmations/exchange` |
+| `getPaymentConfirmationStatus` | POST | `/store/payment-confirmations/status` |
+| `getConfirmedOrderSummary` | GET | `/store/orders/{orderReference}/confirmation` |
+
+`confirmationToken`:
+
+- 32 bytes CSPRNG;
+- persistido somente como SHA-256;
+- uso único;
+- TTL de 30 minutos;
+- vinculado a Customer, tentativa e versão do carrinho;
+- trafega somente em body HTTPS BFF → backend;
+- nunca aparece em URL, HTML, analytics, Sentry ou logs.
+
+Troca:
+
+- exige publishable key, Customer JWT e `Idempotency-Key`;
+- consome token atomicamente;
+- retry com mesma chave retorna a mesma sessão válida;
+- token consumido por outra operação é rejeitado sem revelar estado financeiro;
+- retorna `confirmationSessionRef` opaca e `expiresAt`;
+- a referência é BFF-only e marcada como sensível.
+
+Consulta:
+
+- recebe a referência no body;
+- verifica Customer, expiração e vínculo;
+- aplica rate limit e `Retry-After`;
+- retorna `retryAfterMs`;
+- usa os estados:
+
+```text
+AWAITING_PROVIDER
+PROCESSING_WEBHOOK
+ORDER_CONFIRMED
+PAYMENT_RETRY_REQUIRED
+PAYMENT_CANCELED
+PAYMENT_INVALIDATED
+PAYMENT_EXPIRED
+RECONCILIATION_REQUIRED
+CONFIRMATION_SESSION_EXPIRED
+CONFIRMATION_UNKNOWN
+```
+
+Semântica:
+
+- `ORDER_CONFIRMED` é terminal e somente ocorre após `Order` persistido;
+- `PAYMENT_RETRY_REQUIRED` permite corrigir e iniciar nova tentativa;
+- `RECONCILIATION_REQUIRED` encerra polling automático e mantém lock;
+- `CONFIRMATION_UNKNOWN` é terminal de UX, não estado financeiro terminal;
+- e-mail, PostHog ou Gelato não bloqueiam `ORDER_CONFIRMED`.
+
+### 7.10 Resumo de pedido confirmado
+
+`GET /store/orders/{orderReference}/confirmation`:
+
+- exige publishable key e Customer JWT;
+- verifica propriedade do pedido;
+- usa `orderReference` opaca e não sequencial;
+- referência isolada não concede acesso;
+- permite acesso direto por 24 horas após confirmação;
+- após TTL retorna `404 CONFIRMATION_NOT_FOUND`;
+- funciona em outro dispositivo autenticado na mesma conta;
+- retorna apenas:
+  - referência pública;
+  - data;
+  - itens sanitizados;
+  - totais;
+  - frete selecionado;
+  - estados públicos;
+  - e-mail e CEP mascarados;
+  - endereço mínimo necessário;
+- não retorna Stripe IDs, provider IDs, CPF completo, metadata Gelato ou dados de auditoria.
+
+### 7.11 Catálogo público
+
+O contrato de catálogo DEVE:
+
+- retornar somente produtos publicados e variantes vendáveis;
+- expor identificador, handle público, título, descrição editorial, opções, variantes, mídia, disponibilidade e preço;
+- ocultar metadata e templates Gelato;
+- declarar a estratégia canônica de resolução da página de produto;
+- suportar cache público seguro e revalidação;
+- usar campos fechados, sem expansão arbitrária de entidades internas.
+
+A resolução por handle deve ser materializada no Store OpenAPI antes da implementação da rota `/produtos/[handle-ou-id]`, seja por filtro exato documentado em `GET /store/products` ou por operação específica. O frontend não deve inferir essa resolução.
+
+### 7.12 Headers transversais
+
+| Header | Regra |
 |---|---|
-| Runtime | `NODE_ENV`, `APP_VERSION`, `WORKER_MODE`, `ADMIN_DISABLED` |
-| Banco | `DATABASE_URL`, `DATABASE_MIGRATION_URL` |
-| Redis | `REDIS_URL`, `CACHE_REDIS_URL`, `EVENTS_REDIS_URL`, `WE_REDIS_URL` |
-| HTTP/Auth | `API_PUBLIC_URL`, `STORE_CORS`, `ADMIN_CORS`, `AUTH_CORS`, `JWT_SECRET`, `COOKIE_SECRET` |
-| Storage | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FILE_URL` |
-| Stripe | chaves de teste, webhook e flags de ativação |
-| Resend | chave, remetente, reply-to e flag de ativação |
-| Gelato | chave, método de envio, webhook e flag de dispatch |
-| Observabilidade | `SENTRY_DSN` e configuração PostHog |
-| API Docs | `API_DOCS_ENABLED`, `API_DOCS_UI_ENABLED`, `API_DOCS_PUBLIC_ENABLED`, `API_DOCS_INTERNAL_ENABLED` |
+| `x-publishable-api-key` | obrigatório nas rotas `/store` aplicáveis |
+| `Authorization` | Customer JWT ou token de propósito específico |
+| `x-indicio-guest-cart-token` | capability convidada; sensível |
+| `If-Match` | versão exigida em mutações concorrentes |
+| `ETag` | versão canônica retornada |
+| `Idempotency-Key` | obrigatório em mutações repetíveis |
+| `x-correlation-id` | recebido ou gerado; sanitizado |
+| `Retry-After` | rate limit e polling |
+| `Content-Type` | `application/json` |
 
-O arquivo `.env.template` é o contrato versionado. Valores reais não devem ser commitados.
+Regras adicionais:
+
+- `Idempotency-Key` é escopada por ator, operação e recurso;
+- payload incompatível com chave já usada retorna conflito estável;
+- `x-correlation-id` inválido é substituído;
+- headers sensíveis nunca são refletidos em body ou logs.
+
+### 7.13 Schemas mínimos
+
+O registry DEVE incluir:
+
+- `StoreMajorMoney`;
+- `StoreMinorMoney`;
+- `MoneyUnit`;
+- `StoreCartResponse`;
+- `GuestCartContext`;
+- `CartMergeRequest`;
+- `CartMergeResponse`;
+- `CartMergeRejectedItem`;
+- `CartReviewState`;
+- `CheckoutDetailsDraftRequest`;
+- `CheckoutDetailsDraftResponse`;
+- `CheckoutValidationRequest`;
+- `CheckoutValidationResponse`;
+- `BrazilianShippingAddress`;
+- `MaskedFederalTaxId`;
+- `ConsentReceipt`;
+- `ShippingQuoteRequest`;
+- `ShippingQuoteResponse`;
+- `ShippingOption`;
+- `ShippingSelectionRequest`;
+- `CardPaymentAttemptRequest`;
+- `CardPaymentAttemptResponse`;
+- `PaymentAttemptStatusRequest`;
+- `PaymentAttemptStatusResponse`;
+- `PaymentAttemptInvalidationRequest`;
+- `PaymentAttemptInvalidationResponse`;
+- `PaymentConfirmationExchangeRequest`;
+- `PaymentConfirmationExchangeResponse`;
+- `PaymentConfirmationStatusRequest`;
+- `PaymentConfirmationStatusResponse`;
+- `ConfirmedOrderItem`;
+- `ConfirmedOrderSummary`;
+- `StoreErrorResponse`;
+- `AuthVerificationState`;
+- schemas de identidade, senha, token e Customer.
+
+Schemas devem ser fechados quando possível e marcar secrets/capabilities com `writeOnly`, `x-sensitive` ou extensão equivalente reconhecida pelos gates.
 
 ---
 
-## 13. Testes e gates
+## 8. Fluxos funcionais
 
-A estratégia de validação inclui:
+### 8.1 Jornada principal
 
-- testes unitários de módulos, workflows, jobs, validadores e segurança;
-- integração HTTP real das rotas Store, Admin, health e webhooks;
-- integração de módulos Medusa;
-- PostgreSQL descartável para constraints, locks e concorrência;
-- invariantes de pagamento → webhook → `Order` → downstream;
-- idempotência e reentrega de webhooks;
-- contratos OpenAPI e geração determinística;
-- lint e build;
-- validação operacional de release, health e identidade de versão.
+```text
+Catálogo
+→ produto
+→ criação lazy do carrinho convidado
+→ mutações com capability e ETag
+→ cadastro/login
+→ merge transacional
+→ checkout autenticado
+→ validação de endereço, CPF e consentimentos
+→ cotação e seleção de frete
+→ criação da tentativa
+→ troca do token de confirmação pelo BFF
+→ Stripe Payment Element/3DS
+→ polling seguro
+→ webhook Stripe
+→ Order
+→ resumo confirmado
+```
 
-### 13.1 Gates OpenAPI
+### 8.2 Cadastro e merge
+
+```text
+registerCustomerIdentity
+→ registration JWT
+→ createCustomer
+→ sessão inicial
+→ requestEmailVerification
+→ mergeCustomerCart
+→ revisão quando necessária
+→ checkout
+```
+
+### 8.3 Alteração estrutural durante pagamento
+
+```text
+item/endereço/frete muda
+→ versão do carrinho avança
+→ cotação e seleção são revogadas
+→ tentativa incompatível é invalidada
+→ client_secret deixa de ser reutilizável
+→ nova validação/frete/tentativa são exigidos
+```
+
+### 8.4 Confirmação
+
+```text
+createCardPaymentAttempt
+→ confirmationToken
+→ exchangePaymentConfirmationToken
+→ confirmationSessionRef
+→ cookie HttpOnly no BFF
+→ stripe.confirmPayment
+→ /checkout/processando
+→ getPaymentConfirmationStatus
+→ webhook canônico
+→ ORDER_CONFIRMED
+→ getConfirmedOrderSummary
+```
+
+### 8.5 Falha externa
+
+Falhas de Resend, PostHog ou Gelato:
+
+- não desfazem pagamento;
+- não impedem confirmação do pedido;
+- permanecem em outboxes/retries;
+- produzem alerta quando persistentes.
+
+---
+
+## 9. Requisitos funcionais consolidados
+
+### 9.1 Fundação e contrato
+
+| ID | Requisito | Estado |
+|---|---|---|
+| BE-FE-FND-001 | BFF é o único consumidor storefront da Store API | Aprovado — pendente |
+| BE-FE-FND-002 | Todas as operações MUST existem no OpenAPI 1.1.0 | Aprovado — pendente |
+| BE-FE-FND-003 | Erros usam envelope fechado e correlation ID | Aprovado — pendente |
+| BE-FE-FND-004 | Mutações repetíveis usam idempotência | Aprovado — pendente |
+| BE-FE-FND-005 | Recursos concorrentes usam ETag/If-Match | Aprovado — pendente |
+
+### 9.2 Autenticação
+
+| ID | Requisito | Estado |
+|---|---|---|
+| BE-FE-AUTH-001 | Cadastro em identidade + Customer | Aprovado — pendente |
+| BE-FE-AUTH-002 | Login aplica verificação flexível | Aprovado — pendente |
+| BE-FE-AUTH-003 | Reset e atualização de senha | Aprovado — pendente |
+| BE-FE-AUTH-004 | Refresh somente com JWT válido | Aprovado — pendente |
+| BE-FE-AUTH-005 | Alteração de credencial revoga tokens anteriores | Aprovado — pendente |
+| BE-FE-AUTH-006 | Verificação de e-mail solicitável, reenviável e confirmável | Aprovado — pendente |
+
+### 9.3 Carrinho
+
+| ID | Requisito | Estado |
+|---|---|---|
+| BE-FE-CART-001 | Criar carrinho convidado com capability | Aprovado — pendente |
+| BE-FE-CART-002 | Adicionar, atualizar, remover e esvaziar | Aprovado — pendente |
+| BE-FE-CART-003 | Quantidade entre 1 e 99 | Aprovado — pendente |
+| BE-FE-CART-004 | Merge transacional completo/parcial | Aprovado — pendente |
+| BE-FE-CART-005 | Revisão bloqueia checkout até reconhecimento | Aprovado — pendente |
+| BE-FE-CART-006 | Mudança estrutural revoga dependências | Aprovado — pendente |
+
+### 9.4 Checkout e frete
+
+| ID | Requisito | Estado |
+|---|---|---|
+| BE-FE-CHK-001 | Checkout exclusivamente autenticado | Aprovado — pendente |
+| BE-FE-CHK-002 | Draft e validação final separados | Aprovado — pendente |
+| BE-FE-CHK-003 | Endereço BR estruturado | Aprovado — pendente |
+| BE-FE-CHK-004 | CPF criptografado e mascarado | Aprovado — pendente |
+| BE-FE-CHK-005 | Consentimentos versionados | Aprovado — pendente |
+| BE-FE-SHP-001 | Cotação autoritativa e expiráveis | Aprovado — pendente |
+| BE-FE-SHP-002 | Seleção por referência opaca | Aprovado — pendente |
+| BE-FE-SHP-003 | Revogação por mudança de contexto | Aprovado — pendente |
+
+### 9.5 Pagamento e confirmação
+
+| ID | Requisito | Estado |
+|---|---|---|
+| BE-FE-PAY-001 | Criar/reutilizar tentativa compatível | Aprovado — pendente |
+| BE-FE-PAY-002 | Consultar status antes de retry incerto | Aprovado — pendente |
+| BE-FE-PAY-003 | Invalidar tentativa incompatível | Aprovado — pendente |
+| BE-FE-CONF-001 | Token de confirmação BFF-only | Aprovado — pendente |
+| BE-FE-CONF-002 | Troca atômica e idempotente | Aprovado — pendente |
+| BE-FE-CONF-003 | Polling com rate limit e backoff | Aprovado — pendente |
+| BE-FE-CONF-004 | `ORDER_CONFIRMED` somente após `Order` | Entregue como invariante; interface pendente |
+| BE-FE-CONF-005 | Resumo reduzido e autorizado | Aprovado — pendente |
+| BE-FE-CONF-006 | Sucesso tardio invalidado exige reconciliação | Aprovado — pendente |
+
+### 9.6 Catálogo e revalidação
+
+| ID | Requisito | Estado |
+|---|---|---|
+| BE-FE-CAT-001 | Campos públicos fechados | Entregue parcialmente; contrato-alvo pendente |
+| BE-FE-CAT-002 | Resolução canônica de produto/handle | Aprovado — pendente |
+| BE-FE-CAT-003 | Evento assinado de revalidação | Aprovado — pendente |
+| BE-FE-CAT-004 | Metadata Gelato nunca é pública | Entregue |
+
+---
+
+## 10. Dados, dinheiro e concorrência
+
+### 10.1 Dinheiro
+
+Contratos Store atuais usam:
+
+- catálogo/carrinho: `brl-major`;
+- `PaymentAttempt.amount`: `brl-minor`.
+
+Schemas explícitos:
+
+```ts
+type StoreMajorMoney = {
+  amount: number
+  currency_code: "brl"
+  unit: "major"
+}
+
+type StoreMinorMoney = {
+  amount: number
+  currency_code: "brl"
+  unit: "minor"
+}
+```
+
+Regras:
+
+- unidade é obrigatória em todo schema monetário;
+- valores autoritativos são derivados no backend;
+- total negativo é inválido;
+- frete zero é tecnicamente permitido;
+- total final zero é rejeitado no M1;
+- conversões ocorrem somente em fronteiras testadas;
+- cálculo autoritativo não usa ponto flutuante sem estratégia decimal explícita.
+
+### 10.2 Versão do carrinho
+
+A versão:
+
+- é monotônica;
+- muda quando itens, endereço, consentimentos, frete ou totais relevantes mudam;
+- é serializada como `ETag`;
+- é exigida por `If-Match` nas mutações concorrentes;
+- vincula cotações, seleção, tentativa e confirmação;
+- impede uso de snapshot financeiro desatualizado.
+
+### 10.3 Idempotência
+
+A chave:
+
+- é obrigatória em criação de carrinho, merge, checkout, frete, pagamento, invalidação e troca de confirmação;
+- é escopada por operação, ator e recurso;
+- persiste resultado suficiente para retry seguro;
+- rejeita reutilização com payload semanticamente incompatível;
+- possui retenção documentada por operação;
+- não substitui locks ou constraints de banco.
+
+### 10.4 Entidades adicionais necessárias
+
+A implementação pode estender o modelo com entidades equivalentes a:
+
+- `GuestCartAccess`;
+- `CartReview`;
+- `ConsentReceipt`;
+- `ShippingQuote`;
+- `PaymentConfirmationToken`;
+- `PaymentConfirmationSession`;
+- `EmailVerificationToken`;
+- `CatalogRevalidationEvent`.
+
+O DB Model deve ser atualizado antes da implementação quando nova persistência for necessária.
+
+---
+
+## 11. Segurança, privacidade e retenção
+
+### 11.1 Dados proibidos em logs e telemetry
+
+- CPF completo;
+- e-mail completo quando não necessário;
+- endereço completo;
+- cookies;
+- JWT;
+- `Authorization`;
+- `client_secret`;
+- `guestCartToken`;
+- `confirmationToken`;
+- `confirmationSessionRef`;
+- PaymentIntent ID;
+- QR/copia-e-cola Pix;
+- secrets e assinaturas de webhook;
+- bodies completos por padrão.
+
+### 11.2 Respostas públicas
+
+- usam allowlist;
+- não expõem metadata Gelato;
+- não expõem IDs internos de providers;
+- mascaram CPF, CEP e e-mail quando aplicável;
+- não refletem capabilities;
+- não aceitam identidade do operador/Customer pelo body.
+
+### 11.3 Rate limit
+
+Rate limit específico deve cobrir:
+
+- login;
+- cadastro;
+- reset de senha;
+- verificação/resend;
+- criação de carrinho;
+- cotação de frete;
+- tentativa de pagamento;
+- troca e polling de confirmação.
+
+Resposta `429` inclui `Retry-After` e envelope sanitizado.
+
+### 11.4 Retenção proposta
+
+| Dado | Regra |
+|---|---|
+| CPF em carrinho abandonado | purge após 7 dias |
+| CPF em Order | criptografado, retenção conforme obrigação operacional/legal |
+| prova de Termos de Compra | proposta de 5 anos |
+| ciência da Privacidade | proposta de 5 anos |
+| registro de acesso legal | mínimo proposto de 6 meses |
+| user agent | não armazenar |
+| tokens de confirmação | hash e TTL de 30 minutos |
+| capability de carrinho | hash até consumo, expiração ou conclusão |
+
+Retenções jurídicas são gate de go-live e podem ser ajustadas sem enfraquecer minimização e criptografia.
+
+---
+
+## 12. Erros e semântica HTTP
+
+### 12.1 Envelope
+
+```ts
+type StoreErrorResponse = {
+  code: string
+  message: string
+  correlationId?: string
+  retryable: boolean
+  fieldErrors?: Record<string, string>
+  cart?: StoreCartResponse
+}
+```
+
+Mensagens não devem revelar existência de conta, estado financeiro interno, provider ou detalhes de autorização.
+
+### 12.2 Códigos obrigatórios
+
+Carrinho:
+
+- `CART_NOT_FOUND`;
+- `CART_ACCESS_DENIED`;
+- `CART_VERSION_MISMATCH`;
+- `CART_REVIEW_REQUIRED`;
+- `VARIANT_NOT_SELLABLE`;
+- `INVALID_QUANTITY`;
+- `QUANTITY_LIMIT_EXCEEDED`.
+
+Checkout:
+
+- `INVALID_CPF`;
+- `FEDERAL_TAX_ID_REQUIRED`;
+- `ZERO_TOTAL_NOT_SUPPORTED`.
+
+Frete:
+
+- `SHIPPING_ADDRESS_INVALID`;
+- `SHIPPING_NOT_AVAILABLE`;
+- `SHIPPING_QUOTE_EXPIRED`;
+- `SHIPPING_OPTION_NO_LONGER_ELIGIBLE`;
+- `SHIPPING_PROVIDER_UNAVAILABLE`;
+- `SHIPPING_PROVIDER_TIMEOUT`.
+
+Pagamento:
+
+- `PAYMENT_CHECKOUT_INCOMPLETE`;
+- `PAYMENT_ATTEMPT_ALREADY_ACTIVE`;
+- `PAYMENT_ATTEMPT_INVALIDATED`;
+- `PAYMENT_PROVIDER_UNAVAILABLE`;
+- `PAYMENT_CARD_DECLINED`;
+- `PAYMENT_CONFIRMATION_UNKNOWN`;
+- `PAYMENT_IN_PROGRESS`.
+
+Confirmação:
+
+- `CONFIRMATION_NOT_FOUND`;
+- `CONFIRMATION_RATE_LIMITED`;
+- `CONFIRMATION_SERVICE_UNAVAILABLE`.
+
+### 12.3 Status HTTP
+
+| Status | Uso |
+|---|---|
+| 200 | consulta ou mutação idempotente reutilizada |
+| 201 | recurso criado |
+| 202 | operação aceita para processamento assíncrono |
+| 400 | schema ou validação geral inválida |
+| 401 | autenticação ausente/expirada |
+| 403 | ator autenticado sem acesso |
+| 404 | recurso ausente ou ocultado por segurança |
+| 409 | conflito de estado/idempotência |
+| 412 | `If-Match` incompatível |
+| 422 | validação de domínio com `fieldErrors` |
+| 429 | rate limit |
+| 500 | falha interna sanitizada |
+| 503 | dependência obrigatória indisponível |
+
+---
+
+## 13. Observabilidade e eventos
+
+### 13.1 Correlation ID
+
+- aceitar somente formato e tamanho allowlisted;
+- gerar quando ausente/inválido;
+- devolver em header e, quando seguro, no erro;
+- propagar para jobs e integrações;
+- não usar token ou ID sensível como correlation ID.
+
+### 13.2 Eventos mínimos
+
+- carrinho criado/recuperado/expirado;
+- mutação aplicada ou conflito de versão;
+- merge e outcome;
+- revisão reconhecida;
+- checkout draft/validation;
+- CPF validado sem registrar valor;
+- cotação/seleção/revogação de frete;
+- tentativa criada/reutilizada/invalidada;
+- token de confirmação emitido/consumido/expirado;
+- polling rate-limited;
+- webhook ingerido/deduplicado;
+- `Order` criado/reutilizado;
+- reconciliação requerida;
+- resumo de confirmação acessado;
+- revalidação de catálogo enfileirada/entregue;
+- falhas de PostgreSQL, Redis ou providers.
+
+### 13.3 Analytics
+
+`purchase_completed`:
+
+- é persistido localmente uma única vez;
+- é emitido somente após `Order`;
+- nunca é emitido pelo frontend;
+- não depende do acesso à página de confirmação;
+- não inclui CPF, e-mail, CEP, cart ID, Customer ID ou referências sensíveis.
+
+---
+
+## 14. Integrações externas
+
+### 14.1 Stripe
+
+- secret key somente no backend;
+- publishable key somente no frontend;
+- `client_secret` efêmero;
+- webhooks com raw body e assinatura;
+- sucesso/cancelamento/falha idempotentes;
+- `Order` somente em `payment_intent.succeeded`;
+- cancelamento da tentativa invalidada é best effort;
+- evento tardio incompatível gera reconciliação.
+
+### 14.2 Resend
+
+- verificação de e-mail e confirmação de pedido usam outbox;
+- falha de envio não bloqueia sessão inicial nem `Order`;
+- tokens de e-mail são uso único, expiram e são armazenados por hash;
+- respostas públicas são anti-enumeração.
+
+### 14.3 Gelato
+
+- não recebe CPF;
+- não recebe metadata além do necessário;
+- dispatch continua posterior ao `Order` e à elegibilidade local;
+- falha externa não bloqueia confirmação ao frontend.
+
+### 14.4 PostHog e Sentry
+
+- payloads sanitizados;
+- sem capabilities ou PII;
+- falha externa não altera estado transacional.
+
+### 14.5 Webhook Next.js
+
+- segredo próprio, independente de Stripe/Gelato;
+- HMAC, timestamp e event ID;
+- retry com backoff;
+- sem bloqueio da mutação de catálogo.
+
+---
+
+## 15. Testes e artefatos obrigatórios
+
+### 15.1 Artefatos
+
+Antes de Mock Development:
+
+- PRD Backend atualizado;
+- SRS atualizado;
+- matriz `FRONTEND_CONTRACT_TRACEABILITY.md`;
+- registry TypeScript atualizado;
+- Store OpenAPI `1.1.0`;
+- Webhooks OpenAPI com evento de revalidação;
+- tipos gerados;
+- schemas Zod;
+- fixtures positivas e negativas;
+- mock server;
+- contract tests;
+- CI de drift.
+
+### 15.2 Contract tests
+
+Devem validar:
+
+- métodos, paths e `operationId`;
+- security schemes;
+- headers sensíveis;
+- request/response;
+- status HTTP;
+- `ETag`/`If-Match`;
+- idempotência;
+- unidades monetárias;
+- masking;
+- códigos de erro;
+- ausência de campos proibidos;
+- token de confirmação fora de URL;
+- consumo único e retry idempotente;
+- ownership do pedido;
+- equivalência OpenAPI/Zod/fixtures;
+- assinatura e deduplicação da revalidação.
+
+### 15.3 Integração
+
+Cenários:
+
+- cadastro em duas etapas;
+- login verificado/não verificado;
+- reset e revogação;
+- carrinho guest capability;
+- mutações e conflito;
+- merge completo/parcial;
+- revisão;
+- checkout draft/final;
+- CPF inválido e purge;
+- frete disponível/indisponível/expirado;
+- tentativa reutilizada/incompatível;
+- invalidação;
+- troca de token;
+- 3DS;
+- erro incerto;
+- polling;
+- reconciliação;
+- `Order` confirmado;
+- resumo autorizado;
+- múltiplas abas representadas por chamadas concorrentes.
+
+### 15.4 Gates
 
 ```bash
 npm run openapi:verify:store
@@ -721,94 +1283,140 @@ npm run openapi:verify:admin
 npm run openapi:verify:webhooks
 npm run openapi:lint
 npm run openapi:check
+npm test
+npm run lint
+npm run build
+git diff --check
 ```
 
-`openapi:check` é read-only, gera os documentos em memória, compara bytes e verifica cobertura, metadados, segurança e fingerprints nativos.
+Qualquer falha relevante resulta em `BLOCKED`. Não existe `PASS WITH KNOWN DEBTS`.
 
 ---
 
-## 14. Deploy, release e rollback
+## 16. Deploy e operação
 
-### 14.1 Release atual
+A extensão Frontend M1 não autoriza deploy automático.
 
-- tag anotada: `v1.0`;
-- release GitHub: `v1.0 — Backend MVP`;
-- runtime validado: Heroku;
-- processos: `release`, `web`, `worker`;
-- saúde validada por `/health/live` e `/health/ready`;
-- SHA retornado pelo runtime deve ser comparado com a release atual.
+Deploy deve:
 
-### 14.2 Deploy
-
-O deploy deve:
-
-1. selecionar explicitamente o candidate SHA;
+1. selecionar candidate SHA explícito;
 2. executar migrações seguras no processo `release`;
 3. iniciar `web` e `worker`;
-4. validar health, PostgreSQL, Redis e identidade de versão;
-5. executar smokes read-only autorizados;
-6. preservar evidências sanitizadas.
+4. validar `/health/live` e `/health/ready`;
+5. validar PostgreSQL e Redis;
+6. verificar SHA retornado contra a release atual;
+7. executar smokes read-only e testes autorizados;
+8. preservar evidências sanitizadas.
 
-### 14.3 Rollback
-
-O alvo de rollback deve ser a release anterior compatível, registrada antes do deploy. Rollback real requer autorização humana e não foi exercitado no fechamento do milestone.
-
----
-
-## 15. Critérios de aceite do backend
-
-O backend é considerado entregue quando:
-
-- catálogo e mídia estão operacionais em BRL;
-- carrinho convidado e autenticado funcionam;
-- checkout brasileiro é validado;
-- `Order` não existe antes do webhook Stripe canônico;
-- criação de pedido é idempotente sob reentrega e concorrência;
-- `purchase_completed` é persistido localmente;
-- e-mail e analytics são entregues por outboxes reprocessáveis;
-- Gelato só recebe pedido elegível;
-- tracking convidado usa token seguro;
-- reembolso depende de confirmação Stripe;
-- trocas e logística reversa são auditáveis;
-- alertas operacionais podem ser consultados e tratados;
-- logs e Sentry não expõem dados sensíveis;
-- health checks representam PostgreSQL e Redis;
-- contratos OpenAPI estão completos, determinísticos e protegidos;
-- processos `web` e `worker` permanecem ativos;
-- release e identidade de versão são verificáveis.
-
-Esses critérios foram atendidos no milestone `v1.0`, respeitadas as limitações operacionais externas registradas neste documento.
+Mudanças de variáveis Heroku, secrets, domínios, CORS, webhook e chaves exigem autorização humana.
 
 ---
 
-## 16. Próximos passos de produto
+## 17. Critérios de aceite
 
-O próximo milestone ainda depende de decisão humana. A direção recomendada é construir a storefront sobre os contratos Store existentes, sem reabrir os invariantes do backend.
+### 17.1 Aceite documental
 
-Antes de alterar um contrato do backend, o próximo ciclo deve:
+Este PRD é aceito quando:
 
-1. identificar a jornada da storefront afetada;
-2. confirmar que o contrato atual é insuficiente;
-3. atualizar registry, testes e artefato OpenAPI correspondente;
-4. preservar compatibilidade ou documentar a quebra;
-5. executar os gates globais de API Docs;
-6. atualizar este PRD quando a mudança representar comportamento de produto.
+- não confunde as-built com target;
+- cobre todas as operações MUST do frontend;
+- define segurança, dinheiro, idempotência, concorrência e erros;
+- possui rastreabilidade para o PRD Frontend;
+- não deixa endpoint necessário sem decisão explícita.
+
+### 17.2 Aceite de artefatos
+
+O Gate de Artefatos passa quando:
+
+- OpenAPI 1.1.0 contém todas as operações;
+- schemas mínimos estão materializados;
+- Zod, fixtures e mocks equivalem ao OpenAPI;
+- contract tests passam;
+- SRS, DB Model e matriz estão alinhados;
+- nenhum secret ou PII aparece em exemplo;
+- gates de lint/build/test/drift passam.
+
+### 17.3 Aceite de integração
+
+O backend está pronto para integração do Frontend M1 quando:
+
+- BFF consegue executar a jornada completa por contratos aprovados;
+- carrinho convidado usa capability;
+- merge e revisão funcionam;
+- checkout autenticado e CPF protegido funcionam;
+- frete é autoritativo e revogável;
+- PaymentAttempt e confirmação são recuperáveis;
+- `Order` depende do webhook;
+- resumo confirmado é seguro;
+- revalidação de catálogo é assinada;
+- observabilidade está sanitizada;
+- preview e produção validam CORS, domínios, rate limits e secrets.
 
 ---
 
-## 17. Referências canônicas
+## 18. Rastreabilidade com o frontend
 
-- `.planning/PROJECT.md` — valor central, decisões e resultado do milestone;
-- `.planning/STATE.md` — estado atual e gates de governança;
-- `docs/DB_MODEL_v1.21.md` — modelo de dados;
-- `docs/openapi/README.md` — manutenção dos contratos;
-- `ops/API_DOCS.md` — exposição e segurança da documentação;
+| Requisito frontend | Responsabilidade backend |
+|---|---|
+| FE-FND-002/003/007 | BFF boundary, OpenAPI e schemas executáveis |
+| FE-CAT-001–005 | catálogo público fechado e revalidação |
+| FE-CART-001–008 | capability, mutações, merge, revisão e ETag |
+| FE-AUTH-001–007 | identidade, Customer, login, reset, refresh e verificação |
+| FE-CHK-001–006 | autenticação, draft, validação, CPF e consentimentos |
+| FE-SHP-001–004 | cotação, seleção, expiração e ausência de fallback |
+| FE-PAY-001–006 | tentativa compatível, Stripe e invalidação |
+| FE-CONF-001–006 | token, sessão, polling, reconciliação e resumo |
+| FE-CNT-001–005 | versões de documentos e recibos; revisão jurídica externa |
+
+A matriz detalhada deve registrar operationId, schema, fixture, teste e estado de implementação por requisito.
+
+---
+
+## 19. Pendências e gates
+
+### 19.1 Pendências imediatas
+
+1. atualizar SRS v1.5;
+2. atualizar DB Model quando persistência adicional for confirmada;
+3. criar matriz de rastreabilidade;
+4. atualizar registry;
+5. gerar Store OpenAPI 1.1.0;
+6. atualizar Webhooks OpenAPI;
+7. criar Zod e tipos;
+8. criar fixtures/mocks;
+9. criar contract tests;
+10. executar gates globais.
+
+### 19.2 Estado
+
+```text
+Gate de Decisões A–J: PASS
+Gate de Decisões R: PASS
+PRD Backend alinhado ao frontend: PASS
+Gate de Artefatos: PENDING
+PASS DOCUMENTAL: não concedido
+PASS PARA MOCK DEVELOPMENT: não concedido
+PASS PARA INTEGRAÇÃO: não concedido
+```
+
+---
+
+## 20. Referências canônicas
+
+- `docs/PRD_frontend_v1.1.md`;
+- `docs/SRS_v1.5.md`;
+- `docs/DB_MODEL_v1.21.md`;
+- `docs/openapi/README.md`;
 - `apps/backend/src/api-docs/generated/store.openapi.json`;
 - `apps/backend/src/api-docs/generated/admin.openapi.json`;
 - `apps/backend/src/api-docs/generated/webhooks.openapi.json`;
-- `apps/backend/.env.template` — contrato de ambiente;
-- `Procfile` — topologia Heroku.
+- `apps/backend/src/api-docs/operations/store/`;
+- `apps/backend/src/api-docs/components/security-schemes.ts`;
+- `apps/backend/.env.template`;
+- `ops/API_DOCS.md`;
+- `.planning/PROJECT.md`;
+- `.planning/STATE.md`.
 
 ---
 
-*Última revisão: 2026-08-03 — documento atualizado para refletir o backend v1.0 efetivamente entregue, o runtime Heroku atual, os contratos OpenAPI e os fluxos de uso vigentes.*
+*Última revisão: 2026-08-06 — PRD Backend alinhado ao contrato-alvo do Frontend Milestone 1. A revisão preserva o backend v1.0 entregue, especifica as extensões necessárias e mantém o Gate de Artefatos como pendente.*
