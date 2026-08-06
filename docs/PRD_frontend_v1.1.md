@@ -1,532 +1,1774 @@
-# PRD — Frontend Storefront E-commerce POD de Camisetas
+# PRD — Frontend Storefront da Indicio Cult
 
 | Campo | Valor |
 |---|---|
 | Documento | Product Requirements Document — Frontend |
-| Projeto | E-commerce Headless Print-on-Demand de Camisetas |
-| Versão | 1.1 |
-| Base | SRS v1.5 · PRD Backend v1.1 · DB_MODEL v1.21 |
-| Data | 2026-06-22 |
-| Status | Revisado |
+| Projeto | E-commerce headless Print-on-Demand da Indicio Cult |
+| Versão | 1.1.2 — decisões do Gate de Contratos incorporadas |
+| Data da revisão | 2026-08-05 |
+| Status | Canônico de decisões — `DECISIONS COMPLETE, ARTIFACTS PENDING` |
 | Responsável | Jefferson |
-| Stack | Next.js · TypeScript · Tailwind CSS · Vercel · Stripe client · PostHog · Sentry |
-| Mercado Inicial | Brasil |
-| Moeda Inicial | BRL |
+| Base | PRD Backend v1.1 · SRS v1.5 · Store OpenAPI atual · decisões dos Blocos A–J e R |
+| Stack planejada | Next.js App Router · TypeScript · Tailwind CSS · Vercel · Stripe.js · PostHog · Sentry |
+| Mercado inicial | Brasil |
+| Moeda | BRL |
+| Backend | Medusa v2 no Heroku |
 
-> Nota da versão 1.1: esta revisão alinha a storefront ao fluxo atualizado de `purchase_completed` como evento de domínio registrado duravelmente pelo backend em outbox/AnalyticsEventLog. A storefront não emite, não confirma e não aguarda `purchase_completed`.
+> **Estado da Etapa 0:** os fluxos, limites, contratos-alvo e decisões arquiteturais estão aprovados. Os artefatos executáveis ainda precisam ser materializados: PRD Backend, SRS, Store OpenAPI, Webhooks OpenAPI, matriz de rastreabilidade, tipos, schemas Zod, mocks e contract tests.
 
----
+> **Autoridade contratual:** o Store OpenAPI versionado é a fonte de verdade para as operações BFF → Medusa. Este PRD define jornadas, comportamento do BFF e experiência da storefront. Nenhum endpoint-alvo descrito neste documento poderá ser consumido antes de existir no OpenAPI aprovado.
 
-## Changelog
-
-| Versão | Data | Alterações |
-|---|---:|---|
-| 1.1 | 2026-06-22 | Alinhado o PRD Frontend ao SRS v1.5, PRD Backend v1.1 e DB_MODEL v1.21. Formalizada a separação entre eventos frontend e `purchase_completed` backend/outbox; detalhado contrato de confirmação assíncrona; definidos valores monetários canônicos vindos do backend; definidos status operacionais/financeiros como read-only; e atualizados testes e critérios de aceite. |
-| 1.0 | 2026-06-21 | Versão inicial do PRD Frontend baseada no SRS v1.9. |
+> **Regra central:** a storefront nunca cria, confirma ou infere um `Order`. O `Order` somente existe após confirmação canônica do pagamento pelo backend e processamento idempotente do webhook da Stripe.
 
 ---
 
-## 1. Objetivo
+## Sumário
 
-Construir a storefront headless do e-commerce POD de camisetas, permitindo que clientes naveguem pelo catálogo, escolham variantes, realizem checkout por cartão ou Pix, acompanhem pedidos e consultem políticas da loja.
-
-O frontend deve consumir o backend Medusa v2 por API, operar em Next.js com TypeScript e Tailwind CSS, ser publicado na Vercel e instrumentado com PostHog e Sentry.
-
----
-
-## 2. Escopo do Frontend
-
-### 2.1 Incluído
-
-- Página inicial da loja.
-- Listagem de produtos.
-- Página de produto.
-- Galeria de imagens.
-- Seleção de variantes.
-- Carrinho.
-- Checkout como convidado.
-- Checkout autenticado.
-- Cálculo e seleção de frete via backend.
-- Pagamento por cartão via Stripe.
-- Pagamento por Pix via Stripe.
-- Estado de confirmação assíncrona do pedido.
-- Página de confirmação do pedido.
-- Página de tracking.
-- Área do cliente.
-- Login, cadastro, logout e recuperação de senha.
-- Histórico de pedidos do cliente.
-- Páginas legais: Política de Privacidade, Termos de Compra e Política de Trocas.
-- Canal de solicitação de troca por e-mail de suporte.
-- Instrumentação PostHog.
-- Captura de erros frontend via Sentry.
-- Layout responsivo mobile-first.
-
-### 2.2 Fora do Escopo do Frontend MVP
-
-- Editor visual de camiseta.
-- Upload de arte pelo cliente.
-- Personalização dinâmica de produto.
-- Reviews de produto.
-- Chat de atendimento integrado.
-- App mobile nativo.
-- Programa de afiliados.
-- A/B testing avançado.
-- Fluxo automatizado de troca dentro da área do cliente.
-- Multi-país.
-- Multi-moeda.
-- Métodos de pagamento além de cartão e Pix.
+1. [Resumo executivo](#1-resumo-executivo)
+2. [Objetivos e métricas](#2-objetivos-e-métricas)
+3. [Escopo do Milestone 1](#3-escopo-do-milestone-1)
+4. [Usuários e jornadas](#4-usuários-e-jornadas)
+5. [Arquitetura do frontend e BFF](#5-arquitetura-do-frontend-e-bff)
+6. [Contrato atual do backend](#6-contrato-atual-do-backend)
+7. [Contrato-alvo aprovado](#7-contrato-alvo-aprovado)
+8. [Arquitetura de informação e páginas](#8-arquitetura-de-informação-e-páginas)
+9. [Fluxos detalhados](#9-fluxos-detalhados)
+10. [Requisitos funcionais](#10-requisitos-funcionais)
+11. [Estados de interface e erros](#11-estados-de-interface-e-erros)
+12. [Dinheiro e formatação](#12-dinheiro-e-formatação)
+13. [Autenticação e sessão](#13-autenticação-e-sessão)
+14. [Analytics e observabilidade](#14-analytics-e-observabilidade)
+15. [Segurança, privacidade e retenção](#15-segurança-privacidade-e-retenção)
+16. [Acessibilidade, desempenho e SEO](#16-acessibilidade-desempenho-e-seo)
+17. [Estratégia de integração e contratos](#17-estratégia-de-integração-e-contratos)
+18. [Testes](#18-testes)
+19. [Ordem de implementação](#19-ordem-de-implementação)
+20. [Critérios de aceite](#20-critérios-de-aceite)
+21. [Pendências de materialização](#21-pendências-de-materialização)
+22. [Referências](#22-referências)
 
 ---
 
-## 3. Personas e Usuários
+## 1. Resumo executivo
 
-| Perfil | Descrição | Necessidades no Frontend |
-|---|---|---|
-| Visitante | Usuário sem autenticação. | Navegar, visualizar produto, adicionar ao carrinho. |
-| Cliente Convidado | Cliente que compra sem criar conta. | Checkout, pagamento, confirmação e tracking por link/token. |
-| Cliente Registrado | Cliente com conta. | Login, checkout associado à conta, histórico de pedidos e tracking. |
-| Administrador | Operador da loja. | Não usa a storefront como interface primária; usa Admin Medusa/backend. |
-| Sistema | Integrações e serviços internos. | Recebe eventos e dados instrumentados pela storefront. |
-
----
-
-## 4. Experiência do Usuário
-
-### 4.1 Jornada Principal — Cartão
+A storefront da Indicio Cult será a interface pública de descoberta e compra do e-commerce Print-on-Demand. No primeiro milestone, o produto entregará uma jornada completa de compra por cartão:
 
 ```text
-Cliente acessa storefront
-→ Navega pelo catálogo
-→ Abre página de produto
-→ Seleciona tamanho/cor/quantidade
-→ Adiciona ao carrinho
-→ Inicia checkout
-→ Informa e-mail e endereço no Brasil
-→ Seleciona frete
-→ Seleciona cartão
-→ Confirma pagamento pela interface Stripe
-→ Storefront pode registrar payment_client_confirmed
-→ Storefront exibe “confirmando pagamento e pedido”
-→ Backend confirma Order após webhook Stripe
-→ Storefront exibe página de confirmação
-→ Cliente recebe e-mail de confirmação
-→ Cliente acompanha tracking
+Home
+→ catálogo
+→ produto
+→ carrinho convidado
+→ autenticação obrigatória
+→ merge/anexação do carrinho
+→ checkout brasileiro
+→ frete
+→ Stripe Payment Element
+→ confirmação assíncrona
+→ pedido confirmado
 ```
 
-### 4.2 Jornada Principal — Pix
+O visitante pode navegar e adicionar itens antes de autenticar. A autenticação é obrigatória antes de entrar nas etapas de endereço, frete e pagamento.
+
+O frontend será um repositório Next.js independente do backend e operará por meio de um BFF same-origin. O navegador não chamará o Medusa diretamente. O BFF:
+
+- gerencia cookies `HttpOnly`;
+- mantém a publishable key do Medusa no servidor;
+- encaminha JWT;
+- valida respostas upstream com Zod;
+- converte contratos upstream em DTOs próprios;
+- protege capabilities, tokens, `client_secret` e dados pessoais;
+- centraliza idempotência, concorrência, timeouts e correlation IDs.
+
+Princípios obrigatórios:
+
+1. **Contrato primeiro:** somente operações presentes no OpenAPI aprovado.
+2. **BFF estrito:** navegador → BFF → Medusa.
+3. **Backend autoritativo:** preços, totais, elegibilidade, estado financeiro e existência do pedido.
+4. **Cliente não confiável:** valores, IDs internos e estados financeiros não são aceitos do navegador.
+5. **Dados sensíveis efêmeros:** secrets e capabilities nunca entram em analytics, logs ou storage do navegador.
+6. **Confirmação assíncrona:** sucesso client-side da Stripe não é confirmação de pedido.
+7. **Recuperação segura:** retries preservam idempotência e nunca geram cobrança duplicada.
+
+---
+
+## 2. Objetivos e métricas
+
+### 2.1 Objetivos
+
+- oferecer experiência editorial coerente com a identidade da Indicio Cult;
+- permitir descoberta e carrinho antes da autenticação;
+- exigir conta antes do checkout;
+- preservar e mesclar o carrinho convidado no login;
+- coletar endereço brasileiro, telefone e CPF com minimização de dados;
+- calcular e selecionar frete por contrato autoritativo do backend;
+- confirmar cartão exclusivamente com Stripe Payment Element;
+- suportar 3DS e retorno seguro;
+- aguardar criação real do `Order`;
+- manter refresh e múltiplas abas seguros;
+- instrumentar o funil sem expor PII ou duplicar receita;
+- permitir desenvolvimento por mocks após a materialização dos contratos executáveis.
+
+### 2.2 Métricas de sucesso
+
+- zero `Order` exibido antes da criação no backend;
+- zero cobrança iniciada com total, frete ou versão de carrinho desatualizados;
+- zero `client_secret`, `guestCartToken`, confirmation token, CPF ou JWT em logs/analytics/storage;
+- zero emissão frontend de `purchase_completed`;
+- 100% das operações BFF → Medusa presentes no Store OpenAPI;
+- 100% das respostas upstream críticas validadas em runtime;
+- 100% das mutações definidas como idempotentes usando `Idempotency-Key`;
+- fluxos de catálogo, carrinho, autenticação, checkout, frete, cartão e confirmação cobertos por testes;
+- conflitos de versão tratados sem repetição destrutiva automática;
+- Core Web Vitals dentro das metas das páginas públicas.
+
+---
+
+## 3. Escopo do Milestone 1
+
+### 3.1 Incluído
+
+- home institucional e comercial;
+- catálogo;
+- página de produto;
+- seleção de variante;
+- carrinho convidado;
+- carrinho autenticado;
+- criação lazy do carrinho no primeiro “Adicionar ao carrinho”;
+- cadastro;
+- login;
+- logout;
+- recuperação e redefinição de senha;
+- verificação flexível de e-mail;
+- merge/anexação de carrinhos;
+- checkout autenticado para pessoa física no Brasil;
+- endereço estruturado;
+- CPF;
+- consulta de CEP via BFF;
+- consentimentos;
+- cotação e seleção de frete;
+- pagamento por cartão com Stripe Payment Element;
+- 3DS;
+- confirmação assíncrona;
+- página de pedido confirmado;
+- páginas legais;
+- canal de suporte;
+- PostHog frontend;
+- Sentry frontend;
+- acessibilidade, SEO e layout mobile-first.
+
+### 3.2 Fora do escopo
+
+- checkout convidado;
+- Pix no frontend;
+- tracking público;
+- histórico/listagem de pedidos;
+- endereços salvos;
+- cupons, promoções e gift cards;
+- pedidos de total zero;
+- frete grátis como regra comercial;
+- solicitação automatizada de troca;
+- conta empresarial e CNPJ;
+- métodos além de cartão;
+- Admin customizado;
+- editor de produtos;
+- upload de arte;
+- personalização dinâmica;
+- reviews;
+- chat;
+- afiliados;
+- múltiplos países ou moedas;
+- aplicação mobile nativa.
+
+### 3.3 Posterior
+
+- Pix após elegibilidade e fase própria;
+- histórico e detalhes persistentes da conta;
+- endereços salvos;
+- cupons e promoções;
+- tracking público;
+- trocas automatizadas;
+- logout de todos os dispositivos;
+- pedidos gratuitos;
+- fallback logístico;
+- métodos adicionais da Stripe.
+
+---
+
+## 4. Usuários e jornadas
+
+| Perfil | Necessidade | Autorização |
+|---|---|---|
+| Visitante | navegar e criar carrinho | publishable key + capability do carrinho convidado |
+| Cliente em cadastro | criar identidade e Customer | rotas `/auth` + registration JWT |
+| Cliente autenticado | concluir checkout e consultar confirmação | publishable key + Customer JWT |
+| Operador | tratar reconciliação e suporte | fora da storefront |
+
+### 4.1 Jornada primária
 
 ```text
-Cliente acessa storefront
-→ Adiciona produto ao carrinho
-→ Inicia checkout
-→ Informa e-mail e endereço no Brasil
-→ Seleciona frete
-→ Seleciona Pix
-→ Storefront exibe QR Code, copia-e-cola e instruções
-→ Storefront registra payment_instructions_displayed
-→ Cliente realiza pagamento
-→ Storefront exibe “confirmando pagamento e pedido” quando aplicável
-→ Backend confirma Order após webhook Stripe
-→ Storefront exibe página de confirmação
-→ Cliente recebe e-mail de confirmação
-→ Cliente acompanha tracking
+Descoberta
+→ catálogo
+→ produto
+→ variante
+→ adicionar ao carrinho
+→ carrinho
+→ login/cadastro obrigatório
+→ merge do carrinho
+→ checkout
+→ endereço e CPF
+→ frete
+→ cartão
+→ processamento
+→ pedido confirmado
 ```
 
-### 4.3 Confirmação Assíncrona
+### 4.2 Barreira de autenticação
 
-Após retorno do Stripe, a storefront **não deve assumir que o Order já existe**.
+O visitante pode:
 
-A página de retorno deve:
+- navegar;
+- selecionar variante;
+- adicionar, alterar e remover itens;
+- visualizar o carrinho.
 
-1. Exibir estado de “confirmando pagamento e pedido”.
-2. Consultar o backend por referência segura de checkout, como `cart_id`, `payment_intent_id` ou token equivalente.
-3. Exibir página de confirmação quando o Order estiver disponível.
-4. Em caso de timeout controlado, exibir mensagem neutra:
-   - informar que a confirmação está em processamento;
-   - orientar o cliente a acompanhar o e-mail;
-   - não expor erro técnico;
-   - não mostrar dados de pedido inexistente.
+O visitante não pode:
 
----
+- entrar em endereço;
+- cotar/selecionar frete;
+- criar `PaymentAttempt`;
+- confirmar pagamento.
 
-## 5. Requisitos Funcionais — Frontend
+Tentativa de acessar `/checkout` sem sessão válida:
 
-### 5.1 Storefront Pública
+```text
+→ redirecionar para /entrar?returnUrl=/checkout
+→ preservar carrinho convidado
+→ autenticar
+→ executar merge
+→ retornar ao checkout
+```
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| FE-SF-001 | Exibir página inicial da loja. | Must Have | Página carrega sem erro e apresenta navegação para catálogo/produtos. |
-| FE-SF-002 | Exibir listagem de produtos. | Must Have | Cada produto exibe imagem, nome, preço em BRL e indicação de variantes. |
-| FE-SF-003 | Exibir apenas produtos publicados. | Must Have | Produto despublicado no backend não aparece na storefront. |
-| FE-SF-004 | Exibir página de detalhe do produto. | Must Have | Página contém galeria, descrição, preço em BRL, variantes e CTA de carrinho. |
-| FE-SF-005 | Permitir seleção de variantes. | Must Have | Cliente só consegue adicionar combinação válida de tamanho/cor. |
-| FE-SF-006 | Exibir variante indisponível. | Must Have | Variante sem metadados Gelato, despublicada ou inválida aparece desabilitada. |
-| FE-SF-007 | Ser responsiva. | Must Have | Catálogo, produto, carrinho e checkout funcionam em mobile e desktop. |
-| FE-SF-008 | Suportar páginas de coleção/categoria. | Should Have | Produtos podem ser filtrados por coleção/categoria. |
-| FE-SF-009 | Suportar busca textual. | Could Have | Busca retorna produtos por nome ou termo relevante. |
-| FE-SF-010 | Exibir páginas legais. | Must Have | Política de Privacidade, Termos de Compra e Política de Trocas ficam acessíveis no rodapé e no checkout. |
+### 4.3 Verificação flexível de e-mail
 
----
-
-### 5.2 Carrinho
-
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| FE-CA-001 | Criar carrinho para visitante. | Must Have | Ao adicionar primeiro item, frontend recebe/persiste identificador de cart do backend. |
-| FE-CA-002 | Persistir carrinho durante a sessão. | Must Have | Recarregar a página não perde carrinho ativo. |
-| FE-CA-003 | Adicionar item ao carrinho. | Must Have | Item selecionado aparece com variante e quantidade corretas. |
-| FE-CA-004 | Alterar quantidade. | Must Have | Totais são recalculados após atualização. |
-| FE-CA-005 | Remover item. | Must Have | Item removido desaparece do resumo. |
-| FE-CA-006 | Exibir subtotal em BRL. | Must Have | Subtotal deve refletir o valor canônico retornado pelo backend e ser formatado em BRL. |
-| FE-CA-007 | Exibir carrinho lateral ou página equivalente. | Must Have | Cliente consegue revisar itens antes do checkout. |
-| FE-CA-008 | Suportar cupom de desconto. | Should Have | Cupom válido altera total; cupom inválido exibe erro. |
-
-#### Regra de valores monetários
-
-A storefront deve tratar valores monetários recebidos do backend como canônicos.
-
-Quando o backend retornar valores na menor unidade monetária, o frontend deve apenas formatar para BRL. Totais críticos de carrinho, frete, descontos, pagamento e pedido devem vir do backend.
-
-O frontend não deve recalcular total financeiro final usando ponto flutuante. Cálculos visuais locais só podem ser usados como feedback temporário e devem ser substituídos pelo total retornado pelo backend.
+- o e-mail de verificação é solicitado no cadastro;
+- a conta pode comprar durante a sessão inicial mesmo sem verificação;
+- após logout ou expiração completa, novo login exige e-mail verificado;
+- compra não é bloqueada por falha no envio do e-mail;
+- o frontend não envia e-mails diretamente.
 
 ---
 
-### 5.3 Checkout
+## 5. Arquitetura do frontend e BFF
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| FE-CH-001 | Permitir checkout como convidado. | Must Have | Cliente consegue comprar sem criar conta. |
-| FE-CH-002 | Permitir checkout autenticado. | Must Have | Cliente logado conclui compra com pedido associado à conta após confirmação do pagamento. |
-| FE-CH-003 | Coletar e-mail. | Must Have | E-mail válido é obrigatório para confirmação e tracking. |
-| FE-CH-004 | Coletar endereço completo no Brasil. | Must Have | Nome, endereço, cidade, estado, CEP, telefone e país são obrigatórios. |
-| FE-CH-005 | Rejeitar endereço fora do Brasil. | Must Have | País diferente de `BR` não permite avançar. |
-| FE-CH-006 | Validar campos obrigatórios. | Must Have | Campos inválidos exibem mensagem inline. |
-| FE-CH-007 | Solicitar cálculo de frete antes do pagamento. | Must Have | Cliente vê pelo menos uma opção de envio quando disponível. |
-| FE-CH-008 | Exibir prazo estimado quando disponível. | Must Have | Cada frete exibe prazo ou intervalo estimado. |
-| FE-CH-009 | Exibir resumo completo antes do pagamento. | Must Have | Resumo deve conter itens, frete, descontos e total em BRL com valores canônicos vindos do backend. |
-| FE-CH-010 | Impedir checkout com carrinho vazio. | Must Have | Usuário é redirecionado ao catálogo ou carrinho. |
-| FE-CH-011 | Tratar falha no cálculo de frete. | Must Have | Exibe mensagem e permite nova tentativa. |
-| FE-CH-012 | Solicitar aceite dos Termos e Política de Privacidade. | Must Have | Cliente deve aceitar antes de concluir pagamento. |
-| FE-CH-013 | Exibir resumo da Política de Trocas. | Should Have | Cliente acessa política completa antes de pagar. |
-| FE-CH-014 | Exibir estado assíncrono de confirmação. | Must Have | Após retorno Stripe, a storefront exibe “confirmando pagamento e pedido”, consome o estado normalizado do backend e só exibe confirmação quando receber `order_confirmed`. |
+### 5.1 Topologia
 
----
+```text
+Navegador
+  │
+  ▼
+Next.js App Router — www.indiciocult.com.br
+  ├── Server Components
+  ├── Client Components
+  ├── Server Actions
+  ├── Route Handlers
+  ├── BFF same-origin
+  ├── adapters + Zod
+  ├── PostHog
+  └── Sentry
+  │
+  ▼ HTTPS
+Medusa — api.indiciocult.com.br
+```
 
-### 5.4 Pagamentos no Frontend
+Domínios:
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| FE-PG-001 | Integrar Stripe client-side. | Must Have | Stripe é usado para cartão e Pix sem expor dados sensíveis à loja. |
-| FE-PG-002 | Permitir pagamento por cartão. | Must Have | Cliente paga usando interface segura do Stripe. |
-| FE-PG-003 | Permitir pagamento por Pix. | Must Have | Cliente gera Pix, visualiza QR Code, copia-e-cola e instruções. |
-| FE-PG-004 | Não processar dados de cartão diretamente. | Must Have | Dados de cartão não passam por componentes próprios da loja. |
-| FE-PG-005 | Registrar `payment_client_confirmed` quando aplicável. | Could Have | Evento não é usado como receita nem fonte financeira. |
-| FE-PG-006 | Registrar `payment_instructions_displayed` para Pix. | Must Have | Evento é disparado quando QR/código/instruções são exibidos. |
-| FE-PG-007 | Tratar Pix pendente/expirado/falho no cliente. | Must Have | Cliente vê estado claro e pode tentar novamente sem Order criado. |
-| FE-PG-008 | Não exibir pedido inexistente. | Must Have | Frontend só mostra número/resumo de pedido quando backend confirmar Order. |
+- `indiciocult.com.br`: raiz;
+- `www.indiciocult.com.br`: storefront;
+- `api.indiciocult.com.br`: backend;
+- `admin.indiciocult.com.br`: Admin.
 
----
+### 5.2 BFF estrito
 
-### 5.5 Confirmação e Tracking
+O navegador não chama o Medusa diretamente.
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| FE-OR-001 | Exibir página de confirmação. | Must Have | Após Order confirmado pelo backend, cliente vê número do pedido, resumo e status normalizados retornados pela API. |
-| FE-OR-002 | Exibir página de tracking para convidado. | Must Have | Acesso por link com token seguro. |
-| FE-OR-003 | Exibir tracking para cliente autenticado. | Must Have | Cliente vê pedidos próprios na área do cliente sem token. |
-| FE-OR-004 | Tratar token inválido/expirado. | Must Have | Exibe erro genérico sem expor dados do pedido. |
-| FE-OR-005 | Não enviar `order_id` interno ao PostHog. | Must Have | Tracking usa `tracking_ref` ou identificador público/anônimo não reversível. |
+O BFF:
 
-#### Regra de status read-only
+- guarda `x-publishable-api-key` server-side;
+- resolve cookies;
+- injeta `Authorization`;
+- injeta `x-indicio-guest-cart-token`;
+- cria `Idempotency-Key`;
+- propaga `If-Match`;
+- normaliza erros;
+- aplica timeout;
+- gera/propaga `x-correlation-id`;
+- valida responses com Zod;
+- adapta respostas para DTOs internos.
 
-A storefront deve renderizar `order_status`, `payment_status` e `fulfillment_status` como estados read-only retornados pelo backend.
+### 5.3 Anti-Corruption Layer
 
-O frontend não deve inferir nem alterar:
+```text
+Store OpenAPI
+→ tipos gerados
+→ Zod runtime
+→ adapter
+→ DTOs próprios
+→ componentes
+```
 
-- cancelamento;
-- reembolso;
-- pagamento capturado;
-- envio;
-- entrega;
-- conclusão operacional;
-- estado `requires_attention`.
+Componentes React não importam tipos Medusa.
 
-Eventos client-side, retorno do Stripe no navegador ou eventos PostHog não são fonte de verdade para status de pedido, pagamento ou fulfillment.
+Contrato browser → BFF:
 
----
+- TypeScript e Zod internos;
+- sem OpenAPI próprio no Milestone 1;
+- Server Actions para mutações de árvore/formulário;
+- Route Handlers quando Client Components precisam de HTTP/polling.
 
-### 5.6 Conta do Cliente
+### 5.4 Renderização
 
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| FE-AC-001 | Permitir criação de conta. | Must Have | Cliente cria conta com e-mail e senha. |
-| FE-AC-002 | Permitir login. | Must Have | Cliente autentica com credenciais válidas. |
-| FE-AC-003 | Permitir logout. | Must Have | Sessão é encerrada corretamente. |
-| FE-AC-004 | Permitir recuperação de senha. | Must Have | Cliente recebe link de redefinição. |
-| FE-AC-005 | Exibir histórico de pedidos. | Must Have | Cliente vê pedidos com `order_status`, `payment_status`, fulfillment e tracking retornados pelo backend. |
-| FE-AC-006 | Permitir salvar e reutilizar endereços. | Must Have | Cliente usa endereço salvo no checkout. |
-| FE-AC-007 | Manter guest checkout disponível. | Must Have | Cliente pode comprar sem criar conta. |
-| FE-AC-008 | Visualizar solicitações de troca na área do cliente. | Should Have | Cliente consulta status de troca quando funcionalidade estiver disponível. |
-
----
-
-### 5.7 Trocas no Frontend
-
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| FE-RT-001 | Expor Política de Trocas. | Must Have | Cliente acessa política antes e depois da compra. |
-| FE-RT-002 | Disponibilizar canal de solicitação de troca. | Must Have | MVP usa e-mail de suporte como canal canônico. |
-| FE-RT-003 | Permitir formulário/página de contato opcional. | Could Have | Formulário pode coletar número do pedido, motivo e contato. |
-| FE-RT-004 | Não criar troca automaticamente no MVP. | Must Have | Solicitação do cliente não cria registro formal; admin registra no backend. |
-
----
-
-### 5.8 Analytics e Monitoramento Frontend
-
-| ID | Requisito | Prioridade | Critério de Aceite |
-|---|---|---|---|
-| FE-AN-001 | Integrar PostHog na storefront. | Must Have | Eventos mínimos são capturados sem dados sensíveis desnecessários. |
-| FE-AN-002 | Registrar `product_viewed`. | Should Have | Payload contém produto, variante quando aplicável e origem. |
-| FE-AN-003 | Registrar `variant_selected`. | Should Have | Payload contém produto e variante. |
-| FE-AN-004 | Registrar `add_to_cart`. | Should Have | Payload contém produto, variante, quantidade e preço. |
-| FE-AN-005 | Registrar `checkout_started`. | Should Have | Payload contém cart e quantidade de itens. |
-| FE-AN-006 | Registrar `shipping_selected`. | Should Have | Payload contém método e valor do frete. |
-| FE-AN-007 | Registrar `payment_method_selected`. | Should Have | Payload contém cart e tipo de pagamento. |
-| FE-AN-008 | Registrar `payment_instructions_displayed`. | Must Have | Pix: registrado quando instruções são exibidas. |
-| FE-AN-009 | Registrar `payment_client_confirmed` quando necessário. | Could Have | Cartão: evento opcional, não usado como receita. |
-| FE-AN-010 | Registrar `checkout_failed`. | Should Have | Payload contém cart, etapa e erro. |
-| FE-AN-011 | Registrar `tracking_viewed`. | Should Have | Payload usa `tracking_ref`; não usa `order_id` interno. |
-| FE-AN-012 | Integrar Sentry no frontend. | Must Have | Exceções frontend são reportadas por ambiente. |
-| FE-AN-013 | Não emitir `purchase_completed` na storefront. | Must Have | O evento deve ser registrado pelo backend em outbox/AnalyticsEventLog. A storefront não deve disparar, simular ou aguardar `purchase_completed`. |
-
----
-
-## 6. Eventos PostHog sob Responsabilidade do Frontend
-
-| Evento | Origem | Quando | Observação |
-|---|---|---|---|
-| `product_viewed` | Storefront | Visualização de produto. | Não incluir dados pessoais. |
-| `variant_selected` | Storefront | Seleção de variante. | Produto e variante. |
-| `add_to_cart` | Storefront | Item adicionado ao carrinho. | Produto, variante, quantidade e preço. |
-| `checkout_started` | Storefront | Início de checkout. | Cart e quantidade de itens. |
-| `shipping_selected` | Storefront | Seleção de frete. | Método e valor. |
-| `payment_method_selected` | Storefront | Seleção de cartão ou Pix. | Tipo do método. |
-| `payment_instructions_displayed` | Storefront | Pix exibido. | Não é receita. |
-| `payment_client_confirmed` | Storefront | Confirmação client-side de cartão, se aplicável. | Opcional; não é receita. |
-| `checkout_failed` | Storefront | Erro relevante no checkout. | Etapa e código/motivo. |
-| `tracking_viewed` | Storefront | Página de tracking acessada. | Usar `tracking_ref`; não usar `order_id` interno. |
-
-O evento `purchase_completed` **não é responsabilidade da storefront**.
-
-Ele deve ser registrado duravelmente pelo backend em outbox/AnalyticsEventLog após Order confirmado. A entrega ao PostHog é assíncrona, reprocessável e não deve bloquear:
-
-- confirmação visual do pedido;
-- exibição da página de confirmação;
-- envio à Gelato;
-- tracking;
-- qualquer fluxo da storefront.
-
-A storefront não deve emitir `purchase_completed`, não deve simular esse evento e não deve depender do sucesso do PostHog para exibir estados de pedido.
-
----
-
-## 7. Requisitos Não Funcionais — Frontend
-
-| ID | Requisito | Critério |
-|---|---|---|
-| FE-NFR-PERF-001 | Storefront deve carregar rapidamente em mobile. | Páginas principais devem buscar LCP abaixo de 2,5s em condições normais. |
-| FE-NFR-PERF-002 | APIs críticas devem ser usadas com baixa latência percebida. | UI deve usar loading, skeleton ou feedback em operações assíncronas. |
-| FE-NFR-PERF-003 | Imagens devem ser otimizadas. | Usar otimização, lazy loading e tamanhos responsivos. |
-| FE-NFR-UX-001 | Storefront deve ser mobile-first. | Fluxos principais funcionam em 375px de largura. |
-| FE-NFR-UX-002 | Checkout deve minimizar etapas. | Guest checkout é caminho claro. |
-| FE-NFR-UX-003 | Erros devem ser claros. | Cliente entende o que corrigir. |
-| FE-NFR-UX-004 | Componentes devem ter acessibilidade básica. | Labels, foco, contraste e navegação por teclado tratados. |
-| FE-NFR-UX-005 | Estados de loading devem ser explícitos. | Operações assíncronas exibem feedback. |
-| FE-NFR-UX-006 | Pix deve ter instruções claras. | Cliente entende como pagar e que pedido só processa após confirmação. |
-| FE-NFR-SEC-001 | Frontend deve usar HTTPS em produção. | Vercel/domínio com TLS válido. |
-| FE-NFR-SEC-002 | Variáveis públicas e privadas devem ser separadas. | Apenas `NEXT_PUBLIC_*` seguro no frontend. |
-| FE-NFR-LGPD-001 | Analytics deve respeitar privacidade. | Não capturar dados sensíveis desnecessários. |
-| FE-NFR-LGPD-002 | Sentry não deve capturar dados sensíveis indevidos. | Scrubbing configurado para tokens, headers e payloads sensíveis. |
-
----
-
-## 8. Dependências do Backend
-
-O frontend depende do backend para:
-
-- APIs de catálogo.
-- APIs de produto e variantes.
-- APIs de carrinho.
-- APIs de checkout.
-- Cálculo de frete.
-- Criação de Payment Collection/Payment Session.
-- Criação/integração Stripe.
-- Consulta de estado de confirmação assíncrona com estados normalizados:
-  - `confirming`
-  - `order_confirmed`
-  - `payment_failed`
-  - `payment_expired`
-  - `payment_canceled`
-  - `timeout_processing`
-- Dados do Order confirmado.
-- Página de tracking por token.
-- Área do cliente e histórico de pedidos.
-- URLs de imagens no Supabase Storage.
-- Status de pedido/fulfillment.
-- Políticas e dados de configuração quando dinâmicos.
-
-### 8.1 Contrato mínimo de confirmação assíncrona
-
-A storefront deve consultar o backend após retorno do Stripe usando referência segura de checkout, como `cart_id`, `payment_intent_id` ou token equivalente.
-
-O backend deve retornar um dos estados normalizados:
-
-| Estado | Comportamento da Storefront |
+| Página/recurso | Estratégia |
 |---|---|
-| `confirming` | Exibir “confirmando pagamento e pedido” e continuar polling controlado. |
-| `order_confirmed` | Exibir página de confirmação com dados do pedido retornados pelo backend. |
-| `payment_failed` | Exibir erro de pagamento e permitir nova tentativa quando aplicável. |
-| `payment_expired` | Exibir expiração do pagamento e permitir nova tentativa. |
-| `payment_canceled` | Exibir cancelamento e permitir retorno ao checkout quando aplicável. |
-| `timeout_processing` | Exibir mensagem neutra informando que a confirmação está em processamento e orientar acompanhamento por e-mail. |
+| Home | ISR + Server Components + ilhas client |
+| Catálogo | ISR + Server Components |
+| Produto | ISR + ilhas client |
+| Mini-carrinho | CSR |
+| Carrinho | shell dinâmico + interações CSR |
+| Checkout | dinâmico, `no-store` |
+| Conta/autenticação | dinâmico, `no-store` |
+| Processamento | dinâmico, `no-store` |
+| Pedido confirmado | dinâmico, `no-store` |
+| Legais | estático |
 
-A storefront não deve buscar nem renderizar dados de pedido enquanto o estado não for `order_confirmed`.
+### 5.5 Revalidação do catálogo
 
----
-
-## 9. Variáveis de Ambiente — Frontend
-
-```env
-NEXT_PUBLIC_MEDUSA_BACKEND_URL=
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
-NEXT_PUBLIC_STORE_URL=
-NEXT_PUBLIC_SENTRY_DSN=
-NEXT_PUBLIC_POSTHOG_KEY=
-NEXT_PUBLIC_POSTHOG_HOST=
-```
-
----
-
-## 10. Testes — Frontend
-
-### 10.1 Testes Unitários
-
-Devem cobrir:
-
-- Componentes de produto.
-- Seleção de variante.
-- Estados de variante indisponível.
-- Carrinho.
-- Validação de endereço.
-- Rejeição de país diferente de `BR`.
-- Estados de Pix.
-- Estado “confirmando pagamento e pedido”.
-- Token inválido/expirado de tracking.
-- Eventos PostHog.
-- Formatação de moeda BRL.
-- Formatação de valores monetários vindos do backend na menor unidade monetária.
-- Renderização de `order_status`, `payment_status` e `fulfillment_status` como estados read-only.
-- Garantia de que `purchase_completed` não é disparado por componentes/hooks da storefront.
-- Estados de erro/loading.
-
-### 10.2 Testes de Integração
-
-Devem cobrir:
-
-- Catálogo consumindo backend.
-- Produto com variantes.
-- Carrinho persistente.
-- Checkout convidado.
-- Checkout autenticado.
-- Cálculo de frete.
-- Criação de pagamento cartão.
-- Criação de Pix e exibição de instruções.
-- Retorno Stripe sem Order disponível.
-- Confirmação quando Order passa a existir.
-- Confirmação assíncrona consumindo estados normalizados do backend.
-- Falha ou indisponibilidade do PostHog no browser sem bloquear página de confirmação.
-- Página de confirmação baseada apenas em `order_confirmed` retornado pelo backend.
-- Resumo de checkout usando totais canônicos retornados pelo backend.
-- Página de tracking.
-- Login/cadastro/logout/recuperação de senha.
-- Sentry e PostHog.
-
-### 10.3 Testes E2E
-
-Fluxo cartão:
+Evento Medusa → Next.js:
 
 ```text
-Produto publicado
-→ Cliente adiciona ao carrinho
-→ Checkout convidado
-→ Endereço Brasil
-→ Frete selecionado
-→ Pagamento cartão
-→ Estado “confirmando pagamento e pedido” se necessário
-→ Backend retorna `order_confirmed`
-→ Página de confirmação renderiza dados e status vindos do backend
-→ Storefront não emite `purchase_completed`
-→ Tracking
+POST /api/webhooks/medusa/catalog-revalidation
 ```
 
-Fluxo Pix:
+Headers:
 
-```text
-Produto publicado
-→ Cliente adiciona ao carrinho
-→ Checkout convidado
-→ Endereço Brasil
-→ Frete selecionado
-→ Pix gerado
-→ payment_instructions_displayed registrado
-→ Pagamento confirmado
-→ Backend retorna `order_confirmed`
-→ Página de confirmação renderiza dados e status vindos do backend
-→ Storefront não emite `purchase_completed`
-→ Tracking
-```
+- `x-indicio-event-id`;
+- `x-indicio-event-type`;
+- `x-indicio-signature`;
+- `x-indicio-timestamp`.
+
+Tags:
+
+- `catalog`;
+- `product:<id>`.
+
+Respostas:
+
+- `202 Accepted`: assinatura validada, evento deduplicado e persistido, job durável enfileirado;
+- `200 OK`: `revalidateTag` concluído sincronamente.
+
+### 5.6 CSP
+
+- páginas ISR usam CSP estática compatível com cache;
+- carrinho, checkout, conta e confirmação usam CSP dinâmica com nonce;
+- Stripe.js é carregado somente na etapa de pagamento;
+- scripts não essenciais são bloqueados durante o pagamento.
 
 ---
 
-## 11. Critérios de Aceite do PRD Frontend
+## 6. Contrato atual do backend
 
-O frontend será considerado pronto quando:
+O Store OpenAPI atual possui dez operações documentadas. Elas representam o estado as-built, não o contrato-alvo completo.
 
-- Storefront estiver publicada em Vercel.
-- Catálogo e página de produto funcionarem em mobile e desktop.
-- Imagens carregarem a partir de URLs fornecidas pelo backend/Supabase Storage.
-- Carrinho funcionar e persistir durante a sessão.
-- Checkout convidado funcionar.
-- Checkout autenticado funcionar.
-- Endereços fora do Brasil forem rejeitados.
-- Frete for exibido antes do pagamento.
-- Cartão funcionar em produção.
-- Pix funcionar em produção.
-- Storefront exibir estado “confirmando pagamento e pedido”.
-- Endpoint de confirmação assíncrona for consumido por estados normalizados.
-- Página de confirmação não buscar Order inexistente.
-- Storefront não depender do PostHog para exibir confirmação de pedido.
-- Valores financeiros críticos forem exibidos a partir dos totais canônicos retornados pelo backend.
-- Status de pedido, pagamento e fulfillment forem renderizados como read-only vindos do backend.
-- Página de tracking funcionar por token para convidado.
-- Área do cliente exibir histórico e tracking.
-- Eventos PostHog frontend forem emitidos corretamente.
-- `purchase_completed` não for emitido pelo frontend.
-- `order_id` interno não for enviado ao PostHog no frontend.
-- Sentry capturar erros frontend.
-- Páginas legais estiverem publicadas.
-- Canal de troca por e-mail de suporte estiver visível.
-- Fluxos principais passarem em smoke test de produção.
+| operationId | Método e rota | Estado |
+|---|---|---|
+| `storeHealthGetLive` | `GET /health/live` | existente |
+| `storeHealthGetReady` | `GET /health/ready` | existente |
+| `storeProductsList` | `GET /store/products` | existente |
+| `storeProductsRetrieve` | `GET /store/products/{id}` | existente |
+| `storeCartGetActive` | `GET /store/carts/active` | existente |
+| `storeCartCreateOrGetActive` | `POST /store/carts/active` | existente; será estendido |
+| `storeCustomerCartAttach` | `POST /store/customers/me/cart/attach` | existente; será deprecated |
+| `storePaymentAttemptCreateCard` | `POST /store/carts/{id}/payment-attempts/card` | existente; será estendido |
+| `storePaymentAttemptCreatePix` | `POST /store/carts/{id}/payment-attempts/pix` | existente; fora do milestone |
+| `storeTrackingLookup` | `POST /store/tracking/lookup` | existente; fora do milestone |
+
+> Os `operationId` desta seção são reproduzidos literalmente do Store registry atual. Os identificadores da seção de contrato-alvo permanecem prospectivos até sua inclusão no registry e no OpenAPI gerado.
+
+Regras atuais de dinheiro:
+
+- catálogo/carrinho: `brl-major`;
+- `PaymentAttempt.amount`: `brl-minor`.
+
+O BFF preservará o upstream atual e normalizará os DTOs internos em minor units.
 
 ---
 
-## 12. Questões Abertas Relacionadas ao Frontend
+## 7. Contrato-alvo aprovado
 
-| ID | Questão | Impacto | Prazo |
+As operações desta seção estão **aprovadas como decisão**, mas somente poderão ser consumidas quando materializadas no OpenAPI.
+
+### 7.1 Autenticação
+
+| operationId | Método | Rota | Classificação |
 |---|---|---|---|
-| FE-Q-001 | URL final da storefront será `www.<dominio>.com.br` ou apex `<dominio>.com.br`? | SEO, Vercel, CORS, cookies. | Antes de staging. |
-| FE-Q-002 | Conteúdo final da Política de Trocas. | Checkout, rodapé, suporte. | Antes de go-live. |
-| FE-Q-003 | Canal LGPD publicado ao cliente. | Política de Privacidade. | Antes de go-live. |
-| FE-Q-004 | Haverá formulário de contato/troca no MVP ou apenas e-mail? | UX de troca. | Antes de implementação da página de trocas. |
+| `registerCustomerIdentity` | `POST` | `/auth/customer/emailpass/register` | nativa |
+| `createCustomer` | `POST` | `/store/customers` | nativa |
+| `customerLogin` | `POST` | `/auth/customer/emailpass` | nativa + guard |
+| `getCustomerMe` | `GET` | `/store/customers/me` | nativa |
+| `requestPasswordReset` | `POST` | `/auth/customer/emailpass/reset-password` | nativa, Medusa 2.16+ |
+| `resetPassword` | `POST` | `/auth/customer/emailpass/update` | nativa |
+| `refreshCustomerToken` | `POST` | `/auth/token/refresh` | nativa + guard |
+| `requestEmailVerification` | `POST` | `/store/customers/me/verify` | customizada |
+| `resendEmailVerification` | `POST` | `/store/customers/me/verify/resend` | customizada |
+| `confirmEmailVerification` | `POST` | `/store/customers/verify` | customizada |
+| `getEmailVerificationStatus` | `GET` | `/store/customers/me/verify/status` | customizada |
+
+`customerLogout` é operação do BFF, não integra o Store OpenAPI.
+
+### 7.2 Carrinho
+
+| operationId | Método | Rota |
+|---|---|---|
+| `getActiveStoreCart` | `GET` | `/store/carts/active` |
+| `createActiveStoreCart` | `POST` | `/store/carts/active` |
+| `addCartLineItem` | `POST` | `/store/carts/{id}/line-items` |
+| `updateCartLineItem` | `POST` | `/store/carts/{id}/line-items/{item_id}` |
+| `removeCartLineItem` | `DELETE` | `/store/carts/{id}/line-items/{item_id}` |
+| `clearCartLineItems` | `DELETE` | `/store/carts/{id}/line-items` |
+| `mergeCustomerCart` | `POST` | `/store/customers/me/cart/merge` |
+| `acknowledgeCartReview` | `POST` | `/store/carts/{id}/review/acknowledge` |
+
+`attachCustomerCart` fica deprecated e não será usado pelo novo frontend.
+
+### 7.3 Checkout
+
+| operationId | Método | Rota |
+|---|---|---|
+| `patchCartCheckoutDetails` | `PATCH` | `/store/carts/{id}/checkout-details` |
+| `validateCartCheckoutDetails` | `POST` | `/store/carts/{id}/checkout-details/validate` |
+
+Busca de CEP é BFF-only e não integra o Store OpenAPI.
+
+### 7.4 Frete
+
+| operationId | Método | Rota |
+|---|---|---|
+| `quoteShippingOptions` | `POST` | `/store/carts/{id}/shipping-options/quote` |
+| `selectShippingOption` | `PUT` | `/store/carts/{id}/shipping-option` |
+
+### 7.5 Pagamento e confirmação
+
+| operationId | Método | Rota |
+|---|---|---|
+| `createCardPaymentAttempt` | `POST` | `/store/carts/{id}/payment-attempts/card` |
+| `getPaymentAttemptStatus` | `POST` | `/store/carts/{id}/payment-attempts/status` |
+| `invalidatePaymentAttempt` | `POST` | `/store/carts/{id}/payment-attempts/invalidate` |
+| `exchangePaymentConfirmationToken` | `POST` | `/store/payment-confirmations/exchange` |
+| `getPaymentConfirmationStatus` | `POST` | `/store/payment-confirmations/status` |
+| `getConfirmedOrderSummary` | `GET` | `/store/orders/{orderReference}/confirmation` |
+
+### 7.6 Headers transversais
+
+| Header | Uso |
+|---|---|
+| `x-publishable-api-key` | rotas `/store` |
+| `Authorization` | JWT de Customer ou token específico |
+| `x-indicio-guest-cart-token` | capability do carrinho convidado |
+| `If-Match` | concorrência |
+| `ETag` | versão retornada |
+| `Idempotency-Key` | mutações repetíveis |
+| `x-correlation-id` | rastreabilidade |
+| `Retry-After` | rate limit e polling |
+| `Content-Type` | `application/json` |
+
+### 7.7 Contexto do carrinho convidado
+
+```ts
+type GuestCartEnvelope = {
+  cartId: string
+  guestCartToken: string
+  createdAt: string
+  version: number
+}
+```
+
+Criação:
+
+```http
+POST /store/carts/active
+```
+
+Resposta:
+
+```http
+201 Created
+ETag: "<cart-version>"
+x-indicio-guest-cart-token: "<opaque-capability>"
+```
+
+Regras:
+
+- token com 32 bytes CSPRNG;
+- backend armazena somente SHA-256;
+- BFF guarda o valor dentro de `indicio_cart_id`;
+- browser JavaScript nunca recebe o token;
+- header marcado com `x-sensitive: true`;
+- merge consome e revoga a capability;
+- mesma `Idempotency-Key` retorna o mesmo contexto válido.
+
+### 7.8 Schemas canônicos
+
+O registry deverá incluir, no mínimo:
+
+- `StoreMajorMoney`;
+- `StoreMinorMoney`;
+- `MoneyUnit`;
+- `StoreCartResponse`;
+- `CartMergeRequest`;
+- `CartMergeResponse`;
+- `CartMergeRejectedItem`;
+- `CheckoutDetailsDraftRequest`;
+- `CheckoutDetailsDraftResponse`;
+- `CheckoutValidationRequest`;
+- `CheckoutValidationResponse`;
+- `BrazilianShippingAddress`;
+- `MaskedFederalTaxId`;
+- `ConsentReceipt`;
+- `CartReviewState`;
+- `ShippingQuoteRequest`;
+- `ShippingQuoteResponse`;
+- `ShippingOption`;
+- `ShippingSelectionRequest`;
+- `CardPaymentAttemptRequest`;
+- `CardPaymentAttemptResponse`;
+- `PaymentAttemptStatusRequest`;
+- `PaymentAttemptStatusResponse`;
+- `PaymentAttemptInvalidationRequest`;
+- `PaymentAttemptInvalidationResponse`;
+- `PaymentConfirmationExchangeRequest`;
+- `PaymentConfirmationExchangeResponse`;
+- `PaymentConfirmationStatusRequest`;
+- `PaymentConfirmationStatusResponse`;
+- `ConfirmedOrderItem`;
+- `ConfirmedOrderSummary`;
+- `StoreErrorResponse`;
+- `AuthVerificationState`;
+- schemas de identidade, senha, token e Customer definidos no Bloco R.
 
 ---
+
+## 8. Arquitetura de informação e páginas
+
+| Página | Rota | Milestone 1 |
+|---|---|---|
+| Home | `/` | incluída |
+| Catálogo | `/produtos` | incluída |
+| Produto | `/produtos/[handle-ou-id]` | incluída; resolução final conforme contrato |
+| Carrinho | `/carrinho` | incluída |
+| Login | `/entrar` | incluída |
+| Cadastro | `/cadastro` | incluída |
+| Recuperação | `/recuperar-senha` | incluída |
+| Redefinição | `/redefinir-senha` | incluída |
+| Verificação | `/verificar-email` | incluída |
+| Checkout | `/checkout` | incluída; autenticada |
+| Processamento | `/checkout/processando` | incluída |
+| Pedido confirmado | `/pedidos/[orderReference]/confirmacao` | incluída |
+| Privacidade | `/privacidade` | incluída |
+| Termos | `/termos` | incluída |
+| Trocas | `/trocas` | incluída |
+| Contato | `/contato` | incluída |
+| Histórico de pedidos | `/conta/pedidos` | posterior |
+| Tracking público | `/rastreio` | posterior |
+
+Rotas de checkout, conta e confirmação usam `noindex`.
+
+---
+
+## 9. Fluxos detalhados
+
+### 9.1 Catálogo e produto
+
+```text
+Usuário abre catálogo/produto
+→ Server Component chama BFF
+→ BFF chama Store API
+→ Zod valida resposta
+→ adapter converte preços
+→ UI renderiza apenas variantes vendáveis
+```
+
+A UI nunca acessa metadata Gelato.
+
+### 9.2 Criação e recuperação do carrinho
+
+- `GET /api/cart` resolve `indicio_cart_id`;
+- BFF chama `GET /store/carts/active`;
+- `404`: limpa cookie stale e retorna carrinho vazio;
+- não cria carrinho ao abrir a página;
+- primeiro “Adicionar” chama criação + adição;
+- criação e adição usam subchaves de uma raiz UUID:
+  - `<uuid>:create`;
+  - `<uuid>:add`.
+
+Falha na adição preserva o carrinho vazio criado.
+
+### 9.3 Mutações do carrinho
+
+Input:
+
+```ts
+type AddCartItemInput = {
+  variantId: string
+  quantity: number
+}
+```
+
+Regras:
+
+- quantidade inteira entre 1 e 99;
+- preço, produto, metadata e cart ID enviados pelo browser são ignorados/rejeitados;
+- quantidade `0` remove o item;
+- UI otimista híbrida;
+- debounce de quantidade: 300 ms;
+- conflito de `ETag`: `412 CART_VERSION_MISMATCH`;
+- sem repetição automática destrutiva;
+- resposta substitui o estado local pelo `CartDTO` canônico.
+
+### 9.4 Merge
+
+```text
+Login/cadastro concluído
+→ BFF mantém o carrinho convidado
+→ chama mergeCustomerCart
+→ backend transaciona
+→ capability convidada é consumida
+→ resposta informa outcome e rejeições
+→ UI apresenta revisão quando necessário
+```
+
+Outcomes:
+
+- `MERGED`;
+- `MERGED_PARTIAL`;
+- `GUEST_CART_ATTACHED`;
+- `CUSTOMER_CART_PRESERVED`;
+- `NO_ITEMS`.
+
+Quantidades do mesmo variant são somadas e limitadas a 99. Itens inválidos são rejeitados individualmente.
+
+`requiresReview=true` bloqueia checkout até reconhecimento persistido.
+
+### 9.5 Autenticação
+
+Cadastro:
+
+```text
+registerCustomerIdentity
+→ registration JWT
+→ createCustomer
+→ sessão inicial
+→ solicitar verificação
+→ merge
+```
+
+Login:
+
+- backend aplica verificação flexível;
+- e-mail não verificado só pode usar a sessão inicial;
+- novo login após encerramento exige verificação;
+- `returnUrl` é allowlisted.
+
+Logout:
+
+- limpa `indicio_session_jwt`;
+- limpa `indicio_cart_id`;
+- limpa caches client-side;
+- publica evento entre abas;
+- carrinho autenticado permanece ligado ao Customer no backend.
+
+### 9.6 Sessão
+
+Cookie:
+
+```text
+Name: indicio_session_jwt
+HttpOnly: true
+Secure: true em staging/prod
+SameSite: Lax
+Domain: omitido — host-only
+```
+
+Envelope:
+
+```ts
+type AuthSessionEnvelope = {
+  jwt: string
+  originalLoginAt: string
+  lastActivityAt: string
+}
+```
+
+Regras:
+
+- JWT: 24 horas;
+- renovar quando faltarem menos de 60 minutos;
+- cookie rolling: 7 dias;
+- inatividade: 7 dias;
+- duração absoluta: 30 dias;
+- JWT expirado exige login;
+- alteração de senha revoga tokens anteriores;
+- logout afeta o dispositivo atual.
+
+### 9.7 Checkout
+
+Pré-condições:
+
+- sessão válida;
+- Customer;
+- carrinho associado e não vazio;
+- merge concluído;
+- `requiresReview=false`;
+- itens vendáveis;
+- e-mail da conta;
+- nenhum pagamento incompatível.
+
+Draft:
+
+```http
+PATCH /store/carts/{id}/checkout-details
+If-Match: "<etag>"
+Idempotency-Key: "<uuid>"
+```
+
+- persiste campos presentes e válidos;
+- CPF inválido não é persistido;
+- recalcula completude;
+- conflito retorna `412`.
+
+Validação final:
+
+```http
+POST /store/carts/{id}/checkout-details/validate
+If-Match: "<etag>"
+Idempotency-Key: "<uuid>"
+```
+
+- valida a etapa completa;
+- não persiste parcialmente em caso de erro;
+- retorna todos os `fieldErrors`;
+- libera frete/pagamento somente após sucesso.
+
+### 9.8 Dados brasileiros
+
+Campos obrigatórios:
+
+- nome;
+- sobrenome;
+- e-mail da conta, read-only;
+- telefone;
+- CPF;
+- CEP;
+- rua;
+- número ou `S/N`;
+- bairro;
+- cidade;
+- UF;
+- país `BR`.
+
+Complemento é opcional.
+
+Mapeamento Medusa:
+
+```text
+address_1 = street + ", " + number + complemento opcional
+address_2 = neighborhood
+```
+
+O domínio mantém campos estruturados.
+
+### 9.9 CEP
+
+```text
+browser
+→ BFF
+→ ViaCEP
+→ fallback BrasilAPI
+```
+
+- timeout por tentativa: 3 s;
+- uma tentativa + retry/fallback controlado;
+- resultado é sugestão;
+- preenchimento manual permanece disponível;
+- cache positivo: 30 dias;
+- não encontrado: 1 hora;
+- CEP não entra em analytics;
+- `source` pode ser exibido na UI.
+
+### 9.10 CPF
+
+- validação client-side e backend;
+- campo próprio criptografado com AES-256-GCM;
+- chave gerenciada por KMS/serviço equivalente;
+- Store API retorna somente mascarado;
+- cart abandonado: purge após 7 dias;
+- snapshot criptografado no `Order`;
+- acesso completo apenas por fluxos autorizados e auditados;
+- proibido em browser storage, URL, logs, Sentry, PostHog, Stripe e Gelato.
+
+### 9.11 Consentimentos
+
+- Termos de Compra: aceite contratual;
+- Política de Trocas: enquadramento jurídico pendente;
+- Política de Privacidade: ciência/transparência;
+- consentimentos opcionais são separados por finalidade.
+
+O backend registra versões, timestamp, Customer, cart, IP legalmente necessário e correlation ID. User agent não é armazenado.
+
+Revisão jurídica é gate de go-live.
+
+### 9.12 Frete
+
+Cotação automática após endereço completo:
+
+```http
+POST /store/carts/{id}/shipping-options/quote
+If-Match: "<etag>"
+Idempotency-Key: "<uuid>"
+```
+
+- backend é autoritativo;
+- BFF cache read-through máximo de 5 minutos;
+- TTL da cotação: máximo de 30 minutos;
+- provider oculto;
+- transportadora somente quando disponível;
+- preço em BRL;
+- prazo total estimado em dias úteis;
+- mudança de endereço/item/preço revoga a cotação;
+- opção anterior nunca é restaurada automaticamente.
+
+Seleção:
+
+```http
+PUT /store/carts/{id}/shipping-option
+If-Match: "<etag>"
+Idempotency-Key: "<uuid>"
+```
+
+- exige `shippingOptionRef` opaca e vigente;
+- recalcula totais;
+- exige nova seleção após mudança;
+- invalida `PaymentAttempt` incompatível.
+
+Sem fallback logístico no Milestone 1.
+
+### 9.13 Pagamento por cartão
+
+Iniciação por Server Action:
+
+```ts
+type StartCardPaymentInput = {
+  cartEtag: string
+}
+```
+
+```text
+Client Component
+→ Server Action
+→ If-Match no fetch BFF → Medusa
+→ cria/recupera PaymentAttempt compatível
+→ backend retorna client_secret e confirmationToken somente ao BFF
+→ BFF troca confirmationToken server-side
+→ backend consome o token e retorna confirmationSessionRef opaca
+→ BFF cria indicio_confirmation_session HttpOnly
+→ BFF retorna ao navegador somente client_secret e DTO público
+→ monta Payment Element
+```
+
+Se a troca do token ou a criação do cookie falhar, o BFF não devolve o `client_secret` e o navegador não chama `stripe.confirmPayment`. `confirmationToken` e `confirmationSessionRef` nunca integram a resposta browser-facing.
+
+Pré-condições:
+
+- checkout completo;
+- frete válido;
+- consentimentos válidos;
+- total > 0;
+- versão atual;
+- nenhuma tentativa incompatível;
+- nenhum pagamento em processamento.
+
+O browser nunca envia:
+
+- amount;
+- currency;
+- cart/customer/order ID;
+- PaymentIntent ID;
+- preço ou totais.
+
+### 9.14 Stripe
+
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` pode estar no navegador;
+- secret key permanece no backend;
+- PAN/CVC trafegam entre Stripe Elements e Stripe;
+- `client_secret` somente em memória;
+- `redirect: "if_required"`;
+- `return_url` fixo em `https://www.indiciocult.com.br/checkout/processando`;
+- `return_url` sem token, capability, referência operacional ou query string sensível;
+- 3DS suportado;
+- sucesso client-side leva a processamento, nunca a “pedido confirmado”.
+
+Estados reutilizáveis:
+
+- `requires_payment_method`;
+- `requires_confirmation`;
+- `requires_action` continua a mesma tentativa.
+
+Estados bloqueados:
+
+- `processing`;
+- `succeeded`;
+- `canceled`;
+- `invalidated`;
+- `expired`.
+
+Erro de rede após confirmação:
+
+```text
+→ não repetir confirmPayment
+→ consultar status
+→ entrar em confirmação assíncrona
+```
+
+### 9.15 Invalidação do pagamento
+
+Mudança de carrinho/endereço/frete:
+
+```text
+→ invalida PaymentAttempt
+→ desmonta Elements
+→ descarta client_secret
+→ tenta cancelar PaymentIntent best effort
+→ cria nova tentativa quando permitido
+```
+
+Webhook tardio de tentativa invalidada:
+
+```text
+→ ingerir e deduplicar
+→ responder 2xx
+→ não criar Order com carrinho atual
+→ PAYMENT_SUCCEEDED_FOR_INVALIDATED_ATTEMPT
+→ reconciliation required
+→ alerta crítico
+→ revisão administrativa em até 24 horas
+```
+
+### 9.16 Confirmação assíncrona
+
+Estabelecimento da sessão antes de `stripe.confirmPayment`:
+
+```text
+createCardPaymentAttempt
+→ backend emite confirmationToken BFF-only
+→ BFF chama POST /store/payment-confirmations/exchange
+→ backend consome o token atomicamente
+→ backend retorna confirmationSessionRef opaca + expiresAt
+→ BFF cria indicio_confirmation_session HttpOnly
+→ navegador recebe somente client_secret e DTO público
+```
+
+A troca exige `x-publishable-api-key`, Customer JWT e `Idempotency-Key`. Repetição com a mesma chave retorna a mesma sessão válida; token consumido por outra operação é rejeitado sem revelar estado financeiro.
+
+Retorno:
+
+```text
+Stripe
+→ /checkout/processando
+→ Next.js valida indicio_confirmation_session
+→ BFF consulta o status da confirmação
+→ polling
+```
+
+A URL é limpa desde o primeiro request recebido pela infraestrutura da storefront. O fluxo de pagamento que não exige redirect navega para a mesma rota limpa usando o cookie já estabelecido.
+
+Token e referência de sessão:
+
+- `confirmationToken` possui 32 bytes CSPRNG;
+- backend armazena somente SHA-256 do token;
+- token é de uso único e TTL de 30 minutos;
+- token é vinculado a Customer, tentativa e versão do carrinho;
+- token trafega somente no corpo HTTPS BFF → Medusa;
+- `confirmationSessionRef` é opaca e permanece somente no envelope criptografado do cookie;
+- token e referência são proibidos em URL, HTML, JavaScript, analytics, Sentry e logs.
+
+Cookie:
+
+```text
+Name: indicio_confirmation_session
+HttpOnly: true
+Secure: true
+SameSite: Lax
+Path: /
+Domain: omitido — host-only
+Max-Age: 1800
+```
+
+Polling:
+
+- início em 2 s;
+- orientado por `retryAfterMs`;
+- progressão 2/4/8 s;
+- máximo de 10 s;
+- ativo até 60 s;
+- pausa em aba oculta;
+- consulta imediata no foco;
+- após 60 s: `CONFIRMATION_UNKNOWN`;
+- botão de nova cobrança permanece bloqueado.
+
+### 9.17 Estados da confirmação
+
+```ts
+type PaymentConfirmationStatus =
+  | "AWAITING_PROVIDER"
+  | "PROCESSING_WEBHOOK"
+  | "ORDER_CONFIRMED"
+  | "PAYMENT_RETRY_REQUIRED"
+  | "PAYMENT_CANCELED"
+  | "PAYMENT_INVALIDATED"
+  | "PAYMENT_EXPIRED"
+  | "RECONCILIATION_REQUIRED"
+  | "CONFIRMATION_SESSION_EXPIRED"
+  | "CONFIRMATION_UNKNOWN"
+```
+
+- `ORDER_CONFIRMED`: terminal;
+- `PAYMENT_RETRY_REQUIRED`: encerra a jornada atual e permite correção;
+- `RECONCILIATION_REQUIRED`: encerra polling automático, mantém lock;
+- `CONFIRMATION_UNKNOWN`: terminal de UX, não terminal financeiro.
+
+### 9.18 Criação do Order
+
+```text
+payment_intent.succeeded
+→ WebhookEventLog deduplica
+→ snapshot da tentativa é validado
+→ Order é criada transacionalmente
+→ Payment e Order são vinculados
+→ outbox registra efeitos
+→ purchase_completed é emitido pelo backend
+→ e-mail é enfileirado
+→ confirmação passa a ORDER_CONFIRMED
+```
+
+E-mail e analytics não bloqueiam a resposta de `ORDER_CONFIRMED`.
+
+### 9.19 Página confirmada
+
+```http
+GET /store/orders/{orderReference}/confirmation
+```
+
+- publishable key + Customer JWT;
+- proprietário obrigatório;
+- `orderReference` não sequencial;
+- referência isolada não concede acesso;
+- TTL de acesso direto: 24 horas;
+- outro dispositivo funciona quando autenticado na mesma conta;
+- após TTL: `404 CONFIRMATION_NOT_FOUND`.
+
+A página exibe resumo reduzido, endereço necessário, CEP/e-mail mascarados e nenhuma referência Stripe.
+
+### 9.20 Limpeza e múltiplas abas
+
+Quando `ORDER_CONFIRMED`:
+
+- backend completa carrinho;
+- BFF limpa `indicio_cart_id`;
+- snapshot local é removido;
+- caches são invalidados;
+- `BroadcastChannel` publica `order-confirmed` e `cart-cleared`;
+- outras abas desmontam Elements e redirecionam;
+- refetch ao foco funciona como fallback.
+
+---
+
+## 10. Requisitos funcionais
+
+### 10.1 Fundação
+
+| ID | Requisito | Prioridade |
+|---|---|---|
+| FE-FND-001 | Next.js App Router com TypeScript estrito | Must |
+| FE-FND-002 | BFF same-origin obrigatório | Must |
+| FE-FND-003 | Adapter tipado e Zod runtime | Must |
+| FE-FND-004 | Nenhum componente consome Medusa diretamente | Must |
+| FE-FND-005 | Correlation ID sanitizado | Must |
+| FE-FND-006 | Configuração pública separada de secrets | Must |
+| FE-FND-007 | OpenAPI é gate para qualquer rota upstream | Must |
+
+### 10.2 Catálogo
+
+| ID | Requisito | Prioridade |
+|---|---|---|
+| FE-CAT-001 | Listar produtos vendáveis | Must |
+| FE-CAT-002 | Exibir produto e variantes públicas | Must |
+| FE-CAT-003 | Não expor metadata interna | Must |
+| FE-CAT-004 | Cache/revalidação por tags | Must |
+| FE-CAT-005 | Tratar indisponibilidade sem vazar motivo interno | Must |
+
+### 10.3 Carrinho
+
+| ID | Requisito | Prioridade |
+|---|---|---|
+| FE-CART-001 | Criar carrinho lazy | Must |
+| FE-CART-002 | Proteger carrinho por capability | Must |
+| FE-CART-003 | Adicionar, atualizar, remover e esvaziar | Must |
+| FE-CART-004 | Quantidade entre 1 e 99 | Must |
+| FE-CART-005 | Sincronizar abas | Must |
+| FE-CART-006 | Merge transacional e parcial | Must |
+| FE-CART-007 | Bloquear checkout em `requiresReview` | Must |
+| FE-CART-008 | Resolver conflitos por ETag | Must |
+
+### 10.4 Autenticação
+
+| ID | Requisito | Prioridade |
+|---|---|---|
+| FE-AUTH-001 | Cadastro em duas etapas | Must |
+| FE-AUTH-002 | Login e logout BFF | Must |
+| FE-AUTH-003 | Reset de senha | Must |
+| FE-AUTH-004 | Verificação flexível | Must |
+| FE-AUTH-005 | Renovação somente com JWT válido | Must |
+| FE-AUTH-006 | Revogação após alteração de credenciais | Must |
+| FE-AUTH-007 | Sessão absoluta máxima de 30 dias | Must |
+
+### 10.5 Checkout e frete
+
+| ID | Requisito | Prioridade |
+|---|---|---|
+| FE-CHK-001 | Checkout exclusivamente autenticado | Must |
+| FE-CHK-002 | Rascunho parcial e validação final separada | Must |
+| FE-CHK-003 | Endereço BR estruturado | Must |
+| FE-CHK-004 | CPF protegido e mascarado | Must |
+| FE-CHK-005 | CEP via BFF com fallback | Must |
+| FE-CHK-006 | Consentimentos versionados | Must |
+| FE-SHP-001 | Cotação automática | Must |
+| FE-SHP-002 | Seleção autoritativa | Must |
+| FE-SHP-003 | Revogação por mudança | Must |
+| FE-SHP-004 | Sem fallback no Milestone 1 | Must |
+
+### 10.6 Pagamento e confirmação
+
+| ID | Requisito | Prioridade |
+|---|---|---|
+| FE-PAY-001 | Stripe Payment Element | Must |
+| FE-PAY-002 | `client_secret` somente em memória | Must |
+| FE-PAY-003 | 3DS e return URL segura | Must |
+| FE-PAY-004 | Idempotência e tentativa compatível | Must |
+| FE-PAY-005 | Consultar antes de retry após erro incerto | Must |
+| FE-PAY-006 | Invalidar em mudança estrutural | Must |
+| FE-CONF-001 | Trocar token no servidor | Must |
+| FE-CONF-002 | Polling com backoff e rate limit | Must |
+| FE-CONF-003 | Não confirmar pedido pelo browser | Must |
+| FE-CONF-004 | Refresh e múltiplas abas | Must |
+| FE-CONF-005 | Reconciliação controlada | Must |
+| FE-CONF-006 | Resumo de Order reduzido | Must |
+
+### 10.7 Conteúdo
+
+| ID | Requisito | Prioridade |
+|---|---|---|
+| FE-CNT-001 | Política de Privacidade | Must |
+| FE-CNT-002 | Termos de Compra | Must |
+| FE-CNT-003 | Política de Trocas | Must |
+| FE-CNT-004 | Canal de suporte | Must |
+| FE-CNT-005 | Revisão jurídica antes do go-live | Must |
+
+---
+
+## 11. Estados de interface e erros
+
+### 11.1 Estados comuns
+
+- `idle`;
+- `loading`;
+- `success`;
+- `empty`;
+- `validation_error`;
+- `unauthorized`;
+- `forbidden`;
+- `not_found`;
+- `conflict`;
+- `rate_limited`;
+- `server_error`;
+- `offline`;
+- `retrying`.
+
+### 11.2 Envelope
+
+```ts
+type BffErrorDTO = {
+  code: string
+  message: string
+  correlationId?: string
+  retryable: boolean
+  fieldErrors?: Record<string, string>
+  cart?: CartDTO
+}
+```
+
+### 11.3 Códigos principais
+
+Carrinho:
+
+- `CART_NOT_FOUND`;
+- `CART_ACCESS_DENIED`;
+- `CART_VERSION_MISMATCH`;
+- `CART_REVIEW_REQUIRED`;
+- `VARIANT_NOT_SELLABLE`;
+- `INVALID_QUANTITY`;
+- `QUANTITY_LIMIT_EXCEEDED`.
+
+Checkout:
+
+- `INVALID_CPF`;
+- `FEDERAL_TAX_ID_REQUIRED`;
+- `ZERO_TOTAL_NOT_SUPPORTED`.
+
+Frete:
+
+- `SHIPPING_ADDRESS_INVALID`;
+- `SHIPPING_NOT_AVAILABLE`;
+- `SHIPPING_QUOTE_EXPIRED`;
+- `SHIPPING_OPTION_NO_LONGER_ELIGIBLE`;
+- `SHIPPING_PROVIDER_UNAVAILABLE`;
+- `SHIPPING_PROVIDER_TIMEOUT`.
+
+Pagamento:
+
+- `PAYMENT_CHECKOUT_INCOMPLETE`;
+- `PAYMENT_ATTEMPT_ALREADY_ACTIVE`;
+- `PAYMENT_ATTEMPT_INVALIDATED`;
+- `PAYMENT_PROVIDER_UNAVAILABLE`;
+- `PAYMENT_CARD_DECLINED`;
+- `PAYMENT_CONFIRMATION_UNKNOWN`;
+- `PAYMENT_IN_PROGRESS`.
+
+Confirmação:
+
+- `CONFIRMATION_NOT_FOUND`;
+- `CONFIRMATION_RATE_LIMITED`;
+- `CONFIRMATION_SERVICE_UNAVAILABLE`.
+
+---
+
+## 12. Dinheiro e formatação
+
+Upstream:
+
+```ts
+type StoreMajorMoney = {
+  amount: number
+  currency_code: "brl"
+  unit: "major"
+}
+
+type StoreMinorMoney = {
+  amount: number
+  currency_code: "brl"
+  unit: "minor"
+}
+```
+
+DTO interno:
+
+```ts
+type MoneyDTO = {
+  amountMinor: number
+  currency: "BRL"
+}
+```
+
+Regras:
+
+- catálogo/carrinho major → conversão decimal segura;
+- pagamento minor → passagem validada;
+- componentes recebem apenas `MoneyDTO`;
+- totais vêm do backend;
+- valores negativos são rejeitados;
+- zero no frete é suportado tecnicamente;
+- total final zero é bloqueado;
+- usar `Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })`;
+- nunca usar ponto flutuante para totais autoritativos.
+
+---
+
+## 13. Autenticação e sessão
+
+### 13.1 Cookies
+
+| Cookie | Uso |
+|---|---|
+| `indicio_session_jwt` | sessão autenticada |
+| `indicio_cart_id` | envelope do carrinho convidado |
+| `indicio_confirmation_session` | confirmação assíncrona |
+
+Todos:
+
+- `HttpOnly`;
+- `SameSite=Lax`;
+- `Secure` em staging/produção;
+- host-only;
+- sem acesso pelo JavaScript.
+
+### 13.2 Segurança
+
+- backend é autoridade para JWT e política de conta;
+- BFF aplica defesa em profundidade;
+- JWT não vai para localStorage;
+- `connect.sid` não será usado pela storefront;
+- publishable key do Medusa permanece no BFF;
+- Stripe publishable key pode estar no browser;
+- secrets nunca entram no bundle.
+
+### 13.3 Sessão expirada durante checkout
+
+```text
+→ desmontar Elements
+→ invalidar/consultar tentativa
+→ preservar carrinho
+→ redirecionar para login com returnUrl
+→ reautenticar
+→ revalidar checkout, frete e termos
+```
+
+---
+
+## 14. Analytics e observabilidade
+
+### 14.1 Eventos frontend
+
+| Evento | Obrigatoriedade |
+|---|---|
+| `product_viewed` | optional |
+| `variant_selected` | optional |
+| `add_to_cart` | must |
+| `cart_expired` | must |
+| `cart_conflict` | must |
+| `shipping_options_viewed` | must |
+| `shipping_selected` | must |
+| `shipping_quote_failed` | must |
+| `payment_client_confirmed` | must |
+| `payment_client_failed` | must |
+| `checkout_failed` | must |
+| `payment_confirmation_processing` | must |
+| `payment_confirmation_delayed` | must |
+| `payment_confirmation_failed` | must |
+| `reconciliation_message_viewed` | must |
+| `order_confirmation_viewed` | must |
+
+### 14.2 Campos proibidos
+
+- CPF;
+- e-mail;
+- CEP;
+- cart ID;
+- Customer ID;
+- PaymentIntent ID;
+- paymentAttemptRef;
+- `client_secret`;
+- confirmation token;
+- `confirmationSessionRef`;
+- `guestCartToken`;
+- `orderReference`;
+- endereço completo.
+
+### 14.3 Receita
+
+`purchase_completed`:
+
+- emitido exclusivamente pelo backend;
+- somente após criação do `Order`;
+- não é emitido pela página de confirmação;
+- falha do PostHog não bloqueia `Order`.
+
+### 14.4 Sentry
+
+- remover query strings sensíveis;
+- remover cookies e headers;
+- não enviar bodies completos;
+- usar correlation ID;
+- não usar `orderReference` como tag;
+- mascarar URLs;
+- separar local, preview e produção.
+
+---
+
+## 15. Segurança, privacidade e retenção
+
+- HTTPS obrigatório;
+- `Origin` e `Host` validados em mutações BFF;
+- sem mutações por `GET`;
+- JSON allowlist;
+- body size limitado;
+- rate limit por IP/sessão;
+- CSP segmentada;
+- URLs sanitizadas;
+- `return_url` de pagamento sem tokens, capabilities ou referências operacionais;
+- `Referrer-Policy` restritiva;
+- tokens removidos antes de scripts terceiros;
+- capabilities marcadas `x-sensitive: true`;
+- dados pessoais minimizados.
+
+Retenção proposta, sujeita a jurídico:
+
+- prova dos Termos de Compra: 5 anos;
+- prova de ciência da Política de Privacidade: 5 anos;
+- registros de acesso: IP/data/hora por no mínimo 6 meses;
+- user agent: não armazenado;
+- CPF em carrinho abandonado: 7 dias;
+- consentimentos separados de registros de acesso.
+
+---
+
+## 16. Acessibilidade, desempenho e SEO
+
+### 16.1 Acessibilidade
+
+- WCAG 2.2 AA;
+- teclado completo;
+- foco visível;
+- labels e descrições de erro;
+- `aria-live` para mudanças de carrinho/pagamento;
+- modais com foco gerenciado;
+- mensagens não dependem somente de cor;
+- imagens com alt editorial.
+
+### 16.2 Desempenho
+
+Metas:
+
+- LCP ≤ 2,5 s p75;
+- INP ≤ 200 ms;
+- CLS ≤ 0,1;
+- imagens responsivas;
+- Stripe carregado somente no pagamento;
+- analytics tardio;
+- checkout e carrinho sem cache compartilhado.
+
+### 16.3 SEO
+
+- metadata por produto;
+- canonical;
+- sitemap e robots;
+- Open Graph;
+- JSON-LD somente com dados públicos;
+- checkout, conta, confirmação e autenticação com `noindex`;
+- URLs de produto definidas pelo contrato de catálogo.
+
+---
+
+## 17. Estratégia de integração e contratos
+
+### 17.1 Fonte de verdade
+
+1. Store OpenAPI: BFF → Medusa.
+2. TypeScript/Zod internos: browser → BFF.
+3. PRD Backend/SRS: regras de negócio.
+4. PRD Frontend: UI e BFF.
+5. Matriz de rastreabilidade: estado por requisito.
+
+### 17.2 Versionamento
+
+- OpenAPI atual: `1.0.0-draft.1`;
+- primeiro contrato executável: `1.1.0`;
+- tag Git: `v1.1.0`;
+- breaking monetário/auth: `2.0.0`;
+- depreciação: uma release coordenada ou 30 dias, prevalecendo o maior.
+
+### 17.3 Geração e validação
+
+```text
+OpenAPI
+→ openapi-typescript
+→ tipos versionados
+→ Zod manual
+→ adapters
+→ DTOs
+```
+
+Bloqueia PR:
+
+- drift de tipos;
+- operação sem Zod;
+- divergência fixture/OpenAPI/Zod;
+- schema alterado sem contract test.
+
+### 17.4 Cache
+
+| Recurso | Política |
+|---|---|
+| catálogo/produto | ISR + tags |
+| BFF de cotação | read-through ≤ 5 min |
+| carrinho | `no-store` |
+| sessão/conta | `no-store` |
+| checkout/pagamento | `no-store` |
+| confirmação | `no-store` |
+| legais | estático |
+
+---
+
+## 18. Testes
+
+### 18.1 Unitários
+
+- conversão major/minor;
+- adapters;
+- Zod;
+- sessão;
+- cookie envelopes;
+- seleção de variante;
+- mutações otimistas;
+- merge;
+- CPF;
+- CEP fallback/cache;
+- ETag;
+- frete;
+- estados Stripe;
+- polling;
+- redaction;
+- ausência de `purchase_completed`.
+
+### 18.2 Integração
+
+- cadastro em duas etapas;
+- verificação flexível;
+- reset;
+- carrinho guest capability;
+- merge completo/parcial;
+- checkout draft/final;
+- frete disponível/indisponível;
+- PaymentAttempt;
+- troca server-side do token de confirmação;
+- cookie de confirmação criado antes de `confirmPayment`;
+- 3DS;
+- recusa;
+- erro incerto;
+- reconciliação;
+- pedido confirmado;
+- múltiplas abas.
+
+### 18.3 Contract tests
+
+Validar:
+
+- status HTTP;
+- requests/responses;
+- security schemes;
+- headers;
+- idempotência;
+- ETag;
+- unidade monetária;
+- masking;
+- códigos de erro;
+- ausência de campos proibidos;
+- ausência de token ou referência de confirmação em URLs e respostas browser-facing;
+- consumo único e retry idempotente de `exchangePaymentConfirmationToken`;
+- equivalência OpenAPI/Zod.
+
+### 18.4 E2E
+
+```text
+Home
+→ catálogo
+→ produto
+→ carrinho convidado
+→ cadastro/login
+→ merge
+→ checkout
+→ frete
+→ Payment Element
+→ 3DS quando aplicável
+→ processamento
+→ ORDER_CONFIRMED
+→ limpeza do carrinho
+```
+
+Cenários obrigatórios:
+
+- conflito de carrinho;
+- merge parcial;
+- CPF inválido;
+- CEP indisponível;
+- cotação expirada;
+- provider indisponível;
+- cartão recusado;
+- retorno 3DS para URL limpa com cookie preexistente;
+- erro de rede após confirmação;
+- refresh;
+- múltiplas abas;
+- reconciliação.
+
+---
+
+## 19. Ordem de implementação
+
+### Etapa 0 — Materialização contratual
+
+1. atualizar PRD Frontend;
+2. atualizar PRD Backend;
+3. atualizar SRS;
+4. preencher matriz de rastreabilidade;
+5. atualizar registry;
+6. gerar Store OpenAPI;
+7. gerar Webhooks OpenAPI;
+8. criar tipos e Zod;
+9. criar fixtures/mocks;
+10. criar contract tests e CI de drift.
+
+### Etapa 1 — Fundação e catálogo
+
+- repositório Next.js independente;
+- App Router;
+- design system;
+- BFF;
+- adapter;
+- observabilidade;
+- home;
+- catálogo;
+- produto.
+
+### Etapa 2 — Carrinho
+
+- cookies;
+- capability;
+- mini-carrinho;
+- mutações;
+- merge;
+- sync entre abas.
+
+### Etapa 3 — Autenticação
+
+- cadastro;
+- login/logout;
+- verificação;
+- reset;
+- proteção de rotas.
+
+### Etapa 4 — Checkout
+
+- draft;
+- validação;
+- CPF;
+- CEP;
+- consentimentos.
+
+### Etapa 5 — Frete
+
+- cotação;
+- seleção;
+- expiração;
+- recotação.
+
+### Etapa 6 — Pagamento
+
+- Payment Element;
+- PaymentAttempt;
+- 3DS;
+- falhas;
+- invalidação.
+
+### Etapa 7 — Confirmação
+
+- troca de token;
+- polling;
+- reconciliação;
+- página confirmada;
+- limpeza.
+
+Cada etapa permanece sujeita a autorização humana.
+
+---
+
+## 20. Critérios de aceite
+
+O Milestone 1 será aceito quando:
+
+- Store OpenAPI executável cobrir todas as operações MUST;
+- BFF for o único consumidor do Medusa pela storefront;
+- contratos upstream forem validados em runtime;
+- catálogo e produto exibirem somente dados públicos;
+- carrinho convidado usar capability;
+- mutações forem idempotentes;
+- merge completo e parcial funcionarem;
+- checkout exigir autenticação;
+- verificação flexível funcionar;
+- CPF estiver protegido;
+- frete for autoritativo e revogável;
+- Stripe Payment Element e 3DS funcionarem;
+- `client_secret` permanecer efêmero;
+- `confirmationToken` nunca aparecer em URL ou resposta browser-facing;
+- sessão de confirmação ser criada em cookie HttpOnly antes de `stripe.confirmPayment`;
+- erro incerto consultar status antes de retry;
+- `Order` depender de webhook;
+- confirmação sobreviver a refresh;
+- múltiplas abas não criarem cobrança;
+- `purchase_completed` permanecer no backend;
+- analytics e Sentry estiverem sanitizados;
+- revisão jurídica estiver concluída;
+- unit, integration, contract e E2E passarem;
+- preview e produção tiverem domínios, cookies, CSP e CORS validados.
+
+---
+
+## 21. Pendências de materialização
+
+As decisões estão fechadas, mas os seguintes artefatos permanecem pendentes:
+
+- `docs/PRD_Backend_v1.1.md`;
+- `docs/SRS_v1.5.md`;
+- `docs/FRONTEND_CONTRACT_TRACEABILITY.md`;
+- registry TypeScript da Store OpenAPI;
+- `apps/backend/src/api-docs/generated/store.openapi.json`;
+- Webhooks OpenAPI;
+- ADR de BFF;
+- ADR de autenticação/sessão;
+- ADR de merge de carrinhos;
+- ADR de dinheiro;
+- ADR de confirmação assíncrona;
+- ADR de CPF/retenção;
+- tipos gerados;
+- schemas Zod;
+- fixtures;
+- mock server;
+- contract tests;
+- CI de drift.
+
+Estado:
+
+```text
+Gate de Decisões A–J: PASS
+Gate de Decisões R: PASS
+Gate de Artefatos: PENDING
+Etapa 0: DECISIONS COMPLETE, ARTIFACTS PENDING
+PASS DOCUMENTAL: ainda não concedido
+PASS PARA MOCK DEVELOPMENT: ainda não concedido
+PASS PARA INTEGRAÇÃO: ainda não concedido
+```
+
+---
+
+## 22. Referências
+
+- `docs/PRD_Backend_v1.1.md`;
+- `docs/SRS_v1.5.md`;
+- `docs/DB_MODEL_v1.21.md`;
+- `docs/openapi/README.md`;
+- `apps/backend/src/api-docs/generated/store.openapi.json`;
+- `apps/backend/src/api-docs/operations/store/`;
+- `apps/backend/src/api-docs/components/security-schemes.ts`;
+- `docs/FRONTEND_CONTRACT_TRACEABILITY.md` — pendente;
+- `.planning/PROJECT.md`;
+- `.planning/STATE.md`;
+- `ops/API_DOCS.md`.
+
+---
+
+*Última revisão: 2026-08-05 — decisões dos Blocos A–J e R incorporadas. O documento distingue contratos-alvo aprovados de artefatos ainda pendentes e não autoriza o consumo de operações antes de sua materialização no OpenAPI.*
