@@ -4,15 +4,15 @@ milestone: v1.1
 milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: Storefront Contract Foundation & Surface Lockdown
-status: phase-13-context-gathered-awaiting-human-review
-stopped_at: Phase 13 CONTEXT complete / awaiting explicit human review before RESEARCH
-last_updated: "2026-08-07T15:15:39.677Z"
+status: phase-13-plan-r5-complete-awaiting-human-re-review
+stopped_at: Phase 13 PLAN R5 complete / awaiting explicit human re-review before SPEC/SDD or next authorized gate
+last_updated: "2026-08-07T20:47:14-03:00"
 last_activity: 2026-08-07
-last_activity_desc: Phase 13 CONTEXT completed documentarily; awaiting human review
+last_activity_desc: P13-PLAN-R5 documentary correction complete; awaiting explicit human re-review before SPEC/SDD
 progress:
   total_phases: 10
   completed_phases: 0
-  total_plans: 0
+  total_plans: 7
   completed_plans: 0
   percent: 0
 ---
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-06)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Milestone v1.1 — Backend Storefront Readiness permanece aberto com 10 phases lineares (13–22) e 91 requirements abertos. Phase 13 CONTEXT está completo e aguarda revisão humana; RESEARCH, PLAN e implementação não foram iniciados nem autorizados. O Frontend Milestone 1 permanece bloqueado, não iniciado e não autorizado. Milestone v1.0 continua completo, fechado, arquivado, tagueado e publicado; sua identidade histórica é imutável. A iniciativa API-DOCS-01 continua fechada; OpenAPI/Swagger UI permanecem desabilitados em produção por padrão.
+**Current focus:** Milestone v1.1 — Backend Storefront Readiness permanece aberto com 10 phases lineares (13–22) e 91 requirements abertos. Phase 13 CONTEXT e RESEARCH estão aprovados; o PLAN R5 está completo com 7 planos e 0 executados, aguardando re-revisão humana explícita antes de SPEC/SDD. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; Phases complete: 0/10; Plans executed: 0/7. Execução, SPEC/SDD, implementation, deploy e frontend não foram iniciados nem autorizados. O Frontend Milestone 1 permanece bloqueado, não iniciado e não autorizado. Milestone v1.0 continua completo, fechado, arquivado, tagueado e publicado; sua identidade histórica é imutável. A iniciativa API-DOCS-01 continua fechada; OpenAPI/Swagger UI permanecem desabilitados em produção por padrão.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 13 CONTEXT complete / awaiting human review. Requirements remain 0/91; completed phases remain 0/10. Phase 13 RESEARCH, PLAN, implementation, deploy and frontend are not authorized.
+**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 COMPLETE / AWAITING HUMAN RE-REVIEW. Há 7 planos e 0 executados. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. SPEC/SDD, execution, implementation, deploy and frontend are not started or authorized.
 
 ```text
 Phase 12 CONTEXT approved
@@ -125,10 +125,18 @@ GitHub Release published at: 2026-07-30T17:08:24Z
 GitHub Release URL: https://github.com/jlima004/E-commerce/releases/tag/v1.0
 repository archive identity differs from current main: true
 repository archive identity differs from runtime deployed SHA: true
-next milestone: not defined / not started
-Phase 13 not started / not authorized
-frontend not started / not authorized
-next permitted step: human review of Phase 13 CONTEXT; do not start RESEARCH without new explicit authorization.
+next milestone: v1.1 open
+Phase 13 CONTEXT: APPROVED
+Phase 13 RESEARCH: APPROVED
+Phase 13 PLAN: R5 COMPLETE / AWAITING HUMAN RE-REVIEW
+Phase 13 plans: 7 planned / 0 executed
+Phase 13 requirements covered: FND-01..FND-08 = 8/8
+Phase 13 requirements complete: 0/8
+Milestone requirements complete: 0/91
+Phases complete: 0/10
+Phase 13 SPEC/SDD, execution, implementation and deploy: NOT STARTED / NOT AUTHORIZED
+frontend blocked / not started / not authorized
+next permitted step: human re-review of P13-PLAN-R5; do not start SPEC/SDD without new explicit authorization.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -146,7 +154,7 @@ rollback real: not executed
 
 Os registros `BLOCKED` históricos permanecem preservados e foram supersedidos pela linhagem corretiva aprovada. Nenhuma dessas limitações é blocker ativo do milestone.
 
-**Não-ações desta abertura:** nenhum CONTEXT/RESEARCH/PLAN de Phase 13, código runtime, migration, pacote/lockfile, teste de runtime, build, banco, provider real, deploy, rollback, restart, scale, secret/env real, frontend ou projeto Next.js. A GitHub Release e a tag `v1.0` não foram criadas, editadas, movidas ou republicadas.
+**Não-ações históricas no momento da abertura do milestone v1.1:** naquele momento original, nenhum CONTEXT/RESEARCH/PLAN de Phase 13 havia sido iniciado; tampouco código runtime, migration, pacote/lockfile, teste de runtime, build, banco, provider real, deploy, rollback, restart, scale, secret/env real, frontend ou projeto Next.js. A GitHub Release e a tag `v1.0` não foram criadas, editadas, movidas ou republicadas naquela abertura. Este registro é histórico e não contradiz o estado corrente da Phase 13 registrado no front matter, Current Position e Session Continuity.
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
 
@@ -168,12 +176,18 @@ Produção: saudável
 ## Current Position
 
 Phase: 13 — Storefront Contract Foundation & Surface Lockdown
-Plan: —
-Status: phase-13-context-gathered-awaiting-human-review
-Last activity: 2026-08-07 — Phase 13 CONTEXT completed documentarily; awaiting human review
-Next: human review of Phase 13 CONTEXT
+Plan: 7 planned / 0 executed
+Status: phase-13-plan-r5-complete-awaiting-human-re-review
+Last activity: 2026-08-07 — P13-PLAN-R5 completed documentarily; awaiting explicit human re-review before SPEC/SDD
+Next: human re-review of P13-PLAN-R5; do not start SPEC/SDD without new explicit authorization
 
-Progress: [░░░░░░░░░░] 0% phases (0/10); 0/91 requirements complete; frontend blocked
+Progress: [░░░░░░░░░░] 0% phases (0/10)
+Phase 13 requirements covered: FND-01..FND-08 = 8/8
+Phase 13 requirements complete: 0/8
+Milestone requirements complete: 0/91
+Phases complete: 0/10
+Plans executed: 0/7
+frontend blocked
 
 ## Historical v1.0 Performance Metrics
 
@@ -333,18 +347,22 @@ Known deferred artifact items at v1.0 close: 0.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CONTEXT.md
+**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-VALIDATION.md
 
-Last session: 2026-08-07T15:12:47.100Z
+Last session: 2026-08-07T20:47:14-03:00
 
-Stopped at: Phase 13 CONTEXT complete / awaiting explicit human review before RESEARCH
+Stopped at: Phase 13 PLAN R5 complete / awaiting explicit human re-review before SPEC/SDD or next authorized gate
 
 Resume files:
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CONTEXT.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-RESEARCH.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-01-PLAN.md` through `13-07-PLAN.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-VALIDATION.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: explicit human authorization to start Phase 13 CONTEXT only.
+Next permitted step: human re-review of P13-PLAN-R5 across the seven `13-*-PLAN.md` files and `13-VALIDATION.md`; SPEC/SDD requires new explicit authorization.
 
-Do not automatically start Phase 13 CONTEXT/RESEARCH/PLAN, start frontend,
+Do not automatically start Phase 13 SPEC/SDD, execution, implementation, or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
 rollback, or move or recreate tag `v1.0`.
 

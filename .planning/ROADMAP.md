@@ -18,7 +18,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - `parallelization = false`;
 - sequência obrigatória: `13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22`;
 - cada gate CONTEXT, RESEARCH, PLAN, SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW e CLOSURE para revisão humana;
-- nenhum CONTEXT, RESEARCH, PLAN ou execução de Phase 13 foi iniciado nesta abertura.
+- Phase 13 CONTEXT e RESEARCH estão aprovados; PLAN está completo com 7 planos e 0 executados, aguardando revisão humana; SPEC/SDD, execução, implementation, deploy e frontend não foram iniciados nem autorizados.
 
 ## Milestones
 
@@ -33,7 +33,7 @@ O snapshot histórico de v1.0 permanece em [v1.0-ROADMAP.md](milestones/v1.0-ROA
 
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
-| 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 + API-DOCS-01 closed | 8 | Not started — CONTEXT blocked |
+| 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 + API-DOCS-01 closed | 8 | CONTEXT approved; RESEARCH approved; PLAN complete — awaiting human review; 7 planned / 0 executed |
 | 14 | Customer Auth & Verification | 13 | 9 | Not started |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
@@ -196,10 +196,14 @@ Frontend Milestone 1: AUTHORIZED TO START
 ```text
 Milestone v1.0: archived / immutable
 Milestone v1.1: opened
-Phase 13: not started
-Phase 13 CONTEXT: not started / requires explicit human authorization
-Implementation: not authorized
-Deploy: not authorized
+Phase 13 CONTEXT: approved
+Phase 13 RESEARCH: approved
+Phase 13 PLAN: complete / awaiting human review
+Plans: 7 planned / 0 executed
+SPEC/SDD: not started / not authorized
+Execution: not started / not authorized
+Implementation: not started / not authorized
+Deploy: not started / not authorized
 Frontend Milestone 1: blocked / not started / not authorized
 ```
 
