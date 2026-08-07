@@ -4,11 +4,11 @@ milestone: v1.1
 milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: Storefront Contract Foundation & Surface Lockdown
-status: milestone-v1-1-open-phase-13-context-not-started
-stopped_at: Milestone v1.1 opened / awaiting explicit human authorization for Phase 13 CONTEXT
-last_updated: "2026-08-06"
-last_activity: 2026-08-06
-last_activity_desc: Milestone v1.1 Backend Storefront Readiness opened documentarily; no Phase 13 CONTEXT, implementation, deploy or frontend work started.
+status: phase-13-context-gathered-awaiting-human-review
+stopped_at: Phase 13 CONTEXT complete / awaiting explicit human review before RESEARCH
+last_updated: "2026-08-07T15:15:39.677Z"
+last_activity: 2026-08-07
+last_activity_desc: Phase 13 CONTEXT completed documentarily; awaiting human review
 progress:
   total_phases: 10
   completed_phases: 0
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-06)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Milestone v1.1 — Backend Storefront Readiness está formalmente aberto com 10 phases lineares (13–22) e 91 requirements abertos. Phase 13 está selecionada, mas seu CONTEXT não foi iniciado e exige nova autorização humana explícita. O Frontend Milestone 1 permanece bloqueado, não iniciado e não autorizado. Milestone v1.0 continua completo, fechado, arquivado, tagueado e publicado; sua identidade de arquivo, tag anotada e GitHub Release são históricas e imutáveis. A iniciativa API-DOCS-01 continua fechada; OpenAPI/Swagger UI permanecem desabilitados em produção por padrão.
+**Current focus:** Milestone v1.1 — Backend Storefront Readiness permanece aberto com 10 phases lineares (13–22) e 91 requirements abertos. Phase 13 CONTEXT está completo e aguarda revisão humana; RESEARCH, PLAN e implementação não foram iniciados nem autorizados. O Frontend Milestone 1 permanece bloqueado, não iniciado e não autorizado. Milestone v1.0 continua completo, fechado, arquivado, tagueado e publicado; sua identidade histórica é imutável. A iniciativa API-DOCS-01 continua fechada; OpenAPI/Swagger UI permanecem desabilitados em produção por padrão.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Milestone v1.1 opening complete documentarily. `completed_phases: 0/10`; `completed_plans: 0`; requirements `0/91`. Do not start Phase 13 CONTEXT, RESEARCH, PLAN, implementation, deploy or frontend automatically.
+**Current gate:** Phase 13 CONTEXT complete / awaiting human review. Requirements remain 0/91; completed phases remain 0/10. Phase 13 RESEARCH, PLAN, implementation, deploy and frontend are not authorized.
 
 ```text
 Phase 12 CONTEXT approved
@@ -128,7 +128,7 @@ repository archive identity differs from runtime deployed SHA: true
 next milestone: not defined / not started
 Phase 13 not started / not authorized
 frontend not started / not authorized
-next permitted step: human decision on the next milestone only
+next permitted step: human review of Phase 13 CONTEXT; do not start RESEARCH without new explicit authorization.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -169,9 +169,9 @@ Produção: saudável
 
 Phase: 13 — Storefront Contract Foundation & Surface Lockdown
 Plan: —
-Status: milestone-v1-1-open-phase-13-context-not-started
-Last activity: 2026-08-06 — Milestone v1.1 opened documentarily
-Next: explicit human authorization to start Phase 13 CONTEXT
+Status: phase-13-context-gathered-awaiting-human-review
+Last activity: 2026-08-07 — Phase 13 CONTEXT completed documentarily; awaiting human review
+Next: human review of Phase 13 CONTEXT
 
 Progress: [░░░░░░░░░░] 0% phases (0/10); 0/91 requirements complete; frontend blocked
 
@@ -333,9 +333,11 @@ Known deferred artifact items at v1.0 close: 0.
 
 ## Session Continuity
 
-Last session: 2026-08-06
+**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CONTEXT.md
 
-Stopped at: Milestone v1.1 opened; Phase 13 CONTEXT not started.
+Last session: 2026-08-07T15:12:47.100Z
+
+Stopped at: Phase 13 CONTEXT complete / awaiting explicit human review before RESEARCH
 
 Resume files:
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
