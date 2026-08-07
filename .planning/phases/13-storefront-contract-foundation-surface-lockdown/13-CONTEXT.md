@@ -14,15 +14,15 @@ implementation_status: not-authorized
 
 # Phase 13: Storefront Contract Foundation & Surface Lockdown — Context
 
-**Gathered:** 2026-08-07  
-**Status:** CONTEXT complete / awaiting human review  
+**Gathered:** 2026-08-07
+**Status:** CONTEXT complete / awaiting human review
 **Next permitted step:** human review of this CONTEXT; RESEARCH remains blocked
 
 <domain>
 ## 1. Phase Identity and Boundary
 
-**Milestone:** `v1.1 — Backend Storefront Readiness`  
-**Phase:** `13 — Storefront Contract Foundation & Surface Lockdown`  
+**Milestone:** `v1.1 — Backend Storefront Readiness`
+**Phase:** `13 — Storefront Contract Foundation & Surface Lockdown`
 **Sequence:** `13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22`
 
 ### Goal
@@ -556,5 +556,5 @@ nova autorização humana explícita.
 
 ---
 
-*Phase: 13-storefront-contract-foundation-surface-lockdown*  
+*Phase: 13-storefront-contract-foundation-surface-lockdown*
 *Context gathered: 2026-08-07*

@@ -3,8 +3,8 @@
 > **Audit trail only.** Do not use as input to RESEARCH, planning or execution.
 > Binding decisions are captured in `13-CONTEXT.md`.
 
-**Date:** 2026-08-07  
-**Phase:** 13-storefront-contract-foundation-surface-lockdown  
+**Date:** 2026-08-07
+**Phase:** 13-storefront-contract-foundation-surface-lockdown
 **Areas resolved:** boundary, surface policy, errors, idempotency, concurrency,
 OpenAPI foundation, threat model and manual gate
 
