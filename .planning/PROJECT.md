@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Backend headless de um e-commerce Print-on-Demand (POD) de camisetas para o mercado brasileiro, construído sobre Medusa v2. Este escopo entrega **apenas o backend MVP**: catálogo, carrinho, checkout (convidado e autenticado), pagamento via Stripe (cartão e Pix), criação confiável de pedidos pós-webhook, fulfillment via Gelato, tracking, reembolsos/trocas operacionais pelo Admin e observabilidade. O frontend (storefront) virá depois — o backend deve expor contratos de API estáveis para consumo futuro.
+Backend headless de um e-commerce Print-on-Demand (POD) de camisetas para o mercado brasileiro, construído sobre Medusa v2. O backend MVP v1.0 está fechado e arquivado. O milestone corrente v1.1 prepara exclusivamente o backend para o Frontend Milestone 1, materializando Store API, persistência, segurança, testes e contratos de handoff. O frontend continua fora deste repositório e bloqueado até o fechamento explícito do milestone.
 
 ## Core Value
 
@@ -46,13 +46,20 @@ Um pedido (Order) só existe e só é enviado à produção (Gelato) após confi
 
 <!-- Current scope. Building toward these. -->
 
-Nenhum requisito ativo. O próximo milestone não está definido nem iniciado.
+- [ ] Superfície Store nativa auditada, allowlisted e sem bypass de criação de `Order`.
+- [ ] Auth/Customer/verificação/reset/refresh compatíveis com a política flexível de e-mail.
+- [ ] Carrinho guest por capability hash-only, concorrência otimista, merge e review.
+- [ ] Checkout BR autenticado com CPF protegido e consentimentos versionados.
+- [ ] Frete Gelato cotado/selecionado e preservado até o dispatch.
+- [ ] PaymentAttempt storefront endurecido e confirmação assíncrona BFF-only.
+- [ ] Resumo seguro de pedido, resolução de catálogo e revalidação assinada.
+- [ ] Store OpenAPI `1.1.0`, types/Zod, fixtures/mocks, testes e kit de handoff aprovados.
 
 ### Out of Scope
 
 <!-- Explicit boundaries. Includes reasoning to prevent re-adding. -->
 
-- Frontend / storefront — entregue em milestone posterior; este escopo é só backend.
+- Implementação do frontend / storefront — continua em milestone posterior; v1.1 entrega somente backend e handoff contratual.
 - Editor visual de camiseta e upload de arte pelo cliente — fora do MVP, complexidade de produto.
 - Estoque físico e produção própria — modelo é POD via Gelato, sem inventário.
 - Multi-fornecedor POD — apenas Gelato no MVP.
@@ -66,7 +73,7 @@ Nenhum requisito ativo. O próximo milestone não está definido nem iniciado.
 
 - **Stack alvo**: Medusa v2, Node.js, TypeScript, PostgreSQL/Supabase, Supabase Storage, Redis, Stripe, Resend, Gelato, Sentry, PostHog.
 - **Infra**: VPS Linux com PM2 (ou equivalente) e Nginx (ou equivalente); Admin em subdomínio dedicado. **Checkpoint histórico (2026-06-26):** produção validada em Heroku app `espacoliminar`, com web/worker dynos, Supabase Postgres via pooler e Heroku Redis com TLS; a rota VPS/PM2/Nginx fica como blueprint portável. **Estado consolidado (2026-07-16):** CACHE-01A PASS, CACHE-01B PASS e INFRA-01 PASS; cache Redis ativo em `web.1` e `worker.1`; estabilização concluída e produção saudável.
-- **Arquitetura**: headless — backend expõe contratos de API que o storefront futuro consumirá (PRD Frontend v1.1 é referência de contrato, não escopo de build).
+- **Arquitetura**: headless — backend expõe contratos consumidos somente pelo BFF same-origin da storefront futura; o navegador não é autorizado a consumir Medusa diretamente.
 - **Domínio**: e-commerce POD exige separação rígida entre confirmação de pagamento (Stripe) e disparo de produção (Gelato), com logs de outbox/idempotência para evitar cobrança fantasma, pedido duplicado e fulfillment indevido.
 - **Analytics**: purchase_completed é um evento de domínio do backend (outbox durável), independente do sucesso do PostHog no frontend.
 
@@ -96,6 +103,8 @@ Nenhum requisito ativo. O próximo milestone não está definido nem iniciado.
 | PRD Backend v1.1 + DB_MODEL v1.21 sobrepõem a redação mais antiga da SRS que sugere Order/awaiting_payment antes do pagamento confirmado | Estado pré-pagamento vive em Cart, PaymentCollection, PaymentSession e PaymentAttempt; Order só existe após confirmação canônica do webhook Stripe | — Decided (must be honored by all future planning) |
 | Heroku é o runtime de produção atual para o checkpoint da Fase 01 | A rota VPS/PM2/Nginx planejada foi substituída neste ciclo por Heroku/Supabase/Heroku Redis já estabilizados | — Decided (current production target) |
 | Phase 12.1 selected as an inserted release-readiness and production-validation phase for the merged backend MVP | It adds no product feature and does not start the storefront milestone | — Validated in v1.0 (complete / closed) |
+| Milestone v1.1 abre as Phases 13–22 em ordem linear e manual-review gated | O frontend depende de um contrato backend materializado, seguro e testado; decisões documentais não equivalem a implementação | — Active; 0/91 requirements complete |
+| Frontend Milestone 1 permanece bloqueado até a Phase 22 e o fechamento humano explícito de v1.1 | Evita iniciar UI sobre endpoints, schemas, persistência ou providers ainda pendentes | — Enforced |
 
 > **Decision (SRS wording override):** For implementation, PRD Backend v1.1 + DB_MODEL v1.21 override older SRS wording that suggests Order/awaiting_payment before confirmed payment. Pre-payment state lives in Cart, PaymentCollection, PaymentSession, and PaymentAttempt. Order exists only after canonical Stripe webhook payment confirmation. This decision must be visible to and honored by future planning agents.
 
@@ -120,7 +129,23 @@ Nenhum requisito ativo. O próximo milestone não está definido nem iniciado.
 - **Rollback:** target `v77` documented and eligible; not executed.
 - **Identity boundary:** the repository archive commit and deployed runtime SHA are distinct.
 - **Non-blocking limitations:** Sentry external exercise, Stripe provider gate, real Resend send, real Gelato dispatch, real PostHog event and Correios API exercise remain unproven; Pix remains deferred by account eligibility; real rollback was not executed.
-- **Next state:** no next milestone defined; Phase 13 and frontend not started or authorized.
+- **Historical next state at v1.0 close:** no next milestone was defined at that time; this was superseded by the documentary opening of v1.1 on 2026-08-06.
+
+## Current Milestone: v1.1 Backend Storefront Readiness
+
+**Goal:** Deixar o backend completamente preparado para o início do Frontend Milestone 1, eliminando dependências backend ainda abertas e entregando Store API, contratos, persistência, segurança, testes e artefatos de handoff suficientes para que o frontend possa começar sem inventar endpoints, regras ou schemas.
+
+**Target features:**
+
+- lockdown da superfície Store e contratos transversais;
+- auth/verificação e carrinho guest seguro/concorrente;
+- merge/review, checkout BR privado e frete Gelato autoritativo;
+- PaymentAttempt endurecido, confirmação assíncrona e resumo de Order;
+- catálogo por handle, revalidação assinada e kit OpenAPI/types/Zod/fixtures/mocks/testes.
+
+**Status:** opened; Phase 13 not started; 0/10 phases and 0/91 requirements complete.
+
+**Governance:** `interactive`, sem auto-advance, auto-chain ou parallel execution. O próximo passo permitido é somente autorização humana explícita para iniciar o CONTEXT da Phase 13.
 
 ## Evolution
 
@@ -140,4 +165,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-30 after GitHub Release v1.0 published; PR #9 archive merge and annotated tag `v1.0` preserved; 13/13 phases, 62/62 plans and 45/45 requirements complete; milestone closed, archived, tagged and released; next milestone, Phase 13 and frontend not started or authorized*
+*Last updated: 2026-08-06 — Milestone v1.1 Backend Storefront Readiness opened documentarily; v1.0 remains archived/immutable; Phase 13 CONTEXT not started; frontend blocked and not authorized*

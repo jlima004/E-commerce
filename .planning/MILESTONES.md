@@ -1,8 +1,39 @@
 # Project Milestones: E-commerce POD de Camisetas — Backend MVP
 
+## v1.1 Backend Storefront Readiness (Opened: 2026-08-06)
+
+**Status:** open — manual-review gated
+**Scope:** backend-only readiness for Frontend Milestone 1
+
+### Objective
+
+Deixar o backend completamente preparado para o início do Frontend Milestone 1, eliminando dependências backend ainda abertas e entregando Store API, contratos, persistência, segurança, testes e artefatos de handoff suficientes para que o frontend possa começar sem inventar endpoints, regras ou schemas.
+
+### Planned delivery
+
+- Phases: 13–22, strictly linear.
+- Requirements: 91 open; 0 complete.
+- FE traceability: 54/54 requirements have an explicit backend, BFF/external or legal responsibility.
+- First phase: Phase 13 — Storefront Contract Foundation & Surface Lockdown.
+- Current gate: Phase 13 CONTEXT not started; explicit human authorization required.
+- Frontend Milestone 1: blocked, not started and not authorized.
+
+### Definition of Done
+
+The milestone closes only after the full gate matrix in `.planning/ROADMAP.md` passes, including Store OpenAPI `1.1.0`, Webhooks OpenAPI, auth, guest capability, cart/merge/ETag, BR checkout/CPF/consent, Gelato quote/select, PaymentAttempt, async confirmation, secure Order summary, catalog revalidation, types/Zod, fixtures/mocks, contract/backend tests, migrations/constraints, drift, lint, build, security negatives, controlled provider validation and authorized release validation.
+
+Only an explicit human closeout may change the frontend state to `AUTHORIZED TO START`.
+
+### Canonical artifacts
+
+- [Active roadmap](ROADMAP.md)
+- [Active requirements](REQUIREMENTS.md)
+- [Milestone roadmap opening record](milestones/v1.1-ROADMAP.md)
+- [Milestone requirements opening record](milestones/v1.1-REQUIREMENTS.md)
+
 ## v1.0 Backend MVP (Shipped: 2026-07-30)
 
-**Status:** closed and archived  
+**Status:** closed and archived
 **Scope:** backend MVP through production release readiness
 
 ### Delivery
@@ -74,6 +105,6 @@
 - [Requirements snapshot](milestones/v1.0-REQUIREMENTS.md)
 - [Milestone audit](milestones/v1.0-MILESTONE-AUDIT.md)
 
-### What is next
+### Historical next state at close
 
-The next milestone is not defined or started. Phase 13 and the frontend are not started and are not authorized.
+At the v1.0 close, the next milestone was not yet defined or started and Phase 13/frontend were not authorized. This historical state was superseded only by the documentary opening of v1.1 above; v1.0 itself remains immutable.
