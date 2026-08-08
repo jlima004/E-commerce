@@ -53,7 +53,7 @@ requirements-evidenced: [FND-01, FND-06]
 
 duration: 7min
 completed: 2026-08-08
-status: human-approved-pass
+status: r1-correction-complete-awaiting-human-re-review
 ---
 
 # Phase 13 Plan 01: Surface Manifest & Feasibility Gate Summary
@@ -63,7 +63,7 @@ status: human-approved-pass
 ## Identity
 
 Plan: 13-01  
-Status: HUMAN APPROVED â€” PASS
+Status: R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
 Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`  
 PHASE13_EXECUTION_BASE_SHA: `1c6a1dfcea4c74db4dd988a733213f103b5447f4`  
 Pre-plan HEAD: `1c6a1dfcea4c74db4dd988a733213f103b5447f4`  
@@ -80,7 +80,7 @@ Post-R1 correction commit(s):
 - **Duration:** ~7 min
 - **Started:** 2026-08-08T00:59:10Z
 - **Completed:** 2026-08-08T01:06:30Z
-- **Tasks:** 2 automated + 1 human checkpoint (PASS)
+- **Tasks:** 2 automated + 1 human checkpoint (awaiting review)
 - **Files modified:** 5 product + 1 SUMMARY
 
 ## Accomplishments
@@ -164,5 +164,216 @@ version restored to original (3).
 ### Unit â€” manifest
 
 ```text
-Command: cd apps/backend && npm run test:unit -- --runTestsByPath src/api/store-surface/__test²È="25ÍÁ•Œ¹ÑÌ€´µÉÕ¹%¹	…¹)á¥Ð½‘”è€À)MÕ¥Ñ•Ìè€ÄÁ…ÍÍ•°€ÄÑ½Ñ…°)Q•ÍÑÌè€ØÁ…ÍÍ•°€ØÑ½Ñ…°)I•ÍÕ±ÐèAML)€((ŒŒM½Á”()ð¡•¬ðI•ÍÕ±Ðð)ð´´µð´´µð)ð±±½Ý±¥ÍÑ•ÁÉ½‘ÕÐ™¥±•Ì½¹±äðeLƒŠP€Ô™¥±•Ìð)ðU¹•áÁ•Ñ•ÁÉ½‘ÕÐ™¥±•Ìð9=9ð)ðÁ…­…”¹©Í½¸€¼Á…­…”µ±½¬¹©Í½¸ð9=P5=%%ð)ðµ•‘ÕÍ„µ½¹™¥œ¹ÑÌð9=P5=%%ð)ðAÉ½‘ÕÐµ¥É…Ñ¥½¸ð9=9ð)ðI•µ½Ñ”ð9=9€¡‘¥ÍÁ½Í…‰±”½¹±ä¤ð)ðAÉ½Ù¥‘•È€¼‘•Á±½ä€¼™É½¹Ñ•¹ð9=9ð)ð=Á•¹A$É•¥ÍÑÉä½)M=8ð9=P5=%%ð)ð¹Á´¥¹ÍÑ…±°ð9=PIU8ð((ŒŒ¥Ð()	É…¹ èÍ½Á¡…Í”´ÄÌµÍÑ½É•™É½¹Ðµ½¹ÑÉ…Ðµ™½Õ¹‘…Ñ¥½¸µÍÕÉ™…”µ±½­‘½Ý¹€€€)HÄ¥µÁ±•µ•¹Ñ…Ñ¥½¸½‘½Õµ•¹Ñ…Ñ¥½¸½µµ¥ÑÌÝ•É”ÁÕÍ¡•‰•™½É”Ñ¡¥Ì½Ù•É¹…¹”Íå¹¡É½¹¥é…Ñ¥½¸¸9¼AH¸()ð½µµ¥Ðð5•ÍÍ…”ð)ð´´µð´´µð)ð€Á”äÍå‘€ð™•…Ð ÄÌ´ÀÄ¤è±½¬MÑ½É”ÍÕÉ™…”µ…¹¥™•ÍÐ…¹•á…ÐµÍ•ÐÍ…¹¹•Èð)ð”Å”Ìá€ð™•…Ð ÄÌ´ÀÄ¤èÁÉ½Ù”]…Ù”€ÀÍ¡…É•ÑÉ…¹Í…Ñ¥½¸µ…¹…•È…¹Lð()U¹É•±…Ñ•‘¥ÉÑä™¥±”±•™ÐÕ¹Ñ½Õ¡•è€¹Á±…¹¹¥¹œ½MQQ¹µ‘€€¡‰•¥¸µÁ¡…Í”‰½½­­••Á¥¹œ¤¸((ŒŒQ…Í¬½µµ¥ÑÌ((Ä¸€¨©Q…Í¬€Äè¥á…Èµ…¹¥™•ÍÐƒé¹¥¼”Í…¹¹•È•á…ÐµÍ•Ð¨¨ƒŠP€Á”äÍå‘€€¡™•…Ð¤(È¸€¨©Q…Í¬€Èèá•ÕÑ…È]…Ù”€À‰¥»…É¥„‘”ÑÉ…¹Í‡Ÿ¼½µÁ…ÉÑ¥±¡…‘„”L¨¨ƒŠP”Å”Ìá€€¡™•…Ð¤(Ì¸€¨©Q…Í¬€ÌèI•Ù¥Í…È¼É•ÍÕ±Ñ…‘¼‰¥»…É¥¼‘„]…Ù”€À¨¨ƒŠP!U58IY%\AML((ŒŒ•¥Í¥½¹Ì5…‘”((´AIMIY}1d±¥µ¥Ñ•Ñ¼Ñ¡”Í•Ù•¸MÑ½É”€Ä¸À¸Àµ…•ÁÑ•É½ÕÑ•Ì±¥ÍÑ•…‰½Ù”ì…±°É•µ…¥¹¥¹œaQ9½=UQM%¥¹‘¥Ù¥‘Õ…±±ä9d¸(´A=MP€½ÍÑ½É”½ÕÍÑ½µ•ÉÌ½µ”½…ÉÐ½…ÑÑ…¡€­•ÁÐ	1=-­9d€¡µ•É”½¹ÑÉ…Ð¹½ÐÉ”µ…ÕÑ¡½É¥é•¤¸(´]…Ù”€ÀÕÍ•Ì¡•­½ÕÑ½µÁ±•Ñ¥½¹1½œ…ÌÑ¡”½¹ÑÉ½±±•5•‘ÕÍ„ÝÉ¥Ñ”©½¥¹•Ù¥„Í¡…É•‘½¹Ñ•áÐ¹ÑÉ…¹Í…Ñ¥½¹5…¹…•É€ì™½Õ¹‘…Ñ¥½¸ÁÉ½‰”Ñ…‰±•ÌÍÑ…ä‘¥ÍÁ½Í…‰±”µ½¹±ä¸(´M…¹¹•È1$Ù•É¥™¥•Ù¥„¹Á´•á•Œ€´´ÑÌµ¹½‘•€‘Õ”Ñ¼Ý½É­ÍÁ…”‰¥¸¡½¥ÍÑ¥¹œ¸((ŒŒ•Ù¥…Ñ¥½¹Ì™É½´A±…¸((ŒŒŒÕÑ¼µ™¥á•%ÍÍÕ•Ì((¨¨Ä¸mIÕ±”€Ì€´	±½­¥¹tM…¹¹•ÈÁ…Ñ ÁÉ•™¥à½µ¥ÑÑ•€½ÍÑ½É•€¨¨(´€¨©½Õ¹‘ÕÉ¥¹œè¨¨Q…Í¬€ÄÙ•É¥™¥…Ñ¥½¸(´€¨©%ÍÍÕ”è¨¨…¹½¹¥…±¥é…Ñ¥½¸ÕÍ•…Á¥I½½Ð…±É•…‘ä•¹‘¥¹œ…Ð€¸¸¸½ÍÑ½É•€°ÁÉ½‘Õ¥¹œ€½…ÉÑÍ€¥¹ÍÑ•…½˜€½ÍÑ½É”½…ÉÑÍ€¸(´€¨©¥àè¨¨AÉ•Á•¹€½ÍÑ½É•€¥¸…¹½¹¥…±¥é•A…Ñ¡Q•µÁ±…Ñ•€¸(´€¨©¥±•Ìµ½‘¥™¥•è¨¨…ÁÁÌ½‰…­•¹½ÍÉ¥ÁÑÌ½ÍÑ½É”µÍÕÉ™…”½Í…¸µ¥¹ÍÑ…±±•¹ÑÍ€(´€¨©½µµ¥ÑÑ•¥¸è¨¨€Á”äÍå‘€((¨¨È¸mIÕ±”€Ì€´	±½­¥¹tA±…¸Ù•É¥™äÁ…Ñ €¸½¹½‘•}µ½‘Õ±•Ì¼¹‰¥¸½ÑÌµ¹½‘•€µ¥ÍÍ¥¹œ¨¨(´€¨©½Õ¹‘ÕÉ¥¹œè¨¨Q…Í¬€ÄÙ•É¥™¥…Ñ¥½¸(´€¨©%ÍÍÕ”è¨¨¹Á´Ý½É­ÍÁ…•Ì¡½¥ÍÐ‰¥¹…É¥•ÌÑ¼É•Á¼É½½Ðì…ÁÁÌ½‰…­•¹½¹½‘•}µ½‘Õ±•Ì¼¹‰¥¹€‘½•Ì¹½Ð•á¥ÍÐ¸(´€¨©¥àè¨¨UÍ•¹Á´•á•Œ€´´ÑÌµ¹½‘”€´µÍÝŒ€¸¸¹€€¡•ÍÑ…‰±¥Í¡•=Á•¹A$ÍÉ¥ÁÐÁ…ÑÑ•É¸¤¸9¼Á…­…”½±½­™¥±”¡…¹•Ì¸(´€¨©¥±•Ìµ½‘¥™¥•è¨¨¹½¹”€¡¥¹Ù½…Ñ¥½¸½¹±ä¤(´€¨©½µµ¥ÑÑ•¥¸è¨¨¸½„€¡‘½Õµ•¹Ñ•¤((¨©Q½Ñ…°‘•Ù¥…Ñ¥½¹Ìè¨¨€È…ÕÑ¼µ™¥á•€¡IÕ±”€Ìƒ\È¤€€(¨©%µÁ…Ð½¸Á±…¸è¨¨½ÉÉ•Ñ¹•ÍÌµ½¹±äì¹¼Í½Á”É••Àì¹¼…É¡¥Ñ•ÑÕÉ…°¡…¹”¸((ŒŒ%ÍÍÕ•Ì¹½Õ¹Ñ•É•()9½¹”‰•å½¹Ñ¡”‘•Ù¥…Ñ¥½¹Ì…‰½Ù”¸((ŒŒ-¹½Ý¸MÑÕ‰Ì()9½¹”ƒŠPµ…¹¥™•ÍÐ¥Ì½µÁ±•Ñ”ì]…Ù”€À…‘…ÁÑ•È¥Ì„™•…Í¥‰¥±¥ÑäÁÉ½‰”€¡¥¹Ñ•¹Ñ¥½¹…°¹½¸µÁÉ½‘ÕÐµ½‘Õ±”¤…¹‘½•Ì¹½ÐÍÑÕˆMÑ½É•I•Í½ÕÉ•Y•ÉÍ¥½¸¸((ŒŒQ¡É•…Ð±…Ì()9½¹”‰•å½¹Ñ¡”Á±…¸Ñ¡É•…Ðµ½‘•°¸M…¹¹•È¥ÌÉ•…µ½¹±äìÁÉ½‰”Ñ…‰±•Ì…É”‘¥ÍÁ½Í…‰±”µ½¹±äì¹¼¹•Ü¹•ÑÝ½É¬•¹‘Á½¥¹ÑÌ¸((ŒŒUÍ•ÈM•ÑÕÀI•ÅÕ¥É•()9½¹”€´¹¼•áÑ•É¹…°Í•ÉÙ¥”½¹™¥ÕÉ…Ñ¥½¸É•ÅÕ¥É•¸((ŒŒ9•áÐA¡…Í”I•…‘¥¹•ÍÌ((´9´ÀÄè€ÄÌ´ÀÄ•Ù¥‘•¹”ÁÉ½‘Õ•€¡•á…ÐµÍ•ÐMM=P€¬Í…¹¹•È¤¸9½Ð½µÁ±•Ñ”ƒŠPÍÑ¥±°É•ÅÕ¥É•Ì€ÄÌ´ÀÈ€¬€ÄÌ´ÀÜ¸(´9´ÀØè]…Ù”€ÀÁÉ•É•ÅÕ¥Í¥Ñ”•Ù¥‘•¹”ÁÉ½‘Õ•€¡Í¡…É•Q4€¬L€¬½ÉÉ•Ñ•É½±±‰…¬¤¸9½Ð½µÁ±•Ñ”ƒŠPÍÑ¥±°É•ÅÕ¥É•Ì€ÄÌ´ÀÔ€¬€ÄÌ´ÀÜ¸(´A¡…Í”€ÄÌÉ•ÅÕ¥É•µ•¹ÑÌ½µÁ±•Ñ”è€À¼à(´5¥±•ÍÑ½¹”É•ÅÕ¥É•µ•¹ÑÌ½µÁ±•Ñ”è€À¼äÄ(´A±…¹Ì•á•ÕÑ•è€Ä¼Ü(´€¨©@ÄÌ´ÄÌ´ÀÄµHÄ!U58IµIY%\èAML¨¨ƒŠP€ÄÌ´ÀÄ¥Ì¡Õµ…¸µ…ÁÁÉ½Ù•¸(´€¨¨ÄÌ´ÀÈƒŠP…¥°µ±½Í•MÑ½É”1½­‘½Ý¸èaUQ%=8UQ!=I%i¨¨‰ä•áÁ±¥¥Ð¡Õµ…¸…Ñ”¸(´á•ÕÑ¥½¸Í½Á”¥Ì¹½Ü±¥µ¥Ñ•Ñ¼…ÕÑ¡½É¥é•€ÄÌ´ÀÉ€ì‘¼¹½ÐÍÑ…ÉÐ€ÄÌ´ÀÌ¬°¥‘•µÁ½Ñ•¹ä°É•Í½ÕÉ”µÙ•ÉÍ¥½¸°=Á•¹A$€Ä¸Ä¸À°‘•Á±½ä°½ÈÉ½¹Ñ•¹4Ä¸((ŒŒ!Õµ…¸I•Ù¥•ÜHÄ½ÉÉ•Ñ¥½¸()=É¥¥¹…°¡Õµ…¸É•Ù¥•Üè€¨©HÄIEU%I¨¨()	±½­•ÉÌè(´ÄÌ´ÀÄµHÄ´ÀÄÉ½±±‰…¬LÁÉ½½˜(´ÄÌ´ÀÄµHÄ´ÀÈÁÉ•µ…ÑÕÉ”É•ÅÕ¥É•µ•¹Ð½µÁ±•Ñ¥½¸(´ÄÌ´ÀÄµHÄ´ÀÌÍÑ…±”MQQ½I=5@()]…É¹¥¹œè(´\ÄÌ´ÀÄµHÄ´ÀÄ…Ñ…±½œ½Ý¹•É}Á¡…Í”É•½¹¥±¥…Ñ¥½¸((ŒŒŒHÄ½ÉÉ•Ñ¥½¹Ì…ÁÁ±¥•()ð¥¹‘¥¹œðI•ÍÕ±Ðð)ð´´µð´´µð)ðÄÌ´ÀÄµHÄ´ÀÄð%aƒŠP¥¹©•ÑÉÉ½É™Ñ•É…Í€…™Ñ•ÈÍÕ•ÍÍ™Õ°Lì½¹…ÍMÕ••‘•‘€€¬¥¸µÑàÙ•ÉÍ¥½¸Ù•É¥™äÁÉ½Ù”L•á•ÕÑ•ìÁ½ÍÐµÉ½±±‰…¬5•‘ÕÍ„½ÁÉ½‰”½Ù•ÉÍ¥½¸…±°É•ÍÑ½É•ð)ðÄÌ´ÀÄµHÄ´ÀÈð%aƒŠPÉ•ÅÕ¥É•µ•¹ÑÌµ½µÁ±•Ñ•èmu€ì9´ÀÄ½9´ÀØÉ•½É‘•…Ì•Ù¥‘•¹•½¹±äð)ðÄÌ´ÀÄµHÄ´ÀÌð%aƒŠPMQQ½I=5@ÕÉÉ•¹Ð…Ñ”Íå¹¡É½¹¥é•Ñ¼€ÄÌ´ÀÄHÄ…Ý…¥Ñ¥¹œ¡Õµ…¸É”µÉ•Ù¥•Üð)ð\ÄÌ´ÀÄµHÄ´ÀÄð=IIQ]%Q UQ!=I%QdƒŠPÍ•”…Ñ…±½œ½Ý¹•É}Á¡…Í”É•½¹¥±¥…Ñ¥½¸ð((ŒŒŒ…Ñ…±½œ½Ý¹•É}Á¡…Í”É•½¹¥±¥…Ñ¥½¸()Ñ•áÐ)…Ñ…±½œ½Ý¹•É}Á¡…Í”É•½¹¥±¥…Ñ¥½¸è)=IIQ]%Q UQ!=I%Qd()=Ý¹•Èè(ÈÄ()AÉ•Ù¥½ÕÌ€¡¥¹½ÉÉ•Ð¤è(ÄØ()ÕÑ¡½É¥Ñäè(´€¹Á±…¹¹¥¹œ½I=5@¹µA¡…Í”€ÈÄ€ô=É‘•È½¹™¥Éµ…Ñ¥½¸€˜…Ñ…±½œ!…¹‘½™˜€¡P´ÀÄ¸¹P´ÀÐ¤(´€¹Á±…¹¹¥¹œ½IEU%I59QL¹µA¡…Í”€ÈÄP´ÀÄ¸¹P´ÀÐ€¡…Ñ…±½œ¡…¹‘±”½Q<½É•Ù…±¥‘…Ñ¥½¸¤(´€ÄÌµIMI ¹µƒ
-œÄà½Ý¹ÍÑÉ•…´¥¹‘¥¹ÌA¡…Í”€ÈÄ=É‘•È½…Ñ…±½œè(€€‰AÉ½‘ÕÐÉ½ÕÑ•ÌÁÉ•Í•ÉÙ…´Í•É¥…±¥é•È…ÑÕ…°ˆ(´€ÄÌµMA¹µ€¼€ÄÌµ=9QaP¹µèA¡…Í”€ÄØ€ôµ•É”½É•Ù¥•Ü½¹±äì(€A¡…Í”€ÈÄ€ô½É‘•ÈÍÕµµ…Éä€¼…Ñ…±½œÉ•Ù…±¥‘…Ñ¥½¸()I•…Í½¸è)9¼…ÁÁÉ½Ù•…ÕÑ¡½É¥Ñä…ÍÍ¥¹ÌP€½ÍÑ½É”½ÁÉ½‘ÕÑÌ½ÈP€½ÍÑ½É”½ÁÉ½‘ÕÑÌ½í¥‘ô)Ñ¼A¡…Í”€ÄØ€¡…ÉÐ5•É”€˜I•Ù¥•Ü¤¸…Ñ…±½œ4Ä½Ý¹•ÉÍ¡¥À…¹ÁÉ½‘ÕÐµÉ½ÕÑ”)ÁÉ•Í•ÉÙ…Ñ¥½¸…É”‰½Õ¹Ñ¼A¡…Í”€ÈÄ¸±…ÍÍ¥™¥…Ñ¥½¸°ÉÕ¹Ñ¥µ•}Á½±¥ä°)´Å}•¹…‰±•µ•¹Ð°½Á•¹…Á¤•áÁ•Ñ…Ñ¥½¸°…¹€ÔàµÉ½ÕÑ”•á…ÐµÍ•ÐÕ¹¡…¹•¸)€((ŒŒŒ!Õµ…¸É”µÉ•Ù¥•ÜÉ•ÍÕ±Ð()Ñ•áÐ)@ÄÌ´ÄÌ´ÀÄµHÄ!U58IµIY%\èAML)HÄ‰±½­•ÉÌ½ÉÉ•Ñ•è€Ì¼Ì)HÄÝ…É¹¥¹Ì½ÉÉ•Ñ•è€Ä¼Ä)9•Ü¡Õµ…¸µÉ•Ù¥•Ü‰±½­•ÉÌè€À)9•Ü¡Õµ…¸µÉ•Ù¥•ÜÝ…É¹¥¹Ìè€À(ÄÌ´ÀÄè!U58AAI=YƒŠPAML(ÄÌ´ÀÈè1%%	1=HMAIQUQ!=I%iQ%=8)€()MÕ‰Í•ÅÕ•¹Ð•áÁ±¥¥Ð¡Õµ…¸…Ñ”è€ÄÌ´ÀÈƒŠP…¥°µ±½Í•MÑ½É”1½­‘½Ý¹€€¨©aUQ%=8UQ!=I%i¨¨¸((ŒŒŒHÄ]…Ù”€ÀÉ•Ù…±¥‘…Ñ¥½¸()Ñ•áÐ)½µµ…¹è…ÁÁÌ½‰…­•¹€˜˜¹½‘”ÍÉ¥ÁÑÌ½ÉÕ¸µ‘¥ÍÁ½Í…‰±”µÁ½ÍÑÉ•ÌµÑ•ÍÑÌ¹µ©Ì€´´¹Á´ÉÕ¸Ñ•ÍÐé¥¹Ñ•É…Ñ¥½¸éµ½‘Õ±•Ì€´´€´µÉÕ¹Q•ÍÑÍ	åA…Ñ ÍÉŒ½µ½‘Õ±•Ì½¡•­½ÕÐ½}}Ñ•ÍÑÍ}|½ÍÑ½É”µ™½Õ¹‘…Ñ¥½¸µÑÉ…¹Í…Ñ¥½¸µ½µÁ…Ñ¥‰¥±¥Ñä¹ÍÁ•Œ¹ÑÌ€´µÉÕ¹%¹	…¹)á¥Ð½‘”è€À)MÕ¥Ñ•Ìè€ÄÁ…ÍÍ•°€ÄÑ½Ñ…°)Q•ÍÑÌè€ØÁ…ÍÍ•°€ØÑ½Ñ…°)I•ÍÕ±ÐèAML)€((ŒŒŒHÄµ…¹¥™•ÍÐÉ•É•ÍÍ¥½¸()Ñ•áÐ)½µµ…¹è…ÁÁÌ½‰…­•¹€˜˜¹Á´ÉÕ¸Ñ•ÍÐéÕ¹¥Ð€´´€´µÉÕ¹Q•ÍÑÍ	åA…Ñ ÍÉŒ½…Á¤½ÍÑ½É”µÍÕÉ™…”½}}Ñ•ÍÑÍ}|½µ…¹¥™•ÍÐ¹Õ¹¥Ð¹ÍÁ•Œ¹ÑÌ€´µÉÕ¹%¹	…¹)á¥Ð½‘”è€À)MÕ¥Ñ•Ìè€ÄÁ…ÍÍ•°€ÄÑ½Ñ…°)Q•ÍÑÌè€àÁ…ÍÍ•°€àÑ½Ñ…°)I•ÍÕ±ÐèAML()M…¹¹•ÈèMQ=I}MUI}M9}=,ƒŠP€Ôà¼Ôà°€À¼ÄÀ¼ÄÜ¼ÌÄ°9dôÔÄ°AIMIY}1dôÜ°4Å}9	1ôÀ)€((ŒŒ…Ñ”()Ñ•áÐ)@ÄÌ´ÄÌ´ÀÄµHÄè!U58IµIY%\AML(ÄÌ´ÀÄè!U58AAI=YƒŠPAML(ÄÌ´ÀÈèaUQ%=8UQ!=I%i(ÄÌ´ÀÌ¸¸ÄÌ´ÀÜè9=PUQ!=I%i)•Á±½äè9=PUQ!=I%i)É½¹Ñ•¹4Äè	1=-)A¡…Í”€ÄÌÉ•ÅÕ¥É•µ•¹ÑÌ½µÁ±•Ñ”è€À¼à)5¥±•ÍÑ½¹”É•ÅÕ¥É•µ•¹ÑÌ½µÁ±•Ñ”è€À¼äÄ)A±…¹Ì•á•ÕÑ•è€Ä¼Ü)€()!Õµ…¸É”µÉ•Ù¥•ÜÉ•½É‘•AML¸M•Á…É…Ñ”¡Õµ…¸…ÕÑ¡½É¥é…Ñ¥½¸™½È€ÄÌ´ÀÈ¡…Ì…±Í¼‰••¸É•½É‘•ì•á•ÕÑ¥½¸µ…äÁÉ½••½¹±ä™½È€ÄÌ´ÀÈ¸((ŒŒM•±˜µ¡•¬èAMM((´mát…ÁÁÌ½‰…­•¹½ÍÉŒ½…Á¤½ÍÑ½É”µÍÕÉ™…”½µ…¹¥™•ÍÐ¹ÑÍ€=U5(´mát…ÁÁÌ½‰…­•¹½ÍÉ¥ÁÑÌ½ÍÑ½É”µÍÕÉ™…”½Í…¸µ¥¹ÍÑ…±±•¹ÑÍ€=U9(´mát…ÁÁÌ½‰…­•¹½ÍÉŒ½…Á¤½ÍÑ½É”µÍÕÉ™…”½}}Ñ•ÍÑÍ}|½µ…¹¥™•ÍÐ¹Õ¹¥Ð¹ÍÁ•Œ¹ÑÍ€=U9(´mát…ÁÁÌ½‰…­•¹½ÍÉŒ½¥¹™É…ÍÑÉÕÑÕÉ”½ÍÑ½É”µ™½Õ¹‘…Ñ¥½¸µÑÉ…¹Í…Ñ¥½¸µ½µÁ…Ñ¥‰¥±¥Ñä¹ÑÍ€=U5(´mát…ÁÁÌ½‰…­•¹½ÍÉŒ½µ½‘Õ±•Ì½¡•­½ÕÐ½}}Ñ•ÍÑÍ}|½ÍÑ½É”µ™½Õ¹‘…Ñ¥½¸µÑÉ…¹Í…Ñ¥½¸µ½µÁ…Ñ¥‰¥±¥Ñä¹ÍÁ•Œ¹ÑÍ€=U9(´mát½µµ¥Ð€Á”äÍå‘€=U5(´mát½µµ¥Ð”Å”Ìá€=U9((´´´(©A¡…Í”è€ÄÌµÍÑ½É•™É½¹Ðµ½¹ÑÉ…Ðµ™½Õ¹‘…Ñ¥½¸µÍÕÉ™…”µ±½­‘½Ý¸¨(©½µÁ±•Ñ•è€ÈÀÈØ´Àà´Àà¨(
+Command: cd apps/backend && npm run test:unit -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts --runInBand
+Exit code: 0
+Suites: 1 passed, 1 total
+Tests: 7 passed, 7 total
+Result: PASS
+```
+
+### Scanner â€” exact-set
+
+```text
+Command: cd apps/backend && npm exec -- ts-node --swc scripts/store-surface/scan-installed.ts --check
+Exit code: 0
+Output: medusa=2.16.0 discovered=58 manifest=58 authorized=0 extended=10 blocked=17 outside=31 deny=51 preserve_legacy=7 m1_enabled_policy=0 m1_enablement_enabled=0 STORE_SURFACE_SCAN_OK
+Result: PASS
+```
+
+Note: plan path `./node_modules/.bin/ts-node` is missing under workspace hoisting (`apps/backend/node_modules` has no `.bin`). Equivalent project-standard invocation is `npm exec -- ts-node --swc ...` (same pattern as OpenAPI scripts).
+
+### Integration â€” Wave 0 disposable PostgreSQL
+
+```text
+Command: cd apps/backend && node scripts/run-disposable-postgres-tests.mjs -- npm run test:integration:modules -- --runTestsByPath src/modules/checkout/__tests__/store-foundation-transaction-compatibility.spec.ts --runInBand
+Exit code: 0
+Suites: 1 passed, 1 total
+Tests: 6 passed, 6 total
+Result: PASS
+```
+
+## Scope
+
+| Check | Result |
+|---|---|
+| Allowlisted product files only | YES â€” 5 files |
+| Unexpected product files | NONE |
+| package.json / package-lock.json | NOT MODIFIED |
+| medusa-config.ts | NOT MODIFIED |
+| Product migration | NONE |
+| Remote DB | NONE (disposable only) |
+| Provider / deploy / frontend | NONE |
+| OpenAPI registry/JSON | NOT MODIFIED |
+| npm install | NOT RUN |
+
+## Git
+
+Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`  
+No push. No PR.
+
+| Commit | Message |
+|---|---|
+| `0e93d9d` | feat(13-01): lock Store surface manifest and exact-set scanner |
+| `ce1ce38` | feat(13-01): prove Wave 0 shared transaction manager and CAS |
+
+Unrelated dirty file left untouched: `.planning/STATE.md` (begin-phase bookkeeping).
+
+## Task Commits
+
+1. **Task 1: Fixar manifest Ãºnico e scanner exact-set** â€” `0e93d9d` (feat)
+2. **Task 2: Executar Wave 0 binÃ¡ria de transaÃ§Ã£o compartilhada e CAS** â€” `ce1ce38` (feat)
+3. **Task 3: Revisar o resultado binÃ¡rio da Wave 0** â€” awaiting human review (checkpoint)
+
+## Decisions Made
+
+- PRESERVE_LEGACY limited to the seven Store 1.0.0-accepted routes listed above; all remaining EXTENDED/OUTSIDE individually DENY.
+- `POST /store/customers/me/cart/attach` kept BLOCKED+DENY (merge contract not re-authorized).
+- Wave 0 uses CheckoutCompletionLog as the controlled Medusa write joined via `sharedContext.transactionManager`; foundation probe tables stay disposable-only.
+- Scanner CLI verified via `npm exec -- ts-node` due to workspace bin hoisting.
+
+## Deviations from Plan
+
+### Auto-fixed Issues
+
+**1. [Rule 3 - Blocking] Scanner path prefix omitted `/store`**
+- **Found during:** Task 1 verification
+- **Issue:** Canonicalization used apiRoot already ending at `.../store`, producing `/carts` instead of `/store/carts`.
+- **Fix:** Prepend `/store` in `canonicalizePathTemplate`.
+- **Files modified:** `apps/backend/scripts/store-surface/scan-installed.ts`
+- **Committed in:** `0e93d9d`
+
+**2. [Rule 3 - Blocking] Plan verify path `./node_modules/.bin/ts-node` missing**
+- **Found during:** Task 1 verification
+- **Issue:** npm workspaces hoist binaries to repo root; `apps/backend/node_modules/.bin` does not exist.
+- **Fix:** Used `npm exec -- ts-node --swc ...` (established OpenAPI script pattern). No package/lockfile changes.
+- **Files modified:** none (invocation only)
+- **Committed in:** n/a (documented)
+
+**Total deviations:** 2 auto-fixed (Rule 3 Ã—2)  
+**Impact on plan:** Correctness-only; no scope creep; no architectural change.
+
+## Issues Encountered
+
+None beyond the deviations above.
+
+## Known Stubs
+
+None â€” manifest is complete; Wave 0 adapter is a feasibility probe (intentional non-product module) and does not stub StoreResourceVersion.
+
+## Threat Flags
+
+None beyond the plan threat model. Scanner is read-only; probe tables are disposable-only; no new network endpoints.
+
+## User Setup Required
+
+None - no external service configuration required.
+
+## Next Phase Readiness
+
+- FND-01: 13-01 evidence produced (exact-set SSOT + scanner). Not complete â€” still requires 13-02 + 13-07.
+- FND-06: Wave 0 prerequisite evidence produced (shared TM + CAS + corrected rollback). Not complete â€” still requires 13-05 + 13-07.
+- Phase 13 requirements complete: 0/8
+- Milestone requirements complete: 0/91
+- Plans executed: 1/7
+- **13-02 is NOT AUTHORIZED** until human re-review PASS on this R1 SUMMARY.
+- Do not start lockdown middleware, idempotency module, resource-version module, OpenAPI 1.1.0, deploy, or Frontend M1.
+
+## Human Review R1 Correction
+
+Original human review: **R1 REQUIRED**
+
+Blockers:
+- B13-01-R1-01 rollback CAS proof
+- B13-01-R1-02 premature requirement completion
+- B13-01-R1-03 stale STATE/ROADMAP
+
+Warning:
+- W13-01-R1-01 catalog owner_phase reconciliation
+
+### R1 corrections applied
+
+| Finding | Result |
+|---|---|
+| B13-01-R1-01 | FIXED â€” `injectErrorAfterCas` after successful CAS; `onCasSucceeded` + in-tx version verify prove CAS executed; post-rollback Medusa/probe/version all restored |
+| B13-01-R1-02 | FIXED â€” `requirements-completed: []`; FND-01/FND-06 recorded as evidenced only |
+| B13-01-R1-03 | FIXED â€” STATE/ROADMAP current gate synchronized to 13-01 R1 awaiting human re-review |
+| W13-01-R1-01 | CORRECTED WITH AUTHORITY â€” see Catalog owner_phase reconciliation |
+
+### Catalog owner_phase reconciliation
+
+```text
+Catalog owner_phase reconciliation:
+CORRECTED WITH AUTHORITY
+
+Owner:
+21
+
+Previous (incorrect):
+16
+
+Authority:
+- .planning/ROADMAP.md Phase 21 = Order Confirmation & Catalog Handoff (CAT-01..CAT-04)
+- .planning/REQUIREMENTS.md Phase 21 CAT-01..CAT-04 (catalog handle/DTO/revalidation)
+- 13-RESEARCH.md Â§18 Downstream Findings Phase 21 Order/Catalog:
+  "Product routes preservam serializer atual"
+- 13-SPEC.md / 13-CONTEXT.md: Phase 16 = merge/review only;
+  Phase 21 = order summary / catalog revalidation
+
+Reason:
+No approved authority assigns GET /store/products or GET /store/products/{id}
+to Phase 16 (Cart Merge & Review). Catalog M1 ownership and product-route
+preservation are bound to Phase 21. Classification, runtime_policy,
+m1_enablement, openapi expectation, and 58-route exact-set unchanged.
+```
+
+### R1 Wave 0 revalidation
+
+```text
+Command: cd apps/backend && node scripts/run-disposable-postgres-tests.mjs -- npm run test:integration:modules -- --runTestsByPath src/modules/checkout/__tests__/store-foundation-transaction-compatibility.spec.ts --runInBand
+Exit code: 0
+Suites: 1 passed, 1 total
+Tests: 6 passed, 6 total
+Result: PASS
+```
+
+### R1 manifest regression
+
+```text
+Command: cd apps/backend && npm run test:unit -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts --runInBand
+Exit code: 0
+Suites: 1 passed, 1 total
+Tests: 8 passed, 8 total
+Result: PASS
+
+Scanner: STORE_SURFACE_SCAN_OK â€” 58/58, 0/10/17/31, DENY=51, PRESERVE_LEGACY=7, M1_ENABLED=0
+```
+
+## Gate
+
+```text
+P13-13-01-R1: COMPLETE / AWAITING HUMAN RE-REVIEW
+13-01: NOT YET HUMAN-APPROVED
+13-02: NOT AUTHORIZED
+13-03..13-07: NOT AUTHORIZED
+Deploy: NOT AUTHORIZED
+Frontend M1: BLOCKED
+Phase 13 requirements complete: 0/8
+Milestone requirements complete: 0/91
+Plans executed: 1/7
+```
+
+Human must record PASS or BLOCKED on R1. Only PASS unlocks a separate authorization request for 13-02.
+
+## Self-Check: PASSED
+
+- [x] `apps/backend/src/api/store-surface/manifest.ts` FOUND
+- [x] `apps/backend/scripts/store-surface/scan-installed.ts` FOUND
+- [x] `apps/backend/src/api/store-surface/__tests__/manifest.unit.spec.ts` FOUND
+- [x] `apps/backend/src/infrastructure/store-foundation-transaction-compatibility.ts` FOUND
+- [x] `apps/backend/src/modules/checkout/__tests__/store-foundation-transaction-compatibility.spec.ts` FOUND
+- [x] Commit `0e93d9d` FOUND
+- [x] Commit `ce1ce38` FOUND
+
+---
+*Phase: 13-storefront-contract-foundation-surface-lockdown*
+*Completed: 2026-08-08*

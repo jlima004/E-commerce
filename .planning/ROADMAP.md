@@ -18,7 +18,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - `parallelization = false`;
 - sequência obrigatória: `13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22`;
 - cada gate CONTEXT, RESEARCH, PLAN, SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW e CLOSURE para revisão humana;
-- Phase 13 CONTEXT, RESEARCH, PLAN R5, SPEC/SDD R1 e Implementation Prompt estão aprovados; P13-13-01-R1 recebeu HUMAN RE-REVIEW PASS; 13-01 está HUMAN APPROVED — PASS; 1/7 planos executados; 13-02 recebeu autorização explícita de execução; 13-03..13-07, deploy e frontend permanecem não autorizados/bloqueados.
+- Phase 13 CONTEXT, RESEARCH, PLAN R5, SPEC/SDD R1 e Implementation Prompt estão aprovados; 13-01 executado com correção R1 aguardando re-review humana; 1/7 planos executados; 13-02 e demais planos não autorizados; deploy e frontend bloqueados.
 
 ## Milestones
 
@@ -203,20 +203,17 @@ Phase 13 PLAN R5: APPROVED
 Phase 13 SPEC/SDD R1: APPROVED
 Phase 13 Implementation Prompt: APPROVED
 
-P13-13-01-R1:
-HUMAN RE-REVIEW PASS
-
 13-01:
-HUMAN APPROVED — PASS
+EXECUTED / R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
 
 13-02:
-EXECUTION AUTHORIZED
+NOT AUTHORIZED
 
 Plans:
 1/7 executed
 
-- [x] 13-01-PLAN.md (HUMAN APPROVED — PASS)
-- [ ] 13-02-PLAN.md (EXECUTION AUTHORIZED)
+- [x] 13-01-PLAN.md (R1 correction awaiting human re-review)
+- [ ] 13-02-PLAN.md
 - [ ] 13-03-PLAN.md
 - [ ] 13-04-PLAN.md
 - [ ] 13-05-PLAN.md
