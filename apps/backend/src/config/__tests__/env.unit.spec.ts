@@ -1,6 +1,7 @@
 import fs from "fs"
 import path from "path"
 import {
+  env,
   parseEnv,
   STORE_IDEMPOTENCY_KEY_PEPPER_DEV_DEFAULT,
 } from "../env"
@@ -9,9 +10,20 @@ import {
   STORE_IDEMPOTENCY_PEPPER_VERSION,
 } from "../../modules/store-idempotency/models/store-idempotency-record"
 import {
+  STORE_IDEMPOTENCY_ALLOWED_TRANSITIONS,
+  STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS,
+  StoreIdempotencyModuleService,
+  assertNoSensitiveStoreIdempotencyPersistence,
+  assertStoreIdempotencyTransitionAllowed,
   assertValidRawIdempotencyKey,
+  buildStoreIdempotencyRequestFingerprint,
   hashStoreIdempotencyKey,
+  hashStoreIdempotencyScope,
+  isStoreIdempotencyLifecycleLeaseActive,
+  sanitizeStoreIdempotencySafeMetadata,
+  storeIdempotencyLifecycleLeaseCutoff,
 } from "../../modules/store-idempotency/service"
+import type { StoreIdempotencyState } from "../../modules/store-idempotency/models/store-idempotency-record"
 
 const syntheticStoreIdempotencyPepper = Buffer.alloc(32, 9).toString(
   "base64url"
@@ -908,5 +920,563 @@ describe("STORE_IDEMPOTENCY_KEY_PEPPER contract", () => {
     expect(() => assertValidRawIdempotencyKey("a".repeat(256))).toThrow(
       /STORE_IDEMPOTENCY_KEY_LENGTH_INVALID/
     )
+  })
+})
+
+describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
+  const now = new Date("2026-08-08T12:00:00.000Z")
+
+  function baseRow(
+    overrides: Record<string, unknown> = {}
+  ): Record<string, unknown> {
+    return {
+      id: "stidem_1",
+      operation: "phase13.local-mutation",
+      actor_scope_hash: "a".repeat(64),
+      resource_scope_hash: "b".repeat(64),
+      idempotency_key_hash: "c".repeat(64),
+      hash_version: STORE_IDEMPOTENCY_HASH_VERSION,
+      pepper_version: STORE_IDEMPOTENCY_PEPPER_VERSION,
+      request_fingerprint: "d".repeat(64),
+      state: "processing",
+      state_version: 1,
+      result_type: null,
+      result_id: null,
+      response_status: null,
+      result_safe_metadata: null,
+      locked_at: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+      state_deadline_at: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+      next_retry_at: null,
+      retry_attempt_count: 0,
+      retry_started_at: null,
+      terminalized_at: null,
+      completed_at: null,
+      failure_code: null,
+      expires_at: null,
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+      ...overrides,
+    }
+  }
+
+  function createServiceHarness(seed: Record<string, unknown>[]) {
+    const rows = seed.map((row) => ({ ...row }))
+
+    const knex = {
+      async transaction<T>(fn: (trx: typeof knex) => Promise<T>): Promise<T> {
+        return fn(knex)
+      },
+      async raw(sql: string, bindings: unknown[] = []) {
+        const normalized = sql.replace(/\s+/g, " ").toLowerCase()
+
+        if (
+          normalized.includes("insert into store_idempotency_record") &&
+          normalized.includes("on conflict")
+        ) {
+          const operation = String(bindings[1])
+          const actor = String(bindings[2])
+          const resource = String(bindings[3])
+          const keyHash = String(bindings[4])
+          const existing = rows.find(
+            (row) =>
+              row.operation === operation &&
+              row.actor_scope_hash === actor &&
+              row.resource_scope_hash === resource &&
+              row.idempotency_key_hash === keyHash
+          )
+          if (existing) {
+            return { rows: [] }
+          }
+          const inserted = {
+            id: String(bindings[0]),
+            operation,
+            actor_scope_hash: actor,
+            resource_scope_hash: resource,
+            idempotency_key_hash: keyHash,
+            hash_version: String(bindings[5]),
+            pepper_version: Number(bindings[6]),
+            request_fingerprint: String(bindings[7]),
+            state: "processing",
+            state_version: 1,
+            result_type: null,
+            result_id: null,
+            response_status: null,
+            result_safe_metadata: null,
+            locked_at: String(bindings[8]),
+            state_deadline_at: String(bindings[9]),
+            next_retry_at: null,
+            retry_attempt_count: 0,
+            retry_started_at: null,
+            terminalized_at: null,
+            completed_at: null,
+            failure_code: null,
+            expires_at: null,
+            created_at: String(bindings[10]),
+            updated_at: String(bindings[11]),
+          }
+          rows.push(inserted)
+          return { rows: [inserted] }
+        }
+
+        if (
+          normalized.includes("select * from store_idempotency_record") &&
+          normalized.includes("idempotency_key_hash = ?") &&
+          normalized.includes("for update")
+        ) {
+          const found = rows.find(
+            (row) =>
+              row.operation === bindings[0] &&
+              row.actor_scope_hash === bindings[1] &&
+              row.resource_scope_hash === bindings[2] &&
+              row.idempotency_key_hash === bindings[3]
+          )
+          return { rows: found ? [{ ...found }] : [] }
+        }
+
+        if (
+          normalized.includes("select * from store_idempotency_record") &&
+          normalized.includes("order by updated_at asc")
+        ) {
+          const dueNow = String(bindings[0])
+          const leaseCutoff = String(bindings[4])
+          const limit = Number(bindings[5])
+          const due = rows.filter((row) => {
+            const state = String(row.state)
+            const deadline = row.state_deadline_at
+              ? String(row.state_deadline_at)
+              : null
+            const nextRetry = row.next_retry_at
+              ? String(row.next_retry_at)
+              : null
+            const expires = row.expires_at ? String(row.expires_at) : null
+            const lockedAt = row.locked_at ? String(row.locked_at) : null
+
+            const stateDue =
+              ((state === "processing" ||
+                state === "reconciliation_required") &&
+                deadline != null &&
+                deadline <= dueNow) ||
+              (state === "failed_retryable" &&
+                ((nextRetry != null && nextRetry <= dueNow) ||
+                  (deadline != null && deadline <= dueNow))) ||
+              ((state === "completed" ||
+                state === "failed_terminal" ||
+                state === "reconciliation_unresolved") &&
+                expires != null &&
+                expires <= dueNow)
+
+            const leaseClaimable =
+              lockedAt == null || lockedAt <= leaseCutoff
+            return stateDue && leaseClaimable
+          })
+          return { rows: due.slice(0, limit).map((row) => ({ ...row })) }
+        }
+
+        if (
+          normalized.includes("update store_idempotency_record") &&
+          normalized.includes("state_version = state_version + 1") &&
+          normalized.includes("locked_at = ?") &&
+          normalized.includes("locked_at is null") &&
+          !normalized.includes("state = ?,")
+        ) {
+          const lockedAt = String(bindings[0])
+          const updatedAt = String(bindings[1])
+          const id = String(bindings[2])
+          const expectedState = String(bindings[3])
+          const expectedVersion = Number(bindings[4])
+          const leaseCutoff = String(bindings[5])
+          const idx = rows.findIndex((row) => row.id === id)
+          if (idx < 0) {
+            return { rows: [] }
+          }
+          const current = rows[idx]
+          const currentLocked = current.locked_at
+            ? String(current.locked_at)
+            : null
+          const leaseOk =
+            currentLocked == null || currentLocked <= leaseCutoff
+          if (
+            String(current.state) !== expectedState ||
+            Number(current.state_version) !== expectedVersion ||
+            !leaseOk
+          ) {
+            return { rows: [] }
+          }
+          const updated = {
+            ...current,
+            state_version: Number(current.state_version) + 1,
+            locked_at: lockedAt,
+            updated_at: updatedAt,
+          }
+          rows[idx] = updated
+          return { rows: [{ ...updated }] }
+        }
+
+        if (
+          normalized.includes("update store_idempotency_record") &&
+          normalized.includes("set state = ?")
+        ) {
+          const nextState = String(bindings[0])
+          const id = String(bindings[15])
+          const expectedState = String(bindings[16])
+          const expectedVersion = Number(bindings[17])
+          const idx = rows.findIndex((row) => row.id === id)
+          if (idx < 0) {
+            return { rows: [] }
+          }
+          const current = rows[idx]
+          if (
+            String(current.state) !== expectedState ||
+            Number(current.state_version) !== expectedVersion
+          ) {
+            return { rows: [] }
+          }
+          const updated = {
+            ...current,
+            state: nextState,
+            state_version: Number(current.state_version) + 1,
+            state_deadline_at: bindings[1],
+            next_retry_at: bindings[2],
+            retry_attempt_count:
+              bindings[3] == null
+                ? current.retry_attempt_count
+                : Number(bindings[3]),
+            retry_started_at: bindings[4],
+            locked_at: bindings[5],
+            result_type: bindings[6],
+            result_id: bindings[7],
+            response_status: bindings[8],
+            result_safe_metadata: bindings[9],
+            failure_code: bindings[10],
+            completed_at: bindings[11],
+            terminalized_at: bindings[12],
+            expires_at: bindings[13],
+            updated_at: bindings[14],
+          }
+          rows[idx] = updated
+          return { rows: [{ ...updated }] }
+        }
+
+        if (
+          normalized.includes("select * from store_idempotency_record where id = ?")
+        ) {
+          const found = rows.find((row) => row.id === bindings[0])
+          return { rows: found ? [{ ...found }] : [] }
+        }
+
+        throw new Error(`Unexpected SQL in harness: ${sql}`)
+      },
+    }
+
+    const service = Object.create(
+      StoreIdempotencyModuleService.prototype
+    ) as StoreIdempotencyModuleService
+    Object.defineProperty(service, "baseRepository_", {
+      value: {
+        getActiveManager: () => ({
+          getKnex: () => knex,
+        }),
+      },
+    })
+
+    return { service, rows }
+  }
+
+  it("allows only SPEC §6.5 transitions and forbids the blocked matrix cells", () => {
+    const allowed: Array<[StoreIdempotencyState, StoreIdempotencyState]> = [
+      ["processing", "completed"],
+      ["processing", "failed_retryable"],
+      ["processing", "failed_terminal"],
+      ["processing", "reconciliation_required"],
+      ["failed_retryable", "processing"],
+      ["failed_retryable", "completed"],
+      ["failed_retryable", "failed_terminal"],
+      ["failed_retryable", "reconciliation_required"],
+      ["reconciliation_required", "completed"],
+      ["reconciliation_required", "failed_terminal"],
+      ["reconciliation_required", "reconciliation_unresolved"],
+    ]
+
+    for (const [from, to] of allowed) {
+      expect(() =>
+        assertStoreIdempotencyTransitionAllowed(from, to)
+      ).not.toThrow()
+      expect(STORE_IDEMPOTENCY_ALLOWED_TRANSITIONS[from]).toContain(to)
+    }
+
+    const forbidden: Array<[StoreIdempotencyState, StoreIdempotencyState]> = [
+      ["completed", "processing"],
+      ["completed", "failed_retryable"],
+      ["failed_terminal", "processing"],
+      ["failed_terminal", "reconciliation_required"],
+      ["reconciliation_required", "processing"],
+      ["reconciliation_required", "failed_retryable"],
+      ["reconciliation_unresolved", "processing"],
+      ["reconciliation_unresolved", "completed"],
+      ["reconciliation_unresolved", "failed_retryable"],
+      ["reconciliation_unresolved", "failed_terminal"],
+      ["reconciliation_unresolved", "reconciliation_required"],
+      ["processing", "reconciliation_unresolved"],
+      ["failed_retryable", "failed_retryable"],
+    ]
+
+    for (const [from, to] of forbidden) {
+      expect(() => assertStoreIdempotencyTransitionAllowed(from, to)).toThrow(
+        /STORE_IDEMPOTENCY_TRANSITION_FORBIDDEN/
+      )
+    }
+  })
+
+  it("keeps terminal states immutable through transitionWithPredicate", async () => {
+    const terminals: StoreIdempotencyState[] = [
+      "completed",
+      "failed_terminal",
+      "reconciliation_unresolved",
+    ]
+
+    for (const terminal of terminals) {
+      const { service } = createServiceHarness([
+        baseRow({
+          state: terminal,
+          state_version: 4,
+          terminalized_at: now.toISOString(),
+          expires_at: new Date(now.getTime() + 86400000).toISOString(),
+          locked_at: null,
+          state_deadline_at: null,
+        }),
+      ])
+
+      await expect(
+        service.transitionWithPredicate({
+          id: "stidem_1",
+          expectedState: terminal,
+          expectedStateVersion: 4,
+          at: now,
+          next: {
+            state: "processing",
+            state_deadline_at: new Date(now.getTime() + 60000),
+            locked_at: now,
+          },
+        })
+      ).rejects.toThrow(/STORE_IDEMPOTENCY_TRANSITION_FORBIDDEN/)
+    }
+  })
+
+  it("returns replay for reconciliation_unresolved and does not mutate ownership", async () => {
+    const fingerprint = buildStoreIdempotencyRequestFingerprint({
+      cart_id: "cart_01HTEST",
+      op: "phase13.local-mutation",
+    })
+    const rawKey = "Retry-Key-ABC"
+    const actorScope = { customer_id: "cus_1" }
+    const resourceScope = { cart_id: "cart_01HTEST" }
+    const keyHash = hashStoreIdempotencyKey(
+      rawKey,
+      env.STORE_IDEMPOTENCY_KEY_PEPPER
+    )
+    const seeded = baseRow({
+      state: "reconciliation_unresolved",
+      state_version: 7,
+      request_fingerprint: fingerprint,
+      idempotency_key_hash: keyHash,
+      actor_scope_hash: hashStoreIdempotencyScope(actorScope),
+      resource_scope_hash: hashStoreIdempotencyScope(resourceScope),
+      locked_at: null,
+      state_deadline_at: null,
+      terminalized_at: now.toISOString(),
+      expires_at: new Date(now.getTime() + 30 * 86400000).toISOString(),
+      updated_at: now.toISOString(),
+    })
+    const { service, rows } = createServiceHarness([seeded])
+
+    const result = await service.claim({
+      operation: "phase13.local-mutation",
+      actorScope,
+      resourceScope,
+      rawIdempotencyKey: rawKey,
+      canonicalSemanticObject: {
+        cart_id: "cart_01HTEST",
+        op: "phase13.local-mutation",
+      },
+      at: now,
+    })
+
+    expect(result.type).toBe("replay")
+    expect(result.type).not.toBe("in_progress")
+    expect(rows[0].state).toBe("reconciliation_unresolved")
+    expect(rows[0].state_version).toBe(7)
+    expect(rows[0].locked_at).toBeNull()
+  })
+
+  it("enforces exclusive fresh lifecycle lease and allows stale lease recovery", async () => {
+    const { service, rows } = createServiceHarness([baseRow()])
+
+    const dueBefore = await service.listDueLifecycleRows({ now })
+    expect(dueBefore).toHaveLength(1)
+
+    const workerA = await service.claimLifecycleRow({
+      id: "stidem_1",
+      expectedState: "processing",
+      expectedStateVersion: 1,
+      at: now,
+    })
+    expect(workerA.type).toBe("claimed")
+    if (workerA.type !== "claimed") {
+      throw new Error("expected worker A lifecycle claim")
+    }
+    expect(workerA.record.state_version).toBe(2)
+    expect(isStoreIdempotencyLifecycleLeaseActive(rows[0].locked_at as string, now)).toBe(
+      true
+    )
+
+    const dueAfterA = await service.listDueLifecycleRows({ now })
+    expect(dueAfterA).toHaveLength(0)
+
+    const workerB = await service.claimLifecycleRow({
+      id: "stidem_1",
+      expectedState: "processing",
+      expectedStateVersion: 2,
+      at: now,
+    })
+    expect(workerB.type).toBe("lost")
+    expect(rows[0].state_version).toBe(2)
+
+    const staleAt = new Date(
+      now.getTime() + STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS + 1
+    )
+    expect(
+      isStoreIdempotencyLifecycleLeaseActive(
+        rows[0].locked_at as string,
+        staleAt
+      )
+    ).toBe(false)
+    expect(storeIdempotencyLifecycleLeaseCutoff(staleAt).getTime()).toBe(
+      staleAt.getTime() - STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS
+    )
+
+    const dueStale = await service.listDueLifecycleRows({ now: staleAt })
+    expect(dueStale).toHaveLength(1)
+
+    const workerRecover = await service.claimLifecycleRow({
+      id: "stidem_1",
+      expectedState: "processing",
+      expectedStateVersion: 2,
+      at: staleAt,
+    })
+    expect(workerRecover.type).toBe("claimed")
+    if (workerRecover.type !== "claimed") {
+      throw new Error("expected stale lifecycle reclaim")
+    }
+    expect(workerRecover.record.state_version).toBe(3)
+  })
+
+  it("rejects sensitive canaries inside allowlisted metadata and result fields", () => {
+    const jwt =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.signature"
+    const cpf = "52998224725"
+    const pix = "00020126580014br.gov.bcb.pix0136123"
+    const capability = "cap_live_eyJhbGciOiJub25lIn0.payload"
+    const providerPayload = "provider_payload:{charge:raw}"
+    const rawKey = "Retry-Key-ABC"
+    const pepper = STORE_IDEMPOTENCY_KEY_PEPPER_DEV_DEFAULT
+
+    expect(() =>
+      sanitizeStoreIdempotencySafeMetadata({
+        correlation_ref: jwt,
+      })
+    ).toThrow(/STORE_IDEMPOTENCY_SAFE_VALUE_INVALID|SENSITIVE_VALUE_FORBIDDEN/)
+
+    expect(() =>
+      sanitizeStoreIdempotencySafeMetadata({
+        correlation_ref: cpf,
+      })
+    ).toThrow(/STORE_IDEMPOTENCY_SAFE_VALUE_INVALID/)
+
+    expect(() =>
+      sanitizeStoreIdempotencySafeMetadata({
+        correlation_ref: "Authorization",
+      })
+    ).toThrow(/STORE_IDEMPOTENCY_SAFE_VALUE_INVALID/)
+
+    expect(() =>
+      sanitizeStoreIdempotencySafeMetadata({
+        result_id: "client_secret_value",
+      })
+    ).toThrow(/STORE_IDEMPOTENCY_SAFE_VALUE_INVALID|SENSITIVE_VALUE_FORBIDDEN/)
+
+    expect(() =>
+      sanitizeStoreIdempotencySafeMetadata({
+        correlation_ref: pix,
+      })
+    ).toThrow(/STORE_IDEMPOTENCY_SAFE_VALUE_INVALID|SENSITIVE_VALUE_FORBIDDEN/)
+
+    expect(() =>
+      sanitizeStoreIdempotencySafeMetadata({
+        correlation_ref: capability,
+      })
+    ).toThrow(/STORE_IDEMPOTENCY_SAFE_VALUE_INVALID|SENSITIVE_VALUE_FORBIDDEN/)
+
+    expect(() =>
+      sanitizeStoreIdempotencySafeMetadata({
+        harness: providerPayload,
+      })
+    ).toThrow(/STORE_IDEMPOTENCY_SAFE_VALUE_INVALID|SENSITIVE_VALUE_FORBIDDEN/)
+
+    expect(() =>
+      sanitizeStoreIdempotencySafeMetadata({
+        correlation_ref: rawKey,
+      })
+    ).toThrow(/STORE_IDEMPOTENCY_SAFE_VALUE_INVALID/)
+
+    expect(() =>
+      sanitizeStoreIdempotencySafeMetadata({
+        correlation_ref: pepper,
+      })
+    ).toThrow(/STORE_IDEMPOTENCY_SAFE_VALUE_INVALID/)
+
+    expect(() =>
+      assertNoSensitiveStoreIdempotencyPersistence({
+        result_safe_metadata: { correlation_ref: jwt },
+      })
+    ).toThrow(/STORE_IDEMPOTENCY_SENSITIVE_VALUE_FORBIDDEN/)
+
+    const safe = sanitizeStoreIdempotencySafeMetadata({
+      operation: "phase13.local-mutation",
+      result_type: "local_mutation_result",
+      result_id: "ord_01HSAFEID",
+      failure_code: "timeout",
+      harness: "phase13.local-mutation",
+      correlation_ref: "corr_01HSAFE",
+      response_status: 200,
+    })
+    expect(safe).toMatchObject({
+      result_id: "ord_01HSAFEID",
+      correlation_ref: "corr_01HSAFE",
+    })
+  })
+
+  it("preserves Idempotency-Key HMAC and fingerprint contracts", () => {
+    const rawKey = "Retry-Key-ABC"
+    const hash = hashStoreIdempotencyKey(
+      rawKey,
+      STORE_IDEMPOTENCY_KEY_PEPPER_DEV_DEFAULT
+    )
+    expect(hash).toMatch(/^[a-f0-9]{64}$/)
+    expect(hash).not.toContain(rawKey)
+    expect(STORE_IDEMPOTENCY_HASH_VERSION).toBe("hmac-sha256-v1")
+    expect(STORE_IDEMPOTENCY_PEPPER_VERSION).toBe(1)
+
+    const fp = buildStoreIdempotencyRequestFingerprint({
+      b: 2,
+      a: 1,
+      nested: { z: true, m: [1, 2] },
+    })
+    const fpAgain = buildStoreIdempotencyRequestFingerprint({
+      a: 1,
+      nested: { m: [1, 2], z: true },
+      b: 2,
+    })
+    expect(fp).toBe(fpAgain)
+    expect(fp).toMatch(/^[a-f0-9]{64}$/)
   })
 })
