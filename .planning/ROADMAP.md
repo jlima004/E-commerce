@@ -33,7 +33,7 @@ O snapshot histórico de v1.0 permanece em [v1.0-ROADMAP.md](milestones/v1.0-ROA
 
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
-| 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 + API-DOCS-01 closed | 8 | CONTEXT approved; RESEARCH approved; PLAN complete — awaiting human review; 7 planned / 0 executed |
+| 13 | Storefront Contract Foundation & Surface Lockdown | 1/7 | In Progress|  |
 | 14 | Customer Auth & Verification | 13 | 9 | Not started |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
@@ -199,7 +199,16 @@ Milestone v1.1: opened
 Phase 13 CONTEXT: approved
 Phase 13 RESEARCH: approved
 Phase 13 PLAN: complete / awaiting human review
-Plans: 7 planned / 0 executed
+Plans: 1/7 plans executed
+
+- [x] 13-01-PLAN.md
+- [ ] 13-02-PLAN.md
+- [ ] 13-03-PLAN.md
+- [ ] 13-04-PLAN.md
+- [ ] 13-05-PLAN.md
+- [ ] 13-06-PLAN.md
+- [ ] 13-07-PLAN.md
+
 SPEC/SDD: not started / not authorized
 Execution: not started / not authorized
 Implementation: not started / not authorized
