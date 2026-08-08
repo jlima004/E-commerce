@@ -27,6 +27,12 @@ export const STORE_IDEMPOTENCY_RECONCILIATION_REVIEW_MS =
   7 * 24 * 60 * 60 * 1000
 export const STORE_IDEMPOTENCY_UNRESOLVED_RETENTION_MS =
   30 * 24 * 60 * 60 * 1000
+/**
+ * Exclusive lifecycle-worker lease (locked_at freshness).
+ * Distinct from claimStaleAfter (processing recovery deadline).
+ * Sized to outlive one scheduled tick while remaining restart-recoverable.
+ */
+export const STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS = 60 * 1000
 
 export const STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION =
   "phase13.local-mutation" as const
@@ -42,6 +48,33 @@ export const STORE_IDEMPOTENCY_SAFE_METADATA_KEYS = [
   "harness",
   "correlation_ref",
 ] as const
+
+/** SPEC §6.5 — only explicitly allowed transitions. Terminals are immutable. */
+export const STORE_IDEMPOTENCY_ALLOWED_TRANSITIONS: Record<
+  StoreIdempotencyState,
+  readonly StoreIdempotencyState[]
+> = {
+  processing: [
+    "completed",
+    "failed_retryable",
+    "failed_terminal",
+    "reconciliation_required",
+  ],
+  failed_retryable: [
+    "processing",
+    "completed",
+    "failed_terminal",
+    "reconciliation_required",
+  ],
+  reconciliation_required: [
+    "completed",
+    "failed_terminal",
+    "reconciliation_unresolved",
+  ],
+  completed: [],
+  failed_terminal: [],
+  reconciliation_unresolved: [],
+}
 
 type SafeMetadataKey = (typeof STORE_IDEMPOTENCY_SAFE_METADATA_KEYS)[number]
 export type StoreIdempotencySafeMetadata = Partial<
@@ -110,6 +143,23 @@ export type LifecycleClaimResult =
 
 const SAFE_METADATA_KEYS = new Set<string>(STORE_IDEMPOTENCY_SAFE_METADATA_KEYS)
 const OPERATION_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/
+/** Closed label vocabulary for operation/result_type/failure_code/harness. */
+const SAFE_LABEL_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/
+/**
+ * Closed safe reference ids (result_id / correlation_ref).
+ * Requires prefix_value shape so JWT/pepper/Pix blobs cannot hide in allowlisted keys.
+ */
+const SAFE_REF_PATTERN = /^[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_-]{1,80}$/
+const LABEL_METADATA_KEYS = new Set<SafeMetadataKey>([
+  "operation",
+  "result_type",
+  "failure_code",
+  "harness",
+])
+const REF_METADATA_KEYS = new Set<SafeMetadataKey>([
+  "result_id",
+  "correlation_ref",
+])
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -259,6 +309,35 @@ export function hashStoreIdempotencyScope(scope: unknown): string {
     .digest("hex")
 }
 
+function assertSafeLabelValue(value: string, code: string): void {
+  if (!SAFE_LABEL_PATTERN.test(value)) {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, code)
+  }
+}
+
+function assertSafeRefValue(value: string, code: string): void {
+  if (!SAFE_REF_PATTERN.test(value)) {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, code)
+  }
+}
+
+function assertSafePersistableString(
+  key: SafeMetadataKey | "result_type" | "result_id" | "failure_code",
+  value: string
+): void {
+  if (key === "result_id" || REF_METADATA_KEYS.has(key as SafeMetadataKey)) {
+    assertSafeRefValue(value, "STORE_IDEMPOTENCY_SAFE_VALUE_INVALID")
+    return
+  }
+  if (
+    key === "result_type" ||
+    key === "failure_code" ||
+    LABEL_METADATA_KEYS.has(key as SafeMetadataKey)
+  ) {
+    assertSafeLabelValue(value, "STORE_IDEMPOTENCY_SAFE_VALUE_INVALID")
+  }
+}
+
 export function sanitizeStoreIdempotencySafeMetadata(
   metadata: Record<string, unknown> | null | undefined
 ): StoreIdempotencySafeMetadata | null {
@@ -290,15 +369,33 @@ export function sanitizeStoreIdempotencySafeMetadata(
         "STORE_IDEMPOTENCY_METADATA_INVALID"
       )
     }
-    if (typeof value === "string" && value.length > 240) {
-      throw new MedusaError(
-        MedusaError.Types.INVALID_DATA,
-        "STORE_IDEMPOTENCY_METADATA_INVALID"
-      )
+    if (typeof value === "string") {
+      if (value.length > 240) {
+        throw new MedusaError(
+          MedusaError.Types.INVALID_DATA,
+          "STORE_IDEMPOTENCY_METADATA_INVALID"
+        )
+      }
+      assertSafePersistableString(key as SafeMetadataKey, value)
+    }
+    if (key === "response_status") {
+      if (typeof value !== "number" || !Number.isInteger(value)) {
+        throw new MedusaError(
+          MedusaError.Types.INVALID_DATA,
+          "STORE_IDEMPOTENCY_METADATA_INVALID"
+        )
+      }
+      if (value < 100 || value > 599) {
+        throw new MedusaError(
+          MedusaError.Types.INVALID_DATA,
+          "STORE_IDEMPOTENCY_METADATA_INVALID"
+        )
+      }
     }
     out[key as SafeMetadataKey] = value
   }
 
+  assertNoSensitiveStoreIdempotencyPersistence(out)
   return Object.keys(out).length ? out : null
 }
 
@@ -336,6 +433,11 @@ export function assertNoSensitiveStoreIdempotencyPersistence(
     "client_secret",
     "sk_live_",
     "sk_test_",
+    "Bearer ",
+    "eyJ",
+    "00020126",
+    "pix_copia",
+    "provider_payload",
   ]) {
     if (serialized.includes(needle)) {
       throw new MedusaError(
@@ -344,6 +446,63 @@ export function assertNoSensitiveStoreIdempotencyPersistence(
       )
     }
   }
+}
+
+export function assertStoreIdempotencyTransitionAllowed(
+  expectedState: StoreIdempotencyState,
+  nextState: StoreIdempotencyState
+): void {
+  const allowed = STORE_IDEMPOTENCY_ALLOWED_TRANSITIONS[expectedState]
+  if (!allowed.includes(nextState)) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "STORE_IDEMPOTENCY_TRANSITION_FORBIDDEN"
+    )
+  }
+}
+
+export function isStoreIdempotencyLifecycleLeaseActive(
+  lockedAt: string | Date | null | undefined,
+  now: Date,
+  leaseMs: number = STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS
+): boolean {
+  if (lockedAt == null) {
+    return false
+  }
+  const lockedMs =
+    lockedAt instanceof Date ? lockedAt.getTime() : new Date(lockedAt).getTime()
+  if (!Number.isFinite(lockedMs)) {
+    return false
+  }
+  return lockedMs + leaseMs > now.getTime()
+}
+
+export function storeIdempotencyLifecycleLeaseCutoff(
+  now: Date,
+  leaseMs: number = STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS
+): Date {
+  return new Date(now.getTime() - leaseMs)
+}
+
+function assertSafeTransitionResultFields(input: {
+  result_type?: string | null
+  result_id?: string | null
+  failure_code?: string | null
+}): void {
+  if (input.result_type != null) {
+    assertSafePersistableString("result_type", input.result_type)
+  }
+  if (input.result_id != null) {
+    assertSafePersistableString("result_id", input.result_id)
+  }
+  if (input.failure_code != null) {
+    assertSafePersistableString("failure_code", input.failure_code)
+  }
+  assertNoSensitiveStoreIdempotencyPersistence({
+    result_type: input.result_type ?? null,
+    result_id: input.result_id ?? null,
+    failure_code: input.failure_code ?? null,
+  })
 }
 
 export function resolveTerminalRetentionMs(input?: {
@@ -555,7 +714,9 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
         }
       }
 
-      if (record.state === "completed" || record.state === "failed_terminal") {
+      // Terminal states are immutable observations (incl. reconciliation_unresolved).
+      // Never classify unresolved as in_progress; never transfer ownership on replay.
+      if (isStoreIdempotencyTerminalState(record.state)) {
         return { type: "replay" as const, record }
       }
 
@@ -586,9 +747,18 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     at?: Date
   }): Promise<LifecycleClaimResult> {
     const at = input.at ?? new Date()
+    assertStoreIdempotencyTransitionAllowed(
+      input.expectedState,
+      input.next.state
+    )
     const metadata = sanitizeStoreIdempotencySafeMetadata(
       input.next.result_safe_metadata ?? null
     )
+    assertSafeTransitionResultFields({
+      result_type: input.next.result_type,
+      result_id: input.next.result_id,
+      failure_code: input.next.failure_code,
+    })
 
     if (
       isStoreIdempotencyTerminalState(input.next.state) &&
@@ -840,33 +1010,41 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     now?: Date
     limit?: number
   }): Promise<StoreIdempotencyRecordRow[]> {
-    const now = (input?.now ?? new Date()).toISOString()
+    const at = input?.now ?? new Date()
+    const now = at.toISOString()
+    const leaseCutoff = storeIdempotencyLifecycleLeaseCutoff(at).toISOString()
     const limit = input?.limit ?? 100
     const result = await this.knex().raw(
       `
         select * from store_idempotency_record
         where
           (
-            state in ('processing', 'reconciliation_required')
-            and state_deadline_at is not null
-            and state_deadline_at <= ?
-          )
-          or (
-            state = 'failed_retryable'
-            and (
-              (next_retry_at is not null and next_retry_at <= ?)
-              or (state_deadline_at is not null and state_deadline_at <= ?)
+            (
+              state in ('processing', 'reconciliation_required')
+              and state_deadline_at is not null
+              and state_deadline_at <= ?
+            )
+            or (
+              state = 'failed_retryable'
+              and (
+                (next_retry_at is not null and next_retry_at <= ?)
+                or (state_deadline_at is not null and state_deadline_at <= ?)
+              )
+            )
+            or (
+              state in ('completed', 'failed_terminal', 'reconciliation_unresolved')
+              and expires_at is not null
+              and expires_at <= ?
             )
           )
-          or (
-            state in ('completed', 'failed_terminal', 'reconciliation_unresolved')
-            and expires_at is not null
-            and expires_at <= ?
+          and (
+            locked_at is null
+            or locked_at <= ?
           )
         order by updated_at asc
         limit ?
       `,
-      [now, now, now, now, limit]
+      [now, now, now, now, leaseCutoff, limit]
     )
     return (result.rows ?? []).map((row) => mapRow(row))
   }
@@ -878,8 +1056,9 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     at?: Date
   }): Promise<LifecycleClaimResult> {
     const at = input.at ?? new Date()
-    // Conditional bump of state_version alone acts as an atomic lease without
-    // changing business state; evaluator then transitions with the new version.
+    const leaseCutoff = storeIdempotencyLifecycleLeaseCutoff(at).toISOString()
+    // Atomic exclusive lease: version predicate + locked_at freshness in one UPDATE.
+    // Fresh lease excludes the row from listDue and rejects concurrent claimants.
     const result = await this.knex().raw(
       `
         update store_idempotency_record
@@ -890,6 +1069,10 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
         where id = ?
           and state = ?
           and state_version = ?
+          and (
+            locked_at is null
+            or locked_at <= ?
+          )
         returning *
       `,
       [
@@ -898,6 +1081,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
         input.id,
         input.expectedState,
         input.expectedStateVersion,
+        leaseCutoff,
       ]
     )
     const row = result.rows?.[0]
