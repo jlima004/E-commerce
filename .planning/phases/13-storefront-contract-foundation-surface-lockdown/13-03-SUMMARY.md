@@ -50,7 +50,7 @@ requirements-evidenced: [FND-03]
 
 duration: 5min
 completed: 2026-08-08
-status: r1-correction-complete-awaiting-human-re-review
+status: human-approved-pass
 ---
 
 # Phase 13 Plan 03: Store Error Contract Summary
@@ -60,10 +60,9 @@ status: r1-correction-complete-awaiting-human-re-review
 ## Identity
 
 Plan: 13-03
-Technical implementation: PASS (initial) → HUMAN REVIEW R1 REQUIRED → R1 CORRECTION COMPLETE
-13-03: R1 CORRECTION COMPLETE — AWAITING HUMAN RE-REVIEW
-13-03: NOT YET HUMAN-APPROVED
-13-04: NOT AUTHORIZED
+Technical implementation: PASS (initial) → HUMAN REVIEW R1 REQUIRED → R1 CORRECTION COMPLETE → P13-13-03-R2 HUMAN REVIEW PASS
+13-03: HUMAN APPROVED — PASS
+13-04: EXECUTION AUTHORIZED
 Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`
 Execution base SHA: `5e8d371db56c46164104998325c71dcb55460a3b`
 Pre-plan HEAD / P13_13_03_PRE_HEAD: `5e8d371db56c46164104998325c71dcb55460a3b`
@@ -279,9 +278,12 @@ Deploy: NOT AUTHORIZED
 Frontend M1: BLOCKED
 ```
 
+
 ## P13-13-03-R2 Documentary Reconciliation
 
 Documentary-only synchronization after the technical human re-review of R1. No runtime, tests, `STATE.md`, `ROADMAP.md`, OpenAPI, package/lockfile, migration, provider, deploy, or frontend artifacts are changed by R2.
+
+Human review result: **P13-13-03-R2 HUMAN REVIEW PASS**. Plan `13-03` is **HUMAN APPROVED — PASS**. Plan `13-04` is separately **EXECUTION AUTHORIZED**; this authorization does not extend to `13-05..13-07`.
 
 Corrections applied:
 - `key-files.modified` now includes `apps/backend/integration-tests/http/sentry.spec.ts`;
@@ -289,13 +291,14 @@ Corrections applied:
 - the R1 documentation commit is recorded as `30478cb` rather than a placeholder;
 - pre-R1 `Tests` and `Scope` sections are explicitly historical and superseded by the final R1 evidence below.
 
-Gate remains unchanged pending human documentary re-review:
+Human documentary re-review result:
 
 ```text
-13-03: R1 CORRECTION COMPLETE — AWAITING HUMAN RE-REVIEW
-13-03: NOT YET HUMAN-APPROVED
-13-04..13-07: NOT AUTHORIZED
-Plans human-approved executed: 2/7
+P13-13-03-R2: HUMAN REVIEW PASS
+13-03: HUMAN APPROVED — PASS
+13-04: EXECUTION AUTHORIZED
+13-05..13-07: NOT AUTHORIZED
+Plans human-approved executed: 3/7
 Phase requirements complete: 0/8
 Milestone requirements complete: 0/91
 Deploy: NOT AUTHORIZED
@@ -306,4 +309,4 @@ Frontend M1: BLOCKED
 
 `checkpoint:human-verify` / `gate:blocking`
 
-Human must re-review R1 fail-closed hardening evidence in this SUMMARY before marking 13-03 HUMAN APPROVED — PASS. 13-04 remains NOT AUTHORIZED until that approval.
+Human re-review is complete: `P13-13-03-R2 HUMAN REVIEW PASS`; `13-03` is `HUMAN APPROVED — PASS`. `13-04` is separately `EXECUTION AUTHORIZED`; `13-05..13-07` remain `NOT AUTHORIZED`.
