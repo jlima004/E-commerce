@@ -1,6 +1,25 @@
 import fs from "fs"
 import path from "path"
-import { parseEnv } from "../env"
+import {
+  parseEnv,
+  STORE_IDEMPOTENCY_KEY_PEPPER_DEV_DEFAULT,
+} from "../env"
+import {
+  STORE_IDEMPOTENCY_HASH_VERSION,
+  STORE_IDEMPOTENCY_PEPPER_VERSION,
+} from "../../modules/store-idempotency/models/store-idempotency-record"
+import {
+  assertValidRawIdempotencyKey,
+  hashStoreIdempotencyKey,
+} from "../../modules/store-idempotency/service"
+
+const syntheticStoreIdempotencyPepper = Buffer.alloc(32, 9).toString(
+  "base64url"
+)
+const alternateStoreIdempotencyPepper = Buffer.alloc(32, 11).toString(
+  "base64url"
+)
+const shortStoreIdempotencyPepper = Buffer.alloc(16, 1).toString("base64url")
 
 const backendRoot = path.resolve(__dirname, "../../..")
 const templatePath = path.join(backendRoot, ".env.template")
@@ -49,6 +68,7 @@ function productionFixture(
     S3_ACCESS_KEY_ID: storageAccessKeyId,
     S3_SECRET_ACCESS_KEY: storageSecretAccessKey,
     S3_FILE_URL: storagePublicUrl,
+    STORE_IDEMPOTENCY_KEY_PEPPER: syntheticStoreIdempotencyPepper,
     ...overrides,
   }
 }
@@ -756,5 +776,137 @@ describe(".env.template contract", () => {
     expect(template).toMatch(/S3_SECRET_ACCESS_KEY=/)
     expect(template).toMatch(/S3_FILE_URL=/)
     expect(template).not.toMatch(/s3_secret_access_key=[A-Za-z0-9+/]{20,}/)
+  })
+
+  it("documents STORE_IDEMPOTENCY_KEY_PEPPER as synthetic placeholder only", () => {
+    const template = fs.readFileSync(templatePath, "utf8")
+
+    expect(template).toMatch(/^STORE_IDEMPOTENCY_KEY_PEPPER=/m)
+    expect(template).toMatch(
+      /STORE_IDEMPOTENCY_KEY_PEPPER=<base64url-32-plus-random-bytes>/
+    )
+    expect(template).not.toContain(syntheticStoreIdempotencyPepper)
+    expect(template).not.toContain(STORE_IDEMPOTENCY_KEY_PEPPER_DEV_DEFAULT)
+  })
+})
+
+describe("STORE_IDEMPOTENCY_KEY_PEPPER contract", () => {
+  it("uses deterministic synthetic default in development when unset", () => {
+    const parsed = parseEnv(
+      localFixture({
+        STORE_IDEMPOTENCY_KEY_PEPPER: undefined,
+      })
+    )
+
+    expect(parsed.STORE_IDEMPOTENCY_KEY_PEPPER).toBe(
+      STORE_IDEMPOTENCY_KEY_PEPPER_DEV_DEFAULT
+    )
+  })
+
+  it("uses deterministic synthetic default in test when unset", () => {
+    const parsed = parseEnv(
+      localFixture({
+        NODE_ENV: "test",
+        STORE_IDEMPOTENCY_KEY_PEPPER: undefined,
+      })
+    )
+
+    expect(parsed.STORE_IDEMPOTENCY_KEY_PEPPER).toBe(
+      STORE_IDEMPOTENCY_KEY_PEPPER_DEV_DEFAULT
+    )
+  })
+
+  it("fails closed in production when pepper is missing without leaking values", () => {
+    expectErrorWithoutValues(
+      () =>
+        parseEnv(
+          productionFixture({
+            STORE_IDEMPOTENCY_KEY_PEPPER: undefined,
+          })
+        ),
+      "STORE_IDEMPOTENCY_KEY_PEPPER",
+      [syntheticStoreIdempotencyPepper]
+    )
+  })
+
+  it("rejects invalid base64url in production without leaking the value", () => {
+    const invalid = "not+valid/base64!!"
+    expectErrorWithoutValues(
+      () =>
+        parseEnv(
+          productionFixture({
+            STORE_IDEMPOTENCY_KEY_PEPPER: invalid,
+          })
+        ),
+      "STORE_IDEMPOTENCY_KEY_PEPPER",
+      [invalid]
+    )
+  })
+
+  it("rejects decoded pepper shorter than 32 bytes without leaking the value", () => {
+    expectErrorWithoutValues(
+      () =>
+        parseEnv(
+          productionFixture({
+            STORE_IDEMPOTENCY_KEY_PEPPER: shortStoreIdempotencyPepper,
+          })
+        ),
+      "STORE_IDEMPOTENCY_KEY_PEPPER",
+      [shortStoreIdempotencyPepper]
+    )
+  })
+
+  it("accepts valid base64url pepper with at least 32 decoded bytes in production", () => {
+    const parsed = parseEnv(
+      productionFixture({
+        STORE_IDEMPOTENCY_KEY_PEPPER: syntheticStoreIdempotencyPepper,
+      })
+    )
+
+    expect(parsed.STORE_IDEMPOTENCY_KEY_PEPPER).toBe(
+      syntheticStoreIdempotencyPepper
+    )
+    expect(JSON.stringify(parsed)).toContain("STORE_IDEMPOTENCY_KEY_PEPPER")
+  })
+
+  it("hashes Idempotency-Key with HMAC-SHA-256 byte-for-byte and never embeds plaintext", () => {
+    const rawKey = "Retry-Key-ABC"
+    const same = hashStoreIdempotencyKey(
+      rawKey,
+      syntheticStoreIdempotencyPepper
+    )
+    const again = hashStoreIdempotencyKey(
+      rawKey,
+      syntheticStoreIdempotencyPepper
+    )
+    const differentKey = hashStoreIdempotencyKey(
+      "Retry-Key-abc",
+      syntheticStoreIdempotencyPepper
+    )
+    const differentPepper = hashStoreIdempotencyKey(
+      rawKey,
+      alternateStoreIdempotencyPepper
+    )
+
+    expect(same).toBe(again)
+    expect(same).not.toBe(differentKey)
+    expect(same).not.toBe(differentPepper)
+    expect(same).not.toContain(rawKey)
+    expect(same).toMatch(/^[a-f0-9]{64}$/)
+    expect(STORE_IDEMPOTENCY_HASH_VERSION).toBe("hmac-sha256-v1")
+    expect(STORE_IDEMPOTENCY_PEPPER_VERSION).toBe(1)
+
+    expect(() => assertValidRawIdempotencyKey(" abc")).toThrow(
+      /STORE_IDEMPOTENCY_KEY_CHARSET_INVALID/
+    )
+    expect(() => assertValidRawIdempotencyKey("abc ")).toThrow(
+      /STORE_IDEMPOTENCY_KEY_CHARSET_INVALID/
+    )
+    expect(() => assertValidRawIdempotencyKey("")).toThrow(
+      /STORE_IDEMPOTENCY_KEY_LENGTH_INVALID/
+    )
+    expect(() => assertValidRawIdempotencyKey("a".repeat(256))).toThrow(
+      /STORE_IDEMPOTENCY_KEY_LENGTH_INVALID/
+    )
   })
 })

@@ -56,6 +56,7 @@ function productionEnv(workerMode: "server" | "worker" | "shared"): AppEnv {
     GELATO_WEBHOOK_AUTH_HEADER_NAME: "X-GELATO-WEBHOOK-SECRET",
     GELATO_WEBHOOK_SECRET: undefined,
     TRACKING_TOKEN_PEPPER: undefined,
+    STORE_IDEMPOTENCY_KEY_PEPPER: Buffer.alloc(32, 7).toString("base64url"),
     ADMIN_REFUND_REQUEST_ENABLED: true,
     ADMIN_EXCHANGE_REQUEST_ENABLED: true,
     API_DOCS_ENABLED: false,
@@ -192,5 +193,30 @@ describe("medusa-config final Redis wiring", () => {
     process.env.REDIS_CACHE_PROVIDER_DISABLED = "true"
 
     expectSanitizedFailure(() => loadFinalConfig(productionEnv("worker")))
+  })
+
+  it("registers store_idempotency exactly once without altering Redis providers", () => {
+    const config = loadFinalConfig(productionEnv("server"))
+    const storeIdempotency = config.modules.filter(
+      (module) => module.resolve === "./src/modules/store-idempotency"
+    )
+    const redisModules = config.modules.filter((module) =>
+      [
+        "@medusajs/medusa/caching",
+        "@medusajs/medusa/locking",
+        "@medusajs/medusa/event-bus-redis",
+        "@medusajs/medusa/workflow-engine-redis",
+      ].includes(module.resolve ?? "")
+    )
+    const serialized = JSON.stringify(config.modules)
+
+    expect(storeIdempotency).toHaveLength(1)
+    expect(redisModules).toHaveLength(4)
+    expect(serialized).toContain("checkoutCompletion")
+    expect(serialized).toContain("tracking_access_token")
+    expect(serialized).not.toContain("event-bus-local")
+    expect(
+      serialized.match(/store-idempotency/g)?.length ?? 0
+    ).toBe(1)
   })
 })
