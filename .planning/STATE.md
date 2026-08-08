@@ -5,15 +5,15 @@ milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: storefront-contract-foundation-surface-lockdown
 status: executing
-stopped_at: 13-02 R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW; 13-03 NOT AUTHORIZED
+stopped_at: 13-02 HUMAN APPROVED — PASS; 13-03 NOT AUTHORIZED
 last_updated: "2026-08-08T03:10:00.000Z"
 last_activity: 2026-08-08
-last_activity_desc: 13-02 R1 correction complete awaiting human re-review
+last_activity_desc: 13-02 human-approved pass; 13-03 not authorized
 progress:
   total_phases: 10
   completed_phases: 0
   total_plans: 7
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; 13-02 R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW. Há 7 planos e 1 SUMMARY pending human re-review (13-01 PASS; 13-02 not human-approved yet). Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-03..13-07 remain NOT AUTHORIZED. Deploy and frontend are not authorized.
+**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; P13-13-02-R1 technical human re-review PASS; P13-13-02-R2 human re-review PASS; 13-02 HUMAN APPROVED — PASS. Há 7 planos e 2 human-approved executed. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-03..13-07 remain NOT AUTHORIZED. Deploy and frontend are not authorized.
 
 ```text
 Phase 12 CONTEXT approved
@@ -134,17 +134,19 @@ Phase 13 Implementation Prompt: APPROVED
 Phase 13 EXECUTING
 P13-13-01-R1: HUMAN RE-REVIEW PASS
 13-01: HUMAN APPROVED — PASS
-13-02: R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
+P13-13-02-R1: TECHNICAL HUMAN RE-REVIEW PASS
+P13-13-02-R2: HUMAN RE-REVIEW PASS
+13-02: HUMAN APPROVED — PASS
 13-03: NOT AUTHORIZED
 13-04..13-07: NOT AUTHORIZED
-Phase 13 plans: 7 planned / 1 human-approved executed; 13-02 SUMMARY pending human re-review
+Phase 13 plans: 7 planned / 2 human-approved executed; 13-03 NOT AUTHORIZED
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 Milestone requirements complete: 0/91
 Phases complete: 0/10
 Deploy: NOT AUTHORIZED
 frontend blocked / not started / not authorized
-next permitted step: human re-review of P13-13-02-R1; do not start 13-03 without new explicit authorization.
+next permitted step: 13-03 is eligible for separate human authorization; do not start 13-03 without new explicit authorization.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -184,18 +186,18 @@ Produção: saudável
 ## Current Position
 
 Phase: 13 (storefront-contract-foundation-surface-lockdown) — EXECUTING
-Plan: 2 of 7 (R1 correction complete; human re-review pending)
-Status: 13-02 R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
-Current gate: CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; 13-02 R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW; 13-03 NOT AUTHORIZED
-Last activity: 2026-08-08 — 13-02 R1 correction complete awaiting human re-review
-Next: human re-review of P13-13-02-R1; do not start 13-03 without new explicit authorization
+Plan: 2 of 7 (HUMAN APPROVED — PASS)
+Status: 13-02 HUMAN APPROVED — PASS; 13-03 NOT AUTHORIZED
+Current gate: CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; P13-13-02-R1 technical human re-review PASS; P13-13-02-R2 human re-review PASS; 13-02 HUMAN APPROVED — PASS; 13-03 NOT AUTHORIZED
+Last activity: 2026-08-08 — 13-02 HUMAN APPROVED — PASS
+Next: 13-03 is eligible for a separate human authorization; do not start 13-03 without new explicit authorization
 
 Progress: [░░░░░░░░░░] 0% phases (0/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 Milestone requirements complete: 0/91
 Phases complete: 0/10
-Plans human-approved executed: 1/7
+Plans human-approved executed: 2/7
 frontend blocked
 
 ## Historical v1.0 Performance Metrics
@@ -338,7 +340,7 @@ None yet.
 - [Quick 260710-rc1 / RC1-A até RC1-H]: RC1-H está `PASS`: a fixture deixou de ser coletada sem remover suíte real; modules passou 28/28 e 454/454; HTTP passou 14/14 e 170/170; unitários 43/43 e 676/676; lint 0/208; build PASS. As 12 falhas RC1-G foram recuperadas somente em Jest/quatro specs, sem runtime, schema, manifest ou lockfile. Upgrade/bootstrap do RC1-G permaneceram válidos e não precisaram repetição. Nenhum Supabase, Heroku, provider externo, deploy, rollback, tag, push ou Phase 12 foi acionado.
 - [Quick 260713-mny01]: MNY-01 está `PASS`: Medusa core/PaymentSession agora usam major units, Stripe/PaymentAttempt/refund/downstream customizado preservam minor units, e o guard da Order converte componentes antes da soma. Unit 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0/208 e build PASS. Nenhum schema, package/lockfile, APP_VERSION, infraestrutura, produção, provider externo, push ou Phase 12 foi tocado. Preços existentes do catálogo permanecem para correção manual em gate separado.
 - [Quick 260715-rel01]: REL-01 está `PASS`: `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry usam a mesma versão resolvida e PM2/VPS preserva o fallback `APP_VERSION`. Env 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit 44/44 e 730/730, lint 0/208 e build PASS. O versionamento automático está resolvido e não há investigação de `APP_VERSION` pendente.
-- [Quick 260715-infra01]: INFRA-01 está `PASS`: release dyno migration-only DB-only; produção exige quatro contratos/módulos Redis sem fallback; CACHE-01A/B PASS. Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0/207, build PASS. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
+- [Quick 260715-infra01]: INFRA-01 está `PASS`: release DB-only isolation and Redis production fail-fast; Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0/207, build PASS. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
 - [Release stabilization closure]: incidente monetário resolvido; versionamento automático resolvido; cache Redis TLS resolvido; CACHE-01A/B e INFRA-01 PASS; cache Redis ativo em `web.1` e `worker.1`; fallbacks do release classificados e isolados; produção saudável. Não restam próximos passos para investigar `APP_VERSION`, reativar cache Redis, provar Redis em `web.1`/`worker.1` ou revisar fallbacks do release.
 - [Phase 12 — historical pre-P12-PLAN-R1 snapshot]: CONTEXT and RESEARCH were approved and the earlier PLAN had 6 plans / 0 executed with `12-VALIDATION.md`; its checker passed with 0 blockers and 0 warnings, and human review remained required. That earlier PASS was superseded/invalidated when P12-PLAN-R1 reopened and revised PLAN/VALIDATION. P12-PLAN-R1 later passed its checker. The separately authorized SPEC/SDD gate initially found two transient documentary blockers, resolved by P12-SPEC-SDD-R1. The implementation prompt gate later completed with checker PASS; the current authority is recorded at the top.
 
@@ -360,7 +362,7 @@ Known deferred artifact items at v1.0 close: 0.
 
 Last session: 2026-08-08T03:10:00Z
 
-Stopped at: 13-02 R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW; 13-03 NOT AUTHORIZED
+Stopped at: 13-02 HUMAN APPROVED — PASS; 13-03 NOT AUTHORIZED
 
 Resume files:
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-02-SUMMARY.md`,
@@ -368,7 +370,7 @@ Resume files:
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-01-SUMMARY.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: human re-review of P13-13-02-R1. Do not start 13-03 without new explicit authorization.
+Next permitted step: 13-03 is eligible for separate human authorization. Do not start 13-03 without new explicit authorization.
 
 Do not automatically start 13-03..13-07, Phase 14, or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
@@ -387,10 +389,10 @@ rollback, or move or recreate tag `v1.0`.
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R4 | Moved stale/reclaim policy to pure `checkout-completion/staleness.ts`; OperationalAlert consumes it; money path no longer imports alert module; focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R3 | Restricted OperationalAlert Admin reads to user actors via `requireAdminActor`; API-key actors rejected; focused HTTP/Unit + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R2 | Removed runtime `rtk` dependency from disposable PostgreSQL Docker harness; Cursor/WSL2 Docker proven; serial PG 5/5 + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
-| 2026-07-23 | P12-POST-CLOSURE-PR7-R1 | Corrected three Codex PR7 findings (refund replay audit, exchange reconciliation, alert scanner pagination); focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
+| 2026-07-23 | P12-POST-CLOSURE-PR1 | Corrected three Codex PR7 findings (refund replay audit, exchange reconciliation, alert scanner pagination); focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | phase-12-closure | Closed Phase 12 documentally after accepted execution, validation and human REVIEW; all 12 backend MVP phases closed; no Phase 13, milestone closeout, push or deploy. |
 | 2026-07-16 | 260716-p3o-encerrar-formalmente-a-estabiliza-o-no-s | Estabilização formalmente encerrada; incidente monetário, versionamento automático e TLS do cache Redis resolvidos; fallbacks classificados e isolados; produção saudável; próximos passos obsoletos removidos. |
-| 2026-07-16 | 260715-infra01-release-infrastructure | INFRA-01 PASS: release DB-only isolation and Redis production fail-fast; Unit 766/766, Modules 463/463, HTTP 172/172, lint 0/207, build PASS; CACHE-01A/B PASS; two local commits; no push/deploy. |
+| 2026-07-16 | 260715-infra01-release-infrastructure | INFRA-01 PASS: release DB-only isolation and Redis production fail-fast; Unit 766/766, Modules 463/463, HTTP 172/172, lint 0/207, build PASS. CACHE-01A/B PASS; two local commits; no push/deploy. |
 | 2026-06-25 | 260625-i9n-remover-canary-de-stripe-com-formato-rea | Removed a Stripe-shaped test canary from observability tests and rewrote the local 01-04 commit with autosquash so GitHub Push Protection can accept the branch push. |
 | 2026-06-26 | 260626-hsr-heroku-supabase-redis-checkpoint | Documented the Heroku/Supabase/Redis deployment stabilization checkpoint and recorded the next cycle as production backend smoke test. |
 | 2026-06-26 | 2026-06-26-production-backend-smoke | Validated production backend smoke on Heroku/Supabase/Redis with health, version, dynos, logs, public read-only routes, and no business-data mutation; Phase 01 is ready for closure while Phase 02 remains blocked. |
