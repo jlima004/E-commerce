@@ -62,6 +62,12 @@ export type AppEnv = {
   GELATO_WEBHOOK_AUTH_HEADER_NAME: string
   GELATO_WEBHOOK_SECRET: string | undefined
   TRACKING_TOKEN_PEPPER: string | undefined
+  /**
+   * Validated base64url pepper for Store Idempotency-Key HMAC.
+   * Production requires decoded length >= 32. Development/test use a
+   * deterministic synthetic default when unset. Never log this value.
+   */
+  STORE_IDEMPOTENCY_KEY_PEPPER: string
   ADMIN_REFUND_REQUEST_ENABLED: boolean
   ADMIN_EXCHANGE_REQUEST_ENABLED: boolean
   API_DOCS_ENABLED: boolean
@@ -69,6 +75,10 @@ export type AppEnv = {
   API_DOCS_PUBLIC_ENABLED: boolean
   API_DOCS_INTERNAL_ENABLED: boolean
 }
+
+/** Synthetic deterministic default for development/test only (32 zero bytes, base64url). */
+export const STORE_IDEMPOTENCY_KEY_PEPPER_DEV_DEFAULT =
+  Buffer.alloc(32, 0).toString("base64url")
 
 function isProduction(input: Record<string, string | undefined>): boolean {
   return input.NODE_ENV === "production"
@@ -106,6 +116,43 @@ function parseWorkerMode(value: string | undefined, fieldName: string): WorkerMo
   throw new Error(
     `Invalid ${fieldName}: must be one of ${WORKER_MODES.join(", ")}`
   )
+}
+
+function parseStoreIdempotencyKeyPepper(
+  value: string | undefined,
+  production: boolean
+): string {
+  const trimmed = value?.trim()
+
+  if (!trimmed) {
+    if (production) {
+      throw new Error("Missing required variable: STORE_IDEMPOTENCY_KEY_PEPPER")
+    }
+    return STORE_IDEMPOTENCY_KEY_PEPPER_DEV_DEFAULT
+  }
+
+  if (!/^[A-Za-z0-9_-]+$/.test(trimmed)) {
+    throw new Error(
+      "Invalid STORE_IDEMPOTENCY_KEY_PEPPER: must be base64url"
+    )
+  }
+
+  let decoded: Buffer
+  try {
+    decoded = Buffer.from(trimmed, "base64url")
+  } catch {
+    throw new Error(
+      "Invalid STORE_IDEMPOTENCY_KEY_PEPPER: must be base64url"
+    )
+  }
+
+  if (decoded.length < 32) {
+    throw new Error(
+      "Invalid STORE_IDEMPOTENCY_KEY_PEPPER: decoded length must be at least 32 bytes"
+    )
+  }
+
+  return trimmed
 }
 
 function parseBoundedInteger(
@@ -311,6 +358,7 @@ export function parseEnv(
     GELATO_WEBHOOK_AUTH_HEADER_NAME: z.string().optional(),
     GELATO_WEBHOOK_SECRET: z.string().optional(),
     TRACKING_TOKEN_PEPPER: z.string().optional(),
+    STORE_IDEMPOTENCY_KEY_PEPPER: z.string().optional(),
     ADMIN_REFUND_REQUEST_ENABLED: z.string().optional(),
     ADMIN_EXCHANGE_REQUEST_ENABLED: z.string().optional(),
   })
@@ -397,6 +445,10 @@ export function parseEnv(
       "X-GELATO-WEBHOOK-SECRET",
     GELATO_WEBHOOK_SECRET: data.GELATO_WEBHOOK_SECRET?.trim() || undefined,
     TRACKING_TOKEN_PEPPER: data.TRACKING_TOKEN_PEPPER?.trim() || undefined,
+    STORE_IDEMPOTENCY_KEY_PEPPER: parseStoreIdempotencyKeyPepper(
+      data.STORE_IDEMPOTENCY_KEY_PEPPER,
+      production
+    ),
     ADMIN_REFUND_REQUEST_ENABLED: parseBoolean(
       normalized.ADMIN_REFUND_REQUEST_ENABLED,
       "ADMIN_REFUND_REQUEST_ENABLED",

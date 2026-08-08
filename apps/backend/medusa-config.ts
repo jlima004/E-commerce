@@ -94,6 +94,10 @@ const modules = [
     resolve: "./src/modules/tracking-access-token",
   },
   {
+    key: "store_idempotency",
+    resolve: "./src/modules/store-idempotency",
+  },
+  {
     resolve: "./src/modules/payment-attempt",
   },
   {
