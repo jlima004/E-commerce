@@ -73,6 +73,7 @@ Post-plan implementation commit(s):
 
 Post-R1 correction commit(s):
 - `aad75bc` — fix(13-01): prove CAS rollback after executed update
+- `8948af5` — docs(13-01): reconcile R1 review findings
 
 ## Performance
 
