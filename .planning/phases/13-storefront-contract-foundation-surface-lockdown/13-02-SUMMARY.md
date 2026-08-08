@@ -52,7 +52,7 @@ requirements-evidenced: [FND-01, FND-02, FND-07]
 
 duration: 8min
 completed: 2026-08-08
-status: technical-pass-awaiting-human-review
+status: r1-correction-complete-awaiting-human-re-review
 ---
 
 # Phase 13 Plan 02: Fail-Closed Store Lockdown Summary
@@ -62,14 +62,17 @@ status: technical-pass-awaiting-human-review
 ## Identity
 
 Plan: 13-02  
-Status: TECHNICAL PASS — AWAITING HUMAN REVIEW (Task 3)  
+Status: R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW  
 Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`  
 Pre-plan / Execution base SHA: `0a06b57d91954a330a16de508819d1769a149c18`
+P13_13_02_R1_PRE_HEAD: `c4d19c69d4bf9dc6d433b997b1fc81fdbab391f3`
 
 Post-execution commits:
 - `e077e8d` — docs(13-02): lock legacy test impact inventory before edits
 - `d2c8de7` — test(13-02): add failing Store surface guard unit specs
 - `5d534be` — feat(13-02): enforce fail-closed Store surface lockdown
+- `c4d19c6` — docs(13-02): complete Fail-Closed Store Lockdown plan (awaiting human review)
+- `d07058c` — fix(13-02): reconcile fail-closed Store contract and loader proof
 
 ## Performance
 
@@ -126,7 +129,7 @@ Post-execution commits:
 
 exact_set_status: LOCKED_BEFORE_EDIT
 
-Closed exact-set of unique legacy test paths (3 ≤ 4) within Store/checkout/payment/API Docs/invariants that reference operations now BLOCKED, OUTSIDE_FRONTEND_M1, or EXTENDED-disabled at runtime. No globs. No edits applied yet.
+Closed exact-set of unique legacy test paths (4 ≤ 4) within Store/checkout/payment/API Docs/invariants that reference operations now BLOCKED, OUTSIDE_FRONTEND_M1, or EXTENDED-disabled at runtime. No globs. No edits applied yet.
 
 | Path | Case/describe/test | Family | Class | Reason | Coverage replacement |
 | --- | --- | --- | --- | --- | --- |
@@ -282,13 +285,14 @@ None that block the plan goal. StoreErrorResponse envelope is intentionally defe
 
 ## Blocking failures / warnings
 
-None for Tasks 1–2. Task 3 human review is the remaining gate.
+Human review R1 findings addressed in P13-13-02-R1. Human re-review is the remaining gate.
 
 ## Next gate
 
 ```text
-13-02 COMPLETE / AWAITING HUMAN REVIEW
-13-03 NOT AUTHORIZED
+P13-13-02-R1: COMPLETE / AWAITING HUMAN RE-REVIEW
+13-02: NOT YET HUMAN-APPROVED
+13-03: NOT AUTHORIZED
 ```
 
 ## Self-Check: PASSED
@@ -299,3 +303,172 @@ None for Tasks 1–2. Task 3 human review is the remaining gate.
 - [x] Commit `e077e8d` FOUND
 - [x] Commit `d2c8de7` FOUND
 - [x] Commit `5d534be` FOUND
+
+## P13-13-02-R1 API Docs reconciliation inventory
+
+status: LOCKED_BEFORE_R1_API_DOCS_EDIT
+
+P13_13_02_R1_PRE_HEAD: `c4d19c69d4bf9dc6d433b997b1fc81fdbab391f3`
+
+| Path | Role | Planned R1 action | Reason |
+| --- | --- | --- | --- |
+| `apps/backend/src/api-docs/coverage/exclusions.ts` | Closed-set route exclusions | Add attach exclusion; expand exact-set to 4 | Runtime DENY must not advertise public Store operation (B13-02-R1-01); complete exclusion already HUMAN ACCEPTED |
+| `apps/backend/src/api-docs/operations/store/customers.ts` | TypeScript registry authority for attach `path+method` | Remove public/executable attach operation registration only | Sole registry file that registers `POST /store/customers/me/cart/attach` |
+| `apps/backend/src/api-docs/operations/store/schemas.ts` | Attach support schemas | Preserve as TS support export; unregister from public OpenAPI | Keep `StoreCustomerCartAttach*` knowledge without path+method; Spectral rejects unused components |
+| `apps/backend/src/api-docs/__tests__/coverage.unit.spec.ts` | Coverage/exclusion regressions | Update exact exclusion set + factual test names | W13-02-R1-02 + attach exclusion closed-set |
+| `apps/backend/src/api-docs/__tests__/store-contract.unit.spec.ts` | Store public operation exact-set | Remove attach from public ops; keep schema assertions; update exclusion names | B13-02-R1-01 + W13-02-R1-02 |
+| `apps/backend/src/api-docs/__tests__/security.unit.spec.ts` | Store security regressions | Rewrite attach security case to assert public attach ABSENT; keep other business-route security | Direct consequence of removing attach public operation |
+| `apps/backend/src/api-docs/__tests__/generation.unit.spec.ts` | Generated Store path list | Remove attach from expected Store paths | Direct consequence of registry operation removal |
+| `apps/backend/src/api-docs/generated/store.openapi.json` | Writer artifact (conditional) | Regenerate via `openapi:generate -- --surface store` only if bytes change | Narrow R1 exception; never hand-edit JSON |
+
+## Human Review R1 Correction
+
+Original review:
+P13-13-02 HUMAN REVIEW — R1 REQUIRED
+
+```text
+B13-02-R1-01 API Docs runtime drift:
+FIXED
+
+B13-02-R1-02 RoutesLoader override proof:
+FIXED
+
+W13-02-R1-01 exact-set text:
+FIXED
+
+W13-02-R1-02 exclusion test names:
+FIXED
+
+W13-02-R1-03 Class C deviation:
+DOCUMENTED / ACCEPTED
+
+W13-02-R1-04 strict OPTIONS:
+FIXED
+```
+
+## API Docs reconciliation evidence
+
+```text
+Attach runtime:
+DENY
+
+Attach public OpenAPI operation:
+ABSENT
+
+Attach exclusion:
+PRESENT
+
+Attach schema/support:
+YES — TypeScript STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS retained;
+not registered in public OpenAPI (Spectral oas3-unused-component would fail)
+
+Complete runtime:
+DENY
+
+Complete exclusion:
+PRESENT
+
+Complete public OpenAPI:
+ABSENT
+
+Current exclusions exact-set:
+4
+(GET /admin/custom, GET /store/custom, POST /store/carts/{id}/complete,
+ POST /store/customers/me/cart/attach)
+
+Generated Store artifact:
+REGENERATED BY WRITER
+
+Writer:
+EXECUTED (npm run openapi:generate -- --surface store)
+
+openapi:lint:
+PASS
+
+openapi:check:
+NOT EXECUTED
+
+Runtime installed Store surface:
+58
+
+Manifest:
+58
+
+Current public Store OpenAPI operation count:
+9
+
+Attach path+method public:
+NO
+
+Complete path+method public:
+NO
+
+/store/custom public:
+NO
+
+Store OpenAPI version:
+1.0.0 (unchanged)
+```
+
+## RoutesLoader evidence
+
+```text
+Medusa:
+2.16.0
+
+Loader source:
+node_modules/@medusajs/framework/dist/http/routes-loader.js
+(ApiLoader orchestration: node_modules/@medusajs/framework/dist/http/router.js;
+sourceDir order: node_modules/@medusajs/medusa/dist/loaders/api.js)
+
+Duplicate route semantics:
+registerRoute last-writer-wins — trackedRoute[method] = route
+
+Native load ordering:
+Medusa core api first (join(__dirname, "../api"))
+
+Local load ordering:
+plugins after core; project-plugin (src) pushed last by getResolvedPlugins
+
+Native complete discovered:
+YES
+(@medusajs/medusa/dist/api/store/carts/[id]/complete/route.js)
+
+Local complete discovered:
+YES
+(apps/backend/src/api/store/carts/[id]/complete/route.ts)
+
+Effective POST handler:
+LOCAL OVERRIDE
+
+Executable proof:
+PASS (RoutesLoader createRoutePath + registerRoute + getRoutes identity)
+
+Direct-function-only proof:
+NO — loader resolution itself proven
+```
+
+## Human-accepted Class C contract-maintenance deviation
+
+The pre-change Class C classification remains historically unchanged.
+
+`coverage.unit.spec.ts`, `store-contract.unit.spec.ts`, `security.unit.spec.ts`,
+and `generation.unit.spec.ts` were modified only because the new fail-closed
+route behavior triggered the binding AGENTS.md API Docs Contract.
+
+This is not:
+- assertion relaxation
+- coverage removal
+- reclassification of the original inventory
+- snapshot masking
+- M1 enablement
+
+Semantic coverage remains equal or stronger.
+
+## Next gate (post-R1)
+
+```text
+P13-13-02-R1: COMPLETE / AWAITING HUMAN RE-REVIEW
+13-02: NOT YET HUMAN-APPROVED
+13-03: NOT AUTHORIZED
+```

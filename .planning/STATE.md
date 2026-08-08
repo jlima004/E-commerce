@@ -5,10 +5,10 @@ milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: storefront-contract-foundation-surface-lockdown
 status: executing
-stopped_at: 13-02 TECHNICAL PASS / AWAITING HUMAN REVIEW (Task 3); 13-03 NOT AUTHORIZED
-last_updated: "2026-08-08T02:22:51.138Z"
+stopped_at: 13-02 R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW; 13-03 NOT AUTHORIZED
+last_updated: "2026-08-08T03:10:00.000Z"
 last_activity: 2026-08-08
-last_activity_desc: 13-02 technical pass awaiting human review
+last_activity_desc: 13-02 R1 correction complete awaiting human re-review
 progress:
   total_phases: 10
   completed_phases: 0
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; 13-02 TECHNICAL PASS awaiting human review (Task 3). Há 7 planos e 1 SUMMARY pending human approval (13-01 PASS; 13-02 not human-approved yet). Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-03..13-07 remain NOT AUTHORIZED. Deploy and frontend are not authorized.
+**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; 13-02 R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW. Há 7 planos e 1 SUMMARY pending human re-review (13-01 PASS; 13-02 not human-approved yet). Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-03..13-07 remain NOT AUTHORIZED. Deploy and frontend are not authorized.
 
 ```text
 Phase 12 CONTEXT approved
@@ -134,17 +134,17 @@ Phase 13 Implementation Prompt: APPROVED
 Phase 13 EXECUTING
 P13-13-01-R1: HUMAN RE-REVIEW PASS
 13-01: HUMAN APPROVED — PASS
-13-02: TECHNICAL PASS / AWAITING HUMAN REVIEW (Task 3)
+13-02: R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
 13-03: NOT AUTHORIZED
 13-04..13-07: NOT AUTHORIZED
-Phase 13 plans: 7 planned / 1 human-approved executed; 13-02 SUMMARY pending human approval
+Phase 13 plans: 7 planned / 1 human-approved executed; 13-02 SUMMARY pending human re-review
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 Milestone requirements complete: 0/91
 Phases complete: 0/10
 Deploy: NOT AUTHORIZED
 frontend blocked / not started / not authorized
-next permitted step: human review of 13-02 SUMMARY / Task 3; do not start 13-03 without new explicit authorization.
+next permitted step: human re-review of P13-13-02-R1; do not start 13-03 without new explicit authorization.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -184,11 +184,11 @@ Produção: saudável
 ## Current Position
 
 Phase: 13 (storefront-contract-foundation-surface-lockdown) — EXECUTING
-Plan: 2 of 7 (technical complete; human review pending)
-Status: 13-02 TECHNICAL PASS / AWAITING HUMAN REVIEW
-Current gate: CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; 13-02 TECHNICAL PASS / AWAITING HUMAN REVIEW (Task 3); 13-03 NOT AUTHORIZED
-Last activity: 2026-08-08 — 13-02 technical pass awaiting human review
-Next: human review of 13-02 SUMMARY / Task 3; do not start 13-03 without new explicit authorization
+Plan: 2 of 7 (R1 correction complete; human re-review pending)
+Status: 13-02 R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
+Current gate: CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; 13-02 R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW; 13-03 NOT AUTHORIZED
+Last activity: 2026-08-08 — 13-02 R1 correction complete awaiting human re-review
+Next: human re-review of P13-13-02-R1; do not start 13-03 without new explicit authorization
 
 Progress: [░░░░░░░░░░] 0% phases (0/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
@@ -358,9 +358,9 @@ Known deferred artifact items at v1.0 close: 0.
 
 **Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-02-SUMMARY.md
 
-Last session: 2026-08-08T02:21:57Z
+Last session: 2026-08-08T03:10:00Z
 
-Stopped at: 13-02 TECHNICAL PASS / AWAITING HUMAN REVIEW (Task 3); 13-03 NOT AUTHORIZED
+Stopped at: 13-02 R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW; 13-03 NOT AUTHORIZED
 
 Resume files:
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-02-SUMMARY.md`,
@@ -368,7 +368,7 @@ Resume files:
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-01-SUMMARY.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: human review of 13-02 SUMMARY / Task 3 checkpoint. Do not start 13-03 without new explicit authorization.
+Next permitted step: human re-review of P13-13-02-R1. Do not start 13-03 without new explicit authorization.
 
 Do not automatically start 13-03..13-07, Phase 14, or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
