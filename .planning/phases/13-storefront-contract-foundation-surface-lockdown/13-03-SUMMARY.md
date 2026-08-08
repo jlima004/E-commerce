@@ -30,6 +30,7 @@ key-files:
     - .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-03-SUMMARY.md
   modified:
     - apps/backend/src/api/middlewares.ts
+    - apps/backend/integration-tests/http/sentry.spec.ts
     - .planning/STATE.md
     - .planning/ROADMAP.md
 
@@ -69,6 +70,7 @@ Pre-plan HEAD / P13_13_03_PRE_HEAD: `5e8d371db56c46164104998325c71dcb55460a3b`
 Post-technical HEAD (initial 13-03): `deba5c39f371fea029ad6f18b3b0804b6fdb37cc`
 Pre-R1 HEAD: `118fdd3bc9259b12b19b058b8a4711fcc6f898e3`
 Post-R1 technical HEAD: `389e0e9f830526520bf61da25af6db3da47e4712`
+Post-R1 final/documentary HEAD: `30478cb5776a36c51bb898ed2da81a7280ec7025`
 
 Post-execution commits (initial technical PASS — preserved history):
 - `3022943` — test(13-03): define Store error contract regressions
@@ -81,7 +83,7 @@ Human review returned `P13-13-03 HUMAN REVIEW: R1 REQUIRED` (core architecture A
 
 R1 commits:
 - `389e0e9` — fix(13-03): harden Store error contract fail-closed behavior
-- (this docs commit) — docs(13-03): record R1 human review corrections
+- `30478cb` — docs(13-03): record R1 human review corrections
 
 ## Pre-implementation consistency
 
@@ -148,7 +150,9 @@ R1 commits:
 | `/store/carts/{id}/complete` | still DENY before handler; local override untouched |
 | Order from Store | 0 |
 
-## Tests
+## Tests — initial technical PASS (historical)
+
+The following results are preserved as the pre-R1 technical PASS snapshot and are superseded by the final R1 regression matrix below.
 
 | Suite | Result |
 | --- | --- |
@@ -158,7 +162,9 @@ R1 commits:
 | additional Admin regression | NOT RUN — no authorized Admin suite path required by PLAN; Admin isolation covered inside `store-error-contract.spec.ts` |
 | `git diff --check` | PASS |
 
-## Scope
+## Scope — initial technical PASS (historical)
+
+The following scope snapshot is preserved as pre-R1 history. The accepted R1 expansion added `sentry.spec.ts`; see **Files modified (R1)** below.
 
 | Topic | Value |
 | --- | --- |
@@ -267,6 +273,29 @@ Unexpected / package / lock / migrations / OpenAPI: NONE
 13-05..13-07: NOT AUTHORIZED
 Plans human-approved executed: 2/7
 Phase requirements covered: 8/8
+Phase requirements complete: 0/8
+Milestone requirements complete: 0/91
+Deploy: NOT AUTHORIZED
+Frontend M1: BLOCKED
+```
+
+## P13-13-03-R2 Documentary Reconciliation
+
+Documentary-only synchronization after the technical human re-review of R1. No runtime, tests, `STATE.md`, `ROADMAP.md`, OpenAPI, package/lockfile, migration, provider, deploy, or frontend artifacts are changed by R2.
+
+Corrections applied:
+- `key-files.modified` now includes `apps/backend/integration-tests/http/sentry.spec.ts`;
+- Post-R1 final/documentary HEAD is recorded as `30478cb5776a36c51bb898ed2da81a7280ec7025`;
+- the R1 documentation commit is recorded as `30478cb` rather than a placeholder;
+- pre-R1 `Tests` and `Scope` sections are explicitly historical and superseded by the final R1 evidence below.
+
+Gate remains unchanged pending human documentary re-review:
+
+```text
+13-03: R1 CORRECTION COMPLETE — AWAITING HUMAN RE-REVIEW
+13-03: NOT YET HUMAN-APPROVED
+13-04..13-07: NOT AUTHORIZED
+Plans human-approved executed: 2/7
 Phase requirements complete: 0/8
 Milestone requirements complete: 0/91
 Deploy: NOT AUTHORIZED
