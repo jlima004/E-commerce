@@ -18,7 +18,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - `parallelization = false`;
 - sequência obrigatória: `13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22`;
 - cada gate CONTEXT, RESEARCH, PLAN, SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW e CLOSURE para revisão humana;
-- Phase 13 CONTEXT e RESEARCH estão aprovados; PLAN está completo com 7 planos e 0 executados, aguardando revisão humana; SPEC/SDD, execução, implementation, deploy e frontend não foram iniciados nem autorizados.
+- Phase 13 CONTEXT, RESEARCH, PLAN R5, SPEC/SDD R1 e Implementation Prompt estão aprovados; 13-01 executado com correção R1 aguardando re-review humana; 1/7 planos executados; 13-02 e demais planos não autorizados; deploy e frontend bloqueados.
 
 ## Milestones
 
@@ -33,7 +33,7 @@ O snapshot histórico de v1.0 permanece em [v1.0-ROADMAP.md](milestones/v1.0-ROA
 
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
-| 13 | Storefront Contract Foundation & Surface Lockdown | 1/7 | In Progress|  |
+| 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | 1/7 plans executed / In Progress |
 | 14 | Customer Auth & Verification | 13 | 9 | Not started |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
@@ -196,12 +196,23 @@ Frontend Milestone 1: AUTHORIZED TO START
 ```text
 Milestone v1.0: archived / immutable
 Milestone v1.1: opened
-Phase 13 CONTEXT: approved
-Phase 13 RESEARCH: approved
-Phase 13 PLAN: complete / awaiting human review
-Plans: 1/7 plans executed
 
-- [x] 13-01-PLAN.md
+Phase 13 CONTEXT: APPROVED
+Phase 13 RESEARCH: APPROVED
+Phase 13 PLAN R5: APPROVED
+Phase 13 SPEC/SDD R1: APPROVED
+Phase 13 Implementation Prompt: APPROVED
+
+13-01:
+EXECUTED / R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
+
+13-02:
+NOT AUTHORIZED
+
+Plans:
+1/7 executed
+
+- [x] 13-01-PLAN.md (R1 correction awaiting human re-review)
 - [ ] 13-02-PLAN.md
 - [ ] 13-03-PLAN.md
 - [ ] 13-04-PLAN.md
@@ -209,11 +220,14 @@ Plans: 1/7 plans executed
 - [ ] 13-06-PLAN.md
 - [ ] 13-07-PLAN.md
 
-SPEC/SDD: not started / not authorized
-Execution: not started / not authorized
-Implementation: not started / not authorized
-Deploy: not started / not authorized
-Frontend Milestone 1: blocked / not started / not authorized
+Phase requirements complete:
+0/8
+
+Milestone requirements complete:
+0/91
+
+Deploy: NOT AUTHORIZED
+Frontend Milestone 1: BLOCKED / not started / not authorized
 ```
 
 ---

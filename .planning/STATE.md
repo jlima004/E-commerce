@@ -4,11 +4,11 @@ milestone: v1.1
 milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: Storefront Contract Foundation & Surface Lockdown
-status: executing
-stopped_at: Phase 13 SPEC/SDD R1 complete / awaiting explicit human re-review before Implementation Prompt or any execution
-last_updated: "2026-08-08T01:07:12.590Z"
+status: phase-13-plan-13-01-r1-complete-awaiting-human-re-review
+stopped_at: P13-13-01-R1 complete / awaiting explicit human re-review
+last_updated: "2026-08-08T01:26:10.424Z"
 last_activity: 2026-08-08
-last_activity_desc: Phase 13 execution started
+last_activity_desc: 13-01 R1 correction complete; Wave 0 rollback proof corrected and governance synchronized; awaiting human re-review
 progress:
   total_phases: 10
   completed_phases: 0
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 COMPLETE / AWAITING HUMAN RE-REVIEW. Há 7 planos e 0 executados. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. Implementation Prompt, execution, deploy and frontend are not started or authorized.
+**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; 13-01 executed; R1 correction awaiting human re-review. Há 7 planos e 1 executado. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-02 NOT AUTHORIZED. Deploy and frontend are not authorized.
 
 ```text
 Phase 12 CONTEXT approved
@@ -128,16 +128,21 @@ repository archive identity differs from runtime deployed SHA: true
 next milestone: v1.1 open
 Phase 13 CONTEXT: APPROVED
 Phase 13 RESEARCH: APPROVED
-Phase 13 PLAN: APPROVED (R5 baseline 973310f)
-Phase 13 SPEC/SDD: R1 COMPLETE / AWAITING HUMAN RE-REVIEW
-Phase 13 plans: 7 planned / 0 executed
+Phase 13 PLAN R5: APPROVED
+Phase 13 SPEC/SDD R1: APPROVED
+Phase 13 Implementation Prompt: APPROVED
+Phase 13 EXECUTING
+13-01: R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
+13-02: NOT AUTHORIZED
+13-03..13-07: NOT AUTHORIZED
+Phase 13 plans: 7 planned / 1 executed
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 Milestone requirements complete: 0/91
 Phases complete: 0/10
-Phase 13 Implementation Prompt / execution / deploy: NOT STARTED / NOT AUTHORIZED
+Deploy: NOT AUTHORIZED
 frontend blocked / not started / not authorized
-next permitted step: human re-review of Phase 13 SPEC/SDD R1; do not start Implementation Prompt or EXECUTION without new explicit authorization.
+next permitted step: human re-review of P13-13-01-R1; do not start 13-02 without new explicit authorization.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -177,18 +182,18 @@ Produção: saudável
 ## Current Position
 
 Phase: 13 (Storefront Contract Foundation & Surface Lockdown) — EXECUTING
-Plan: 2 of 7
-Status: Ready to execute
-Current gate: Phase 13 SPEC/SDD R1 COMPLETE / AWAITING HUMAN RE-REVIEW
-Last activity: 2026-08-08 — Phase 13 execution started
-Next: human re-review of Phase 13 SPEC/SDD R1; do not start Implementation Prompt or EXECUTION without new explicit authorization
+Plan: 1 of 7 (13-01 R1 correction complete)
+Status: phase-13-plan-13-01-r1-complete-awaiting-human-re-review
+Current gate: CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; 13-01 executed; R1 correction awaiting human re-review; 13-02 NOT AUTHORIZED
+Last activity: 2026-08-08 — 13-01 R1 correction complete; Wave 0 rollback proof corrected and governance synchronized; awaiting human re-review
+Next: human re-review of P13-13-01-R1; do not start 13-02 without new explicit authorization
 
 Progress: [░░░░░░░░░░] 0% phases (0/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 Milestone requirements complete: 0/91
 Phases complete: 0/10
-Plans executed: 0/7
+Plans executed: 1/7
 frontend blocked
 
 ## Historical v1.0 Performance Metrics
@@ -349,24 +354,26 @@ Known deferred artifact items at v1.0 close: 0.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-SPEC.md
+**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-01-SUMMARY.md
 
-Last session: 2026-08-08T01:07:12.576Z
+Last session: 2026-08-08T01:26:10.424Z
 
-Stopped at: Phase 13 SPEC/SDD R1 complete / awaiting explicit human re-review before Implementation Prompt or any execution
+Stopped at: P13-13-01-R1 complete / awaiting explicit human re-review
 
 Resume files:
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-SPEC.md`,
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-SDD.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-01-SUMMARY.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CONTEXT.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-RESEARCH.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-SPEC.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-SDD.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-01-PLAN.md` through `13-07-PLAN.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-VALIDATION.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-IMPLEMENTATION-PROMPT.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: human re-review of Phase 13 SPEC/SDD R1 (`13-SPEC.md` + `13-SDD.md`). Implementation Prompt and EXECUTION require new explicit authorization.
+Next permitted step: human re-review of P13-13-01-R1. Do not start 13-02 without new explicit authorization.
 
-Do not automatically start Phase 13 Implementation Prompt, EXECUTION, or frontend,
+Do not automatically start 13-02..13-07, Phase 14, or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
 rollback, or move or recreate tag `v1.0`.
 

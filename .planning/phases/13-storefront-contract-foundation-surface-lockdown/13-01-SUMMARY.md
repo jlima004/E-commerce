@@ -45,11 +45,15 @@ patterns-established:
   - "BLOCKED ⇒ DENY mandatory; EXTENDED/OUTSIDE never imply a universal runtime_policy"
   - "Transactional foundation feasibility proven before StoreResourceVersion module/migration"
 
-requirements-completed: [FND-01, FND-06]
+# Evidence produced in 13-01 (not completion — Phase 13 still requires later plans):
+# FND-01: 13-01 + 13-02 + 13-07
+# FND-06: 13-01 + 13-05 + 13-07
+requirements-completed: []
+requirements-evidenced: [FND-01, FND-06]
 
 duration: 7min
 completed: 2026-08-08
-status: complete
+status: r1-correction-complete-awaiting-human-re-review
 ---
 
 # Phase 13 Plan 01: Surface Manifest & Feasibility Gate Summary
@@ -59,13 +63,16 @@ status: complete
 ## Identity
 
 Plan: 13-01  
-Status: PASS  
+Status: R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
 Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`  
 PHASE13_EXECUTION_BASE_SHA: `1c6a1dfcea4c74db4dd988a733213f103b5447f4`  
 Pre-plan HEAD: `1c6a1dfcea4c74db4dd988a733213f103b5447f4`  
 Post-plan implementation commit(s):
 - `0e93d9d` — feat(13-01): lock Store surface manifest and exact-set scanner
 - `ce1ce38` — feat(13-01): prove Wave 0 shared transaction manager and CAS
+
+Post-R1 correction commit(s):
+- `aad75bc` — fix(13-01): prove CAS rollback after executed update
 
 ## Performance
 
@@ -130,12 +137,26 @@ Scaffold `GET /store/custom` is BLOCKED+DENY.
 | Manager identity | PASS | `transactionManager === activeManager === mutationManager === casManager`; identity tokens equal |
 | Same PostgreSQL transaction | PASS | `txid_current()` identical across mutation and CAS (`sameTransactionId=true`) |
 | Single atomic commit | PASS | CheckoutCompletionLog row + probe mutation row + version bump all present after success |
-| Atomic rollback | PASS | Injected error after mutation → zero Medusa row, zero probe mutation, version unchanged |
+| Atomic rollback | PASS | CAS successfully executed inside same transaction; injected failure occurred after successful CAS and before commit; external post-rollback reads prove Medusa row=0, probe mutation=0, version restored to original |
 | CAS concurrency | PASS | Two writers same `expectedVersion` → exactly one winner, one `STORE_FOUNDATION_CAS_CONFLICT` |
 | Redis independence | PASS | Disposable env Redis URLs empty; failing locking coordinator; CAS still correct |
 
 Controlled Medusa mutation subject: `checkoutCompletion.createCheckoutCompletionLogs(..., sharedContext)`.  
 Probe tables (`store_foundation_tx_probe_mutation`, `store_foundation_tx_probe_version`) created only in disposable DB — no product migration.
+
+### Atomic rollback (R1 corrected contract)
+
+```text
+Atomic rollback: PASS
+
+Evidence:
+CAS successfully executed inside same transaction (onCasSucceeded + in-tx version read 3→4);
+injected failure occurred after successful CAS and before commit (injectErrorAfterCas);
+external post-rollback reads prove:
+Medusa row=0,
+probe mutation=0,
+version restored to original (3).
+```
 
 ## Tests
 
@@ -248,22 +269,99 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- FND-01 exact-set SSOT is materialised and scanner-gated.
-- FND-06 transactional premise is PROVEN (not inferred).
-- **13-02 is NOT AUTHORIZED** until human PASS on this SUMMARY.
+- FND-01: 13-01 evidence produced (exact-set SSOT + scanner). Not complete — still requires 13-02 + 13-07.
+- FND-06: Wave 0 prerequisite evidence produced (shared TM + CAS + corrected rollback). Not complete — still requires 13-05 + 13-07.
+- Phase 13 requirements complete: 0/8
+- Milestone requirements complete: 0/91
+- Plans executed: 1/7
+- **13-02 is NOT AUTHORIZED** until human re-review PASS on this R1 SUMMARY.
 - Do not start lockdown middleware, idempotency module, resource-version module, OpenAPI 1.1.0, deploy, or Frontend M1.
+
+## Human Review R1 Correction
+
+Original human review: **R1 REQUIRED**
+
+Blockers:
+- B13-01-R1-01 rollback CAS proof
+- B13-01-R1-02 premature requirement completion
+- B13-01-R1-03 stale STATE/ROADMAP
+
+Warning:
+- W13-01-R1-01 catalog owner_phase reconciliation
+
+### R1 corrections applied
+
+| Finding | Result |
+|---|---|
+| B13-01-R1-01 | FIXED — `injectErrorAfterCas` after successful CAS; `onCasSucceeded` + in-tx version verify prove CAS executed; post-rollback Medusa/probe/version all restored |
+| B13-01-R1-02 | FIXED — `requirements-completed: []`; FND-01/FND-06 recorded as evidenced only |
+| B13-01-R1-03 | FIXED — STATE/ROADMAP current gate synchronized to 13-01 R1 awaiting human re-review |
+| W13-01-R1-01 | CORRECTED WITH AUTHORITY — see Catalog owner_phase reconciliation |
+
+### Catalog owner_phase reconciliation
+
+```text
+Catalog owner_phase reconciliation:
+CORRECTED WITH AUTHORITY
+
+Owner:
+21
+
+Previous (incorrect):
+16
+
+Authority:
+- .planning/ROADMAP.md Phase 21 = Order Confirmation & Catalog Handoff (CAT-01..CAT-04)
+- .planning/REQUIREMENTS.md Phase 21 CAT-01..CAT-04 (catalog handle/DTO/revalidation)
+- 13-RESEARCH.md §18 Downstream Findings Phase 21 Order/Catalog:
+  "Product routes preservam serializer atual"
+- 13-SPEC.md / 13-CONTEXT.md: Phase 16 = merge/review only;
+  Phase 21 = order summary / catalog revalidation
+
+Reason:
+No approved authority assigns GET /store/products or GET /store/products/{id}
+to Phase 16 (Cart Merge & Review). Catalog M1 ownership and product-route
+preservation are bound to Phase 21. Classification, runtime_policy,
+m1_enablement, openapi expectation, and 58-route exact-set unchanged.
+```
+
+### R1 Wave 0 revalidation
+
+```text
+Command: cd apps/backend && node scripts/run-disposable-postgres-tests.mjs -- npm run test:integration:modules -- --runTestsByPath src/modules/checkout/__tests__/store-foundation-transaction-compatibility.spec.ts --runInBand
+Exit code: 0
+Suites: 1 passed, 1 total
+Tests: 6 passed, 6 total
+Result: PASS
+```
+
+### R1 manifest regression
+
+```text
+Command: cd apps/backend && npm run test:unit -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts --runInBand
+Exit code: 0
+Suites: 1 passed, 1 total
+Tests: 8 passed, 8 total
+Result: PASS
+
+Scanner: STORE_SURFACE_SCAN_OK — 58/58, 0/10/17/31, DENY=51, PRESERVE_LEGACY=7, M1_ENABLED=0
+```
 
 ## Gate
 
 ```text
-13-01 COMPLETE / AWAITING HUMAN REVIEW
-13-02 NOT AUTHORIZED
-13-03..13-07 NOT AUTHORIZED
-Deploy NOT AUTHORIZED
-Frontend M1 BLOCKED
+P13-13-01-R1: COMPLETE / AWAITING HUMAN RE-REVIEW
+13-01: NOT YET HUMAN-APPROVED
+13-02: NOT AUTHORIZED
+13-03..13-07: NOT AUTHORIZED
+Deploy: NOT AUTHORIZED
+Frontend M1: BLOCKED
+Phase 13 requirements complete: 0/8
+Milestone requirements complete: 0/91
+Plans executed: 1/7
 ```
 
-Human must record PASS or BLOCKED. Only PASS unlocks a separate authorization request for 13-02.
+Human must record PASS or BLOCKED on R1. Only PASS unlocks a separate authorization request for 13-02.
 
 ## Self-Check: PASSED
 
