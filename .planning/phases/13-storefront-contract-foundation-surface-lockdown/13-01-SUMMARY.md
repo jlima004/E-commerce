@@ -53,7 +53,7 @@ requirements-evidenced: [FND-01, FND-06]
 
 duration: 7min
 completed: 2026-08-08
-status: r1-correction-complete-awaiting-human-re-review
+status: human-approved-pass
 ---
 
 # Phase 13 Plan 01: Surface Manifest & Feasibility Gate Summary
@@ -63,7 +63,7 @@ status: r1-correction-complete-awaiting-human-re-review
 ## Identity
 
 Plan: 13-01  
-Status: R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
+Status: HUMAN APPROVED — PASS
 Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`  
 PHASE13_EXECUTION_BASE_SHA: `1c6a1dfcea4c74db4dd988a733213f103b5447f4`  
 Pre-plan HEAD: `1c6a1dfcea4c74db4dd988a733213f103b5447f4`  
@@ -80,7 +80,7 @@ Post-R1 correction commit(s):
 - **Duration:** ~7 min
 - **Started:** 2026-08-08T00:59:10Z
 - **Completed:** 2026-08-08T01:06:30Z
-- **Tasks:** 2 automated + 1 human checkpoint (awaiting review)
+- **Tasks:** 2 automated + 1 human checkpoint (PASS)
 - **Files modified:** 5 product + 1 SUMMARY
 
 ## Accomplishments
@@ -209,7 +209,7 @@ Result: PASS
 ## Git
 
 Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`  
-No push. No PR.
+R1 implementation/documentation commits were pushed before this governance synchronization. No PR.
 
 | Commit | Message |
 |---|---|
@@ -222,7 +222,7 @@ Unrelated dirty file left untouched: `.planning/STATE.md` (begin-phase bookkeepi
 
 1. **Task 1: Fixar manifest único e scanner exact-set** — `0e93d9d` (feat)
 2. **Task 2: Executar Wave 0 binária de transação compartilhada e CAS** — `ce1ce38` (feat)
-3. **Task 3: Revisar o resultado binário da Wave 0** — awaiting human review (checkpoint)
+3. **Task 3: Revisar o resultado binário da Wave 0** — HUMAN REVIEW PASS
 
 ## Decisions Made
 
@@ -275,8 +275,9 @@ None - no external service configuration required.
 - Phase 13 requirements complete: 0/8
 - Milestone requirements complete: 0/91
 - Plans executed: 1/7
-- **13-02 is NOT AUTHORIZED** until human re-review PASS on this R1 SUMMARY.
-- Do not start lockdown middleware, idempotency module, resource-version module, OpenAPI 1.1.0, deploy, or Frontend M1.
+- **P13-13-01-R1 HUMAN RE-REVIEW: PASS** — 13-01 is human-approved.
+- **13-02 — Fail-Closed Store Lockdown: EXECUTION AUTHORIZED** by explicit human gate.
+- Execution scope is now limited to authorized `13-02`; do not start 13-03+, idempotency, resource-version, OpenAPI 1.1.0, deploy, or Frontend M1.
 
 ## Human Review R1 Correction
 
@@ -326,6 +327,20 @@ preservation are bound to Phase 21. Classification, runtime_policy,
 m1_enablement, openapi expectation, and 58-route exact-set unchanged.
 ```
 
+### Human re-review result
+
+```text
+P13-13-01-R1 HUMAN RE-REVIEW: PASS
+R1 blockers corrected: 3/3
+R1 warnings corrected: 1/1
+New human-review blockers: 0
+New human-review warnings: 0
+13-01: HUMAN APPROVED — PASS
+13-02: ELIGIBLE FOR SEPARATE AUTHORIZATION
+```
+
+Subsequent explicit human gate: `13-02 — Fail-Closed Store Lockdown` **EXECUTION AUTHORIZED**.
+
 ### R1 Wave 0 revalidation
 
 ```text
@@ -351,9 +366,9 @@ Scanner: STORE_SURFACE_SCAN_OK — 58/58, 0/10/17/31, DENY=51, PRESERVE_LEGACY=7
 ## Gate
 
 ```text
-P13-13-01-R1: COMPLETE / AWAITING HUMAN RE-REVIEW
-13-01: NOT YET HUMAN-APPROVED
-13-02: NOT AUTHORIZED
+P13-13-01-R1: HUMAN RE-REVIEW PASS
+13-01: HUMAN APPROVED — PASS
+13-02: EXECUTION AUTHORIZED
 13-03..13-07: NOT AUTHORIZED
 Deploy: NOT AUTHORIZED
 Frontend M1: BLOCKED
@@ -362,7 +377,7 @@ Milestone requirements complete: 0/91
 Plans executed: 1/7
 ```
 
-Human must record PASS or BLOCKED on R1. Only PASS unlocks a separate authorization request for 13-02.
+Human re-review recorded PASS. Separate human authorization for 13-02 has also been recorded; execution may proceed only for 13-02.
 
 ## Self-Check: PASSED
 
