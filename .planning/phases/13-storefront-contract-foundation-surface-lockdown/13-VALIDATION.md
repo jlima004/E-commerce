@@ -6,22 +6,30 @@ requirements_complete: 0
 plans: [13-01, 13-02, 13-03, 13-04, 13-05, 13-06, 13-07]
 nyquist: enabled
 manual_review_gate: true
+spec_sdd_authority: [13-SPEC.md, 13-SDD.md]
 ---
 
 # Phase 13 — Validation Strategy
 
 ## Status and evidence rule
 
-Este documento descreve provas **futuras**. Nenhum comando foi executado no gate PLAN e nenhum requirement está completo.
+Este documento descreve provas **futuras**. Nenhum comando de produto foi executado nos gates PLAN/SPEC-SDD e nenhum requirement está completo.
+
+Autoridade documental de contratos (o quê/como) para a futura execução:
+`13-SPEC.md` e `13-SDD.md`. Este VALIDATION permanece a autoridade das provas
+e evidências; o SPEC/SDD não marca requirement complete nem autoriza execução.
 
 ```text
 Status: DRAFT / PENDING EXECUTION / PENDING HUMAN REVIEW
+Phase 13 SPEC/SDD: R1 COMPLETE / AWAITING HUMAN RE-REVIEW (documentary only)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 Milestone requirements complete: 0/91
 Phases complete: 0/10
 Plans executed: 0/7
 Frontend Milestone 1: BLOCKED
+Implementation Prompt: NOT AUTHORIZED
+Execution: NOT AUTHORIZED
 ```
 
 Uma linha só recebe PASS quando o comando, exit code, contagem, diff e SUMMARY correspondentes existirem. Falha relevante é `BLOCKED`, nunca “PASS com débito”.
@@ -177,10 +185,11 @@ resulta em `13-02: BLOCKED` e nova revisão humana.
 
 `StoreIdempotencyRecord` inclui operation, actor_scope_hash,
 resource_scope_hash, idempotency_key_hash, `hash_version`, `pepper_version`,
-request_fingerprint, state, result_type, result_id, response_status, safe result
-metadata/snapshot, locked_at, `state_deadline_at`, `next_retry_at`,
-`retry_attempt_count`, `retry_started_at`, `terminalized_at`, completed_at,
-failure_code, expires_at e timestamps.
+request_fingerprint, state, `state_version` (monotonic lifecycle/claim
+generation; distinct from `StoreResourceVersion.version`), result_type,
+result_id, response_status, safe result metadata/snapshot, locked_at,
+`state_deadline_at`, `next_retry_at`, `retry_attempt_count`, `retry_started_at`,
+`terminalized_at`, completed_at, failure_code, expires_at e timestamps.
 
 `idempotency_key_hash` é HMAC-SHA-256 via `node:crypto`, usando exclusivamente
 `STORE_IDEMPOTENCY_KEY_PEPPER`. Produção exige pepper base64url decodificado de
@@ -208,8 +217,8 @@ UNIQUE(operation, actor_scope_hash, resource_scope_hash, idempotency_key_hash)
 | completed | replay allowlisted |
 | failed_retryable | retry apenas sob policy e certeza de ausência de efeito |
 | failed_terminal | erro terminal replayable até expiry |
-| reconciliation_required | sem blind retry e sem cleanup automático |
-| reconciliation_unresolved | terminal explícito após review deadline sem resolução; replay/auditoria até expiry |
+| reconciliation_required | resolution ≠ retry; → completed/failed_terminal só com review/evidence; → reconciliation_unresolved só no deadline 7d; blind retry FORBIDDEN; não é fila automática |
+| reconciliation_unresolved | terminal explícito após review deadline sem resolução; audit only — not financial/provider/business success; replay/auditoria até expiry |
 | stale claim | reclaim somente com ausência de side effect provada |
 | expiry/cleanup | apenas completed/failed_terminal/reconciliation_unresolved expirados removidos |
 
@@ -238,9 +247,12 @@ factual, seguindo a infraestrutura versionada em `apps/backend/src/jobs/`:
 schedule: * * * * *
 scan due state_deadline_at / next_retry_at / terminal expires_at
 → PostgreSQL transaction
-→ row lock ou atomic conditional claim com state/version predicate
-→ evaluate transition
-→ persist next state/deadline
+→ claim with row lock OR state+state_version conditional predicate
+→ exactly one worker owns transition
+→ evaluate due state
+→ persist transition/deadline
+→ increment state_version when applicable
+→ commit
 ```
 
 A cadência de um minuto é menor que `claimStaleAfter=5m`. PostgreSQL é a
@@ -354,12 +366,19 @@ Grep/static scan é evidência complementar, nunca suficiente isoladamente.
 
 ## OpenAPI writer/check separation
 
+Vocabulário canônico de `openapi_m1_expectation` (idêntico a SPEC/SDD):
+
+```text
+include_executable_m1 | exclude | support_only
+```
+
 Antes do writer, coverage prova separadamente:
 
 ```text
 runtime inventory exact-set = 58
 manifest exact-set = 58, distribuição 0/10/17/31
 executable Store business OpenAPI exact-set = AUTHORIZED + enabled EXTENDED
+  (include_executable_m1 when enablement satisfied; Phase 13 count = 0)
 ```
 
 Na Phase 13 inicial, `AUTHORIZED=0` e `enabled EXTENDED=0`; portanto o documento
@@ -520,4 +539,4 @@ Phase 13 permanece BLOCKED se qualquer um ocorrer:
 
 ## Manual review gate
 
-Após cada SUMMARY e ao final do 13-07, parar. Mesmo com todos os comandos PASS, requirements permanecem abertos até o gate de conclusão/closure explicitamente autorizado. Não iniciar SPEC/SDD, implementation fora destes plans, REVIEW/CLOSURE, Phase 14, frontend, provider ou deploy automaticamente.
+Após cada SUMMARY e ao final do 13-07, parar. Mesmo com todos os comandos PASS, requirements permanecem abertos até o gate de conclusão/closure explicitamente autorizado. Não iniciar Implementation Prompt, EXECUTION, REVIEW/CLOSURE, Phase 14, frontend, provider ou deploy automaticamente sem nova autorização explícita.

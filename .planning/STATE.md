@@ -4,11 +4,11 @@ milestone: v1.1
 milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: Storefront Contract Foundation & Surface Lockdown
-status: phase-13-plan-r5-complete-awaiting-human-re-review
-stopped_at: Phase 13 PLAN R5 complete / awaiting explicit human re-review before SPEC/SDD or next authorized gate
-last_updated: "2026-08-07T20:47:14-03:00"
+status: phase-13-spec-sdd-r1-complete-awaiting-human-re-review
+stopped_at: Phase 13 SPEC/SDD R1 complete / awaiting explicit human re-review before Implementation Prompt or any execution
+last_updated: "2026-08-07T21:30:07-03:00"
 last_activity: 2026-08-07
-last_activity_desc: P13-PLAN-R5 documentary correction complete; awaiting explicit human re-review before SPEC/SDD
+last_activity_desc: P13-SPEC-SDD-R1 documentary correction complete; awaiting explicit human re-review
 progress:
   total_phases: 10
   completed_phases: 0
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-06)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Milestone v1.1 — Backend Storefront Readiness permanece aberto com 10 phases lineares (13–22) e 91 requirements abertos. Phase 13 CONTEXT e RESEARCH estão aprovados; o PLAN R5 está completo com 7 planos e 0 executados, aguardando re-revisão humana explícita antes de SPEC/SDD. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; Phases complete: 0/10; Plans executed: 0/7. Execução, SPEC/SDD, implementation, deploy e frontend não foram iniciados nem autorizados. O Frontend Milestone 1 permanece bloqueado, não iniciado e não autorizado. Milestone v1.0 continua completo, fechado, arquivado, tagueado e publicado; sua identidade histórica é imutável. A iniciativa API-DOCS-01 continua fechada; OpenAPI/Swagger UI permanecem desabilitados em produção por padrão.
+**Current focus:** Milestone v1.1 — Backend Storefront Readiness permanece aberto com 10 phases lineares (13–22) e 91 requirements abertos. Phase 13 CONTEXT, RESEARCH e PLAN R5 estão aprovados; SPEC/SDD R1 documental (`13-SPEC.md` + `13-SDD.md`) corrigiu os findings da human review (BSS13-R1-01/02, WSS13-R1-01/02) e aguarda re-revisão humana explícita. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; Phases complete: 0/10; Plans executed: 0/7. Implementation Prompt, execução, deploy e frontend não foram iniciados nem autorizados. O Frontend Milestone 1 permanece bloqueado, não iniciado e não autorizado. Milestone v1.0 continua completo, fechado, arquivado, tagueado e publicado; sua identidade histórica é imutável. A iniciativa API-DOCS-01 continua fechada; OpenAPI/Swagger UI permanecem desabilitados em produção por padrão.
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 COMPLETE / AWAITING HUMAN RE-REVIEW. Há 7 planos e 0 executados. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. SPEC/SDD, execution, implementation, deploy and frontend are not started or authorized.
+**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 COMPLETE / AWAITING HUMAN RE-REVIEW. Há 7 planos e 0 executados. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. Implementation Prompt, execution, deploy and frontend are not started or authorized.
 
 ```text
 Phase 12 CONTEXT approved
@@ -128,15 +128,16 @@ repository archive identity differs from runtime deployed SHA: true
 next milestone: v1.1 open
 Phase 13 CONTEXT: APPROVED
 Phase 13 RESEARCH: APPROVED
-Phase 13 PLAN: R5 COMPLETE / AWAITING HUMAN RE-REVIEW
+Phase 13 PLAN: APPROVED (R5 baseline 973310f)
+Phase 13 SPEC/SDD: R1 COMPLETE / AWAITING HUMAN RE-REVIEW
 Phase 13 plans: 7 planned / 0 executed
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 Milestone requirements complete: 0/91
 Phases complete: 0/10
-Phase 13 SPEC/SDD, execution, implementation and deploy: NOT STARTED / NOT AUTHORIZED
+Phase 13 Implementation Prompt / execution / deploy: NOT STARTED / NOT AUTHORIZED
 frontend blocked / not started / not authorized
-next permitted step: human re-review of P13-PLAN-R5; do not start SPEC/SDD without new explicit authorization.
+next permitted step: human re-review of Phase 13 SPEC/SDD R1; do not start Implementation Prompt or EXECUTION without new explicit authorization.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -177,9 +178,10 @@ Produção: saudável
 
 Phase: 13 — Storefront Contract Foundation & Surface Lockdown
 Plan: 7 planned / 0 executed
-Status: phase-13-plan-r5-complete-awaiting-human-re-review
-Last activity: 2026-08-07 — P13-PLAN-R5 completed documentarily; awaiting explicit human re-review before SPEC/SDD
-Next: human re-review of P13-PLAN-R5; do not start SPEC/SDD without new explicit authorization
+Status: phase-13-spec-sdd-r1-complete-awaiting-human-re-review
+Current gate: Phase 13 SPEC/SDD R1 COMPLETE / AWAITING HUMAN RE-REVIEW
+Last activity: 2026-08-07 — P13-SPEC-SDD-R1 documentary correction complete; awaiting explicit human re-review
+Next: human re-review of Phase 13 SPEC/SDD R1; do not start Implementation Prompt or EXECUTION without new explicit authorization
 
 Progress: [░░░░░░░░░░] 0% phases (0/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
@@ -347,22 +349,24 @@ Known deferred artifact items at v1.0 close: 0.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-VALIDATION.md
+**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-SPEC.md
 
-Last session: 2026-08-07T20:47:14-03:00
+Last session: 2026-08-07T21:30:07-03:00
 
-Stopped at: Phase 13 PLAN R5 complete / awaiting explicit human re-review before SPEC/SDD or next authorized gate
+Stopped at: Phase 13 SPEC/SDD R1 complete / awaiting explicit human re-review before Implementation Prompt or any execution
 
 Resume files:
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-SPEC.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-SDD.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CONTEXT.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-RESEARCH.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-01-PLAN.md` through `13-07-PLAN.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-VALIDATION.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: human re-review of P13-PLAN-R5 across the seven `13-*-PLAN.md` files and `13-VALIDATION.md`; SPEC/SDD requires new explicit authorization.
+Next permitted step: human re-review of Phase 13 SPEC/SDD R1 (`13-SPEC.md` + `13-SDD.md`). Implementation Prompt and EXECUTION require new explicit authorization.
 
-Do not automatically start Phase 13 SPEC/SDD, execution, implementation, or frontend,
+Do not automatically start Phase 13 Implementation Prompt, EXECUTION, or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
 rollback, or move or recreate tag `v1.0`.
 
