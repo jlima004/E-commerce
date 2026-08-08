@@ -5,10 +5,10 @@ milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: storefront-contract-foundation-surface-lockdown
 status: executing
-stopped_at: 13-02 HUMAN APPROVED — PASS; 13-03 NOT AUTHORIZED
-last_updated: "2026-08-08T03:10:00.000Z"
+stopped_at: 13-03 EXECUTION AUTHORIZED; 13-04..13-07 NOT AUTHORIZED
+last_updated: "2026-08-08T16:42:00.000Z"
 last_activity: 2026-08-08
-last_activity_desc: 13-02 human-approved pass; 13-03 not authorized
+last_activity_desc: 13-03 execution authorized; 13-04..13-07 not authorized
 progress:
   total_phases: 10
   completed_phases: 0
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; P13-13-02-R1 technical human re-review PASS; P13-13-02-R2 human re-review PASS; 13-02 HUMAN APPROVED — PASS. Há 7 planos e 2 human-approved executed. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-03..13-07 remain NOT AUTHORIZED. Deploy and frontend are not authorized.
+**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; P13-13-02-R1 technical human re-review PASS; P13-13-02-R2 human re-review PASS; 13-02 HUMAN APPROVED — PASS; 13-03 EXECUTION AUTHORIZED. Há 7 planos e 2 human-approved executed. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-04..13-07 remain NOT AUTHORIZED. Deploy and frontend are not authorized.
 
 ```text
 Phase 12 CONTEXT approved
@@ -137,16 +137,16 @@ P13-13-01-R1: HUMAN RE-REVIEW PASS
 P13-13-02-R1: TECHNICAL HUMAN RE-REVIEW PASS
 P13-13-02-R2: HUMAN RE-REVIEW PASS
 13-02: HUMAN APPROVED — PASS
-13-03: NOT AUTHORIZED
+13-03: EXECUTION AUTHORIZED
 13-04..13-07: NOT AUTHORIZED
-Phase 13 plans: 7 planned / 2 human-approved executed; 13-03 NOT AUTHORIZED
+Phase 13 plans: 7 planned / 2 human-approved executed; 13-03 EXECUTION AUTHORIZED
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 Milestone requirements complete: 0/91
 Phases complete: 0/10
 Deploy: NOT AUTHORIZED
 frontend blocked / not started / not authorized
-next permitted step: 13-03 is eligible for separate human authorization; do not start 13-03 without new explicit authorization.
+next permitted step: execute authorized 13-03 only; stop for human review when 13-03 completes; do not start 13-04 without separate explicit authorization.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -186,11 +186,11 @@ Produção: saudável
 ## Current Position
 
 Phase: 13 (storefront-contract-foundation-surface-lockdown) — EXECUTING
-Plan: 2 of 7 (HUMAN APPROVED — PASS)
-Status: 13-02 HUMAN APPROVED — PASS; 13-03 NOT AUTHORIZED
-Current gate: CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; P13-13-02-R1 technical human re-review PASS; P13-13-02-R2 human re-review PASS; 13-02 HUMAN APPROVED — PASS; 13-03 NOT AUTHORIZED
-Last activity: 2026-08-08 — 13-02 HUMAN APPROVED — PASS
-Next: 13-03 is eligible for a separate human authorization; do not start 13-03 without new explicit authorization
+Plan: 2 of 7 (HUMAN APPROVED — PASS); 13-03 execution authorized
+Status: 13-03 EXECUTION AUTHORIZED; 13-04..13-07 NOT AUTHORIZED
+Current gate: CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; P13-13-02-R1 technical human re-review PASS; P13-13-02-R2 human re-review PASS; 13-02 HUMAN APPROVED — PASS; 13-03 EXECUTION AUTHORIZED
+Last activity: 2026-08-08 — 13-03 EXECUTION AUTHORIZED
+Next: execute authorized 13-03 only; stop for human review afterward; 13-04 requires separate explicit authorization
 
 Progress: [░░░░░░░░░░] 0% phases (0/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
@@ -303,7 +303,7 @@ Recent decisions affecting current work:
 - [Phase 10 closure]: Human review accepted Phase 10 at manual gate on 2026-07-02 (evidence: `10-03-SUMMARY.md`, `10-CLOSURE.md`, 45/45 unit, 11/11 HTTP, build PASS, blocking grep PASS). `TRK-01` and `TRK-02` complete. Migration real, global Redis rate limit, and client token delivery remain deferred. Phase 11 may be planned next, but execution remains blocked until explicit human approval.
 - [Phase 11 planning]: Planning-only artifacts created for Refunds & Exchanges (Admin): `11-CONTEXT.md`, `11-RESEARCH.md`, `11-VALIDATION.md`, and four manual-review-gated slices `11-01`..`11-04`. Branch registered as `gsd/phase-11-refunds-exchanges-admin`. The plan defines local `RefundRequest`, Admin-safe refund request/reservation, Stripe refund object webhook confirmation as the only local final financial truth, transactional `payment_status` recomputation without automatic `order_status = canceled`, local concurrency/idempotency guards against over-refund, operational `ExchangeRequest`, and manual/semi-automatic Correios reverse-logistics fields entered in Admin. `charge.refunded` cannot double-count financial truth; if handled, it is informational/idempotent and subordinate to refund object events. No runtime implementation, tests, build, migration, deploy, real Stripe, real Gelato, Correios API call, Stripe CLI smoke, broad `OperationalAlert`, broad `AdminActionLog`, or Phase 12 work was started.
 - [Phase 11 execution]: Plans `11-01`..`11-04` completed under manual gating on branch `gsd/phase-11-refunds-exchanges-admin`. Final validation closed with 75 unit tests, 29 HTTP integration tests, build PASS, negative greps G1–G7 PASS (G4 informational only — sanitizer Gelato URL pattern), config/lockfile no diff, and `git diff --check` PASS. RefundRequest Admin-safe reservation with captured-truth guards, idempotency, and process-local per-order concurrency claim; Stripe refund object webhook as sole local financial truth with `refund.created` never finalizing money and `charge.refunded` informational/idempotent; `payment_status` recomputation without auto-canceling `order_status`; ExchangeRequest operational workflow for `defect`/`wrong_product` with manual Correios fields and raw body allowlist on exchange routes; sanitization of notes, affected_items, and payloads. No real migration, `medusa db:migrate`, deploy, Stripe real, Stripe CLI smoke, Gelato real, Correios API, broad OperationalAlert, broad AdminActionLog, or Phase 12 work.
-- [Phase 11 closure — histórico]: Human review accepted Phase 11 at manual gate on 2026-07-03 (evidence: `11-04-SUMMARY.md`, `11-CLOSURE.md`, 75/75 unit, 29/29 HTTP, 104/104 total, build PASS, greps G1–G7 PASS, `git diff --check` PASS). `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Migration real, cross-dyno refund lock, Stripe refund production smoke, and broad alert/audit modules remain deferred. At that closure, Phase 12 was not planned or started and remained blocked until explicit human approval.
+- [Phase 11 closure — histórico]: Human review accepted Phase 11 at manual gate on 2026-07-03 (evidence: `11-04-SUMMARY.md`, `11-CLOSURE.md`, 75/75 unit, 29/29 HTTP, 104/104 total, build PASS, greps G1–G7 PASS, `git diff --check` PASS). `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Migration real, cross-dyno refund lock, Stripe refund production smoke, and broad alert/audit modules remain deferred. At that closure gate, Phase 12 was not planned or started and remained blocked until explicit human approval.
 - [Phase 12 CONTEXT]: Authorized CONTEXT-only gate completed and approved on branch `gsd/phase-12-ops-audit-critical-tests`. Decisions D12-01..D12-15 lock MVP `OperationalAlert` types (`payment_stuck`, `fulfillment_failed`), stuck-payment predicates (confirmed-without-Order; Pix past Stripe `expires_at`), AdminActionLog on refund/exchange Admin surfaces, hybrid INV suite for TEST-01, and explicit out-of-scope (alert email, REL-02 sweeper, dashboards, real providers). PLAN/execution have not started.
 - [Phase 12 RESEARCH R1]: `12-RESEARCH.md` was revised after human-review blockers R12-01..R12-07 and is approved. Strategy A cross-module atomicity is infeasible on current proof; Strategy B correlated append-only is required. OperationalAlert uses atomic PostgreSQL `ON CONFLICT`; actor is user-only; stale window is local 15m with stable timestamps; invariant HTTP files are flat and persistence/concurrency requires disposable real PostgreSQL. PLAN/VALIDATION/execution remain not started and blocked pending explicit authorization.
 - [Phase 09/12 boundary]: `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the Phase 09 local fulfillment truth and keeps FUL-04 closed. Phase 12 OPS-01 promotes that condition to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
@@ -360,19 +360,19 @@ Known deferred artifact items at v1.0 close: 0.
 
 **Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-02-SUMMARY.md
 
-Last session: 2026-08-08T03:10:00Z
+Last session: 2026-08-08T16:42:00Z
 
-Stopped at: 13-02 HUMAN APPROVED — PASS; 13-03 NOT AUTHORIZED
+Stopped at: 13-03 EXECUTION AUTHORIZED; 13-04..13-07 NOT AUTHORIZED
 
 Resume files:
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-02-SUMMARY.md`,
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-02-PLAN.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-03-PLAN.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-01-SUMMARY.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: 13-03 is eligible for separate human authorization. Do not start 13-03 without new explicit authorization.
+Next permitted step: execute authorized 13-03 only. Stop for human review after 13-03; do not start 13-04 without separate explicit authorization.
 
-Do not automatically start 13-03..13-07, Phase 14, or frontend,
+Do not automatically start 13-04..13-07, Phase 14, or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
 rollback, or move or recreate tag `v1.0`.
 
