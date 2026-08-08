@@ -29,6 +29,77 @@ function jsonSchemaRef(name: string) {
   }
 }
 
+/**
+ * Attach schema support knowledge retained for Phase 16 merge-owner flow.
+ * Not registered into public Store OpenAPI while attach remains BLOCKED→DENY.
+ */
+export const STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS = {
+  StoreCustomerCartAttachRequest: {
+    type: "object",
+    properties: {
+      cart_id: {
+        type: "string",
+        description:
+          "Optional guest cart id. When supplied, it must match the guest cart owned by the current session.",
+      },
+    },
+  },
+  StoreCustomerCartAttachPreserveResponse: {
+    type: "object",
+    additionalProperties: false,
+    required: ["outcome", "reason", "cart"],
+    properties: {
+      outcome: {
+        type: "string",
+        const: "preserve_customer_cart",
+      },
+      reason: {
+        type: "string",
+        enum: [
+          "missing_session_guest_cart",
+          "guest_cart_not_found",
+          "guest_cart_empty_or_not_usable",
+          "guest_cart_already_customer_cart",
+        ],
+      },
+      cart: {
+        oneOf: [
+          {
+            $ref: "#/components/schemas/PublicStoreCartPreOrder",
+          },
+          { type: "null" },
+        ],
+        description:
+          "Existing customer cart, or null when the customer has no cart to preserve.",
+      },
+    },
+  },
+  StoreCustomerCartAttachTransferResponse: {
+    type: "object",
+    additionalProperties: false,
+    required: ["outcome", "cart"],
+    properties: {
+      outcome: {
+        type: "string",
+        const: "attached_guest_cart",
+      },
+      cart: {
+        $ref: "#/components/schemas/PublicStoreCartPreOrder",
+      },
+    },
+  },
+  StoreCustomerCartAttachResponse: {
+    oneOf: [
+      {
+        $ref: "#/components/schemas/StoreCustomerCartAttachPreserveResponse",
+      },
+      {
+        $ref: "#/components/schemas/StoreCustomerCartAttachTransferResponse",
+      },
+    ],
+  },
+} as const
+
 export function storeJsonResponse(statusDescription: string, schemaName: string) {
   return {
     description: statusDescription,
@@ -353,93 +424,7 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
     },
   })
 
-  registry.registerComponent(
-    "store",
-    "schemas",
-    "StoreCustomerCartAttachRequest",
-    {
-      type: "object",
-      properties: {
-        cart_id: {
-          type: "string",
-          description:
-            "Optional guest cart id. When supplied, it must match the guest cart owned by the current session.",
-        },
-      },
-    }
-  )
-
-  registry.registerComponent(
-    "store",
-    "schemas",
-    "StoreCustomerCartAttachPreserveResponse",
-    {
-      type: "object",
-      additionalProperties: false,
-      required: ["outcome", "reason", "cart"],
-      properties: {
-        outcome: {
-          type: "string",
-          const: "preserve_customer_cart",
-        },
-        reason: {
-          type: "string",
-          enum: [
-            "missing_session_guest_cart",
-            "guest_cart_not_found",
-            "guest_cart_empty_or_not_usable",
-            "guest_cart_already_customer_cart",
-          ],
-        },
-        cart: {
-          oneOf: [
-            {
-              $ref: "#/components/schemas/PublicStoreCartPreOrder",
-            },
-            { type: "null" },
-          ],
-          description:
-            "Existing customer cart, or null when the customer has no cart to preserve.",
-        },
-      },
-    }
-  )
-
-  registry.registerComponent(
-    "store",
-    "schemas",
-    "StoreCustomerCartAttachTransferResponse",
-    {
-      type: "object",
-      additionalProperties: false,
-      required: ["outcome", "cart"],
-      properties: {
-        outcome: {
-          type: "string",
-          const: "attached_guest_cart",
-        },
-        cart: {
-          $ref: "#/components/schemas/PublicStoreCartPreOrder",
-        },
-      },
-    }
-  )
-
-  registry.registerComponent(
-    "store",
-    "schemas",
-    "StoreCustomerCartAttachResponse",
-    {
-      oneOf: [
-        {
-          $ref: "#/components/schemas/StoreCustomerCartAttachPreserveResponse",
-        },
-        {
-          $ref: "#/components/schemas/StoreCustomerCartAttachTransferResponse",
-        },
-      ],
-    }
-  )
+  // Attach schemas: see STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS (not public).
 
   registry.registerComponent(
     "store",

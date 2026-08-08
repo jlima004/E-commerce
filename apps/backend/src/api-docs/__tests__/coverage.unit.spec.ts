@@ -32,7 +32,7 @@ function write(file: string, content: string): void {
   fs.writeFileSync(file, content, "utf8")
 }
 
-const SCAFFOLD_ROUTES: DiscoveredRoute[] = [
+const EXCLUDED_ROUTES: DiscoveredRoute[] = [
   {
     sourceFile: "apps/backend/src/api/store/custom/route.ts",
     method: "GET",
@@ -50,6 +50,12 @@ const SCAFFOLD_ROUTES: DiscoveredRoute[] = [
     method: "POST",
     path: "/store/carts/{id}/complete",
     exportKind: "const",
+  },
+  {
+    sourceFile: "apps/backend/src/api/store/customers/me/cart/attach/route.ts",
+    method: "POST",
+    path: "/store/customers/me/cart/attach",
+    exportKind: "function",
   },
 ]
 
@@ -221,7 +227,7 @@ describe("OpenAPI route coverage foundation", () => {
     fs.rmSync(ambiguous.repositoryRoot, { recursive: true, force: true })
   })
 
-  it("allows exactly the two explicit scaffold exclusions with complete metadata", () => {
+  it("allows exactly the explicit route exclusions with complete metadata", () => {
     expect(
       ROUTE_EXCLUSIONS.map(({ method, path: routePath }) => `${method} ${routePath}`).sort()
     ).toEqual(
@@ -229,6 +235,7 @@ describe("OpenAPI route coverage foundation", () => {
         "GET /admin/custom",
         "GET /store/custom",
         "POST /store/carts/{id}/complete",
+        "POST /store/customers/me/cart/attach",
       ].sort()
     )
     expect(() => validateRouteExclusions(discoverRoutes())).not.toThrow()
@@ -238,6 +245,7 @@ describe("OpenAPI route coverage foundation", () => {
         { ...ROUTE_EXCLUSIONS[0], reason: "" },
         ROUTE_EXCLUSIONS[1],
         ROUTE_EXCLUSIONS[2],
+        ROUTE_EXCLUSIONS[3],
       ])
     ).toThrow("missing reason")
   })
@@ -256,7 +264,7 @@ describe("OpenAPI route coverage foundation", () => {
       verifyCoverage(
         "store",
         completeStoreRegistry(),
-        [...SCAFFOLD_ROUTES, LOCAL_STORE_ROUTE]
+        [...EXCLUDED_ROUTES, LOCAL_STORE_ROUTE]
       )
     ).not.toThrow()
   })
@@ -274,7 +282,7 @@ describe("OpenAPI route coverage foundation", () => {
       verifyCoverage(
         "store",
         withoutLocal,
-        [...SCAFFOLD_ROUTES, LOCAL_STORE_ROUTE]
+        [...EXCLUDED_ROUTES, LOCAL_STORE_ROUTE]
       )
     ).toThrow("store GET /store/local")
 
@@ -292,7 +300,7 @@ describe("OpenAPI route coverage foundation", () => {
       verifyCoverage(
         "store",
         withoutNative,
-        [...SCAFFOLD_ROUTES, LOCAL_STORE_ROUTE]
+        [...EXCLUDED_ROUTES, LOCAL_STORE_ROUTE]
       )
     ).toThrow("store GET /store/products/{id}")
   })
@@ -336,7 +344,7 @@ describe("OpenAPI route coverage foundation", () => {
       verifyCoverage(
         "foundation",
         registry,
-        [...SCAFFOLD_ROUTES, LOCAL_STORE_ROUTE]
+        [...EXCLUDED_ROUTES, LOCAL_STORE_ROUTE]
       )
     ).toThrow(expected)
   })

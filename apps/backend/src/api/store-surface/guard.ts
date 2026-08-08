@@ -172,6 +172,62 @@ function headerValue(
   return undefined
 }
 
+/**
+ * Strict CORS preflight: Origin + known ACR-Method must resolve to a
+ * runtime-allowable Store operation (PRESERVE_LEGACY or enabled M1).
+ * OPTIONS is never a business operation; HEAD is never inferred from GET.
+ */
+function decideOptionsPreflight(
+  normalizedPath: string,
+  options: {
+    origin?: string
+    accessControlRequestMethod?: string
+  }
+): StoreSurfaceDecision {
+  const origin = options.origin?.trim()
+  const requestMethod = options.accessControlRequestMethod?.trim().toUpperCase()
+
+  if (
+    !origin ||
+    !requestMethod ||
+    !HTTP_METHODS.has(requestMethod) ||
+    requestMethod === "OPTIONS"
+  ) {
+    return deny("Invalid OPTIONS preflight", "STORE_SURFACE_OPTIONS_DENIED")
+  }
+
+  const templates = STORE_SURFACE_MANIFEST.filter(
+    (entry) => entry.method === (requestMethod as StoreSurfaceHttpMethod)
+  ).map((entry) => entry.pathTemplate)
+
+  const matchedTemplate = matchStorePathToTemplate(normalizedPath, templates)
+  if (!matchedTemplate) {
+    return deny("UNKNOWN Store OPTIONS target", "STORE_SURFACE_OPTIONS_UNKNOWN")
+  }
+
+  const entry = lookupStoreSurfaceEntry(requestMethod, matchedTemplate)
+  if (!entry) {
+    return deny("UNKNOWN Store OPTIONS target", "STORE_SURFACE_OPTIONS_UNKNOWN")
+  }
+
+  if (entry.classification === "BLOCKED" || entry.runtime_policy === "DENY") {
+    return deny("DENY Store OPTIONS target", "STORE_SURFACE_OPTIONS_DENIED")
+  }
+
+  if (entry.runtime_policy === "PRESERVE_LEGACY") {
+    return { action: "options_preflight" }
+  }
+
+  if (
+    entry.runtime_policy === "M1_ENABLED" &&
+    entry.m1_enablement === "enabled"
+  ) {
+    return { action: "options_preflight" }
+  }
+
+  return deny("Fail-closed OPTIONS default", "STORE_SURFACE_OPTIONS_DENIED")
+}
+
 export function decideStoreSurfaceAccess(
   method: string,
   path: string,
@@ -191,17 +247,7 @@ export function decideStoreSurfaceAccess(
   }
 
   if (normalizedMethod === "OPTIONS") {
-    const origin = options.origin?.trim()
-    const requestMethod = options.accessControlRequestMethod?.trim().toUpperCase()
-    if (
-      origin &&
-      requestMethod &&
-      HTTP_METHODS.has(requestMethod) &&
-      requestMethod !== "OPTIONS"
-    ) {
-      return { action: "options_preflight" }
-    }
-    return deny("Invalid OPTIONS preflight", "STORE_SURFACE_OPTIONS_DENIED")
+    return decideOptionsPreflight(normalizedPath, options)
   }
 
   // HEAD is never inferred from GET — only an explicit HEAD manifest entry would allow.

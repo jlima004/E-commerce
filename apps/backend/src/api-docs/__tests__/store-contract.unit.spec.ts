@@ -2,6 +2,7 @@ import { CLIENT_MONEY_BODY_FIELDS } from "../../api/store/carts/payment-attempts
 import { verifyCoverage } from "../coverage/verify-coverage"
 import { ROUTE_EXCLUSIONS } from "../coverage/exclusions"
 import { buildContracts } from "../generation/build-documents"
+import { STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS } from "../operations/store/schemas"
 import { createFoundationRegistry } from "../registry"
 
 describe("OpenAPI Store contract wave", () => {
@@ -12,7 +13,7 @@ describe("OpenAPI Store contract wave", () => {
 
   it("covers every included Store route and both native catalog extensions", () => {
     expect(() => verifyCoverage("store", registry)).not.toThrow()
-    expect(storeOperations).toHaveLength(10)
+    expect(storeOperations).toHaveLength(9)
     expect(
       storeOperations.map((operation) => `${operation.method} ${operation.path}`).sort()
     ).toEqual(
@@ -25,10 +26,16 @@ describe("OpenAPI Store contract wave", () => {
         "POST /store/carts/active",
         "POST /store/carts/{id}/payment-attempts/card",
         "POST /store/carts/{id}/payment-attempts/pix",
-        "POST /store/customers/me/cart/attach",
         "POST /store/tracking/lookup",
       ].sort()
     )
+    expect(
+      storeOperations.some(
+        (operation) =>
+          operation.method === "POST" &&
+          operation.path === "/store/customers/me/cart/attach"
+      )
+    ).toBe(false)
   })
 
   it("omits ambiguous object and recursive catalog query parameters", () => {
@@ -94,7 +101,7 @@ describe("OpenAPI Store contract wave", () => {
     }
   })
 
-  it("keeps the two scaffold exclusions valid and undocumented", () => {
+  it("keeps explicitly excluded routes valid and undocumented", () => {
     expect(
       ROUTE_EXCLUSIONS.map((entry) => `${entry.method} ${entry.path}`).sort()
     ).toEqual(
@@ -102,6 +109,7 @@ describe("OpenAPI Store contract wave", () => {
         "GET /admin/custom",
         "GET /store/custom",
         "POST /store/carts/{id}/complete",
+        "POST /store/customers/me/cart/attach",
       ].sort()
     )
     expect(
@@ -109,7 +117,8 @@ describe("OpenAPI Store contract wave", () => {
         (operation) =>
           operation.path === "/store/custom" ||
           operation.path === "/admin/custom" ||
-          operation.path === "/store/carts/{id}/complete"
+          operation.path === "/store/carts/{id}/complete" ||
+          operation.path === "/store/customers/me/cart/attach"
       )
     ).toBe(false)
   })
@@ -293,17 +302,21 @@ describe("OpenAPI Store contract wave", () => {
     )
   })
 
-  it("keeps attach request cart_id optional without additionalProperties:false", () => {
-    const attachSchema = store?.document.components.schemas
-      .StoreCustomerCartAttachRequest as {
-      additionalProperties?: boolean
-      properties?: { cart_id?: { type?: string } }
-      required?: string[]
-    }
+  it("retains attach support schemas without publishing attach path+method", () => {
+    expect(store?.document.paths?.["/store/customers/me/cart/attach"]).toBeUndefined()
+    expect(
+      store?.document.components.schemas.StoreCustomerCartAttachRequest
+    ).toBeUndefined()
 
-    expect(attachSchema?.additionalProperties).not.toBe(false)
-    expect(attachSchema?.required).toBeUndefined()
-    expect(attachSchema?.properties?.cart_id?.type).toBe("string")
+    const attachSchema =
+      STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS.StoreCustomerCartAttachRequest
+    expect(
+      (attachSchema as { additionalProperties?: boolean }).additionalProperties
+    ).not.toBe(false)
+    expect(
+      (attachSchema as { required?: string[] }).required
+    ).toBeUndefined()
+    expect(attachSchema.properties.cart_id.type).toBe("string")
   })
 
   it("documents synchronous PaymentAttempt status consts for card and pix", () => {

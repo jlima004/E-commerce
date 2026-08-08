@@ -107,7 +107,7 @@ describe("OpenAPI Store security contract and surface isolation", () => {
   })
 
   it("registers populated and isolated Store, Admin, and Webhooks surfaces", () => {
-    expect(storeOperations).toHaveLength(10)
+    expect(storeOperations).toHaveLength(9)
     expect(registry.getOperations("admin")).toHaveLength(9)
     expect(registry.getOperations("webhooks")).toHaveLength(2)
 
@@ -159,14 +159,14 @@ describe("OpenAPI Store security contract and surface isolation", () => {
     }
   })
 
-  it("requires customer auth alternatives only on cart attach", () => {
-    const attach = storeOperations.find(
-      (operation) => operation.path === "/store/customers/me/cart/attach"
-    )
-    expect(attach?.security).toEqual([
-      { publishableApiKey: [], customerBearer: [] },
-      { publishableApiKey: [], customerSession: [] },
-    ])
+  it("omits public cart attach and keeps optional customer auth on remaining business routes", () => {
+    expect(
+      storeOperations.some(
+        (operation) =>
+          operation.method === "POST" &&
+          operation.path === "/store/customers/me/cart/attach"
+      )
+    ).toBe(false)
 
     const optionalCustomer = storeOperations.filter((operation) =>
       [

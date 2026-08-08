@@ -16,6 +16,9 @@ const SCAFFOLD_EXCLUSION_REASON =
 const COMPLETE_LOCKDOWN_EXCLUSION_REASON =
   "Phase 13 fail-closed defense-in-depth override for native cart complete; BLOCKED→DENY; not part of executable Store OpenAPI; owner review when Phase 15+ checkout surface is authorized"
 
+const ATTACH_LOCKDOWN_EXCLUSION_REASON =
+  "Phase 13 fail-closed lockdown; BLOCKED→DENY; handler retained only as internal/domain invariant boundary until Phase 16 merge owner flow."
+
 export const ROUTE_EXCLUSIONS: RouteExclusion[] = [
   {
     sourceFile: "apps/backend/src/api/store/custom/route.ts",
@@ -42,12 +45,22 @@ export const ROUTE_EXCLUSIONS: RouteExclusion[] = [
     reviewTrigger:
       "complete override removed, reclassified, or checkout M1 enablement authorized",
   },
+  {
+    sourceFile: "apps/backend/src/api/store/customers/me/cart/attach/route.ts",
+    method: "POST",
+    path: "/store/customers/me/cart/attach",
+    reason: ATTACH_LOCKDOWN_EXCLUSION_REASON,
+    owner: "FND-02 / Phase 13-02",
+    reviewTrigger:
+      "route reclassified/enabled, Phase 16 merge contract materialized, or public attach deprecation/removal decision",
+  },
 ]
 
 const EXPECTED_EXCLUSION_KEYS = new Set([
   "GET /store/custom",
   "GET /admin/custom",
   "POST /store/carts/{id}/complete",
+  "POST /store/customers/me/cart/attach",
 ])
 
 export function validateRouteExclusions(

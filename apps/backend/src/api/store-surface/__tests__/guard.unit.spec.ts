@@ -10,17 +10,46 @@ import {
   normalizeStoreRequestPath,
 } from "../guard"
 import defaultMiddlewares from "../../middlewares"
+import { POST as localCompletePost } from "../../store/carts/[id]/complete/route"
 
-// RoutesSorter is not a public @medusajs/framework/http export; load the
-// installed 2.16.0 implementation directly for an execution-time ordering fact.
+const repoNodeModules = path.join(process.cwd(), "../../node_modules")
+
+// RoutesSorter / RoutesLoader are not public @medusajs/framework/http exports;
+// load the installed 2.16.0 implementations directly for executable facts.
 const { RoutesSorter } = require(
-  path.join(
-    process.cwd(),
-    "../../node_modules/@medusajs/framework/dist/http/routes-sorter.js"
-  )
+  path.join(repoNodeModules, "@medusajs/framework/dist/http/routes-sorter.js")
 ) as {
   RoutesSorter: new (routes: unknown[]) => { sort: () => Array<{ matcher: unknown }> }
 }
+
+const { RoutesLoader } = require(
+  path.join(repoNodeModules, "@medusajs/framework/dist/http/routes-loader.js")
+) as {
+  RoutesLoader: new () => {
+    createRoutePath: (relativePath: string) => string
+    registerRoute: (route: {
+      matcher: string
+      method: string
+      handler: unknown
+      absolutePath: string
+      relativePath: string
+      isRoute?: boolean
+    }) => void
+    getRoutes: () => Array<{
+      matcher: string
+      method: string
+      handler: unknown
+      absolutePath: string
+    }>
+  }
+}
+
+const { POST: nativeCompletePost } = require(
+  path.join(
+    repoNodeModules,
+    "@medusajs/medusa/dist/api/store/carts/[id]/complete/route.js"
+  )
+) as { POST: unknown }
 
 describe("Store surface guard (FND-02)", () => {
   const counts = summarizeStoreSurfaceManifest()
@@ -73,6 +102,99 @@ describe("Store surface guard (FND-02)", () => {
       expect(guardIndex).toBeGreaterThanOrEqual(0)
       expect(guardIndex).toBeLessThan(matchers.indexOf("/store/products"))
       expect(guardIndex).toBeLessThan(matchers.indexOf("/store/carts/active"))
+    })
+
+    it("RoutesLoader last-writer-wins selects local complete override over native", () => {
+      const nativeRelative = path.join(
+        "store",
+        "carts",
+        "[id]",
+        "complete",
+        "route.js"
+      )
+      const localRelative = path.join(
+        "store",
+        "carts",
+        "[id]",
+        "complete",
+        "route.ts"
+      )
+      const nativeAbsolute = path.join(
+        repoNodeModules,
+        "@medusajs/medusa/dist/api",
+        nativeRelative
+      )
+      const localAbsolute = path.join(
+        process.cwd(),
+        "src/api/store/carts/[id]/complete/route.ts"
+      )
+
+      const loader = new RoutesLoader()
+      const nativeMatcher = loader.createRoutePath(nativeRelative)
+      const localMatcher = loader.createRoutePath(localRelative)
+      expect(nativeMatcher).toBe("/store/carts/:id/complete")
+      expect(localMatcher).toBe(nativeMatcher)
+      expect(typeof nativeCompletePost).toBe("function")
+      expect(typeof localCompletePost).toBe("function")
+      expect(nativeCompletePost).not.toBe(localCompletePost)
+
+      // Factual Medusa 2.16.0 load order (api.js): core api first, then plugins
+      // with project-plugin (src) last → local registerRoute overwrites native.
+      loader.registerRoute({
+        matcher: nativeMatcher,
+        method: "POST",
+        handler: nativeCompletePost,
+        absolutePath: nativeAbsolute,
+        relativePath: `/${nativeRelative}`,
+        isRoute: true,
+      })
+      loader.registerRoute({
+        matcher: localMatcher,
+        method: "POST",
+        handler: localCompletePost,
+        absolutePath: localAbsolute,
+        relativePath: `/${localRelative}`,
+        isRoute: true,
+      })
+
+      const postRoutes = loader
+        .getRoutes()
+        .filter(
+          (route) =>
+            route.matcher === "/store/carts/:id/complete" &&
+            route.method === "POST"
+        )
+      expect(postRoutes).toHaveLength(1)
+      expect(postRoutes[0]?.handler).toBe(localCompletePost)
+      expect(postRoutes[0]?.absolutePath).toBe(localAbsolute)
+      expect(postRoutes[0]?.handler).not.toBe(nativeCompletePost)
+
+      // Prove overwrite direction: native-after-local would win if order flipped.
+      const reverse = new RoutesLoader()
+      reverse.registerRoute({
+        matcher: localMatcher,
+        method: "POST",
+        handler: localCompletePost,
+        absolutePath: localAbsolute,
+        relativePath: `/${localRelative}`,
+        isRoute: true,
+      })
+      reverse.registerRoute({
+        matcher: nativeMatcher,
+        method: "POST",
+        handler: nativeCompletePost,
+        absolutePath: nativeAbsolute,
+        relativePath: `/${nativeRelative}`,
+        isRoute: true,
+      })
+      const reversed = reverse
+        .getRoutes()
+        .find(
+          (route) =>
+            route.matcher === "/store/carts/:id/complete" &&
+            route.method === "POST"
+        )
+      expect(reversed?.handler).toBe(nativeCompletePost)
     })
   })
 
@@ -145,7 +267,7 @@ describe("Store surface guard (FND-02)", () => {
       ).toBe(true)
     })
 
-    it("allows only strict CORS OPTIONS preflight and never as business allow", () => {
+    it("allows only strict known-method/path CORS OPTIONS preflight", () => {
       const invalid = decideStoreSurfaceAccess("OPTIONS", "/store/products")
       expect(invalid.action).toBe("deny")
 
@@ -154,6 +276,38 @@ describe("Store surface guard (FND-02)", () => {
         accessControlRequestMethod: "GET",
       })
       expect(valid.action).toBe("options_preflight")
+
+      expect(
+        decideStoreSurfaceAccess("OPTIONS", "/store/not-a-real-route", {
+          origin: "https://bff.example.com",
+          accessControlRequestMethod: "GET",
+        }).action
+      ).toBe("deny")
+
+      expect(
+        decideStoreSurfaceAccess("OPTIONS", "/store/products", {
+          origin: "https://bff.example.com",
+          accessControlRequestMethod: "POST",
+        }).action
+      ).toBe("deny")
+
+      expect(
+        decideStoreSurfaceAccess(
+          "OPTIONS",
+          "/store/carts/cart_synth_01/complete",
+          {
+            origin: "https://bff.example.com",
+            accessControlRequestMethod: "POST",
+          }
+        ).action
+      ).toBe("deny")
+
+      expect(
+        decideStoreSurfaceAccess("OPTIONS", "/store/customers/me/cart/attach", {
+          origin: "https://bff.example.com",
+          accessControlRequestMethod: "POST",
+        }).action
+      ).toBe("deny")
     })
 
     it("denies every runtime_policy DENY and BLOCKED entry from the closed 58-set", () => {

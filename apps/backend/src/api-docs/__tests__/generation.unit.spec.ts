@@ -88,7 +88,6 @@ describe("OpenAPI foundation generation", () => {
       "/store/carts/active",
       "/store/carts/{id}/payment-attempts/card",
       "/store/carts/{id}/payment-attempts/pix",
-      "/store/customers/me/cart/attach",
       "/store/products",
       "/store/products/{id}",
       "/store/tracking/lookup",

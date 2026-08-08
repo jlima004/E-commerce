@@ -173,10 +173,10 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     }
   })
 
-  it("allows only strict OPTIONS CORS preflight and never as business success", () => {
-    const next = jest.fn()
-    const res = createMockResponse()
-    const req = createMockRequest({
+  it("allows only strict known-method/path OPTIONS preflight and denies others", () => {
+    const allowedNext = jest.fn()
+    const allowedRes = createMockResponse()
+    const allowedReq = createMockRequest({
       method: "OPTIONS",
       originalUrl: "/store/products",
       headers: {
@@ -184,10 +184,48 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
         "access-control-request-method": "GET",
       },
     })
+    middleware(allowedReq as never, allowedRes as never, allowedNext)
+    expect(allowedNext).toHaveBeenCalledTimes(1)
+    expect(allowedRes.statusMock).not.toHaveBeenCalled()
 
-    middleware(req as never, res as never, next)
-    expect(next).toHaveBeenCalledTimes(1)
-    expect(res.statusMock).not.toHaveBeenCalled()
+    const deniedCases: Array<{
+      originalUrl: string
+      accessControlRequestMethod: string
+    }> = [
+      {
+        originalUrl: "/store/not-a-real-route",
+        accessControlRequestMethod: "GET",
+      },
+      {
+        originalUrl: "/store/products",
+        accessControlRequestMethod: "POST",
+      },
+      {
+        originalUrl: "/store/carts/synth_id_01/complete",
+        accessControlRequestMethod: "POST",
+      },
+      {
+        originalUrl: "/store/customers/me/cart/attach",
+        accessControlRequestMethod: "POST",
+      },
+    ]
+
+    for (const denied of deniedCases) {
+      const next = jest.fn()
+      const res = createMockResponse()
+      const req = createMockRequest({
+        method: "OPTIONS",
+        originalUrl: denied.originalUrl,
+        headers: {
+          origin: "https://bff.example.com",
+          "access-control-request-method": denied.accessControlRequestMethod,
+        },
+      })
+      middleware(req as never, res as never, next)
+      expect(next).not.toHaveBeenCalled()
+      expect(res.statusCode).toBe(404)
+      expect(req.scope.resolve).not.toHaveBeenCalled()
+    }
   })
 
   it("native complete override never resolves workflow scope or returns Order", async () => {
