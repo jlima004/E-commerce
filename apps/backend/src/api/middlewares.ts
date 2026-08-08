@@ -169,30 +169,48 @@ function buildSentryErrorClass(error: unknown): string {
 }
 
 /**
+ * Canonical Store path boundary for error-handler routing.
+ * Matches `/store` and `/store/...` only — not adjacent prefixes like
+ * `/storefront`, `/store-admin`, or `/storeXYZ`.
+ *
+ * Note: Medusa route matcher `/store*` may still mount Store middlewares for
+ * adjacent prefixes; guard path normalization remains the fail-closed SSOT for
+ * surface decisions (untouched in 13-03-R1). This helper only selects the
+ * Store vs Admin/Webhooks error-response branch.
+ */
+export function isCanonicalStoreRequestPath(raw: string): boolean {
+  if (typeof raw !== "string" || raw.length === 0) {
+    return false
+  }
+  const withoutQuery = raw.split(/[?#]/, 1)[0] ?? ""
+  return withoutQuery === "/store" || withoutQuery.startsWith("/store/")
+}
+
+/**
  * Store-only surface detection. Admin (/admin) and Webhooks (/hooks)
  * must keep the existing Medusa error delegation path.
  */
 export function isStoreApiRequest(req: MedusaRequest): boolean {
   const originalUrl = typeof req.originalUrl === "string" ? req.originalUrl : ""
-  if (originalUrl.startsWith("/store")) {
+  if (isCanonicalStoreRequestPath(originalUrl)) {
     return true
   }
 
   const url = typeof req.url === "string" ? req.url : ""
-  if (url.startsWith("/store")) {
+  if (isCanonicalStoreRequestPath(url)) {
     return true
   }
 
   const baseUrl = typeof req.baseUrl === "string" ? req.baseUrl : ""
   const path = typeof req.path === "string" ? req.path : ""
   const joined = `${baseUrl}${path}`
-  if (joined.startsWith("/store")) {
+  if (isCanonicalStoreRequestPath(joined)) {
     return true
   }
 
   const routePath = (req as MedusaRequest & { route?: { path?: string } }).route
     ?.path
-  return typeof routePath === "string" && routePath.startsWith("/store")
+  return typeof routePath === "string" && isCanonicalStoreRequestPath(routePath)
 }
 
 function extractStoreFieldErrors(

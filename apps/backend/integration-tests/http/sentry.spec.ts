@@ -1,14 +1,25 @@
+import type {
+  MedusaNextFunction,
+  MedusaRequest,
+  MedusaResponse,
+} from "@medusajs/framework/http"
 import {
   buildSentryCaptureContext,
   scrubBreadcrumb,
   scrubEvent,
   shouldCaptureError,
 } from "../../src/observability/sentry-scrub"
+import { sanitizeError } from "../../src/observability/sanitize"
 import {
   createSentryErrorHandler,
   resolveRequestRouteOrJob,
 } from "../../src/api/middlewares"
 import defaultMiddlewares from "../../src/api/middlewares"
+import {
+  STORE_ERROR_CODES,
+  isStoreErrorResponse,
+  type StoreErrorResponse,
+} from "../../src/api/store-surface/errors"
 import {
   applySentryInitialScope,
   createSentryInitOptions,
@@ -400,13 +411,35 @@ describe("instrumentation", () => {
 
 describe("error handler", () => {
   function createMockResponse() {
-    return {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis(),
-    } as unknown as MedusaResponse
+    const headers = new Map<string, string>()
+    const response = {
+      statusCode: 200,
+      headersSent: false,
+      status: jest.fn().mockImplementation(function (this: {
+        statusCode: number
+      }, code: number) {
+        this.statusCode = code
+        return this
+      }),
+      json: jest.fn().mockImplementation(function (this: {
+        headersSent: boolean
+      }) {
+        this.headersSent = true
+        return this
+      }),
+      setHeader(name: string, value: string) {
+        headers.set(name.toLowerCase(), value)
+      },
+      getHeader(name: string) {
+        return headers.get(name.toLowerCase())
+      },
+    }
+    return response as unknown as MedusaResponse & {
+      getHeader: (name: string) => string | undefined
+    }
   }
 
-  it("captura uma unica vez erro inesperado e preserva a resposta do handler Medusa", () => {
+  it("captura Store error uma unica vez com StoreErrorResponse e sink Sentry sanitizado", () => {
     const captureException = jest.fn(() => "event-id")
     const medusaErrorHandler = jest.fn((_error, _req, res: MedusaResponse) => {
       res.status(500)
@@ -419,12 +452,14 @@ describe("error handler", () => {
     })
     const req = {
       method: "POST",
+      originalUrl: "/store/orders/order_01HABCDE12345/cancel",
+      url: "/store/orders/order_01HABCDE12345/cancel",
       route: { path: "/store/orders/order_01HABCDE12345/cancel" },
       headers: {},
       correlationId: "corr-123",
     } as unknown as MedusaRequest
     const res = createMockResponse()
-    const next = jest.fn()
+    const next = jest.fn() as MedusaNextFunction
     const error = Object.assign(new Error(`boom ${CANARIES.authorization}`), {
       name: "StripeWebhookError",
       operation: "webhook.verify",
@@ -451,11 +486,90 @@ describe("error handler", () => {
         },
       })
     )
+    // Store path uses StoreErrorResponse — Medusa handler must not write the body.
+    expect(medusaErrorHandler).not.toHaveBeenCalled()
+    expect((res.status as jest.Mock).mock.calls[0]?.[0]).toBe(500)
+    const body = (res.json as jest.Mock).mock.calls[0]?.[0] as StoreErrorResponse
+    expect(isStoreErrorResponse(body)).toBe(true)
+    expect(body.code).toBe(STORE_ERROR_CODES.INTERNAL_ERROR)
+    expect(body.retryable).toBe(false)
+    expect(body.correlationId).toBe("corr-123")
+    expectNoCanaries(body)
+
+    const [capturedError, captureContext] = captureException.mock.calls[0] ?? []
+    expect(captureContext.extra).toEqual({ correlation_id: "corr-123" })
+    expectNoCanaries(captureContext)
+
+    // Project sink: captureException first arg + beforeSend(scrubEvent).
+    const sanitizedCapturedError = sanitizeError(capturedError as Error)
+    expectNoCanaries(sanitizedCapturedError)
+
+    const sinkEvent = scrubEvent({
+      message:
+        typeof (capturedError as { message?: unknown })?.message === "string"
+          ? ((capturedError as { message: string }).message)
+          : String(capturedError),
+      exception: {
+        values: [
+          {
+            type:
+              (capturedError as { name?: string; type?: string })?.name ??
+              (capturedError as { type?: string })?.type ??
+              "Error",
+            value:
+              typeof (capturedError as { message?: unknown })?.message ===
+              "string"
+                ? (capturedError as { message: string }).message
+                : String(capturedError),
+          },
+        ],
+      },
+      extra: captureContext.extra,
+      tags: captureContext.tags,
+      fingerprint: captureContext.fingerprint,
+    })
+    expect(sinkEvent?.extra).toEqual({ correlation_id: "corr-123" })
+    expectNoCanaries(sinkEvent)
+  })
+
+  it("preserva a resposta do handler Medusa fora de /store", () => {
+    const captureException = jest.fn(() => "event-id")
+    const medusaErrorHandler = jest.fn((_error, _req, res: MedusaResponse) => {
+      res.status(500)
+      res.json({ code: "unknown_error" })
+    })
+    const handler = createSentryErrorHandler({
+      captureException,
+      medusaErrorHandler,
+      processRole: "worker",
+    })
+    const req = {
+      method: "POST",
+      originalUrl: "/admin/orders/order_01HABCDE12345/cancel",
+      url: "/admin/orders/order_01HABCDE12345/cancel",
+      route: { path: "/admin/orders/order_01HABCDE12345/cancel" },
+      headers: {},
+      correlationId: "corr-admin-123",
+    } as unknown as MedusaRequest
+    const res = createMockResponse()
+    const next = jest.fn() as MedusaNextFunction
+    const error = Object.assign(new Error(`boom ${CANARIES.authorization}`), {
+      name: "AdminUnexpectedError",
+      operation: "admin.cancel",
+      integration: "core",
+    })
+
+    handler(error, req, res, next)
+
+    expect(captureException).toHaveBeenCalledTimes(1)
     expect(medusaErrorHandler).toHaveBeenCalledTimes(1)
     expect((res.status as jest.Mock).mock.calls[0]?.[0]).toBe(500)
     expect((res.json as jest.Mock).mock.calls[0]?.[0]).toEqual({
       code: "unknown_error",
     })
+    expect(
+      isStoreErrorResponse((res.json as jest.Mock).mock.calls[0]?.[0])
+    ).toBe(false)
   })
 
   it("nao captura warn esperado por padrao, mas permite warn persistente", () => {
@@ -468,11 +582,13 @@ describe("error handler", () => {
     })
     const req = {
       method: "POST",
+      originalUrl: "/webhooks/stripe/order_01HABCDE12345",
+      url: "/webhooks/stripe/order_01HABCDE12345",
       route: { path: "/webhooks/stripe/order_01HABCDE12345" },
       headers: {},
     } as unknown as MedusaRequest
     const res = createMockResponse()
-    const next = jest.fn()
+    const next = jest.fn() as MedusaNextFunction
     const expectedWarn = new MedusaError(
       MedusaError.Types.INVALID_DATA,
       "assinatura invalida"

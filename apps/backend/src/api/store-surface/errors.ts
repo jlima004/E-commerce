@@ -1,8 +1,9 @@
 /**
  * Store-only public error contract (FND-03 / D13-08..D13-12).
  *
- * Envelope is allowlist-first. message is presentation only.
+ * Envelope is allowlist-first and fail-closed. message is presentation only.
  * Never derive public fields from raw provider/DB/stack detail.
+ * Never trust a pre-shaped body that merely looks like StoreErrorResponse.
  */
 
 import { randomUUID } from "crypto"
@@ -24,6 +25,11 @@ export const STORE_ERROR_CODES = {
 
 export type StoreErrorCode =
   (typeof STORE_ERROR_CODES)[keyof typeof STORE_ERROR_CODES]
+
+const STORE_ERROR_CODE_SET = new Set<string>(Object.values(STORE_ERROR_CODES))
+
+/** Closed public field-error presentation — never echo raw validator/input text. */
+export const STORE_PUBLIC_FIELD_ERROR_MESSAGE = "Invalid value"
 
 /**
  * Public request-field names eligible for fieldErrors.
@@ -55,13 +61,11 @@ export const STORE_PUBLIC_FIELD_ALLOWLIST = new Set<string>([
 ])
 
 export type StoreErrorResponse = {
-  code: StoreErrorCode | string
+  code: StoreErrorCode
   message: string
   retryable: boolean
   correlationId?: string
   fieldErrors?: Record<string, string>
-  /** Optional safe snapshot only; concrete Cart contract is Phase 15. */
-  cart?: Record<string, unknown>
 }
 
 export type StoreErrorNormalizationResult = {
@@ -75,7 +79,10 @@ export type ToStoreErrorResponseOptions = {
   fieldErrors?: Record<string, unknown>
   /** HTTP status already chosen by the writer (e.g. early DENY). */
   statusCode?: number
-  /** Only attach when caller already has a safe allowlisted snapshot. */
+  /**
+   * Ignored in Phase 13 R1. Concrete Cart DTO is Phase 15; unknown cart
+   * input must never be exposed on the public Store error envelope.
+   */
   cart?: Record<string, unknown>
 }
 
@@ -91,6 +98,7 @@ type ErrorLike = {
   uncertainSideEffect?: unknown
   retryAfterSeconds?: unknown
   retryable?: unknown
+  fieldErrors?: unknown
 }
 
 const SAFE_MESSAGES: Record<StoreErrorCode, string> = {
@@ -120,6 +128,10 @@ function readNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined
 }
 
+export function isStoreErrorCode(value: unknown): value is StoreErrorCode {
+  return typeof value === "string" && STORE_ERROR_CODE_SET.has(value)
+}
+
 export function sanitizeStoreCorrelationId(value: unknown): string {
   if (typeof value === "string" && STORE_CORRELATION_ID_PATTERN.test(value)) {
     return value
@@ -138,6 +150,10 @@ export function sanitizeStoreCorrelationId(value: unknown): string {
   return randomUUID()
 }
 
+/**
+ * Keep allowlisted field names only. Values are replaced with a closed
+ * public presentation string — raw validator/input text never reaches clients.
+ */
 export function filterStoreFieldErrors(
   fieldErrors: Record<string, unknown> | undefined
 ): Record<string, string> | undefined {
@@ -150,25 +166,29 @@ export function filterStoreFieldErrors(
     if (!STORE_PUBLIC_FIELD_ALLOWLIST.has(key)) {
       continue
     }
-    if (typeof value !== "string") {
+    // Presence of a string (or non-empty) signal is enough; never echo value.
+    if (value === undefined || value === null) {
       continue
     }
-    // Presentation only — never echo secret-shaped content.
-    if (value.length === 0 || value.length > 200) {
+    if (typeof value === "string" && value.length === 0) {
       continue
     }
-    filtered[key] = value
+    filtered[key] = STORE_PUBLIC_FIELD_ERROR_MESSAGE
   }
 
   return Object.keys(filtered).length > 0 ? filtered : undefined
 }
 
+/**
+ * Structural + catalog check for a fully rebuilt public Store error body.
+ * Presence of `cart` or unknown keys fails closed.
+ */
 export function isStoreErrorResponse(value: unknown): value is StoreErrorResponse {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false
   }
   const body = value as Record<string, unknown>
-  if (typeof body.code !== "string" || body.code.length === 0) {
+  if (!isStoreErrorCode(body.code)) {
     return false
   }
   if (typeof body.message !== "string" || body.message.length === 0) {
@@ -183,10 +203,36 @@ export function isStoreErrorResponse(value: unknown): value is StoreErrorRespons
       key !== "message" &&
       key !== "retryable" &&
       key !== "correlationId" &&
-      key !== "fieldErrors" &&
-      key !== "cart"
+      key !== "fieldErrors"
     ) {
       return false
+    }
+  }
+  if (body.correlationId !== undefined) {
+    if (
+      typeof body.correlationId !== "string" ||
+      !STORE_CORRELATION_ID_PATTERN.test(body.correlationId)
+    ) {
+      return false
+    }
+  }
+  if (body.fieldErrors !== undefined) {
+    if (
+      typeof body.fieldErrors !== "object" ||
+      body.fieldErrors === null ||
+      Array.isArray(body.fieldErrors)
+    ) {
+      return false
+    }
+    for (const [key, fieldMessage] of Object.entries(
+      body.fieldErrors as Record<string, unknown>
+    )) {
+      if (!STORE_PUBLIC_FIELD_ALLOWLIST.has(key)) {
+        return false
+      }
+      if (fieldMessage !== STORE_PUBLIC_FIELD_ERROR_MESSAGE) {
+        return false
+      }
     }
   }
   return true
@@ -205,14 +251,15 @@ function resolveStatusHint(error: ErrorLike): number | undefined {
   return readNumber(error.statusCode) ?? readNumber(error.status)
 }
 
-function isProviderUnavailable(error: ErrorLike, type: string): boolean {
+/** Known unavailable category — not merely HTTP 503. */
+function isKnownServiceUnavailable(error: ErrorLike, type: string): boolean {
   if (error.providerUnavailable === true) {
     return true
   }
   return (
     type === "provider_unavailable" ||
     type === "service_unavailable" ||
-    type.includes("unavailable")
+    type === STORE_ERROR_CODES.SERVICE_UNAVAILABLE.toLowerCase()
   )
 }
 
@@ -235,6 +282,7 @@ function isRateLimit(error: ErrorLike, type: string, statusHint?: number): boole
   return (
     type === "rate_limit" ||
     type === "rate_limited" ||
+    type === STORE_ERROR_CODES.RATE_LIMITED.toLowerCase() ||
     type.includes("too_many_requests")
   )
 }
@@ -254,6 +302,11 @@ function isPreconditionFailed(
   )
 }
 
+/**
+ * retryable=true only for a known-safe category with certain safe retry
+ * and no uncertain side-effect marker. Absence of the marker alone is never
+ * enough for unknown/generic statuses.
+ */
 function classify(
   error: unknown
 ): {
@@ -266,13 +319,15 @@ function classify(
   const type = resolveType(err)
   const statusHint = resolveStatusHint(err)
   const medusaType = readString(err.type)
+  const uncertainSideEffect = err.uncertainSideEffect === true
 
   if (isRateLimit(err, type, statusHint)) {
     const retryAfterSeconds = readNumber(err.retryAfterSeconds)
     return {
       statusCode: 429,
       code: STORE_ERROR_CODES.RATE_LIMITED,
-      retryable: true,
+      // Known RATE_LIMITED category: retry is safe unless side effect is uncertain.
+      retryable: !uncertainSideEffect,
       ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
     }
   }
@@ -285,12 +340,20 @@ function classify(
     }
   }
 
-  if (isProviderUnavailable(err, type) || statusHint === 503) {
+  if (isKnownServiceUnavailable(err, type)) {
     return {
       statusCode: 503,
       code: STORE_ERROR_CODES.SERVICE_UNAVAILABLE,
-      // Known unavailable without uncertain side-effect marker → safe retry.
-      retryable: err.uncertainSideEffect !== true,
+      retryable: !uncertainSideEffect,
+    }
+  }
+
+  // Generic/unknown 503 — public SERVICE_UNAVAILABLE, never auto-retryable.
+  if (statusHint === 503) {
+    return {
+      statusCode: 503,
+      code: STORE_ERROR_CODES.SERVICE_UNAVAILABLE,
+      retryable: false,
     }
   }
 
@@ -395,29 +458,43 @@ function classify(
 function buildBody(
   code: StoreErrorCode,
   correlationId: string,
-  fieldErrors?: Record<string, string>,
-  cart?: Record<string, unknown>
+  retryable: boolean,
+  fieldErrors?: Record<string, string>
 ): StoreErrorResponse {
   const body: StoreErrorResponse = {
     code,
     message: SAFE_MESSAGES[code],
-    retryable: false,
+    retryable,
     correlationId,
   }
 
-  // retryable overwritten by caller via returned classification
   if (fieldErrors) {
     body.fieldErrors = fieldErrors
-  }
-  if (cart) {
-    body.cart = cart
   }
   return body
 }
 
+function extractFieldErrorsFromUnknown(
+  error: unknown
+): Record<string, unknown> | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined
+  }
+  const candidate = (error as ErrorLike).fieldErrors
+  if (
+    candidate &&
+    typeof candidate === "object" &&
+    !Array.isArray(candidate)
+  ) {
+    return candidate as Record<string, unknown>
+  }
+  return undefined
+}
+
 /**
  * Normalize any Store failure into the closed public envelope.
- * Never copies err.message / provider payload / stack into public fields.
+ * Never copies err.message / provider payload / stack / arbitrary cart into
+ * public fields. Never trusts a pre-shaped envelope without rebuild.
  */
 export function toStoreErrorResponse(
   error: unknown,
@@ -438,15 +515,19 @@ export function toStoreErrorResponse(
         : error
 
   const classification = classify(errorForClassify)
-  const fieldErrors = filterStoreFieldErrors(options.fieldErrors)
+  const fieldErrors = filterStoreFieldErrors(
+    options.fieldErrors ?? extractFieldErrorsFromUnknown(error)
+  )
+
+  // options.cart is intentionally ignored — Phase 13 has no approved Cart DTO.
+  void options.cart
 
   const body = buildBody(
     classification.code,
     correlationId,
-    fieldErrors,
-    options.cart
+    classification.retryable,
+    fieldErrors
   )
-  body.retryable = classification.retryable
 
   return {
     statusCode: classification.statusCode,
@@ -472,6 +553,9 @@ type CorrelationReadableRequest = {
 /**
  * Wrap Store response writers so early DENY/direct JSON errors become
  * StoreErrorResponse without altering guard classification logic.
+ *
+ * Fail-closed: every error status is rebuilt from the normalizer. A body that
+ * merely looks like StoreErrorResponse is never passed through.
  */
 export function attachStoreErrorEnvelope(
   req: CorrelationReadableRequest,
@@ -486,19 +570,10 @@ export function attachStoreErrorEnvelope(
     }
 
     const correlationId = sanitizeStoreCorrelationId(req.correlationId)
-
-    if (isStoreErrorResponse(body)) {
-      const synced: StoreErrorResponse = {
-        ...body,
-        correlationId,
-      }
-      res.setHeader?.("x-correlation-id", correlationId)
-      return originalJson(synced)
-    }
-
     const normalized = toStoreErrorResponse(body, {
       correlationId,
       statusCode,
+      fieldErrors: extractFieldErrorsFromUnknown(body),
     })
 
     res.setHeader?.("x-correlation-id", correlationId)

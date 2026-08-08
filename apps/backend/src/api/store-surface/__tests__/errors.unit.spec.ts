@@ -2,6 +2,9 @@ import { MedusaError } from "@medusajs/utils"
 import {
   STORE_ERROR_CODES,
   STORE_PUBLIC_FIELD_ALLOWLIST,
+  STORE_PUBLIC_FIELD_ERROR_MESSAGE,
+  attachStoreErrorEnvelope,
+  isStoreErrorCode,
   isStoreErrorResponse,
   sanitizeStoreCorrelationId,
   toStoreErrorResponse,
@@ -42,16 +45,16 @@ function expectClosedEnvelope(body: StoreErrorResponse) {
       "retryable",
       "correlationId",
       "fieldErrors",
-      "cart",
     ]).toContain(key)
   }
-  expect(typeof body.code).toBe("string")
+  expect(isStoreErrorCode(body.code)).toBe(true)
   expect(typeof body.message).toBe("string")
   expect(typeof body.retryable).toBe("boolean")
   expect(body.message.length).toBeGreaterThan(0)
+  expect(body).not.toHaveProperty("cart")
 }
 
-describe("Store error contract (FND-03 / 13-03)", () => {
+describe("Store error contract (FND-03 / 13-03 / R1)", () => {
   describe("catalog and status families", () => {
     it("exposes stable public codes for required status families", () => {
       expect(STORE_ERROR_CODES.VALIDATION_ERROR).toBe("VALIDATION_ERROR")
@@ -63,9 +66,10 @@ describe("Store error contract (FND-03 / 13-03)", () => {
       expect(STORE_ERROR_CODES.RATE_LIMITED).toBe("RATE_LIMITED")
       expect(STORE_ERROR_CODES.INTERNAL_ERROR).toBe("INTERNAL_ERROR")
       expect(STORE_ERROR_CODES.SERVICE_UNAVAILABLE).toBe("SERVICE_UNAVAILABLE")
+      expect(isStoreErrorCode("ANY_INTERNAL_CODE")).toBe(false)
     })
 
-    it("maps validation to 400 with allowlisted fieldErrors only", () => {
+    it("maps validation to 400 with allowlisted fieldErrors and closed values", () => {
       const error = new MedusaError(
         MedusaError.Types.INVALID_DATA,
         `invalid body ${CANARIES.cpf}`
@@ -73,8 +77,8 @@ describe("Store error contract (FND-03 / 13-03)", () => {
       const result = toStoreErrorResponse(error, {
         correlationId: "corr_validation_01",
         fieldErrors: {
-          email: "invalid",
-          password: "invalid",
+          email: `Invalid value: ${CANARIES.cpf}`,
+          password: `Rejected: ${CANARIES.clientSecret}`,
           internal_db_column: "leak",
           authorization: CANARIES.authorization,
         },
@@ -84,8 +88,8 @@ describe("Store error contract (FND-03 / 13-03)", () => {
       expect(result.body.code).toBe(STORE_ERROR_CODES.VALIDATION_ERROR)
       expect(result.body.retryable).toBe(false)
       expect(result.body.fieldErrors).toEqual({
-        email: "invalid",
-        password: "invalid",
+        email: STORE_PUBLIC_FIELD_ERROR_MESSAGE,
+        password: STORE_PUBLIC_FIELD_ERROR_MESSAGE,
       })
       expect(result.body.fieldErrors).not.toHaveProperty("internal_db_column")
       expect(result.body.fieldErrors).not.toHaveProperty("authorization")
@@ -185,7 +189,7 @@ describe("Store error contract (FND-03 / 13-03)", () => {
       expectNoCanaries(result.body)
     })
 
-    it("maps rate limit 429 with retryable true when factual", () => {
+    it("maps rate limit 429 with retryable true when known-safe", () => {
       const result = toStoreErrorResponse(
         {
           name: "RateLimitError",
@@ -283,6 +287,111 @@ describe("Store error contract (FND-03 / 13-03)", () => {
     })
   })
 
+  describe("B13-03-R1-01 pre-shaped envelope bypass", () => {
+    it("rebuilds malicious pre-shaped envelopes instead of passing them through", () => {
+      const malicious = {
+        code: "ANY_INTERNAL_CODE",
+        message: `client_secret=${CANARIES.clientSecret} jwt=${CANARIES.jwt} cpf=${CANARIES.cpf} auth=${CANARIES.authorization} pix=${CANARIES.pixPayload} cap=${CANARIES.capability}`,
+        retryable: true,
+        leaked: "extra_field",
+        cart: {
+          client_secret: CANARIES.clientSecret,
+        },
+      }
+
+      const result = toStoreErrorResponse(malicious, {
+        correlationId: "corr_preshape_01",
+        statusCode: 500,
+      })
+
+      expect(isStoreErrorCode(result.body.code)).toBe(true)
+      expect(result.body.code).not.toBe("ANY_INTERNAL_CODE")
+      expect(result.body.code).toBe(STORE_ERROR_CODES.INTERNAL_ERROR)
+      expect(result.body.message).toBe("Internal Server Error")
+      expect(result.body.retryable).toBe(false)
+      expect(result.body).not.toHaveProperty("leaked")
+      expect(result.body).not.toHaveProperty("cart")
+      expectClosedEnvelope(result.body)
+      expectNoCanaries(result.body)
+    })
+
+    it("envelope middleware never trusts pre-shaped StoreErrorResponse-looking bodies", () => {
+      const req = { correlationId: "corr_env_rebuild_01" }
+      const json = jest.fn()
+      const res = {
+        statusCode: 500,
+        status: jest.fn().mockReturnThis(),
+        json,
+        setHeader: jest.fn(),
+      }
+      attachStoreErrorEnvelope(req, res as never)
+
+      res.json({
+        code: "ANY_INTERNAL_CODE",
+        message: `client_secret=${CANARIES.clientSecret}`,
+        retryable: true,
+        unexpected: true,
+      })
+
+      expect(json).toHaveBeenCalledTimes(1)
+      const body = json.mock.calls[0]?.[0] as StoreErrorResponse
+      expect(isStoreErrorResponse(body)).toBe(true)
+      expect(body.code).toBe(STORE_ERROR_CODES.INTERNAL_ERROR)
+      expect(body.message).toBe("Internal Server Error")
+      expect(body.retryable).toBe(false)
+      expect(body.correlationId).toBe("corr_env_rebuild_01")
+      expect(body).not.toHaveProperty("unexpected")
+      expectNoCanaries(body)
+    })
+  })
+
+  describe("B13-03-R1-02 fieldErrors value sanitization", () => {
+    it("replaces allowlisted field values containing canaries with closed public text", () => {
+      const result = toStoreErrorResponse(
+        new MedusaError(MedusaError.Types.INVALID_DATA, "bad"),
+        {
+          correlationId: "corr_fields_01",
+          fieldErrors: {
+            email: `Invalid value: ${CANARIES.cpf}`,
+            password: `Rejected: ${CANARIES.clientSecret}`,
+            postal_code: `JWT ${CANARIES.jwt}`,
+            shipping_address: `${CANARIES.authorization} ${CANARIES.pixPayload}`,
+          },
+        }
+      )
+
+      expect(result.body.fieldErrors).toEqual({
+        email: STORE_PUBLIC_FIELD_ERROR_MESSAGE,
+        password: STORE_PUBLIC_FIELD_ERROR_MESSAGE,
+        postal_code: STORE_PUBLIC_FIELD_ERROR_MESSAGE,
+        shipping_address: STORE_PUBLIC_FIELD_ERROR_MESSAGE,
+      })
+      expectNoCanaries(result.body)
+    })
+  })
+
+  describe("B13-03-R1-03 unsafe cart omission", () => {
+    it("omits arbitrary cart snapshots containing secrets", () => {
+      const result = toStoreErrorResponse(
+        new MedusaError(MedusaError.Types.CONFLICT, "x"),
+        {
+          correlationId: "corr_cart_unsafe_01",
+          cart: {
+            client_secret: CANARIES.clientSecret,
+            federal_tax_id: CANARIES.cpf,
+            authorization: CANARIES.authorization,
+            provider_payload: { raw: CANARIES.providerPayload },
+            capability: CANARIES.capability,
+            token: CANARIES.confirmationToken,
+          },
+        }
+      )
+
+      expect(result.body).not.toHaveProperty("cart")
+      expectNoCanaries(result.body)
+    })
+  })
+
   describe("correlation sanitization", () => {
     it("preserves valid correlation ids", () => {
       const valid = "corr.ABC_01-xyz"
@@ -315,7 +424,7 @@ describe("Store error contract (FND-03 / 13-03)", () => {
   })
 
   describe("envelope allowlist and cart absence", () => {
-    it("detects StoreErrorResponse shapes", () => {
+    it("detects only catalog-closed StoreErrorResponse shapes", () => {
       expect(
         isStoreErrorResponse({
           code: "VALIDATION_ERROR",
@@ -325,8 +434,23 @@ describe("Store error contract (FND-03 / 13-03)", () => {
       ).toBe(true)
       expect(
         isStoreErrorResponse({
+          code: "ANY_INTERNAL_CODE",
+          message: "Invalid request",
+          retryable: false,
+        })
+      ).toBe(false)
+      expect(
+        isStoreErrorResponse({
           type: "not_found",
           message: "Not Found",
+        })
+      ).toBe(false)
+      expect(
+        isStoreErrorResponse({
+          code: "VALIDATION_ERROR",
+          message: "Invalid request",
+          retryable: false,
+          cart: { id: "cart_1" },
         })
       ).toBe(false)
     })
@@ -360,14 +484,27 @@ describe("Store error contract (FND-03 / 13-03)", () => {
     })
   })
 
-  describe("retryable certainty", () => {
-    it("sets retryable true only for known safe categories", () => {
+  describe("B13-03-R1-04 retryable certainty", () => {
+    it("sets retryable true only for known safe categories without uncertain side effects", () => {
       expect(
         toStoreErrorResponse(
           { type: "rate_limit", statusCode: 429, message: "rl" },
           { correlationId: "r1" }
         ).body.retryable
       ).toBe(true)
+
+      expect(
+        toStoreErrorResponse(
+          {
+            type: "rate_limit",
+            statusCode: 429,
+            message: "rl",
+            uncertainSideEffect: true,
+          },
+          { correlationId: "r1b" }
+        ).body.retryable
+      ).toBe(false)
+
       expect(
         toStoreErrorResponse(
           {
@@ -378,6 +515,29 @@ describe("Store error contract (FND-03 / 13-03)", () => {
           { correlationId: "r2" }
         ).body.retryable
       ).toBe(true)
+
+      expect(
+        toStoreErrorResponse(
+          {
+            type: "provider_unavailable",
+            providerUnavailable: true,
+            message: "down",
+            uncertainSideEffect: true,
+          },
+          { correlationId: "r2b" }
+        ).body.retryable
+      ).toBe(false)
+
+      expect(
+        toStoreErrorResponse(
+          {
+            message: "generic unavailable",
+            statusCode: 503,
+          },
+          { correlationId: "r2c" }
+        ).body.retryable
+      ).toBe(false)
+
       expect(
         toStoreErrorResponse(
           {
@@ -389,9 +549,17 @@ describe("Store error contract (FND-03 / 13-03)", () => {
           { correlationId: "r3" }
         ).body.retryable
       ).toBe(false)
+
       expect(
         toStoreErrorResponse(new Error("mystery"), {
           correlationId: "r4",
+        }).body.retryable
+      ).toBe(false)
+
+      expect(
+        toStoreErrorResponse(new Error("boom"), {
+          correlationId: "r5",
+          statusCode: 500,
         }).body.retryable
       ).toBe(false)
     })

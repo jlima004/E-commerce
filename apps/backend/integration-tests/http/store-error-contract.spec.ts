@@ -8,11 +8,17 @@ import defaultMiddlewares, {
   createCorrelationAndAccessLogMiddleware,
   createSentryErrorHandler,
   createStoreErrorEnvelopeMiddleware,
+  isCanonicalStoreRequestPath,
   isStoreApiRequest,
+  storeErrorEnvelopeMiddleware,
 } from "../../src/api/middlewares"
-import { createStoreSurfaceGuardMiddleware } from "../../src/api/store-surface/guard"
+import {
+  createStoreSurfaceGuardMiddleware,
+  storeSurfaceGuardMiddleware,
+} from "../../src/api/store-surface/guard"
 import {
   STORE_ERROR_CODES,
+  STORE_PUBLIC_FIELD_ERROR_MESSAGE,
   isStoreErrorResponse,
   type StoreErrorResponse,
 } from "../../src/api/store-surface/errors"
@@ -82,6 +88,7 @@ function createMockRequest(input: {
   routePath?: string
 }) {
   const url = new URL(input.originalUrl, "http://store.local")
+  const pathname = url.pathname
   const log = {
     info: jest.fn(),
     warn: jest.fn(),
@@ -90,16 +97,16 @@ function createMockRequest(input: {
   return {
     method: input.method ?? "GET",
     originalUrl: input.originalUrl,
-    url: `${url.pathname}${url.search}`,
-    baseUrl: url.pathname.startsWith("/store")
+    url: `${pathname}${url.search}`,
+    baseUrl: isCanonicalStoreRequestPath(pathname)
       ? "/store"
-      : url.pathname.startsWith("/admin")
+      : pathname.startsWith("/admin")
         ? "/admin"
-        : url.pathname.startsWith("/hooks")
+        : pathname.startsWith("/hooks")
           ? "/hooks"
           : "",
-    path: url.pathname
-      .replace(/^\/store/, "")
+    path: pathname
+      .replace(/^\/store(?=\/|$)/, "")
       .replace(/^\/admin/, "")
       .replace(/^\/hooks/, "") || "/",
     headers: input.headers ?? {},
@@ -135,17 +142,58 @@ function runStoreStack(input: {
   return { req, res, next }
 }
 
-describe("Store error contract HTTP (FND-03 / 13-03)", () => {
-  it("wires Store envelope middleware ahead of the surface guard", () => {
+describe("Store error contract HTTP (FND-03 / 13-03 / R1)", () => {
+  it("wires storeErrorEnvelopeMiddleware before storeSurfaceGuardMiddleware on /store*", () => {
     const storeRoute = defaultMiddlewares.routes.find(
       (route) => String(route.matcher) === "/store*"
     )
+    expect(storeRoute).toBeDefined()
     expect(storeRoute?.middlewares).toHaveLength(2)
-    expect(storeRoute?.middlewares?.[0]).toBe(
-      defaultMiddlewares.routes.find((r) => String(r.matcher) === "/store*")
-        ?.middlewares?.[0]
+    expect(storeRoute?.middlewares?.[0]).toBe(storeErrorEnvelopeMiddleware)
+    expect(storeRoute?.middlewares?.[1]).toBe(storeSurfaceGuardMiddleware)
+    expect(storeRoute?.middlewares?.[0]).not.toBe(
+      storeRoute?.middlewares?.[1]
     )
     expect(typeof defaultMiddlewares.errorHandler).toBe("function")
+  })
+
+  describe("W13-03-R1-02 Store prefix boundary", () => {
+    it("treats only /store and /store/... as Store API requests", () => {
+      expect(isCanonicalStoreRequestPath("/store")).toBe(true)
+      expect(isCanonicalStoreRequestPath("/store/carts")).toBe(true)
+      expect(isCanonicalStoreRequestPath("/store/carts?x=1")).toBe(true)
+      expect(isCanonicalStoreRequestPath("/storefront")).toBe(false)
+      expect(isCanonicalStoreRequestPath("/store-admin")).toBe(false)
+      expect(isCanonicalStoreRequestPath("/storeXYZ")).toBe(false)
+      expect(isCanonicalStoreRequestPath("/admin/store")).toBe(false)
+      expect(isCanonicalStoreRequestPath("/hooks/store")).toBe(false)
+
+      expect(
+        isStoreApiRequest(
+          createMockRequest({ originalUrl: "/store/products" }) as never
+        )
+      ).toBe(true)
+      expect(
+        isStoreApiRequest(
+          createMockRequest({ originalUrl: "/storefront" }) as never
+        )
+      ).toBe(false)
+      expect(
+        isStoreApiRequest(
+          createMockRequest({ originalUrl: "/store-admin" }) as never
+        )
+      ).toBe(false)
+      expect(
+        isStoreApiRequest(
+          createMockRequest({ originalUrl: "/admin/products" }) as never
+        )
+      ).toBe(false)
+      expect(
+        isStoreApiRequest(
+          createMockRequest({ originalUrl: "/hooks/stripe" }) as never
+        )
+      ).toBe(false)
+    })
   })
 
   describe("early Store guard DENY → StoreErrorResponse", () => {
@@ -216,7 +264,7 @@ describe("Store error contract HTTP (FND-03 / 13-03)", () => {
       return { req, res, next, captureException, medusaErrorHandler }
     }
 
-    it("normalizes validation errors", () => {
+    it("normalizes validation errors with sanitized fieldErrors values", () => {
       const { res, medusaErrorHandler } = invokeStoreError(
         Object.assign(
           new MedusaError(
@@ -225,7 +273,10 @@ describe("Store error contract HTTP (FND-03 / 13-03)", () => {
           ),
           {
             fieldErrors: {
-              email: "invalid",
+              email: `Invalid value: ${CANARIES.cpf}`,
+              password: `Rejected: ${CANARIES.clientSecret}`,
+              postal_code: CANARIES.jwt,
+              shipping_address: `${CANARIES.authorization} ${CANARIES.pixPayload}`,
               authorization: CANARIES.authorization,
             },
           }
@@ -237,7 +288,12 @@ describe("Store error contract HTTP (FND-03 / 13-03)", () => {
       const body = res.body as StoreErrorResponse
       expect(body.code).toBe(STORE_ERROR_CODES.VALIDATION_ERROR)
       expect(body.retryable).toBe(false)
-      expect(body.fieldErrors).toEqual({ email: "invalid" })
+      expect(body.fieldErrors).toEqual({
+        email: STORE_PUBLIC_FIELD_ERROR_MESSAGE,
+        password: STORE_PUBLIC_FIELD_ERROR_MESSAGE,
+        postal_code: STORE_PUBLIC_FIELD_ERROR_MESSAGE,
+        shipping_address: STORE_PUBLIC_FIELD_ERROR_MESSAGE,
+      })
       expect(body.correlationId).toBe(res.getHeader("x-correlation-id"))
       expectNoCanaries(body)
     })
@@ -283,7 +339,7 @@ describe("Store error contract HTTP (FND-03 / 13-03)", () => {
       expectNoCanaries(other.res.body)
     })
 
-    it("normalizes domain, native-shaped, provider-shaped, unknown, and rate-limit families", () => {
+    it("normalizes domain, native-shaped, provider-shaped, unknown, rate-limit, and 503 families", () => {
       const domain = invokeStoreError(
         new MedusaError(
           MedusaError.Types.PAYMENT_AUTHORIZATION_ERROR,
@@ -319,6 +375,39 @@ describe("Store error contract HTTP (FND-03 / 13-03)", () => {
         },
         { "x-correlation-id": "corr_rate" }
       )
+      const rateUncertain = invokeStoreError(
+        {
+          type: "rate_limit",
+          statusCode: 429,
+          message: "slow down",
+          uncertainSideEffect: true,
+        },
+        { "x-correlation-id": "corr_rate_uncertain" }
+      )
+      const knownUnavailable = invokeStoreError(
+        {
+          type: "provider_unavailable",
+          providerUnavailable: true,
+          message: "down",
+        },
+        { "x-correlation-id": "corr_503_known" }
+      )
+      const knownUnavailableUncertain = invokeStoreError(
+        {
+          type: "provider_unavailable",
+          providerUnavailable: true,
+          message: "down",
+          uncertainSideEffect: true,
+        },
+        { "x-correlation-id": "corr_503_uncertain" }
+      )
+      const generic503 = invokeStoreError(
+        {
+          message: "mystery unavailable",
+          statusCode: 503,
+        },
+        { "x-correlation-id": "corr_503_generic" }
+      )
 
       expect(domain.res.statusCode).toBe(422)
       expect((domain.res.body as StoreErrorResponse).code).toBe(
@@ -331,6 +420,21 @@ describe("Store error contract HTTP (FND-03 / 13-03)", () => {
       expect(rate.res.statusCode).toBe(429)
       expect((rate.res.body as StoreErrorResponse).retryable).toBe(true)
       expect(rate.res.getHeader("retry-after")).toBe("12")
+      expect((rateUncertain.res.body as StoreErrorResponse).retryable).toBe(
+        false
+      )
+      expect(knownUnavailable.res.statusCode).toBe(503)
+      expect(
+        (knownUnavailable.res.body as StoreErrorResponse).retryable
+      ).toBe(true)
+      expect(
+        (knownUnavailableUncertain.res.body as StoreErrorResponse).retryable
+      ).toBe(false)
+      expect(generic503.res.statusCode).toBe(503)
+      expect((generic503.res.body as StoreErrorResponse).code).toBe(
+        STORE_ERROR_CODES.SERVICE_UNAVAILABLE
+      )
+      expect((generic503.res.body as StoreErrorResponse).retryable).toBe(false)
       expectNoCanaries(domain.res.body)
       expectNoCanaries(provider.res.body)
       expectNoCanaries(unknown.res.body)
