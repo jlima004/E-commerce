@@ -130,6 +130,19 @@ describe("Store surface manifest (FND-01)", () => {
     expect(lineItems?.runtime_policy).toBe("DENY")
   })
 
+  it("assigns catalog product routes owner_phase 21 (not Cart Merge 16)", () => {
+    const list = lookupStoreSurfaceEntry("GET", "/store/products")
+    const detail = lookupStoreSurfaceEntry("GET", "/store/products/{id}")
+    expect(list?.owner_domain).toBe("catalog")
+    expect(detail?.owner_domain).toBe("catalog")
+    expect(list?.owner_phase).toBe("21")
+    expect(detail?.owner_phase).toBe("21")
+    expect(list?.classification).toBe("EXTENDED")
+    expect(detail?.classification).toBe("EXTENDED")
+    expect(list?.runtime_policy).toBe("PRESERVE_LEGACY")
+    expect(detail?.runtime_policy).toBe("PRESERVE_LEGACY")
+  })
+
   it("rejects invalid combinations in validateStoreSurfaceManifest", () => {
     const broken: StoreSurfaceEntry[] = [
       {

@@ -206,7 +206,20 @@ export type AtomicMutationCasInput = {
   expectedVersion: number
   mutationId: string
   mutationMarker: string
-  injectErrorAfterMutation?: boolean
+  /**
+   * Inject failure AFTER a successful CAS UPDATE and BEFORE COMMIT.
+   * Distinct from any pre-CAS failure path — required for rollback proof.
+   */
+  injectErrorAfterCas?: boolean
+  /**
+   * Test/probe hook invoked only after CAS UPDATE returned a winner row.
+   * Used to prove CAS executed inside the transaction even when rollback follows.
+   */
+  onCasSucceeded?: (info: {
+    previousVersion: number
+    newVersion: number
+    casTransactionId: string
+  }) => void
   locking?: OptionalLockingCoordinator
 }
 
@@ -281,10 +294,6 @@ export async function runAtomicMedusaMutationWithVersionCas(
         [input.mutationId, input.resourceKey, input.mutationMarker]
       )
 
-      if (input.injectErrorAfterMutation) {
-        throw new Error(STORE_FOUNDATION_INJECTED_FAILURE)
-      }
-
       const casManager = input.repository.getActiveManager({
         transactionManager,
       })
@@ -307,6 +316,27 @@ export async function runAtomicMedusaMutationWithVersionCas(
         throw new Error(STORE_FOUNDATION_CAS_CONFLICT)
       }
 
+      const newVersion = Number(updated[0].version)
+
+      // Prove CAS applied inside this transaction before any injected failure.
+      const versionInsideTx = await readStoreFoundationProbeVersion(
+        casKnex,
+        input.resourceKey
+      )
+      if (versionInsideTx !== newVersion) {
+        throw new Error("STORE_FOUNDATION_CAS_VISIBLE_VERSION_MISMATCH")
+      }
+
+      input.onCasSucceeded?.({
+        previousVersion: input.expectedVersion,
+        newVersion,
+        casTransactionId,
+      })
+
+      if (input.injectErrorAfterCas) {
+        throw new Error(STORE_FOUNDATION_INJECTED_FAILURE)
+      }
+
       const sameManager =
         transactionManager === activeManager &&
         transactionManager === mutationManager &&
@@ -326,7 +356,7 @@ export async function runAtomicMedusaMutationWithVersionCas(
           transactionId === casTransactionId &&
           transactionId.length > 0,
         casWon: true,
-        newVersion: Number(updated[0].version),
+        newVersion,
       }
     })
   } finally {

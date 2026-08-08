@@ -560,7 +560,7 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
     openapi_m1_expectation: "include_executable_m1",
     rationale:
       "Store 1.0.0 accepted catalog list with local field allowlist/serializer; preserve v1.0 behavior only (not M1 auth).",
-    owner_phase: "16",
+    owner_phase: "21",
     owner_domain: "catalog",
   }),
   entry({
@@ -572,7 +572,7 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
     openapi_m1_expectation: "include_executable_m1",
     rationale:
       "Store 1.0.0 accepted product detail with local serializer; preserve v1.0 behavior only.",
-    owner_phase: "16",
+    owner_phase: "21",
     owner_domain: "catalog",
   }),
   entry({

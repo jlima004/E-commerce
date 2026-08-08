@@ -245,10 +245,14 @@ if (!requestedDatabaseName) {
         expect(medusaRows.rows).toEqual([{ count: 1 }])
       })
 
-      it("rolls back Medusa mutation and CAS together when an error is injected", async () => {
+      it("rolls back Medusa mutation and CAS together when failure is injected after successful CAS", async () => {
         const knex = await externalKnex()
         const resourceKey = "resource_wave0_rollback"
         await seedStoreFoundationProbeVersion(knex, resourceKey, 3)
+
+        let casSucceededInsideTransaction = false
+        let casObservedVersion: number | null = null
+        let casObservedTxId: string | null = null
 
         await expect(
           runAtomicMedusaMutationWithVersionCas({
@@ -258,10 +262,24 @@ if (!requestedDatabaseName) {
             expectedVersion: 3,
             mutationId: "probe_mut_rollback_01",
             mutationMarker: "rollback",
-            injectErrorAfterMutation: true,
+            injectErrorAfterCas: true,
+            onCasSucceeded: ({ previousVersion, newVersion, casTransactionId }) => {
+              expect(previousVersion).toBe(3)
+              expect(newVersion).toBe(4)
+              expect(casTransactionId.length).toBeGreaterThan(0)
+              casSucceededInsideTransaction = true
+              casObservedVersion = newVersion
+              casObservedTxId = casTransactionId
+            },
           })
         ).rejects.toThrow(STORE_FOUNDATION_INJECTED_FAILURE)
 
+        // CAS must have executed successfully inside the transaction before failure.
+        expect(casSucceededInsideTransaction).toBe(true)
+        expect(casObservedVersion).toBe(4)
+        expect(casObservedTxId).not.toBeNull()
+
+        // After ROLLBACK, all three effects disappear — including the CAS bump.
         expect(await readStoreFoundationProbeVersion(knex, resourceKey)).toBe(3)
         expect(await countStoreFoundationProbeMutations(knex, resourceKey)).toBe(
           0
