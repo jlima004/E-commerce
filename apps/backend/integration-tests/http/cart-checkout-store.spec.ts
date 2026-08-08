@@ -26,6 +26,7 @@ import {
   POST as postActiveCart,
 } from "../../src/api/store/carts/active/route"
 import { POST as attachGuestCart } from "../../src/api/store/customers/me/cart/attach/route"
+import { decideStoreSurfaceAccess } from "../../src/api/store-surface/guard"
 import {
   validateBrazilShippingAddress,
   type BrazilShippingAddressInput,
@@ -475,7 +476,20 @@ describe("cart checkout store contract", () => {
     })
   })
 
+  // Internal handler invariants only — public POST /store/customers/me/cart/attach
+  // is BLOCKED→DENY via store-surface guard (see store-surface-lockdown.spec.ts).
   describe("guest cart attach / transfer", () => {
+    it("public attach surface is DENY while handler-level domain proofs remain", () => {
+      expect(
+        decideStoreSurfaceAccess("POST", "/store/customers/me/cart/attach")
+      ).toMatchObject({ action: "deny" })
+      expect(
+        defaultMiddlewares.routes.some(
+          (route) => String(route.matcher) === "/store*"
+        )
+      ).toBe(true)
+    })
+
     it("transfere apenas o guest cart autorizado, nao vazio, da sessao atual", async () => {
       const guestCart = buildCompleteGuestCart({
         id: "cart_guest_01",
@@ -1170,7 +1184,16 @@ function collectSourceFiles(root: string): string[] {
     const fullPath = path.join(root, entry.name)
 
     if (entry.isDirectory()) {
+      // Production-source scan only — Wave 0 / unit fixtures under __tests__
+      // may mention payment_intent without violating the Phase 03 cart surface.
+      if (entry.name === "__tests__" || entry.name === "node_modules") {
+        continue
+      }
       files.push(...collectSourceFiles(fullPath))
+      continue
+    }
+
+    if (/\.(spec|test)\.[jt]sx?$/.test(entry.name)) {
       continue
     }
 

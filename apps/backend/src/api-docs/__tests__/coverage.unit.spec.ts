@@ -45,6 +45,12 @@ const SCAFFOLD_ROUTES: DiscoveredRoute[] = [
     path: "/admin/custom",
     exportKind: "function",
   },
+  {
+    sourceFile: "apps/backend/src/api/store/carts/[id]/complete/route.ts",
+    method: "POST",
+    path: "/store/carts/{id}/complete",
+    exportKind: "const",
+  },
 ]
 
 const LOCAL_STORE_ROUTE: DiscoveredRoute = {
@@ -108,13 +114,19 @@ function completeStoreRegistry(): ContractRegistryBundle {
 describe("OpenAPI route coverage foundation", () => {
   it("discovers all current route files and bracket segments through the TypeScript AST", () => {
     const routes = discoverRoutes()
-    expect(routes).toHaveLength(22)
+    expect(routes).toHaveLength(23)
     expect(routes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           method: "POST",
           path: "/store/carts/{id}/payment-attempts/card",
           exportKind: "function",
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/store/carts/{id}/complete",
+          exportKind: "const",
+          sourceFile: "apps/backend/src/api/store/carts/[id]/complete/route.ts",
         }),
         expect.objectContaining({
           method: "POST",
@@ -210,14 +222,22 @@ describe("OpenAPI route coverage foundation", () => {
   })
 
   it("allows exactly the two explicit scaffold exclusions with complete metadata", () => {
-    expect(ROUTE_EXCLUSIONS.map(({ method, path: routePath }) => `${method} ${routePath}`))
-      .toEqual(["GET /store/custom", "GET /admin/custom"])
+    expect(
+      ROUTE_EXCLUSIONS.map(({ method, path: routePath }) => `${method} ${routePath}`).sort()
+    ).toEqual(
+      [
+        "GET /admin/custom",
+        "GET /store/custom",
+        "POST /store/carts/{id}/complete",
+      ].sort()
+    )
     expect(() => validateRouteExclusions(discoverRoutes())).not.toThrow()
 
     expect(() =>
       validateRouteExclusions(discoverRoutes(), [
         { ...ROUTE_EXCLUSIONS[0], reason: "" },
         ROUTE_EXCLUSIONS[1],
+        ROUTE_EXCLUSIONS[2],
       ])
     ).toThrow("missing reason")
   })

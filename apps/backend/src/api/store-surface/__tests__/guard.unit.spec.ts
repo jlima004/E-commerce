@@ -1,4 +1,4 @@
-import { RoutesSorter } from "@medusajs/framework/http"
+import path from "path"
 import {
   STORE_SURFACE_MANIFEST,
   summarizeStoreSurfaceManifest,
@@ -9,6 +9,18 @@ import {
   matchStorePathToTemplate,
   normalizeStoreRequestPath,
 } from "../guard"
+import defaultMiddlewares from "../../middlewares"
+
+// RoutesSorter is not a public @medusajs/framework/http export; load the
+// installed 2.16.0 implementation directly for an execution-time ordering fact.
+const { RoutesSorter } = require(
+  path.join(
+    process.cwd(),
+    "../../node_modules/@medusajs/framework/dist/http/routes-sorter.js"
+  )
+) as {
+  RoutesSorter: new (routes: unknown[]) => { sort: () => Array<{ matcher: unknown }> }
+}
 
 describe("Store surface guard (FND-02)", () => {
   const counts = summarizeStoreSurfaceManifest()
@@ -38,9 +50,9 @@ describe("Store surface guard (FND-02)", () => {
           method: "GET",
           handler: () => undefined,
         },
-      ] as never[]).sort()
+      ]).sort()
 
-      const matchers = sorted.map((route) => String((route as { matcher: string }).matcher))
+      const matchers = sorted.map((route) => String(route.matcher))
       expect(matchers[0]).toBe("/store*")
       expect(matchers.indexOf("/store*")).toBeLessThan(
         matchers.indexOf("/store/carts/active")
@@ -51,6 +63,16 @@ describe("Store surface guard (FND-02)", () => {
       expect(matchers.indexOf("/store*")).toBeLessThan(
         matchers.indexOf("/store/products/:id")
       )
+    })
+
+    it("registers /store* in middlewares.ts before specific Store business matchers", () => {
+      const matchers = defaultMiddlewares.routes.map((route) =>
+        String(route.matcher)
+      )
+      const guardIndex = matchers.indexOf("/store*")
+      expect(guardIndex).toBeGreaterThanOrEqual(0)
+      expect(guardIndex).toBeLessThan(matchers.indexOf("/store/products"))
+      expect(guardIndex).toBeLessThan(matchers.indexOf("/store/carts/active"))
     })
   })
 

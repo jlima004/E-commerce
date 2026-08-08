@@ -36,6 +36,7 @@ import {
 } from "../observability/logger"
 import { buildSentryCaptureContext, shouldCaptureError } from "../observability/sentry-scrub"
 import { createStoreTrackingLookupGuardMiddleware } from "../modules/tracking-access-token/lookup"
+import { storeSurfaceGuardMiddleware } from "./store-surface/guard"
 
 const CORRELATION_HEADER = "x-correlation-id"
 const CORRELATION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
@@ -268,6 +269,12 @@ export default defineMiddlewares({
     {
       matcher: /.*/,
       middlewares: [correlationAndAccessLogMiddleware],
+    },
+    // Method-less /store* → RoutesSorter global bucket (Medusa 2.16.0), before
+    // static/params Store business middlewares and handlers. Fail-closed SSOT.
+    {
+      matcher: "/store*",
+      middlewares: [storeSurfaceGuardMiddleware],
     },
     {
       method: ["GET"],

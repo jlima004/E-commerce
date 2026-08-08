@@ -97,11 +97,19 @@ describe("OpenAPI Store contract wave", () => {
   it("keeps the two scaffold exclusions valid and undocumented", () => {
     expect(
       ROUTE_EXCLUSIONS.map((entry) => `${entry.method} ${entry.path}`).sort()
-    ).toEqual(["GET /admin/custom", "GET /store/custom"])
+    ).toEqual(
+      [
+        "GET /admin/custom",
+        "GET /store/custom",
+        "POST /store/carts/{id}/complete",
+      ].sort()
+    )
     expect(
       storeOperations.some(
         (operation) =>
-          operation.path === "/store/custom" || operation.path === "/admin/custom"
+          operation.path === "/store/custom" ||
+          operation.path === "/admin/custom" ||
+          operation.path === "/store/carts/{id}/complete"
       )
     ).toBe(false)
   })
