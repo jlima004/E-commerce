@@ -3,12 +3,124 @@ phase: 13-storefront-contract-foundation-surface-lockdown
 plan: 02
 subsystem: api
 tags: [store-surface, fail-closed, guard, lockdown, medusa-2.16.0]
-status: in-progress
+
+requires:
+  - phase: 13-01
+    provides: Closed 58-op Store surface manifest SSOT and Wave 0 transaction proof
+provides:
+  - Global Store fail-closed guard consuming manifest.ts
+  - Native complete defense-in-depth override
+  - HTTP denial/bypass matrix and controlled legacy A/B/C transition
+affects:
+  - 13-03-storefront-contract-foundation-surface-lockdown
+  - 13-07-storefront-contract-foundation-surface-lockdown
+
+tech-stack:
+  added: []
+  patterns:
+    - Method-less /store* matcher in RoutesSorter global bucket before Store business handlers
+    - Dual control: manifest guard + local complete route override
+    - PRESERVE_LEGACY pass-through without M1 enablement
+
+key-files:
+  created:
+    - apps/backend/src/api/store-surface/guard.ts
+    - apps/backend/src/api/store/carts/[id]/complete/route.ts
+    - apps/backend/src/api/store-surface/__tests__/guard.unit.spec.ts
+    - apps/backend/integration-tests/http/store-surface-lockdown.spec.ts
+    - .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-02-SUMMARY.md
+  modified:
+    - apps/backend/src/api/middlewares.ts
+    - apps/backend/integration-tests/http/cart-checkout-store.spec.ts
+    - apps/backend/src/api-docs/coverage/exclusions.ts
+    - apps/backend/src/api-docs/__tests__/coverage.unit.spec.ts
+    - apps/backend/src/api-docs/__tests__/store-contract.unit.spec.ts
+
+key-decisions:
+  - "Guard registered as method-less /store* so Medusa 2.16.0 RoutesSorter places it in the global bucket before static/params Store handlers"
+  - "PRESERVE_LEGACY is next()-only inherited v1.0 pass-through; M1_ENABLED branch present but empty in Phase 13"
+  - "Local complete/route.ts replaces native handler (last-writer-wins) and returns non-enumerating 404 without workflow resolve"
+  - "OpenAPI exclusion for complete override required by AGENTS.md API Docs Contract (Rule 2 / rules precedence)"
+
+patterns-established:
+  - "Store lockdown decision is method+canonical-path lookup against manifest SSOT; UNKNOWN/BLOCKED/DENY short-circuit before handlers"
+  - "HEAD never inferred from GET; OPTIONS only strict CORS preflight"
+  - "Legacy B attach proofs stay at handler boundary; public DENY proven in store-surface-lockdown.spec.ts"
+
+requirements-completed: []
+requirements-evidenced: [FND-01, FND-02, FND-07]
+
+duration: 8min
+completed: 2026-08-08
+status: technical-pass-awaiting-human-review
 ---
 
 # Phase 13 Plan 02: Fail-Closed Store Lockdown Summary
 
-**IN PROGRESS — Task 1 inventory locked; implementation pending**
+**Global `/store*` fail-closed guard + native complete override eliminate B13-01/02/03 at the HTTP boundary; PRESERVE_LEGACY keeps 7 inherited v1.0 routes; M1_ENABLED remains 0**
+
+## Identity
+
+Plan: 13-02  
+Status: TECHNICAL PASS — AWAITING HUMAN REVIEW (Task 3)  
+Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`  
+Pre-plan / Execution base SHA: `0a06b57d91954a330a16de508819d1769a149c18`
+
+Post-execution commits:
+- `e077e8d` — docs(13-02): lock legacy test impact inventory before edits
+- `d2c8de7` — test(13-02): add failing Store surface guard unit specs
+- `5d534be` — feat(13-02): enforce fail-closed Store surface lockdown
+
+## Performance
+
+- **Duration:** ~8 min
+- **Started:** 2026-08-08T02:14:27Z
+- **Completed (technical):** 2026-08-08T02:21:57Z
+- **Tasks:** 2 automated complete; Task 3 human-verify pending
+- **Files modified:** 9 product/test + SUMMARY (+ exclusions via AGENTS.md deviation)
+
+## Accomplishments
+
+- Enforced manifest-driven Store lockdown before business handlers (UNKNOWN/BLOCKED/DENY → 404; PRESERVE_LEGACY → `next()`).
+- Added defense-in-depth local override for `POST /store/carts/{id}/complete` that never resolves workflow/Order.
+- Locked and transitioned legacy exact-set (4 paths) with A/B/C classifications; attach domain proofs retained.
+- Proved Medusa 2.16.0 RoutesSorter places method-less `/store*` in the global bucket before static/params Store routes.
+
+## Requirements / blockers addressed
+
+| ID | Evidence in 13-02 | Status |
+| --- | --- | --- |
+| FND-01 | Guard consumes approved 58-op manifest; scanner still 58/58 | Evidenced (still needs 13-07) |
+| FND-02 | DENY matrix + complete/custom handler-zero + PRESERVE_LEGACY pass-through | Evidenced (still needs 13-07) |
+| FND-07 | BFF-only assumption; CORS/publishable not treated as auth; synthetic canaries only | Evidenced (still needs 13-06/13-07) |
+| B13-01 | complete DENY + local override + workflow spy zero | Eliminated at boundary |
+| B13-02 | global `/store*` allowlist/guard | Eliminated at boundary |
+| B13-03 | `/store/custom` DENY before local handler | Eliminated at boundary |
+
+## Surface inventory (unchanged from 13-01)
+
+| Metric | Count |
+| --- | ---: |
+| runtime Store operations | 58 |
+| AUTHORIZED | 0 |
+| EXTENDED | 10 |
+| BLOCKED | 17 |
+| OUTSIDE_FRONTEND_M1 | 31 |
+| runtime_policy DENY | 51 |
+| runtime_policy PRESERVE_LEGACY | 7 |
+| runtime_policy M1_ENABLED | 0 |
+| m1_enablement enabled | 0 |
+
+## Router ordering evidence (Medusa 2.16.0)
+
+| Fact | Result |
+| --- | --- |
+| `RoutesSorter` default order | `["global", "wildcard", "regex", "static", "params"]` |
+| Method-less matcher bucket | `global` (`!methods && !method`) |
+| `/store*` vs static `/store/carts/active` | `/store*` sorts first |
+| Project registration | `middlewares.ts` places `/store*` after correlation `/.*/` and before specific Store matchers |
+| Native → local complete | `RoutesLoader` last-writer-wins; local `complete/route.ts` replaces native POST |
+| Monkey-patch | None |
 
 ## Legacy test impact inventory (pre-change)
 
@@ -35,16 +147,155 @@ Closed exact-set of unique legacy test paths (3 ≤ 4) within Store/checkout/pay
 
 | Metric | Value |
 | --- | --- |
-| unique paths | 3 |
+| unique paths | 4 |
 | inventory case rows | 12 |
 | families present | http, unit |
-| Class A rows | 0 |
+| Class A rows | 0 (pre-change); post-change coverage/store-contract exclusion assertions updated under AGENTS.md deviation |
 | Class B rows | 6 (all in cart-checkout-store; each has non-empty Coverage replacement) |
 | Class C rows | 6 |
 | paths outside Store/checkout/payment/API Docs/invariants | 0 |
 
-### Transition plan (authorized for Task 2 only)
+### Transition applied (Task 2)
 
-- **B (attach handler cases):** keep/clarify as internal handler invariant proofs; do not delete, skip, or relax assertions; public DENY proven in new `store-surface-lockdown.spec.ts`.
-- **C:** no convenience edits.
-- **A:** none identified — no legacy suite asserted public HTTP success for a now-denied route via the real middleware stack (existing suites invoke handlers directly).
+- **B (attach):** retained handler-level proofs; added public DENY assertion + `/store*` registration check; production-source grep skips `__tests__`.
+- **C:** OpenAPI attach docs cases untouched in intent; coverage/store-contract exclusion lists updated only for new complete override discovery.
+- **A:** none in pre-change inventory.
+
+## Tests
+
+### Unit — guard + money invariants
+
+```text
+Command: cd apps/backend && npm run test:unit -- --runTestsByPath src/api/store-surface/__tests__/guard.unit.spec.ts src/utils/__tests__/money-units.unit.spec.ts --runInBand
+Exit code: 0
+Suites: 2 passed, 2 total
+Tests: 43 passed, 43 total
+Result: PASS
+```
+
+### HTTP — lockdown matrix + order-birth invariants
+
+```text
+Command: cd apps/backend && npm run test:integration:http -- --runTestsByPath integration-tests/http/store-surface-lockdown.spec.ts integration-tests/http/invariants-inv01-02-order-birth.spec.ts --runInBand
+Exit code: 0
+Suites: 2 passed, 2 total
+Tests: 17 passed, 17 total
+Result: PASS
+```
+
+### Legacy exact-set by family (once per unique path)
+
+```text
+unit: store-contract + security + coverage → PASS (41 tests)
+http: cart-checkout-store → PASS (25 tests)
+Result: LEGACY_EXACT_SET_OK
+```
+
+### Scanner (drift check)
+
+```text
+Command: cd apps/backend && npm exec -- ts-node --swc scripts/store-surface/scan-installed.ts --check
+Output: medusa=2.16.0 discovered=58 manifest=58 authorized=0 extended=10 blocked=17 outside=31 deny=51 preserve_legacy=7 m1_enabled_policy=0 m1_enablement_enabled=0 STORE_SURFACE_SCAN_OK
+Result: PASS
+```
+
+## Security / negative proofs
+
+- DENY responses are non-enumerating `{ type: "not_found", message: "Not Found" }` (StoreErrorResponse envelope deferred to 13-03).
+- Synthetic canaries only (Authorization/cookie/client_secret/Pix/CPF); none appear in deny bodies.
+- complete override: `scope.resolve` not called; workflow run not called; body has no Order.
+- `/store/custom` denied before local handler invocation.
+- HEAD not inferred from GET; invalid OPTIONS denied; valid CORS preflight `next()` only.
+- No JWT/capability/provider secrets logged.
+
+## Scope / allowlist
+
+| Check | Result |
+| --- | --- |
+| Allowlisted product files | YES — guard, middlewares, complete/route, unit+http tests, legacy exact-set |
+| exclusions.ts | YES — AGENTS.md API Docs Contract deviation (Rule 2 / rules precedence) |
+| package.json / lockfile | NOT MODIFIED |
+| OpenAPI generated JSON / registry ops | NOT MODIFIED (exclusion only) |
+| Core Cart / CheckoutCompletionLog / Stripe webhook | NOT MODIFIED |
+| npm install / migrate / remote DB / provider / deploy / frontend | NOT RUN |
+| 13-03+ | NOT STARTED |
+
+## External systems not contacted
+
+None. No Stripe, Gelato, Supabase remote, Redis remote, Resend, PostHog, or deploy actions.
+
+## Git
+
+Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`
+
+| Commit | Message |
+| --- | --- |
+| `e077e8d` | docs(13-02): lock legacy test impact inventory before edits |
+| `d2c8de7` | test(13-02): add failing Store surface guard unit specs |
+| `5d534be` | feat(13-02): enforce fail-closed Store surface lockdown |
+
+## Task Commits
+
+1. **Task 1: Inventariar impacto legado** — `e077e8d` (docs)
+2. **Task 2: Guard + complete defense + matriz + transição legada** — `d2c8de7` (test RED) + `5d534be` (feat GREEN)
+3. **Task 3: Revisar lockdown** — AWAITING HUMAN REVIEW
+
+## Decisions Made
+
+- Method-less `/store*` for global RoutesSorter precedence (proven against installed 2.16.0 sorter).
+- PRESERVE_LEGACY = `next()` only; never M1 enablement / executable OpenAPI promotion.
+- Local complete override returns 404 without importing `completeCartWorkflow`.
+- OpenAPI exclusion for complete required by AGENTS.md when introducing an intentionally undocumented route.
+
+## Deviations from Plan
+
+### Auto-fixed Issues
+
+**1. [Rule 2 / AGENTS.md precedence] OpenAPI exclusion for complete override**
+- **Found during:** Task 2 legacy exact-set verify
+- **Issue:** Local `complete/route.ts` is discovered by OpenAPI AST coverage; Wave 1 exclusions allowed only two scaffolds → coverage/store-contract failed.
+- **Fix:** Added explicit exclusion for `POST /store/carts/{id}/complete` with owner/reviewTrigger; updated coverage/store-contract expectations. No registry/JSON rewrite.
+- **Files modified:** `apps/backend/src/api-docs/coverage/exclusions.ts`, coverage + store-contract unit specs
+- **Committed in:** `5d534be`
+
+**2. [Rule 1 - Bug] Phase 03 static grep false-positive on Wave 0 fixtures**
+- **Found during:** Task 2 legacy cart-checkout run
+- **Issue:** `collectSourceFiles` scanned `src/modules/checkout/__tests__` and matched `payment_intent` in Wave 0 disposable tests.
+- **Fix:** Skip `__tests__` directories and `*.spec.ts` / `*.test.ts` in production-source grep.
+- **Files modified:** `apps/backend/integration-tests/http/cart-checkout-store.spec.ts`
+- **Committed in:** `5d534be`
+
+**3. [Rule 3 - Blocking] RoutesSorter not public export**
+- **Found during:** Task 2 GREEN unit run
+- **Issue:** `@medusajs/framework/http` does not export `RoutesSorter`.
+- **Fix:** Load installed `routes-sorter.js` via absolute path from repo `node_modules` for the ordering fact test; also assert `middlewares.ts` registration order.
+- **Files modified:** `guard.unit.spec.ts`
+- **Committed in:** `5d534be`
+
+## Threat Flags
+
+None beyond the plan threat model. Denial responses remain minimal until 13-03 StoreErrorResponse.
+
+## Known Stubs
+
+None that block the plan goal. StoreErrorResponse envelope is intentionally deferred to 13-03.
+
+## Blocking failures / warnings
+
+None for Tasks 1–2. Task 3 human review is the remaining gate.
+
+## Next gate
+
+```text
+13-02 COMPLETE / AWAITING HUMAN REVIEW
+13-03 NOT AUTHORIZED
+```
+
+## Self-Check: PASSED
+
+- [x] `apps/backend/src/api/store-surface/guard.ts` FOUND
+- [x] `apps/backend/src/api/store/carts/[id]/complete/route.ts` FOUND
+- [x] `apps/backend/integration-tests/http/store-surface-lockdown.spec.ts` FOUND
+- [x] Commit `e077e8d` FOUND
+- [x] Commit `d2c8de7` FOUND
+- [x] Commit `5d534be` FOUND
