@@ -37,6 +37,11 @@ import {
 import { buildSentryCaptureContext, shouldCaptureError } from "../observability/sentry-scrub"
 import { createStoreTrackingLookupGuardMiddleware } from "../modules/tracking-access-token/lookup"
 import { storeSurfaceGuardMiddleware } from "./store-surface/guard"
+import {
+  attachStoreErrorEnvelope,
+  sanitizeStoreCorrelationId,
+  toStoreErrorResponse,
+} from "./store-surface/errors"
 
 const CORRELATION_HEADER = "x-correlation-id"
 const CORRELATION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
@@ -163,6 +168,75 @@ function buildSentryErrorClass(error: unknown): string {
   )
 }
 
+/**
+ * Store-only surface detection. Admin (/admin) and Webhooks (/hooks)
+ * must keep the existing Medusa error delegation path.
+ */
+export function isStoreApiRequest(req: MedusaRequest): boolean {
+  const originalUrl = typeof req.originalUrl === "string" ? req.originalUrl : ""
+  if (originalUrl.startsWith("/store")) {
+    return true
+  }
+
+  const url = typeof req.url === "string" ? req.url : ""
+  if (url.startsWith("/store")) {
+    return true
+  }
+
+  const baseUrl = typeof req.baseUrl === "string" ? req.baseUrl : ""
+  const path = typeof req.path === "string" ? req.path : ""
+  const joined = `${baseUrl}${path}`
+  if (joined.startsWith("/store")) {
+    return true
+  }
+
+  const routePath = (req as MedusaRequest & { route?: { path?: string } }).route
+    ?.path
+  return typeof routePath === "string" && routePath.startsWith("/store")
+}
+
+function extractStoreFieldErrors(
+  error: unknown
+): Record<string, unknown> | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined
+  }
+
+  const candidate = error as {
+    fieldErrors?: unknown
+    fields?: unknown
+  }
+
+  if (
+    candidate.fieldErrors &&
+    typeof candidate.fieldErrors === "object" &&
+    !Array.isArray(candidate.fieldErrors)
+  ) {
+    return candidate.fieldErrors as Record<string, unknown>
+  }
+
+  if (
+    candidate.fields &&
+    typeof candidate.fields === "object" &&
+    !Array.isArray(candidate.fields)
+  ) {
+    return candidate.fields as Record<string, unknown>
+  }
+
+  return undefined
+}
+
+export function createStoreErrorEnvelopeMiddleware() {
+  return function storeErrorEnvelopeMiddleware(
+    req: MedusaRequest,
+    res: MedusaResponse,
+    next: MedusaNextFunction
+  ): void {
+    attachStoreErrorEnvelope(req as RequestWithLogging, res)
+    next()
+  }
+}
+
 export function createSentryErrorHandler(
   deps: SentryErrorHandlerDeps = {}
 ) {
@@ -176,6 +250,7 @@ export function createSentryErrorHandler(
     res: MedusaResponse,
     next: MedusaNextFunction
   ) {
+    const request = req as RequestWithLogging
     const formattedError = formatException(error as Error & { code?: string })
     const statusCode = resolveErrorStatusCode(formattedError)
     const level = statusCode >= 500 ? "error" : "warn"
@@ -183,6 +258,10 @@ export function createSentryErrorHandler(
       (formattedError as { persistent?: boolean }).persistent === true
     const expected =
       (formattedError as { expected?: boolean }).expected ?? (statusCode < 500 && !persistent)
+
+    // Sanitize correlation once; reuse across Sentry / header / Store body.
+    const correlationId = sanitizeStoreCorrelationId(request.correlationId)
+    request.correlationId = correlationId
 
     if (
       shouldCaptureError({
@@ -200,7 +279,7 @@ export function createSentryErrorHandler(
         operation,
         integration,
         routeOrJob,
-        correlationId: (req as RequestWithLogging).correlationId,
+        correlationId,
         processRole,
       })
 
@@ -209,6 +288,32 @@ export function createSentryErrorHandler(
         tags: captureContext.tags,
         extra: captureContext.extra,
       })
+    }
+
+    // Store-only public envelope. Admin/Webhooks keep Medusa delegation.
+    if (isStoreApiRequest(req)) {
+      if (res.headersSent) {
+        return
+      }
+
+      const normalized = toStoreErrorResponse(formattedError, {
+        correlationId,
+        fieldErrors: extractStoreFieldErrors(error),
+      })
+
+      request.log?.warn({
+        operation: "http.store_error",
+        error_code: normalized.body.code,
+        status: normalized.statusCode,
+        correlation_id: correlationId,
+      })
+
+      res.setHeader(CORRELATION_HEADER, correlationId)
+      if (normalized.retryAfterSeconds !== undefined) {
+        res.setHeader("Retry-After", String(normalized.retryAfterSeconds))
+      }
+      res.status(normalized.statusCode).json(normalized.body)
+      return
     }
 
     medusaHandler(error, req, res, next)
@@ -258,6 +363,8 @@ export function createCorrelationAndAccessLogMiddleware(
 export const correlationAndAccessLogMiddleware =
   createCorrelationAndAccessLogMiddleware()
 
+export const storeErrorEnvelopeMiddleware = createStoreErrorEnvelopeMiddleware()
+
 export const sentryErrorMiddleware = createSentryErrorHandler()
 
 export const storeTrackingLookupGuardMiddleware =
@@ -272,9 +379,11 @@ export default defineMiddlewares({
     },
     // Method-less /store* → RoutesSorter global bucket (Medusa 2.16.0), before
     // static/params Store business middlewares and handlers. Fail-closed SSOT.
+    // Envelope wraps writers first so early guard DENYs become StoreErrorResponse
+    // without editing guard classification/runtime policy.
     {
       matcher: "/store*",
-      middlewares: [storeSurfaceGuardMiddleware],
+      middlewares: [storeErrorEnvelopeMiddleware, storeSurfaceGuardMiddleware],
     },
     {
       method: ["GET"],

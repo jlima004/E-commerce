@@ -73,6 +73,8 @@ export type StoreErrorNormalizationResult = {
 export type ToStoreErrorResponseOptions = {
   correlationId?: unknown
   fieldErrors?: Record<string, unknown>
+  /** HTTP status already chosen by the writer (e.g. early DENY). */
+  statusCode?: number
   /** Only attach when caller already has a safe allowlisted snapshot. */
   cart?: Record<string, unknown>
 }
@@ -422,7 +424,20 @@ export function toStoreErrorResponse(
   options: ToStoreErrorResponseOptions = {}
 ): StoreErrorNormalizationResult {
   const correlationId = sanitizeStoreCorrelationId(options.correlationId)
-  const classification = classify(error)
+  const errorForClassify =
+    options.statusCode !== undefined &&
+    typeof error === "object" &&
+    error !== null
+      ? {
+          ...(error as Record<string, unknown>),
+          statusCode:
+            readNumber((error as ErrorLike).statusCode) ?? options.statusCode,
+        }
+      : options.statusCode !== undefined
+        ? { message: error, statusCode: options.statusCode }
+        : error
+
+  const classification = classify(errorForClassify)
   const fieldErrors = filterStoreFieldErrors(options.fieldErrors)
 
   const body = buildBody(
@@ -439,5 +454,59 @@ export function toStoreErrorResponse(
     ...(classification.retryAfterSeconds !== undefined
       ? { retryAfterSeconds: classification.retryAfterSeconds }
       : {}),
+  }
+}
+
+type JsonWritableResponse = {
+  statusCode?: number
+  headersSent?: boolean
+  status: (code: number) => JsonWritableResponse
+  json: (body: unknown) => unknown
+  setHeader?: (name: string, value: string) => void
+}
+
+type CorrelationReadableRequest = {
+  correlationId?: string
+}
+
+/**
+ * Wrap Store response writers so early DENY/direct JSON errors become
+ * StoreErrorResponse without altering guard classification logic.
+ */
+export function attachStoreErrorEnvelope(
+  req: CorrelationReadableRequest,
+  res: JsonWritableResponse
+): void {
+  const originalJson = res.json.bind(res)
+
+  res.json = (body: unknown) => {
+    const statusCode = res.statusCode ?? 200
+    if (statusCode < 400) {
+      return originalJson(body)
+    }
+
+    const correlationId = sanitizeStoreCorrelationId(req.correlationId)
+
+    if (isStoreErrorResponse(body)) {
+      const synced: StoreErrorResponse = {
+        ...body,
+        correlationId,
+      }
+      res.setHeader?.("x-correlation-id", correlationId)
+      return originalJson(synced)
+    }
+
+    const normalized = toStoreErrorResponse(body, {
+      correlationId,
+      statusCode,
+    })
+
+    res.setHeader?.("x-correlation-id", correlationId)
+    if (normalized.retryAfterSeconds !== undefined) {
+      res.setHeader?.("Retry-After", String(normalized.retryAfterSeconds))
+    }
+    res.statusCode = normalized.statusCode
+    res.status(normalized.statusCode)
+    return originalJson(normalized.body)
   }
 }
