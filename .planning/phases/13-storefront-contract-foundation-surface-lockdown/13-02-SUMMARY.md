@@ -33,14 +33,23 @@ key-files:
     - apps/backend/src/api/middlewares.ts
     - apps/backend/integration-tests/http/cart-checkout-store.spec.ts
     - apps/backend/src/api-docs/coverage/exclusions.ts
+    - apps/backend/src/api-docs/operations/store/customers.ts
+    - apps/backend/src/api-docs/operations/store/schemas.ts
     - apps/backend/src/api-docs/__tests__/coverage.unit.spec.ts
     - apps/backend/src/api-docs/__tests__/store-contract.unit.spec.ts
+    - apps/backend/src/api-docs/__tests__/security.unit.spec.ts
+    - apps/backend/src/api-docs/__tests__/generation.unit.spec.ts
+    - apps/backend/src/api-docs/generated/store.openapi.json
 
 key-decisions:
   - "Guard registered as method-less /store* so Medusa 2.16.0 RoutesSorter places it in the global bucket before static/params Store handlers"
   - "PRESERVE_LEGACY is next()-only inherited v1.0 pass-through; M1_ENABLED branch present but empty in Phase 13"
   - "Local complete/route.ts replaces native handler (last-writer-wins) and returns non-enumerating 404 without workflow resolve"
   - "OpenAPI exclusion for complete override required by AGENTS.md API Docs Contract (Rule 2 / rules precedence)"
+  - "Blocked attach absent from current public Store operation registry; attach support schemas retained in TypeScript only"
+  - "Explicit attach route exclusion is part of the closed exclusion set (4 total)"
+  - "Medusa 2.16.0 RoutesLoader duplicate resolution proven executable as last-writer-wins; local complete override is effective POST"
+  - "OPTIONS preflight fail-closed: permitted only for known runtime-allowable method/path targets"
 
 patterns-established:
   - "Store lockdown decision is method+canonical-path lookup against manifest SSOT; UNKNOWN/BLOCKED/DENY short-circuit before handlers"
@@ -52,7 +61,7 @@ requirements-evidenced: [FND-01, FND-02, FND-07]
 
 duration: 8min
 completed: 2026-08-08
-status: r1-correction-complete-awaiting-human-re-review
+status: r2-documentary-correction-complete-awaiting-human-re-review
 ---
 
 # Phase 13 Plan 02: Fail-Closed Store Lockdown Summary
@@ -62,10 +71,15 @@ status: r1-correction-complete-awaiting-human-re-review
 ## Identity
 
 Plan: 13-02  
-Status: R1 CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW  
+Technical implementation: PASS  
+P13-13-02-R1 technical human re-review: PASS  
+P13-13-02-R2: DOCUMENTARY CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW  
+13-02: NOT YET HUMAN-APPROVED  
+13-03: NOT AUTHORIZED  
 Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`  
-Pre-plan / Execution base SHA: `0a06b57d91954a330a16de508819d1769a149c18`
-P13_13_02_R1_PRE_HEAD: `c4d19c69d4bf9dc6d433b997b1fc81fdbab391f3`
+Pre-plan / Execution base SHA: `0a06b57d91954a330a16de508819d1769a149c18`  
+P13_13_02_R1_PRE_HEAD: `c4d19c69d4bf9dc6d433b997b1fc81fdbab391f3`  
+P13_13_02_R2_PRE_HEAD: `2dc572cd6515ed42bbcf40b3f42b1e16da744642`
 
 Post-execution commits:
 - `e077e8d` — docs(13-02): lock legacy test impact inventory before edits
@@ -73,14 +87,21 @@ Post-execution commits:
 - `5d534be` — feat(13-02): enforce fail-closed Store surface lockdown
 - `c4d19c6` — docs(13-02): complete Fail-Closed Store Lockdown plan (awaiting human review)
 - `d07058c` — fix(13-02): reconcile fail-closed Store contract and loader proof
+- `2dc572c` — docs(13-02): record R1 review corrections
 
 ## Performance
 
 - **Duration:** ~8 min
 - **Started:** 2026-08-08T02:14:27Z
 - **Completed (technical):** 2026-08-08T02:21:57Z
-- **Tasks:** 2 automated complete; Task 3 human-verify pending
-- **Files modified:** 9 product/test + SUMMARY (+ exclusions via AGENTS.md deviation)
+- **Tasks:** 2 automated complete; Task 3 human-verify pending; R1 human-review correction complete; R2 documentary sync complete
+- **Files modified (0a06b57..2dc572c, 17 total):**
+  - runtime: 3 (`guard.ts`, `middlewares.ts`, `complete/route.ts`)
+  - tests: 3 (`guard.unit.spec.ts`, `store-surface-lockdown.spec.ts`, `cart-checkout-store.spec.ts`)
+  - API Docs registry: 3 (`exclusions.ts`, `customers.ts`, `schemas.ts`)
+  - API Docs tests: 4 (`coverage`, `store-contract`, `security`, `generation` unit specs)
+  - generated artifact: 1 (`store.openapi.json`)
+  - planning/docs: 3 (`ROADMAP.md`, `STATE.md`, `13-02-SUMMARY.md`)
 
 ## Accomplishments
 
@@ -105,6 +126,8 @@ Post-execution commits:
 | Metric | Count |
 | --- | ---: |
 | runtime Store operations | 58 |
+| Native | 51 |
+| Local | 7 |
 | AUTHORIZED | 0 |
 | EXTENDED | 10 |
 | BLOCKED | 17 |
@@ -112,7 +135,10 @@ Post-execution commits:
 | runtime_policy DENY | 51 |
 | runtime_policy PRESERVE_LEGACY | 7 |
 | runtime_policy M1_ENABLED | 0 |
+| runtime_policy UNKNOWN | 0 |
 | m1_enablement enabled | 0 |
+
+Current public Store OpenAPI registry: **9 operations** (7 Store business PRESERVE_LEGACY + 2 health/support).
 
 ## Router ordering evidence (Medusa 2.16.0)
 
@@ -158,15 +184,27 @@ Closed exact-set of unique legacy test paths (4 ≤ 4) within Store/checkout/pay
 | Class C rows | 6 |
 | paths outside Store/checkout/payment/API Docs/invariants | 0 |
 
-### Transition applied (Task 2)
+### Transition applied
 
-- **B (attach):** retained handler-level proofs; added public DENY assertion + `/store*` registration check; production-source grep skips `__tests__`.
-- **C:** OpenAPI attach docs cases untouched in intent; coverage/store-contract exclusion lists updated only for new complete override discovery.
+**Initial Task 2 transition:**
+- **B (attach):** attach domain invariants retained at handler boundary; public DENY assertion + `/store*` registration check added; production-source grep skips `__tests__`.
+- **C:** pre-change Class C classifications preserved unchanged in inventory above; initial API Docs changes covered the complete override exclusion only.
 - **A:** none in pre-change inventory.
+
+**Human-review R1 correction:**
+- attach public Store operation removed from the TypeScript registry (`customers.ts`);
+- attach added to the explicit route exclusion closed-set (`exclusions.ts`);
+- attach support schemas retained only as TypeScript support knowledge (`schemas.ts`); not public OpenAPI components;
+- Store generated JSON regenerated by the existing writer (`store.openapi.json`);
+- security/generation/coverage/store-contract regressions updated;
+- Class C historical classification remained unchanged;
+- semantic coverage preserved or strengthened.
 
 ## Tests
 
 ### Unit — guard + money invariants
+
+**Initial Task 2 run (pre-R1):**
 
 ```text
 Command: cd apps/backend && npm run test:unit -- --runTestsByPath src/api/store-surface/__tests__/guard.unit.spec.ts src/utils/__tests__/money-units.unit.spec.ts --runInBand
@@ -176,22 +214,30 @@ Tests: 43 passed, 43 total
 Result: PASS
 ```
 
+**R1 final regression:**
+
+```text
+Guard + money: PASS — 44 tests
+```
+
 ### HTTP — lockdown matrix + order-birth invariants
 
 ```text
-Command: cd apps/backend && npm run test:integration:http -- --runTestsByPath integration-tests/http/store-surface-lockdown.spec.ts integration-tests/http/invariants-inv01-02-order-birth.spec.ts --runInBand
-Exit code: 0
-Suites: 2 passed, 2 total
-Tests: 17 passed, 17 total
-Result: PASS
+Lockdown + Order birth: PASS — 17 tests
 ```
 
 ### Legacy exact-set by family (once per unique path)
 
 ```text
-unit: store-contract + security + coverage → PASS (41 tests)
+Legacy exact-set: LEGACY_EXACT_SET_OK
 http: cart-checkout-store → PASS (25 tests)
-Result: LEGACY_EXACT_SET_OK
+```
+
+### API Docs focused regressions (R1 final)
+
+```text
+API Docs focused: PASS — 41 tests
+(coverage + store-contract + security + generation unit specs)
 ```
 
 ### Scanner (drift check)
@@ -199,16 +245,26 @@ Result: LEGACY_EXACT_SET_OK
 ```text
 Command: cd apps/backend && npm exec -- ts-node --swc scripts/store-surface/scan-installed.ts --check
 Output: medusa=2.16.0 discovered=58 manifest=58 authorized=0 extended=10 blocked=17 outside=31 deny=51 preserve_legacy=7 m1_enabled_policy=0 m1_enablement_enabled=0 STORE_SURFACE_SCAN_OK
+Scanner: STORE_SURFACE_SCAN_OK
 Result: PASS
+```
+
+### OpenAPI lint (R1 final)
+
+```text
+openapi:lint: PASS
+openapi:check: NOT EXECUTED
 ```
 
 ## Security / negative proofs
 
 - DENY responses are non-enumerating `{ type: "not_found", message: "Not Found" }` (StoreErrorResponse envelope deferred to 13-03).
 - Synthetic canaries only (Authorization/cookie/client_secret/Pix/CPF); none appear in deny bodies.
-- complete override: `scope.resolve` not called; workflow run not called; body has no Order.
-- `/store/custom` denied before local handler invocation.
-- HEAD not inferred from GET; invalid OPTIONS denied; valid CORS preflight `next()` only.
+- complete override: `scope.resolve = 0`; `completeCartWorkflow = 0`; `Order = 0`; body has no Order.
+- `/store/custom` denied before local handler invocation; `/store/custom` public operation ABSENT.
+- global `/store*` guard: PASS.
+- Strict OPTIONS (R1 final): known PRESERVE_LEGACY method/path → OPTIONS preflight allowed; unknown path → DENY; wrong requested method → DENY; BLOCKED/DENY target → DENY; business invocation from preflight → 0.
+- HEAD not inferred from GET.
 - No JWT/capability/provider secrets logged.
 
 ## Scope / allowlist
@@ -216,9 +272,15 @@ Result: PASS
 | Check | Result |
 | --- | --- |
 | Allowlisted product files | YES — guard, middlewares, complete/route, unit+http tests, legacy exact-set |
-| exclusions.ts | YES — AGENTS.md API Docs Contract deviation (Rule 2 / rules precedence) |
+| API Docs TypeScript registry | MODIFIED under approved P13-13-02-R1 reconciliation |
+| Store generated JSON | REGENERATED BY EXISTING WRITER |
+| OpenAPI manual JSON edit | NO |
+| OpenAPI version | 1.0.0 unchanged (Store OpenAPI 1.1.0 remains 13-06) |
+| openapi:lint | PASS |
+| openapi:check | NOT EXECUTED |
 | package.json / lockfile | NOT MODIFIED |
-| OpenAPI generated JSON / registry ops | NOT MODIFIED (exclusion only) |
+| migration | NONE |
+| dependency | NONE |
 | Core Cart / CheckoutCompletionLog / Stripe webhook | NOT MODIFIED |
 | npm install / migrate / remote DB / provider / deploy / frontend | NOT RUN |
 | 13-03+ | NOT STARTED |
@@ -236,12 +298,19 @@ Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`
 | `e077e8d` | docs(13-02): lock legacy test impact inventory before edits |
 | `d2c8de7` | test(13-02): add failing Store surface guard unit specs |
 | `5d534be` | feat(13-02): enforce fail-closed Store surface lockdown |
+| `c4d19c6` | docs(13-02): complete Fail-Closed Store Lockdown plan (awaiting human review) |
+| `d07058c` | fix(13-02): reconcile fail-closed Store contract and loader proof |
+| `2dc572c` | docs(13-02): record R1 review corrections |
 
 ## Task Commits
 
 1. **Task 1: Inventariar impacto legado** — `e077e8d` (docs)
-2. **Task 2: Guard + complete defense + matriz + transição legada** — `d2c8de7` (test RED) + `5d534be` (feat GREEN)
-3. **Task 3: Revisar lockdown** — AWAITING HUMAN REVIEW
+2. **Task 2 RED:** `d2c8de7` (test)
+3. **Task 2 GREEN:** `5d534be` (feat)
+4. **Initial technical summary:** `c4d19c6` (docs)
+5. **Human-review R1 technical correction:** `d07058c` (fix)
+6. **R1 documentation synchronization:** `2dc572c` (docs)
+7. **Task 3: Revisar lockdown** — AWAITING HUMAN RE-REVIEW
 
 ## Decisions Made
 
@@ -249,6 +318,10 @@ Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`
 - PRESERVE_LEGACY = `next()` only; never M1 enablement / executable OpenAPI promotion.
 - Local complete override returns 404 without importing `completeCartWorkflow`.
 - OpenAPI exclusion for complete required by AGENTS.md when introducing an intentionally undocumented route.
+- API Docs Contract requires blocked attach to be absent from current public Store operation registry while retaining useful TS support knowledge.
+- Explicit attach route exclusion is part of the closed exclusion set.
+- Medusa 2.16.0 RoutesLoader duplicate resolution proven executable as last-writer-wins; project local complete override is the effective POST.
+- OPTIONS preflight is fail-closed and permitted only for known runtime-allowable method/path targets.
 
 ## Deviations from Plan
 
@@ -257,9 +330,10 @@ Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`
 **1. [Rule 2 / AGENTS.md precedence] OpenAPI exclusion for complete override**
 - **Found during:** Task 2 legacy exact-set verify
 - **Issue:** Local `complete/route.ts` is discovered by OpenAPI AST coverage; Wave 1 exclusions allowed only two scaffolds → coverage/store-contract failed.
-- **Fix:** Added explicit exclusion for `POST /store/carts/{id}/complete` with owner/reviewTrigger; updated coverage/store-contract expectations. No registry/JSON rewrite.
-- **Files modified:** `apps/backend/src/api-docs/coverage/exclusions.ts`, coverage + store-contract unit specs
-- **Committed in:** `5d534be`
+- **Fix (initial Task 2):** Added explicit exclusion for `POST /store/carts/{id}/complete` with owner/reviewTrigger; updated coverage/store-contract expectations.
+- **R1 extension (human accepted):** attach registry operation removal + TS-only support schemas + generated Store artifact regeneration + affected contract/security/generation tests. This did not enable M1, change Store classification, change runtime policy, implement 13-06 OpenAPI 1.1.0, or relax coverage.
+- **Files modified:** `exclusions.ts`, `customers.ts`, `schemas.ts`, coverage + store-contract + security + generation unit specs, `store.openapi.json`
+- **Committed in:** `5d534be` (initial complete exclusion); `d07058c` (R1 attach/registry reconciliation)
 
 **2. [Rule 1 - Bug] Phase 03 static grep false-positive on Wave 0 fixtures**
 - **Found during:** Task 2 legacy cart-checkout run
@@ -275,6 +349,14 @@ Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`
 - **Files modified:** `guard.unit.spec.ts`
 - **Committed in:** `5d534be`
 
+### Deviation accepted by human review
+
+API Docs maintenance exceeded original 13-02 PLAN allowlist because AGENTS.md requires every HTTP contract change to update registry/evidence or explicit route exclusion metadata.
+
+**R1 extension:** attach registry operation removal + TS-only support schemas + generated Store artifact regeneration + affected contract/security/generation tests.
+
+**This did not:** enable M1; change Store classification; change runtime policy; implement 13-06 OpenAPI 1.1.0; relax coverage.
+
 ## Threat Flags
 
 None beyond the plan threat model. Denial responses remain minimal until 13-03 StoreErrorResponse.
@@ -285,12 +367,31 @@ None that block the plan goal. StoreErrorResponse envelope is intentionally defe
 
 ## Blocking failures / warnings
 
-Human review R1 findings addressed in P13-13-02-R1. Human re-review is the remaining gate.
+Human review R1 findings addressed in P13-13-02-R1 (technical re-review PASS). R2 documentary synchronization complete; final human approval remains the gate.
+
+## P13-13-02-R2 Documentary Correction
+
+status: COMPLETE / AWAITING HUMAN RE-REVIEW
+
+P13_13_02_R2_PRE_HEAD: `2dc572cd6515ed42bbcf40b3f42b1e16da744642`
+
+Scope: reconcile stale pre-R1 wording in this SUMMARY against factual R1 final state. No runtime, registry, generated JSON, test, or governance file changes.
+
+Corrections applied:
+- key-files modified exact-set aligned to 0a06b57..2dc572c factual diff
+- Performance file counts recalculated (17 total across runtime/tests/API Docs/planning)
+- Transition section split into initial Task 2 vs human-review R1 correction
+- Scope/allowlist updated for registry modification and generated JSON regeneration
+- Test evidence temporally labeled (initial 43 vs R1 final 44)
+- Post-execution commit lineage and Task Commits extended through R1
+- Decisions, deviations, and Human Review R1 sections consolidated with R2 gate status
+- Pre-change A/B/C inventory preserved unchanged
 
 ## Next gate
 
 ```text
-P13-13-02-R1: COMPLETE / AWAITING HUMAN RE-REVIEW
+P13-13-02-R1 technical human re-review: PASS
+P13-13-02-R2: DOCUMENTARY CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
 13-02: NOT YET HUMAN-APPROVED
 13-03: NOT AUTHORIZED
 ```
@@ -303,6 +404,9 @@ P13-13-02-R1: COMPLETE / AWAITING HUMAN RE-REVIEW
 - [x] Commit `e077e8d` FOUND
 - [x] Commit `d2c8de7` FOUND
 - [x] Commit `5d534be` FOUND
+- [x] Commit `c4d19c6` FOUND
+- [x] Commit `d07058c` FOUND
+- [x] Commit `2dc572c` FOUND
 
 ## P13-13-02-R1 API Docs reconciliation inventory
 
@@ -340,10 +444,16 @@ W13-02-R1-02 exclusion test names:
 FIXED
 
 W13-02-R1-03 Class C deviation:
-DOCUMENTED / ACCEPTED
+DOCUMENTED / HUMAN ACCEPTED
 
 W13-02-R1-04 strict OPTIONS:
 FIXED
+
+P13-13-02-R1 technical human re-review:
+PASS
+
+P13-13-02-R2:
+DOCUMENTARY SYNCHRONIZATION COMPLETE / AWAITING HUMAN RE-REVIEW
 ```
 
 ## API Docs reconciliation evidence
@@ -465,10 +575,11 @@ This is not:
 
 Semantic coverage remains equal or stronger.
 
-## Next gate (post-R1)
+## Next gate (post-R2)
 
 ```text
-P13-13-02-R1: COMPLETE / AWAITING HUMAN RE-REVIEW
+P13-13-02-R1 technical human re-review: PASS
+P13-13-02-R2: DOCUMENTARY CORRECTION COMPLETE / AWAITING HUMAN RE-REVIEW
 13-02: NOT YET HUMAN-APPROVED
 13-03: NOT AUTHORIZED
 ```
