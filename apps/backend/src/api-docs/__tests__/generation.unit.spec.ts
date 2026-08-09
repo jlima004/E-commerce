@@ -2,7 +2,7 @@ import fs from "fs"
 import path from "path"
 import { z, type ZodType } from "zod"
 import type { OpenApiDocument, OperationMetadata } from "../contracts"
-import { CONTRACT_TITLES } from "../document"
+import { CONTRACT_TITLES, CONTRACT_VERSIONS } from "../document"
 import { buildContracts } from "../generation/build-documents"
 import { canonicalize } from "../generation/canonicalize"
 import { serializeDocument } from "../generation/serialize"
@@ -66,7 +66,9 @@ describe("OpenAPI foundation generation", () => {
 
     for (const contract of first) {
       expect(contract.document.openapi).toBe("3.1.2")
-      expect(contract.document.info.version).toBe("1.0.0")
+      expect(contract.document.info.version).toBe(
+        CONTRACT_VERSIONS[contract.surface]
+      )
       expect(contract.document.info.title).toBe(CONTRACT_TITLES[contract.surface])
       expect(contract.document["x-medusa-version"]).toBe("2.16.0")
       expect(contract.document.servers).toEqual([
@@ -107,6 +109,35 @@ describe("OpenAPI foundation generation", () => {
       "/hooks/gelato",
       "/hooks/stripe",
     ])
+  })
+
+  it("validates the closed contract version expected by each surface", () => {
+    const contracts = buildContracts()
+    const bySurface = Object.fromEntries(
+      contracts.map((contract) => [contract.surface, contract.document])
+    ) as Record<"store" | "admin" | "webhooks", OpenApiDocument>
+
+    expect(bySurface.store.info.version).toBe("1.1.0")
+    expect(bySurface.admin.info.version).toBe("1.0.0")
+    expect(bySurface.webhooks.info.version).toBe("1.0.0")
+
+    expect(() => validateDocument("store", bySurface.store)).not.toThrow()
+    expect(() => validateDocument("admin", bySurface.admin)).not.toThrow()
+    expect(() => validateDocument("webhooks", bySurface.webhooks)).not.toThrow()
+
+    const wrongStore = structuredClone(bySurface.store)
+    wrongStore.info.version = "1.0.0"
+    expect(() => validateDocument("store", wrongStore)).toThrow(
+      "Unexpected contract version for store"
+    )
+
+    for (const surface of ["admin", "webhooks"] as const) {
+      const wrong = structuredClone(bySurface[surface])
+      wrong.info.version = "1.1.0"
+      expect(() => validateDocument(surface, wrong)).toThrow(
+        `Unexpected contract version for ${surface}`
+      )
+    }
   })
 
   it("uses an explicit operation description and otherwise falls back to summary", () => {

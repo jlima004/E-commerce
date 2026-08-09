@@ -222,6 +222,63 @@ describe("OpenAPI Store contract wave", () => {
     ).toBeDefined()
   })
 
+  it("publishes the closed Store 1.1 transversal component foundation", () => {
+    const document = store?.document
+    const schemas = document?.components.schemas ?? {}
+    const parameters = document?.components.parameters ?? {}
+    const headers = document?.components.headers ?? {}
+    const securitySchemes = document?.components.securitySchemes ?? {}
+
+    expect(document?.info.version).toBe("1.1.0")
+    expect(schemas.StoreErrorResponse).toEqual(
+      expect.objectContaining({
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "message", "retryable"],
+      })
+    )
+    expect(parameters).toEqual(
+      expect.objectContaining({
+        IdempotencyKey: expect.objectContaining({ name: "Idempotency-Key" }),
+        IfMatch: expect.objectContaining({ name: "If-Match" }),
+        XCorrelationId: expect.objectContaining({ name: "x-correlation-id" }),
+      })
+    )
+    expect(headers).toEqual(
+      expect.objectContaining({
+        ETag: expect.any(Object),
+        XCorrelationId: expect.any(Object),
+        RetryAfter: expect.any(Object),
+      })
+    )
+    expect(schemas.StoreMajorMoney).toEqual(
+      expect.objectContaining({ additionalProperties: false })
+    )
+    expect(schemas.StoreMinorMoney).toEqual(
+      expect.objectContaining({ additionalProperties: false })
+    )
+    expect(JSON.stringify(schemas.StoreMajorMoney)).toMatch(/BRL.*major/)
+    expect(JSON.stringify(schemas.StoreMinorMoney)).toMatch(/BRL.*minor/)
+
+    for (const scheme of Object.values(securitySchemes) as Array<{
+      description?: string
+    }>) {
+      expect(scheme.description).toMatch(/BFF|server-to-server/i)
+      expect(scheme.description).toMatch(/browser/i)
+    }
+  })
+
+  it("describes Idempotency-Key as retry identity and never as authority", () => {
+    const parameter = store?.document.components.parameters.IdempotencyKey as {
+      description?: string
+    }
+    expect(parameter.description).toMatch(/retry identity/i)
+    expect(parameter.description).toMatch(/not authentication/i)
+    expect(parameter.description).toMatch(/not authorization/i)
+    expect(parameter.description).toMatch(/not ownership/i)
+    expect(parameter.description).toMatch(/not (?:a )?capability/i)
+  })
+
   it("does not register Admin or Webhook operations in the Store registry", () => {
     expect(
       storeOperations.some(

@@ -11,6 +11,7 @@ import {
   validateRouteExclusions,
 } from "../coverage/exclusions"
 import { verifyCoverage } from "../coverage/verify-coverage"
+import { verifyStoreSurfaceExactSets } from "../coverage/verify-coverage"
 import {
   NATIVE_EXTENSIONS,
   type NativeExtensionEntry,
@@ -19,6 +20,12 @@ import {
   ContractRegistryBundle,
   createFoundationRegistry,
 } from "../registry"
+import { buildContracts } from "../generation/build-documents"
+import { scanInstalledStoreSurface } from "../../../scripts/store-surface/scan-installed"
+import {
+  STORE_SURFACE_MANIFEST,
+  type StoreSurfaceEntry,
+} from "../../api/store-surface/manifest"
 
 function fixtureRoot(): { repositoryRoot: string; apiRoot: string } {
   const repositoryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "api-docs-routes-"))
@@ -257,6 +264,73 @@ describe("OpenAPI route coverage foundation", () => {
     expect(() => verifyCoverage("admin", registry)).not.toThrow()
     expect(() => verifyCoverage("webhooks", registry)).not.toThrow()
     expect(() => verifyCoverage("global", registry)).not.toThrow()
+  })
+
+  it("proves runtime, manifest, and executable Store M1 as separate exact sets", () => {
+    const registry = createFoundationRegistry()
+    const scan = scanInstalledStoreSurface()
+    const store = buildContracts(registry).find(
+      (contract) => contract.surface === "store"
+    )
+    const evidence = verifyStoreSurfaceExactSets(
+      registry,
+      store?.document,
+      scan.discovered
+    )
+
+    expect(scan.ok).toBe(true)
+    expect(evidence.runtime).toEqual({ native: 51, local: 7, total: 58 })
+    expect(evidence.manifest).toEqual({
+      total: 58,
+      authorized: 0,
+      extended: 10,
+      blocked: 17,
+      outsideFrontendM1: 31,
+      m1Enabled: 0,
+    })
+    expect(evidence.executableStoreBusinessKeys).toEqual([])
+    expect(evidence.healthSupportKeys).toEqual([
+      "GET /health/live",
+      "GET /health/ready",
+    ])
+  })
+
+  it("fails closed on runtime drift, duplicate/unknown manifest, and invalid exposure", () => {
+    const registry = createFoundationRegistry()
+    const store = buildContracts(registry).find(
+      (contract) => contract.surface === "store"
+    )?.document
+    const discovered = scanInstalledStoreSurface().discovered
+
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, store, discovered.slice(1))
+    ).toThrow(/runtime exact-set/i)
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, store, [
+        ...discovered,
+        discovered[0],
+      ])
+    ).toThrow(/duplicate runtime/i)
+
+    const duplicateManifest = [
+      ...STORE_SURFACE_MANIFEST,
+      STORE_SURFACE_MANIFEST[0],
+    ]
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, store, discovered, duplicateManifest)
+    ).toThrow(/manifest/i)
+
+    const invalidPreserve = STORE_SURFACE_MANIFEST.map((entry, index) =>
+      index === 42
+        ? {
+            ...entry,
+            m1_enablement: "enabled",
+          }
+        : entry
+    ) as readonly StoreSurfaceEntry[]
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, store, discovered, invalidPreserve)
+    ).toThrow(/PRESERVE_LEGACY|manifest/i)
   })
 
   it("accepts bidirectional local and native Store coverage", () => {
