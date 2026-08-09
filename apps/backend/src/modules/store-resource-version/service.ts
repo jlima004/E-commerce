@@ -23,7 +23,7 @@ export type StoreResourceVersionRow = {
   id: string
   resource_type: string
   resource_id: string
-  version: bigint
+  version: number
   created_at: string
   updated_at: string
 }
@@ -33,15 +33,15 @@ export type StoreResourceVersionMutationContext = SharedTransactionContext
 export type StoreResourceVersionCasResult<T = void> =
   | {
       type: "updated"
-      previousVersion: bigint
-      version: bigint
+      previousVersion: number
+      version: number
       mutationResult: T
       transactionManagerIdentity: string
     }
   | {
       type: "stale"
-      expectedVersion: bigint
-      actualVersion: bigint
+      expectedVersion: number
+      actualVersion: number
       transactionManagerIdentity: string
     }
 
@@ -54,17 +54,11 @@ function requireResourcePart(value: unknown, code: string): string {
   return value
 }
 
-function requirePositiveVersion(value: bigint | number | string): bigint {
-  let version: bigint
-  try {
-    version = typeof value === "bigint" ? value : BigInt(value)
-  } catch {
+function requirePositiveVersion(value: number): number {
+  if (!Number.isInteger(value) || value <= 0) {
     throw new Error("STORE_RESOURCE_VERSION_EXPECTED_INVALID")
   }
-  if (version <= 0n) {
-    throw new Error("STORE_RESOURCE_VERSION_EXPECTED_INVALID")
-  }
-  return version
+  return value
 }
 
 function requireTransaction(input: {
@@ -104,7 +98,7 @@ function mapRow(row: Record<string, unknown>): StoreResourceVersionRow {
     id: String(row.id),
     resource_type: String(row.resource_type),
     resource_id: String(row.resource_id),
-    version: BigInt(String(row.version)),
+    version: requirePositiveVersion(Number(row.version)),
     created_at: new Date(String(row.created_at)).toISOString(),
     updated_at: new Date(String(row.updated_at)).toISOString(),
   }
@@ -177,7 +171,9 @@ export class StoreResourceVersionModuleService extends BaseStoreResourceVersionS
         insert into store_resource_version (
           id, resource_type, resource_id, version, created_at, updated_at
         ) values (?, ?, ?, 1, now(), now())
-        on conflict (resource_type, resource_id) do nothing
+        on conflict (resource_type, resource_id)
+        where deleted_at is null
+        do nothing
       `,
       [generateEntityId(undefined, "strver"), type, id]
     )
@@ -185,7 +181,7 @@ export class StoreResourceVersionModuleService extends BaseStoreResourceVersionS
     const initialized = await rows(
       knex,
       `
-        select id, resource_type, resource_id, version::text as version,
+        select id, resource_type, resource_id, version,
                created_at, updated_at
         from store_resource_version
         where resource_type = ? and resource_id = ? and deleted_at is null
@@ -217,7 +213,7 @@ export class StoreResourceVersionModuleService extends BaseStoreResourceVersionS
     const found = await rows(
       knex,
       `
-        select id, resource_type, resource_id, version::text as version,
+        select id, resource_type, resource_id, version,
                created_at, updated_at
         from store_resource_version
         where resource_type = ? and resource_id = ? and deleted_at is null
@@ -231,7 +227,7 @@ export class StoreResourceVersionModuleService extends BaseStoreResourceVersionS
   async increment(
     resourceType: string,
     resourceId: string,
-    expectedVersion: bigint | number | string,
+    expectedVersion: number,
     sharedContext?: StoreResourceVersionMutationContext
   ): Promise<StoreResourceVersionCasResult> {
     const expected = requirePositiveVersion(expectedVersion)
@@ -258,9 +254,9 @@ export class StoreResourceVersionModuleService extends BaseStoreResourceVersionS
         set version = version + 1, updated_at = now()
         where resource_type = ? and resource_id = ?
           and version = ? and deleted_at is null
-        returning version::text as version
+        returning version
       `,
-      [resourceType, resourceId, expected.toString()]
+      [resourceType, resourceId, expected]
     )
 
     if (updated.length !== 1) {
@@ -283,7 +279,7 @@ export class StoreResourceVersionModuleService extends BaseStoreResourceVersionS
     return {
       type: "updated",
       previousVersion: expected,
-      version: BigInt(String(updated[0].version)),
+      version: requirePositiveVersion(Number(updated[0].version)),
       mutationResult: undefined,
       transactionManagerIdentity: identity,
     }
@@ -292,7 +288,7 @@ export class StoreResourceVersionModuleService extends BaseStoreResourceVersionS
   async compareAndSwapWithMutation<T>(input: {
     resourceType: string
     resourceId: string
-    expectedVersion: bigint | number | string
+    expectedVersion: number
     sharedContext?: StoreResourceVersionMutationContext
     mutate: (sharedContext: StoreResourceVersionMutationContext) => Promise<T>
   }): Promise<StoreResourceVersionCasResult<T>> {
@@ -322,9 +318,9 @@ export class StoreResourceVersionModuleService extends BaseStoreResourceVersionS
         set version = version + 1, updated_at = now()
         where resource_type = ? and resource_id = ?
           and version = ? and deleted_at is null
-        returning version::text as version
+        returning version
       `,
-      [input.resourceType, input.resourceId, expected.toString()]
+      [input.resourceType, input.resourceId, expected]
     )
 
     if (updated.length !== 1) {
@@ -334,7 +330,7 @@ export class StoreResourceVersionModuleService extends BaseStoreResourceVersionS
     return {
       type: "updated",
       previousVersion: expected,
-      version: BigInt(String(updated[0].version)),
+      version: requirePositiveVersion(Number(updated[0].version)),
       mutationResult,
       transactionManagerIdentity: identity,
     }

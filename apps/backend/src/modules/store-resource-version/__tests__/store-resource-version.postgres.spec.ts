@@ -15,7 +15,7 @@ import {
   STORE_RESOURCE_VERSION_WRITE_FORBIDDEN,
   type StoreResourceVersionModuleService,
 } from ".."
-import { Migration20260809175009 } from "../migrations/Migration20260809175009"
+import { Migration20260809201808 } from "../migrations/Migration20260809201808"
 
 jest.mock(
   "pg-god",
@@ -154,13 +154,13 @@ if (!requestedDatabaseName) {
       const readVersion = async (resourceType: string, resourceId: string) => {
         const result = await dbConnection.raw(
           `
-            select version::text as version
+            select version
             from store_resource_version
             where resource_type = ? and resource_id = ? and deleted_at is null
           `,
           [resourceType, resourceId]
         )
-        return result.rows[0] ? BigInt(String(result.rows[0].version)) : null
+        return result.rows[0] ? Number(result.rows[0].version) : null
       }
 
       const countControlledMutations = async (prefix: string) => {
@@ -180,7 +180,7 @@ if (!requestedDatabaseName) {
         await dbConnection.raw(`delete from store_resource_version`)
       })
 
-      it("applies the exact bigint, positive-version, and non-partial unique catalog contract", async () => {
+      it("applies the exact integer, positive-version, and partial unique catalog contract", async () => {
         const columns = await dbConnection.raw(`
           select column_name, udt_name
           from information_schema.columns
@@ -192,12 +192,13 @@ if (!requestedDatabaseName) {
             { column_name: "id", udt_name: "text" },
             { column_name: "resource_type", udt_name: "text" },
             { column_name: "resource_id", udt_name: "text" },
-            { column_name: "version", udt_name: "int8" },
+            { column_name: "version", udt_name: "int4" },
           ])
         )
 
         const uniqueIndex = await dbConnection.raw(`
           select i.indisunique, i.indpred,
+                 pg_get_expr(i.indpred, i.indrelid) as predicate,
                  json_agg(a.attname order by u.ord) as ordered_columns
           from pg_index i
           join pg_class idx on idx.oid = i.indexrelid
@@ -212,7 +213,10 @@ if (!requestedDatabaseName) {
         `)
         expect(uniqueIndex.rows).toHaveLength(1)
         expect(uniqueIndex.rows[0].indisunique).toBe(true)
-        expect(uniqueIndex.rows[0].indpred).toBeNull()
+        expect(uniqueIndex.rows[0].indpred).not.toBeNull()
+        expect(String(uniqueIndex.rows[0].predicate)).toMatch(
+          /deleted_at\s+IS\s+NULL/i
+        )
         expect(uniqueIndex.rows[0].ordered_columns).toEqual([
           "resource_type",
           "resource_id",
@@ -295,10 +299,10 @@ if (!requestedDatabaseName) {
       it("bootstraps lazily at version 1 and isolates resource scopes", async () => {
         await inTransaction(async (context) => {
           const service = resolveVersionService()
-          expect((await service.initialize("product", "prod_a", context)).version).toBe(1n)
-          expect((await service.initialize("product", "prod_a", context)).version).toBe(1n)
-          expect((await service.initialize("product", "prod_b", context)).version).toBe(1n)
-          expect((await service.initialize("variant", "prod_a", context)).version).toBe(1n)
+          expect((await service.initialize("product", "prod_a", context)).version).toBe(1)
+          expect((await service.initialize("product", "prod_a", context)).version).toBe(1)
+          expect((await service.initialize("product", "prod_b", context)).version).toBe(1)
+          expect((await service.initialize("variant", "prod_a", context)).version).toBe(1)
         })
 
         const count = await dbConnection.raw(
@@ -316,7 +320,7 @@ if (!requestedDatabaseName) {
             resolveVersionService().initialize("product", "prod_first", context)
           ),
         ])
-        expect(results.map((result) => result.version)).toEqual([1n, 1n])
+        expect(results.map((result) => result.version)).toEqual([1, 1])
         const count = await dbConnection.raw(
           `select count(*)::int as count from store_resource_version where resource_type = 'product' and resource_id = 'prod_first'`
         )
@@ -332,21 +336,21 @@ if (!requestedDatabaseName) {
           resolveVersionService().compareAndSwapWithMutation({
             resourceType: "product",
             resourceId: "prod_monotonic",
-            expectedVersion: 1n,
+            expectedVersion: 1,
             sharedContext: context,
             mutate: async (sameContext) =>
               createControlledMutation("strver_test_monotonic_1", sameContext),
           })
         )
         expect(first.type).toBe("updated")
-        expect(first.type === "updated" && first.version).toBe(2n)
+        expect(first.type === "updated" && first.version).toBe(2)
 
         let staleMutationRan = false
         const stale = await inTransaction((context) =>
           resolveVersionService().compareAndSwapWithMutation({
             resourceType: "product",
             resourceId: "prod_monotonic",
-            expectedVersion: 1n,
+            expectedVersion: 1,
             sharedContext: context,
             mutate: async () => {
               staleMutationRan = true
@@ -354,9 +358,9 @@ if (!requestedDatabaseName) {
           })
         )
         expect(stale.type).toBe("stale")
-        expect(stale.type === "stale" && stale.actualVersion).toBe(2n)
+        expect(stale.type === "stale" && stale.actualVersion).toBe(2)
         expect(staleMutationRan).toBe(false)
-        expect(await readVersion("product", "prod_monotonic")).toBe(2n)
+        expect(await readVersion("product", "prod_monotonic")).toBe(2)
         expect(await countControlledMutations("strver_test_monotonic_")).toBe(1)
       })
 
@@ -371,7 +375,7 @@ if (!requestedDatabaseName) {
               resolveVersionService().compareAndSwapWithMutation({
                 resourceType: "product",
                 resourceId: "prod_cas",
-                expectedVersion: 1n,
+                expectedVersion: 1,
                 sharedContext: context,
                 mutate: async (sameContext) =>
                   createControlledMutation(`strver_test_cas_${writer}`, sameContext),
@@ -381,7 +385,7 @@ if (!requestedDatabaseName) {
         )
         expect(results.filter((result) => result.type === "updated")).toHaveLength(1)
         expect(results.filter((result) => result.type === "stale")).toHaveLength(1)
-        expect(await readVersion("product", "prod_cas")).toBe(2n)
+        expect(await readVersion("product", "prod_cas")).toBe(2)
         expect(await countControlledMutations("strver_test_cas_")).toBe(1)
       })
 
@@ -404,7 +408,7 @@ if (!requestedDatabaseName) {
             const result = await resolveVersionService().compareAndSwapWithMutation({
               resourceType: "product",
               resourceId: "prod_rollback",
-              expectedVersion: 1n,
+              expectedVersion: 1,
               sharedContext: context,
               mutate: async (sameContext) => {
                 mutationIdentity = identifyTransactionManager(
@@ -442,16 +446,18 @@ if (!requestedDatabaseName) {
         expect(process.env.WE_REDIS_URL).toBe("")
 
         const result = await inTransaction((context) =>
-          resolveVersionService().increment("product", "prod_no_redis", 1n, context)
+          resolveVersionService().increment("product", "prod_no_redis", 1, context)
         )
         expect(result.type).toBe("updated")
-        expect(await readVersion("product", "prod_no_redis")).toBe(2n)
+        expect(await readVersion("product", "prod_no_redis")).toBe(2)
 
         const collectSql = async (method: "up" | "down") => {
           const statements: string[] = []
-          const migrationMethod = Migration20260809175009.prototype[method] as unknown as (
-            this: { addSql: (sql: string) => void }
-          ) => Promise<void>
+          const migrationMethod = Migration20260809201808.prototype[
+            method
+          ] as unknown as (this: {
+            addSql: (sql: string) => void
+          }) => Promise<void>
           await migrationMethod.call({
             addSql: (sql: string) => statements.push(sql),
           })

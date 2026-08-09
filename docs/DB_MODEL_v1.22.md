@@ -17,7 +17,7 @@
 
 | Versão | Data | Alterações |
 |---|---:|---|
-| 1.22 | 2026-08-08 | Adicionadas as entidades foundation Store `StoreIdempotencyRecord` (persistência transversal de claim/replay/conflito) e `StoreResourceVersion` (contrato documental; runtime no 13-05). Inclui UNIQUE composta por operação+ator+recurso+key hash, estados finitos com deadlines, retention terminal, driver Medusa scheduled `* * * * *`, hashing HMAC-SHA-256 com `STORE_IDEMPOTENCY_KEY_PEPPER`, e negativas de plaintext. `CheckoutCompletionLog` permanece exclusivo do nascimento de Order. Regras `DATA-123` a `DATA-132`. |
+| 1.22 | 2026-08-08 | Adicionadas as entidades foundation Store `StoreIdempotencyRecord` (persistência transversal de claim/replay/conflito) e `StoreResourceVersion` (contrato documental; runtime no 13-05). Inclui UNIQUE composta por operação+ator+recurso+key hash, estados finitos com deadlines, retention terminal, driver Medusa scheduled `* * * * *`, hashing HMAC-SHA-256 com `STORE_IDEMPOTENCY_KEY_PEPPER`, e negativas de plaintext. `CheckoutCompletionLog` permanece exclusivo do nascimento de Order. Regras `DATA-123` a `DATA-132`. Em 2026-08-09, `P13-13-05-HCD-01` supersede somente o target físico de `StoreResourceVersion`: `bigint` + UNIQUE não parcial passam a `integer` + UNIQUE parcial `WHERE deleted_at IS NULL`; invariantes comportamentais permanecem. |
 | 1.21 | 2026-06-22 | Corrigido o achado 4: adicionadas constraints monetárias explícitas para `Payment` e `Refund`. `Payment.amount` e `Payment.captured_amount` devem ser inteiros não negativos na menor unidade monetária; `Payment.captured_amount` não pode exceder `Payment.amount`; `Refund.amount` deve ser inteiro positivo; `Refund.currency_code` deve ser igual a `Payment.currency_code`; no MVP, `Payment.currency_code` e `Refund.currency_code` devem ser `BRL`; e o valor de reembolso deve respeitar o saldo capturado disponível considerando refunds confirmados e bloqueados. Atualizadas seções 2.10, 4.8, 4.9, 5.12, 5.13, regras `DATA-106`, `DATA-117` a `DATA-122` e constraints recomendadas. |
 | 1.20 | 2026-06-21 | Corrigido o achado 3: definida a fonte de verdade financeira para reembolsos. `Refund.status = succeeded` passa a ser a fonte de verdade para valores reembolsados confirmados; `Payment.status` e `Order.payment_status` são campos derivados/denormalizados que devem ser recalculados na mesma transação lógica que confirma reembolso via webhook Stripe. Proibida alteração manual isolada desses status sem recomputação a partir de `Payment.captured_amount` e `Refund.status = succeeded`. Atualizadas as seções 2.10, 4.8, 4.9, 5.12, relações, regras `DATA-053`, `DATA-054`, `DATA-107` e adicionadas `DATA-114` a `DATA-116`. |
 | 1.19 | 2026-06-21 | Corrigido o achado 2: adicionada `WebhookEventLog.deduplication_key` como chave canônica de deduplicação. A deduplicação passa a ser garantida por `unique(provider, deduplication_key)`. Quando `external_event_id` existir e for confiável, a chave deve derivar dele; quando não existir, deve derivar de `payload_hash` normalizado ou de chave determinística equivalente validada na integração. `payload_hash` isolado passa a ser índice diagnóstico, não garantia de unicidade. Atualizadas `DATA-005`, `DATA-030`, `DATA-031`, seção 4.5, seção 5.8 e índices recomendados. |
@@ -395,7 +395,7 @@ Premissas vinculantes:
 | Entidade | Origem | Campos Relevantes | Observações |
 |---|---|---|---|
 | `StoreIdempotencyRecord` | Custom | ver §4.17 | Idempotência Store transversal; lifecycle job `* * * * *`. |
-| `StoreResourceVersion` | Custom | `resource_type`, `resource_id`, `version`, timestamps | Contrato documental v1.22; runtime no 13-05. UNIQUE(`resource_type`,`resource_id`); `CHECK(version > 0)`; bootstrap lazy `version=1`. |
+| `StoreResourceVersion` | Custom | `resource_type`, `resource_id`, `version`, timestamps | Contrato físico DML-native aprovado por `P13-13-05-HCD-01`: PostgreSQL `integer`; UNIQUE parcial (`resource_type`,`resource_id`) `WHERE deleted_at IS NULL`; `CHECK(version > 0)`; bootstrap lazy `version=1`. |
 
 ---
 
@@ -1593,6 +1593,21 @@ Entidade customizada para versão monotônica server-authoritative de recursos S
 
 > Runtime/módulo/migration desta entidade pertencem ao plano `13-05`. v1.22 fecha o contrato humano revisável.
 
+`P13-13-05-HCD-01` registra uma supersessão explícita do target físico original, sem apagar sua linhagem:
+
+```text
+OLD (SUPERSEDED):
+version bigint
+UNIQUE(resource_type, resource_id) non-partial
+
+NEW (MEDUSA-DML-NATIVE):
+version PostgreSQL integer
+UNIQUE(resource_type, resource_id) WHERE deleted_at IS NULL
+
+UNCHANGED:
+positive, server-authoritative, monotonic, default 1, CAS/rollback invariants
+```
+
 #### Campos mínimos
 
 ```json
@@ -1608,7 +1623,7 @@ Entidade customizada para versão monotônica server-authoritative de recursos S
 
 #### Constraints
 
-- `UNIQUE(resource_type, resource_id)`
+- `UNIQUE(resource_type, resource_id) WHERE deleted_at IS NULL`
 - `CHECK(version > 0)`
 - Bootstrap lazy: `INSERT ... ON CONFLICT DO NOTHING` com `version = 1`, depois lock/load na mesma transação.
 - CAS na mesma transaction manager da mutação Medusa protegida; commit único; rollback de ambos em falha.
@@ -2167,7 +2182,7 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `DATA-128` | Same key + same fingerprint reutiliza resultado seguro sem novo side effect; same key + fingerprint incompatível é conflito sem overwrite. |
 | `DATA-129` | `CheckoutCompletionLog` permanece exclusivo do nascimento de `Order` e não é o primitive Store de idempotência transversal. |
 | `DATA-130` | PostgreSQL é a fonte de verdade de claim/lifecycle; Redis não decide correctness. |
-| `DATA-131` | `StoreResourceVersion` usa `UNIQUE(resource_type, resource_id)` e `CHECK(version > 0)` com bootstrap lazy `version=1`. |
+| `DATA-131` | `StoreResourceVersion` usa PostgreSQL `integer`, `UNIQUE(resource_type, resource_id) WHERE deleted_at IS NULL` e `CHECK(version > 0)` com bootstrap lazy `version=1`, conforme `P13-13-05-HCD-01`. |
 | `DATA-132` | `StoreIdempotencyRecord.state_version` protege transições de lifecycle; `StoreResourceVersion.version` protege mutação de recurso — conceitos distintos. |
 
 ---
@@ -2258,7 +2273,7 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `StoreIdempotencyRecord` | índice `(state, state_deadline_at)` | Scan de deadlines do lifecycle job. |
 | `StoreIdempotencyRecord` | índice `(next_retry_at)` | Scan de retries due. |
 | `StoreIdempotencyRecord` | índice `(expires_at)` | Cleanup de terminais expirados. |
-| `StoreResourceVersion` | unique `(resource_type, resource_id)` | Uma versão por recurso. |
+| `StoreResourceVersion` | unique parcial `(resource_type, resource_id) WHERE deleted_at IS NULL` | Uma versão ativa por recurso. |
 | `OperationalAlert` | índice composto em `status, severity` | Filtrar alertas abertos por severidade. |
 | `OperationalAlert` | índice composto em `entity_type, entity_id` | Consultar alertas associados a pedidos, fulfillments ou outras entidades. |
 | `OperationalAlert` | índice composto em `type, created_at` | Investigar frequência e histórico de alertas por tipo. |

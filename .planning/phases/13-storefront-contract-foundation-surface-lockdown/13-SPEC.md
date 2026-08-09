@@ -3,7 +3,7 @@ phase: 13-storefront-contract-foundation-surface-lockdown
 artifact: spec
 status: r1-complete-awaiting-human-re-review
 created_at: 2026-08-07
-updated_at: 2026-08-07
+updated_at: 2026-08-09
 scope: spec-sdd-only
 gate: P13-SPEC-SDD-R1
 requirements: [FND-01, FND-02, FND-03, FND-04, FND-05, FND-06, FND-07, FND-08]
@@ -146,7 +146,7 @@ Nenhum requisito é marcado complete neste SPEC/SDD.
 | FND-03 | `StoreErrorResponse` fechado; codes estáveis; correlation sanitizada; Admin/Webhooks isolados | §9, §10 | Error normalizer | 13-03, 13-06, 13-07 | errors.unit + store-error-contract HTTP + OpenAPI schema |
 | FND-04 | `StoreIdempotencyRecord` persistido; fingerprint; TTL; lifecycle job `* * * * *` | §6, §7 | store_idempotency module + job | 13-04, 13-07 | env/config unit + postgres + lifecycle unit |
 | FND-05 | Intent incompatível → 409 zero side effect; race um winner; idempotency ≠ locks/CAS | §6 | claim/replay APIs | 13-04, 13-07 | concurrency/lifecycle PG |
-| FND-06 | `StoreResourceVersion` bigint monotônico; CAS atômico; Wave 0 shared TM | §8 | store_resource_version + Wave 0 adapter | 13-01, 13-05, 13-07 | Wave 0 PG + resource-version PG |
+| FND-06 | `StoreResourceVersion` integer positivo monotônico; CAS atômico; Wave 0 shared TM | §8 | store_resource_version + Wave 0 adapter | 13-01, 13-05, 13-07 | Wave 0 PG + resource-version PG |
 | FND-07 | BFF same-origin único consumidor; credentials server-side; OpenAPI documenta BFF→Medusa | §11 | Guard boundary + security schemes | 13-02, 13-06, 13-07 | BFF HTTP + OpenAPI security |
 | FND-08 | Store OpenAPI `1.1.0`; registry authority; executable business = 0; money BRL explícito | §12, §13 | api-docs components/registry/writer | 13-06, 13-07 | store-contract + coverage + writer/lint + clean check |
 
@@ -541,12 +541,17 @@ não altera correção. PostgreSQL = truth; Redis = coordination only.
 
 ### 8.1 Physical contract (`APPROVED TARGET`)
 
+`P13-13-05-HCD-01` supersede explicitamente apenas o target físico original
+`bigint + UNIQUE não parcial`. D13-20..D13-24 e todos os invariantes
+comportamentais permanecem inalterados.
+
 ```text
 resource_type
 resource_id
-version bigint
+version PostgreSQL integer
 timestamps
 UNIQUE(resource_type, resource_id)
+WHERE deleted_at IS NULL
 CHECK(version > 0)
 ```
 
@@ -555,7 +560,9 @@ CHECK(version > 0)
 ```text
 lazy serialized initialization
 version = 1
-INSERT ON CONFLICT DO NOTHING
+INSERT ON CONFLICT (resource_type, resource_id)
+WHERE deleted_at IS NULL
+DO NOTHING
 lock/load in same transaction
 ```
 

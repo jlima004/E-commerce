@@ -12,6 +12,7 @@ const StoreResourceVersion = model
       name: "UQ_store_resource_version_resource",
       on: ["resource_type", "resource_id"],
       unique: true,
+      where: "deleted_at IS NULL",
     },
   ])
   .checks([
