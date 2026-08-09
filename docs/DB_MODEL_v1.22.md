@@ -1487,7 +1487,7 @@ Entidade customizada responsável pelo primitive PostgreSQL de claim, replay e c
 
 | Conceito | Valor |
 |---|---|
-| `claimStaleAfter` (processing) | 5 minutos (`state_deadline_at = locked_at + 5m`) |
+| `claimStaleAfter` (processing) | 5 minutos (`state_deadline_at = initial_claim_time + 5m`) |
 | recovery decision horizon | 15 minutos |
 | lifecycle-worker lease | **15 minutos** (`900000` ms) |
 | retry cap | 8 tentativas **ou** 24h desde `retry_started_at` |
@@ -1496,9 +1496,41 @@ Entidade customizada responsável pelo primitive PostgreSQL de claim, replay e c
 | `reconciliation_unresolved` retention | 30 dias |
 | override bounds (owner phases) | 15 minutos .. 30 dias |
 
+#### Processing stale vs lifecycle-worker lease (P13-13-04-CP-R4)
+
+These clocks are independent and must not be fused:
+
+```text
+processing stale trigger:
+  state_deadline_at = initial Store claim time + 5 minutes
+  source of truth: state_deadline_at
+  T+4m59s → NOT recovery eligible
+  T+5m    → recovery eligible (scan only; transition still requires claimLifecycleRow)
+
+lifecycle-worker lease:
+  15 minutes / 900000 ms
+  persistence field: locked_at
+  lease starts when: claimLifecycleRow() succeeds
+  does NOT start on initial Store claim()
+
+locked_at semantics:
+  exclusive lifecycle-worker lease acquisition timestamp only
+  null means no lifecycle-worker lease is held
+
+initial Store claim acquires lifecycle-worker lease:
+  NO
+
+Initial Store claim concurrency uses:
+  UNIQUE(operation, actor_scope_hash, resource_scope_hash, idempotency_key_hash)
+  + transactional INSERT ON CONFLICT
+  + state = processing
+  + state_deadline_at
+  (not locked_at)
+```
+
 #### Lifecycle-worker lease (exclusive PostgreSQL ownership)
 
-Human contract decision: **P13-13-04 Task 2**.
+Human contract decision: **P13-13-04 Task 2** (clarified by **P13-13-04-CP-R4**).
 
 | Item | Contract |
 |---|---|
@@ -1506,17 +1538,18 @@ Human contract decision: **P13-13-04 Task 2**.
 | Milliseconds | `900000` |
 | Source | P13-13-04 Task 2 Human Contract Decision |
 | Persistence | existing `locked_at` field (no new column) |
+| Begins when | `claimLifecycleRow()` succeeds |
 | Active | `locked_at > now - 15 minutes` |
 | Stale / reclaimable | `locked_at <= now - 15 minutes` |
 | Reclaim | allowed after the stale boundary |
 | Heartbeat | **not part of Phase 13** |
 | Redis | **not** part of lease correctness |
 
-Boundary (synthetic `locked_at = T0`):
+Boundary (synthetic lifecycle lease `locked_at = T1`, typically after processing becomes due):
 
-- `T0 + 14m59s` → ACTIVE
-- `T0 + 15m` (exact) → STALE
-- `T0 + 15m + ε` → STALE
+- `T1 + 14m59s` → ACTIVE
+- `T1 + 15m` (exact) → STALE
+- `T1 + 15m + ε` → STALE
 
 **Semantic distinctions (do not fuse):**
 
@@ -1526,9 +1559,10 @@ Lifecycle-worker lease = 15m
 ≠ recovery horizon = 15m
 ≠ cron cadence = 1m
 ≠ state_version (CAS / stale-transition protection only)
+≠ locked_at on initial Store claim (initial claim leaves locked_at null)
 ```
 
-Recovery horizon may also be 15 minutes, but it is a distinct concept from the exclusive lifecycle-worker lease. Lease duration does **not** derive from cron cadence, `claimStaleAfter`, or recovery horizon.
+Recovery horizon may also be 15 minutes, but it is a distinct concept from the exclusive lifecycle-worker lease. Lease duration does **not** derive from cron cadence, `claimStaleAfter`, or recovery horizon. The 15m lease must never delay the approved 5m processing stale/recovery trigger.
 
 Phase 13 assumes lifecycle work is bounded within the 15-minute lease. Ownership beyond 15 minutes requires a new human-approved heartbeat/lease contract.
 
