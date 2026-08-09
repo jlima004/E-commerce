@@ -40,8 +40,9 @@ key-files:
 
 key-decisions:
   - "Migration20260809175009 is the authoritative CLI identity and is later than approved 13-04 identity Migration20260809161242"
-  - "The physical DDL uses bigint and non-partial uniqueness even though the Medusa DML model uses model.number for runtime compatibility"
+  - "R1 proved that Medusa 2.16.0 DML cannot represent PostgreSQL bigint plus a non-partial unique index; model/snapshot/migration consistency requires a human contract decision"
   - "All initialize/load/increment/CAS operations fail closed without a real shared transaction context"
+  - "All five MedusaService-generated write methods are overridden fail-closed and cannot bypass the authoritative CAS surface"
   - "FND-06 is evidenced but remains incomplete until the Phase 13 human/phase-level gate"
 
 patterns-established:
@@ -53,7 +54,7 @@ requirements-evidenced: [FND-06]
 
 duration: 21min
 completed: 2026-08-09
-status: technical-pass-awaiting-human-review
+status: blocked-model-migration-contract-decision-required
 ---
 
 # Phase 13 Plan 05: Store Resource Version Foundation Summary
@@ -63,10 +64,10 @@ status: technical-pass-awaiting-human-review
 ## Identity
 
 - **Plan:** 13-05
-- **Status:** TECHNICAL PASS — AWAITING HUMAN REVIEW
+- **Status:** R1 BLOCKED — MODEL/MIGRATION CONTRACT DECISION REQUIRED
 - **Branch:** `gsd/phase-13-storefront-contract-foundation-surface-lockdown`
 - **Pre-13-05 HEAD:** `48437a4d20e63e01d1d085327c7320f296f183ec`
-- **Technical implementation HEAD:** `505e7242c61879905f2ffb7ccefad4bebcbfcb44`
+- **Technical implementation HEAD:** `d089694` (R1 write-surface closure)
 - **13-04:** HUMAN APPROVED — PASS
 - **13-06..13-07:** NOT AUTHORIZED
 
@@ -75,15 +76,64 @@ status: technical-pass-awaiting-human-review
 - **Duration:** ~21 min
 - **Started:** 2026-08-09T17:38:35Z
 - **Technical gates completed:** 2026-08-09T17:58:32Z
-- **Tasks:** 2/3 complete; Task 3 awaits human verification
+- **Tasks:** 2/3 technically exercised; Task 3 not approved because R1 schema consistency is blocked
 - **Technical files:** 8
 
 ## Accomplishments
 
 - Added the registered `store_resource_version` Medusa module with one row per `(resource_type, resource_id)`, positive bigint versions, lazy baseline `1`, monotonic increment, explicit stale results, and no standalone/two-commit fallback.
 - Generated exactly one migration after the registration regression passed; accepted CLI identity `Migration20260809175009`, later than `Migration20260809161242` from 13-04.
-- Proved 8/8 behaviors on disposable real PostgreSQL: exact catalog DDL, fail-closed transaction use, repeated/concurrent bootstrap, monotonic/stale CAS, one winner among two writers, shared manager/txid rollback, Redis independence, and migration down/reapply.
+- The original execution proved 8/8 PostgreSQL behaviors; R1 added the ninth
+  generated-write negative proof and the current suite passes 9/9.
 - Revalidated configuration (8/8) and the backend build (exit 0, zero TypeScript errors).
+
+## P13-13-05-R1 Result
+
+```text
+B13-05-R1-01: OPEN — BLOCKER
+BLOCKED — MODEL/MIGRATION CONTRACT DECISION REQUIRED
+
+B13-05-R1-02: CLOSED — PASS
+MedusaService generated writes fail closed: 5/5
+
+13-05 HUMAN APPROVED — PASS: NOT GRANTED
+13-06..13-07: NOT AUTHORIZED
+```
+
+### Schema consistency proof — BLOCKED
+
+Evidence against the installed `@medusajs/framework@2.16.0` and
+`@medusajs/utils@2.16.0`:
+
+| Layer | `version` | resource unique |
+|---|---|---|
+| DML `model.number()` | `integer` | DML forces `WHERE deleted_at IS NULL` |
+| CLI snapshot | `integer` / `mappedType=integer` | partial unique index |
+| Physical migration/catalog | `bigint` / `int8` | non-partial unique index |
+
+The installed DML implementation has only these numeric mappings:
+`number → integer`, `float → real`, and `bigNumber → numeric` with an
+additional `raw_*` property. Its index transformer unconditionally adds a
+`deleted_at` predicate when none is supplied. There is no supported DML option
+for a PostgreSQL `bigint` counter or for a non-partial unique index.
+
+Consequently, regenerating the snapshot cannot make the three descriptions
+equal. Editing the snapshot or migration by hand would only conceal the drift
+and remains prohibited by the R1 contract. Changing to a direct/deprecated
+MikroORM entity or changing the approved DB contract is an architectural
+decision and was not inferred by the executor.
+
+### Write-surface negative proof — PASS
+
+- `createStoreResourceVersions`: throws `STORE_RESOURCE_VERSION_WRITE_FORBIDDEN`.
+- `updateStoreResourceVersions`: throws `STORE_RESOURCE_VERSION_WRITE_FORBIDDEN`.
+- `deleteStoreResourceVersions`: throws `STORE_RESOURCE_VERSION_WRITE_FORBIDDEN`.
+- `softDeleteStoreResourceVersions`: throws `STORE_RESOURCE_VERSION_WRITE_FORBIDDEN`.
+- `restoreStoreResourceVersions`: throws `STORE_RESOURCE_VERSION_WRITE_FORBIDDEN`.
+- The disposable PostgreSQL proof invokes all five with a valid shared
+  transaction, observes five refusals, and confirms zero rows were written.
+- The controlled rollback probe now uses the approved `initialize` primitive;
+  the test suite no longer consumes an inherited CRUD bypass.
 
 ## Task Commits
 
@@ -138,7 +188,7 @@ No retry, copy, manual rename, package change, or remote migration occurred.
 | Manual rename | NO |
 | Remote migration | NO |
 
-### DDL Review — PASS
+### Physical DDL Review — PASS; model correspondence — BLOCKED
 
 - Table `store_resource_version` with `resource_type`, `resource_id`, `version`, and Medusa timestamps/`deleted_at`.
 - `version bigint not null default 1`.
@@ -147,7 +197,11 @@ No retry, copy, manual rename, package change, or remote migration occurred.
 - Only the conventional partial `deleted_at` lookup index is additional; no unexpected DDL.
 - `down` drops only `store_resource_version`; disposable down/reapply passed.
 
-The CLI-generated filename/class/snapshot were retained. DDL review corrected the generated integer column to the approved bigint contract and removed the generated partial predicate from the resource unique index; no identity was renamed or synthesized.
+The CLI-generated filename/class/snapshot were retained. The original execution
+manually corrected the generated integer/partial DDL to the approved
+bigint/non-partial contract. R1 establishes that this makes the physical DDL
+correct but model correspondence false; no R1 edit was made to the model,
+snapshot, or migration to disguise that divergence.
 
 ## Service Contract
 
@@ -157,6 +211,8 @@ The CLI-generated filename/class/snapshot were retained. DDL review corrected th
 - Successful mutation and version bump share the same transaction manager/txid.
 - Failure after a successful inner CAS rolls back the controlled Medusa mutation, bump, and first bootstrap row.
 - Redis is not read by the module; PostgreSQL row locks and conditional updates remain authoritative.
+- Generated create/update/delete/soft-delete/restore methods all fail closed;
+  only transaction-required custom primitives can write the version table.
 
 ## Test Evidence
 
@@ -185,7 +241,7 @@ Result: PASS
 Command: node scripts/run-disposable-postgres-tests.mjs -- npm run test:integration:modules -- --runTestsByPath src/modules/store-resource-version/__tests__/store-resource-version.postgres.spec.ts --runInBand
 Exit: 0
 Suites: 1 passed / 1 total
-Tests: 8 passed / 8 total
+Tests: 9 passed / 9 total
 Result: PASS
 Disposable Docker database/container: cleaned by runner
 ```
@@ -200,8 +256,14 @@ Observed behaviors:
 - Failure injection left no business mutation, no version bump, and no first bootstrap row.
 - Empty Redis URLs did not affect bootstrap/CAS/winner truth.
 - Core Cart was never mutated and `checkout_completion_log` remained empty.
+- Generated public write paths refused 5/5 operations under a valid shared
+  transaction and left the table empty.
 
-The first local test execution found that an `OperationalAlert` service cannot reuse another module's MikroORM manager metadata. The test-only mutation was narrowed to the registered module's inherited MedusaService under a synthetic `mutation_probe` resource, retaining the same-transaction proof and avoiding cross-module coupling; the required second execution passed 8/8.
+Historically, the first local execution found that an `OperationalAlert`
+service cannot reuse another module's MikroORM manager metadata, and the
+original proof temporarily used inherited MedusaService CRUD. R1 removed that
+bypass entirely: the mutation probe now calls the approved transaction-required
+`initialize` primitive, and the current suite passes 9/9.
 
 ### Final configuration regression
 
@@ -213,14 +275,14 @@ Tests: 8 passed / 8 total
 Result: PASS
 ```
 
-### Final build
+### R1 final build
 
 ```text
 Command: ADMIN_DISABLED=true npm run build -w @dtc/backend
 Exit: 0
 TypeScript errors: 0
 Result: PASS (Backend build completed successfully)
-Lint: 293 warnings / 0 errors; warnings are pre-existing/non-blocking and were not widened into scope
+Lint: 298 warnings / 0 errors; warnings are non-blocking and were not widened into scope
 ```
 
 ## Files Created/Modified
@@ -230,7 +292,7 @@ Lint: 293 warnings / 0 errors; warnings are pre-existing/non-blocking and were n
 - `apps/backend/src/modules/store-resource-version/models/store-resource-version.ts` — model metadata and unique/check declarations.
 - `apps/backend/src/modules/store-resource-version/migrations/Migration20260809175009.ts` — sole CLI-generated migration identity and reviewed DDL.
 - `apps/backend/src/modules/store-resource-version/migrations/.snapshot-store-resource-version.json` — canonical CLI snapshot.
-- `apps/backend/src/modules/store-resource-version/__tests__/store-resource-version.postgres.spec.ts` — eight real PostgreSQL proofs.
+- `apps/backend/src/modules/store-resource-version/__tests__/store-resource-version.postgres.spec.ts` — nine real PostgreSQL proofs.
 - `apps/backend/medusa-config.ts` — exactly one module registration.
 - `apps/backend/src/infrastructure/__tests__/medusa-config.unit.spec.ts` — exact registration/provider/order/no-mutation regression.
 
@@ -254,14 +316,24 @@ apps/backend/package.json: UNCHANGED
 git diff --check: PASS
 ```
 
+R1 runtime/test delta is isolated in commit `d089694`: service, module export,
+and the existing PostgreSQL spec only. R1 documentary changes are limited to
+this SUMMARY and `.planning/STATE.md`. Model, snapshot, migration, config,
+package/lockfiles, Cart, OpenAPI, providers, and frontend are unchanged by R1.
+
 ## Deviations from Plan
 
-None in product scope. The test-only cross-module metadata limitation described above was resolved inside the sole authorized Task 2 test path; no runtime architecture, dependency, or contract changed.
+- R1 closed the independent generated-CRUD bypass but could not close schema
+  consistency without an architectural/contract decision. Per the human review,
+  execution stopped as `BLOCKED` instead of editing generated evidence to mask
+  the divergence.
 
 ## Issues Encountered
 
 - Initial PostgreSQL run: 5/8 passed; three controlled-mutation cases failed because MikroORM correctly isolates entity metadata by module. The test mutation was moved to the new module's inherited MedusaService and the complete suite then passed 8/8.
 - Build emits 293 warnings and zero errors. These warnings predate/extend beyond Plan 13-05 and are not a blocking gate.
+- `B13-05-R1-01` remains open: Medusa 2.16.0 DML cannot express the approved
+  `bigint` plus non-partial unique schema.
 
 ## Known Stubs
 
@@ -282,29 +354,34 @@ No unplanned threat surface. The plan introduces one internal database table/mod
 
 ## Requirements / Governance
 
-- `FND-06`: EVIDENCED — NOT COMPLETE.
+- `FND-06`: EVIDENCED — NOT COMPLETE; 13-05 is BLOCKED.
 - `requirements-completed: []`; `.planning/REQUIREMENTS.md` intentionally unchanged.
 - Phase 13 requirements covered: 8/8.
 - Phase 13 requirements complete: 0/8.
 - Milestone requirements complete: 0/91.
 - Plans human-approved executed: 4/7.
-- 13-05: TECHNICAL PASS — AWAITING HUMAN REVIEW.
+- 13-05: R1 BLOCKED — MODEL/MIGRATION CONTRACT DECISION REQUIRED.
 - 13-06: NOT AUTHORIZED.
 - ETag/If-Match public behavior and guest Cart capability: NOT IMPLEMENTED (Phase 15 boundary).
 - Deploy/frontend: NOT AUTHORIZED.
 
-## Self-Check: PASSED
+## Self-Check: R1 PARTIAL — GATE BLOCKED
 
 - All eight technical files exist.
 - Task commits `86e6bcb` and `505e724` exist.
 - Exactly one module migration exists: `Migration20260809175009.ts`.
 - Package/lockfiles are unchanged from the authorized baseline.
 - Summary records technical evidence only and does not mark human approval or FND-06 completion.
+- R1 write-surface proof: PASS (5/5 generated writes refused; PostgreSQL 9/9).
+- R1 schema-consistency proof: BLOCKED (DML/snapshot remain integer + partial;
+  physical DDL remains bigint + non-partial).
 
 ## Next Phase Readiness
 
-Task 3 is awaiting explicit human verification. Do not start 13-06, Phase 13 global verification, deploy, push, PR, or frontend work without separate authorization.
+Human contract direction is required for `B13-05-R1-01` before another R1 can
+make model, snapshot, migration, and PostgreSQL catalog consistent. Do not start
+13-06, Phase 13 global verification, deploy, push, PR, or frontend work.
 
 ---
 *Phase: 13-storefront-contract-foundation-surface-lockdown*
-*Technical gates completed: 2026-08-09; awaiting human review*
+*R1 assessed: 2026-08-09; blocked on model/migration contract decision*
