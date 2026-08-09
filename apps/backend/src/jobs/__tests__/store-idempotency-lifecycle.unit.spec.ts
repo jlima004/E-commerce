@@ -9,6 +9,7 @@ import {
   config,
   default as storeIdempotencyLifecycleJob,
   runStoreIdempotencyLifecycle,
+  runStoreIdempotencyLifecycleJob,
   STORE_IDEMPOTENCY_LIFECYCLE_BATCH_SIZE,
 } from "../store-idempotency-lifecycle"
 
@@ -469,9 +470,6 @@ describe("store-idempotency-lifecycle job", () => {
     process.env.DTC_RELEASE_MIGRATION_MODE = ""
     process.env.DTC_RELEASE_MIGRATION_CHILD_PROCESS = ""
 
-    const { runStoreIdempotencyLifecycleJob } = await import(
-      "../store-idempotency-lifecycle"
-    )
     const result = await runStoreIdempotencyLifecycleJob(container)
     expect(container.resolve).toHaveBeenCalledWith(STORE_IDEMPOTENCY_MODULE)
     expect(result.noop_reason).toBeNull()

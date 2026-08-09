@@ -20,6 +20,7 @@ import {
   hashStoreIdempotencyKey,
   hashStoreIdempotencyScope,
   buildStoreIdempotencyRequestFingerprint,
+  type LifecycleClaimResult,
 } from ".."
 import { STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS } from "../service"
 import {
@@ -718,9 +719,7 @@ if (!requestedDatabaseName) {
         const at = new Date("2026-08-09T12:00:00.000Z")
 
         async function seedAndReplay(
-          terminalizer: (
-            id: string
-          ) => Promise<{ type: string; record: { id: string; state: string; state_version: number } }>
+          terminalizer: (id: string) => Promise<LifecycleClaimResult>
         ) {
           const key = `Terminal-${Math.random().toString(16).slice(2, 10)}`
           const input = {
@@ -738,6 +737,9 @@ if (!requestedDatabaseName) {
           }
           const terminal = await terminalizer(claimed.record.id)
           expect(terminal.type).toBe("claimed")
+          if (terminal.type !== "claimed") {
+            throw new Error("expected terminal claimed")
+          }
           const versionBefore = terminal.record.state_version
           const replay = await service.claim(input)
           expect(replay.type).toBe("replay")
