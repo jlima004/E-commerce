@@ -1489,20 +1489,57 @@ Entidade customizada responsável pelo primitive PostgreSQL de claim, replay e c
 |---|---|
 | `claimStaleAfter` (processing) | 5 minutos (`state_deadline_at = locked_at + 5m`) |
 | recovery decision horizon | 15 minutos |
+| lifecycle-worker lease | **15 minutos** (`900000` ms) |
 | retry cap | 8 tentativas **ou** 24h desde `retry_started_at` |
 | reconciliation review | 7 dias → `reconciliation_unresolved` |
 | default terminal retention | 24 horas |
 | `reconciliation_unresolved` retention | 30 dias |
 | override bounds (owner phases) | 15 minutos .. 30 dias |
 
+#### Lifecycle-worker lease (exclusive PostgreSQL ownership)
+
+Human contract decision: **P13-13-04 Task 2**.
+
+| Item | Contract |
+|---|---|
+| Duration | 15 minutes |
+| Milliseconds | `900000` |
+| Source | P13-13-04 Task 2 Human Contract Decision |
+| Persistence | existing `locked_at` field (no new column) |
+| Active | `locked_at > now - 15 minutes` |
+| Stale / reclaimable | `locked_at <= now - 15 minutes` |
+| Reclaim | allowed after the stale boundary |
+| Heartbeat | **not part of Phase 13** |
+| Redis | **not** part of lease correctness |
+
+Boundary (synthetic `locked_at = T0`):
+
+- `T0 + 14m59s` → ACTIVE
+- `T0 + 15m` (exact) → STALE
+- `T0 + 15m + ε` → STALE
+
+**Semantic distinctions (do not fuse):**
+
+```text
+Lifecycle-worker lease = 15m
+≠ claimStaleAfter = 5m
+≠ recovery horizon = 15m
+≠ cron cadence = 1m
+≠ state_version (CAS / stale-transition protection only)
+```
+
+Recovery horizon may also be 15 minutes, but it is a distinct concept from the exclusive lifecycle-worker lease. Lease duration does **not** derive from cron cadence, `claimStaleAfter`, or recovery horizon.
+
+Phase 13 assumes lifecycle work is bounded within the 15-minute lease. Ownership beyond 15 minutes requires a new human-approved heartbeat/lease contract.
+
 Regras:
 
 - `processing` sem deadline é proibido.
 - Terminais (`completed`, `failed_terminal`, `reconciliation_unresolved`) exigem `terminalized_at` + `expires_at` finito.
-- Cleanup remove somente terminais com `expires_at <= now`.
+- Cleanup remove somente terminais com `expires_at <= now` **and** without an active lifecycle-worker lease (`locked_at` null or stale).
 - `reconciliation_unresolved` é terminal de auditoria; não é sucesso financeiro/provider/business.
-- Driver: `apps/backend/src/jobs/store-idempotency-lifecycle.ts`, schedule `* * * * *`.
-- Claim de lifecycle: row lock **ou** conditional update com predicado `state` + `state_version`; exatamente um worker vence.
+- Driver: `apps/backend/src/jobs/store-idempotency-lifecycle.ts`, schedule `* * * * *` (cadence ≠ lease duration).
+- Claim de lifecycle: row lock **ou** conditional update com predicado `state` + `state_version` + `locked_at` freshness; exatamente um worker vence.
 - Restart retoma do PostgreSQL; Redis outage não duplica transição.
 
 #### Harness Phase 13
