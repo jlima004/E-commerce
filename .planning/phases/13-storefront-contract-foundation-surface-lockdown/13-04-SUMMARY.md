@@ -53,7 +53,7 @@ requirements-evidenced: [FND-04, FND-05]
 
 duration: 10min
 completed: 2026-08-09
-status: technical-pass-awaiting-human-re-review
+status: human-approved-pass
 ---
 
 # Phase 13 Plan 04: Store Idempotency Migration & Lifecycle Summary
@@ -63,11 +63,12 @@ status: technical-pass-awaiting-human-re-review
 ## Identity
 
 Plan: 13-04
-Status: TECHNICAL PASS — AWAITING HUMAN RE-REVIEW
+Status: HUMAN APPROVED — PASS
 Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`
 Pre-Task-3 HEAD: `c065cd920c9cb8f414fd4e3ab114214950f9c536`
-Post-Task-3 HEAD: `19b0ff14f12b2d5139185f064c838f00f48052ec`
-Pre-R1 HEAD: `8d28cf3cc562660e4fbe096e04f9d8a8490f0d0a`
+Task-3 technical implementation HEAD: `19b0ff14f12b2d5139185f064c838f00f48052ec`
+Pre-R1 documentary HEAD: `8d28cf3cc562660e4fbe096e04f9d8a8490f0d0a`
+Pre-human-approval-sync HEAD: `afeb1ca9b7beef80d15a67eb74d8bcac2d5e15e6`
 
 ## Performance
 
@@ -283,12 +284,13 @@ apps/backend/src/modules/store-idempotency/migrations/Migration20260809161242.ts
 ## Requirements / Governance
 
 - Evidence: FND-04, FND-05
-- `requirements-completed: []` (awaiting human approval — unchanged by R1)
+- `requirements-completed: []` (Phase 13 completion remains gated at the phase-level review; 13-04 approval does not close FND-04/FND-05 individually here)
 - `requirements-evidenced: [FND-04, FND-05]`
-- Plans human-approved executed remain **3/7** (`STATE.md` front matter `completed_plans: 3`)
+- Plans human-approved executed are **4/7** (`STATE.md` front matter `completed_plans: 4`)
 - Phase 13 requirements complete remain **0/8**
-- 13-04 is NOT human-approved
-- 13-05..13-07: NOT AUTHORIZED
+- 13-04: HUMAN APPROVED — PASS
+- 13-05: EXECUTION AUTHORIZED
+- 13-06..13-07: NOT AUTHORIZED
 - Deploy: NOT AUTHORIZED
 
 ## P13-13-04-T3-R1
@@ -300,9 +302,25 @@ Human-review blockers closed with evidence-only changes (no migration/runtime/DD
 | B13-04-T3-R1-01 | Exact post-CLI UNIQUE/CHECK DDL proof incomplete | CLOSED — catalog + behavioral |
 | B13-04-T3-R1-02 | failed_retryable next_retry_at + 8/24h lifecycle proof incomplete | CLOSED — Cases A–E executed |
 | B13-04-T3-R1-03 | Real PostgreSQL cleanup proof incomplete | CLOSED — full terminal matrix |
-| B13-04-T3-R1-04 | STATE `completed_plans=4` vs 3/7 human-approved | CLOSED — front matter = 3 |
+| B13-04-T3-R1-04 | STATE `completed_plans=4` vs 3/7 human-approved | CLOSED during R1 — front matter held at 3 pending human approval; post-approval sync advances to 4 |
 
 R1 authorized paths only: postgres.spec.ts, lifecycle.unit.spec.ts, 13-04-SUMMARY.md, STATE.md.
+
+## Human Approval
+
+```text
+P13-13-04-T3-R1 HUMAN RE-REVIEW: PASS
+13-04: HUMAN APPROVED — PASS
+Plans human-approved executed: 4/7
+Phase 13 requirements complete: 0/8
+Milestone requirements complete: 0/91
+13-05: EXECUTION AUTHORIZED
+13-06..13-07: NOT AUTHORIZED
+Deploy: NOT AUTHORIZED
+Frontend Milestone 1: BLOCKED
+```
+
+The 13-05 authorization permits execution of the already approved `13-05-PLAN.md` only. It does not authorize 13-06, deployment, provider exercise, or frontend work.
 
 ## Deviations from Plan
 
@@ -348,6 +366,8 @@ R1 introduced no runtime/DDL deviation; evidence gaps only.
 - [x] Commits present: `21796e8`, `9d92a63`, `4618e24`, `895122a`, `16f2c75`, `19b0ff1`
 - [x] Frozen files unchanged (migration/service/lifecycle/DB Model/package)
 - [x] Build exit 0 / 0 TS errors
-- [x] Status is technical-pass-awaiting-human-re-review (not human-approved-pass)
-- [x] P13-13-04-T3-R1 evidence blockers closed; `completed_plans: 3`
+- [x] Status is human-approved-pass
+- [x] P13-13-04-T3-R1 evidence blockers closed
+- [x] 13-04 HUMAN APPROVED — PASS; `completed_plans: 4`
+- [x] 13-05 EXECUTION AUTHORIZED; 13-06..13-07 NOT AUTHORIZED
 )
