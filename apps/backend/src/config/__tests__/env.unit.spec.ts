@@ -16,6 +16,7 @@ import {
   assertNoSensitiveStoreIdempotencyPersistence,
   assertStoreIdempotencyTransitionAllowed,
   assertValidRawIdempotencyKey,
+  assertValidStoreIdempotencyResponseStatus,
   buildStoreIdempotencyRequestFingerprint,
   hashStoreIdempotencyKey,
   hashStoreIdempotencyScope,
@@ -961,13 +962,51 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
 
   function createServiceHarness(seed: Record<string, unknown>[]) {
     const rows = seed.map((row) => ({ ...row }))
+    const sqlCalls: Array<{ sql: string; bindings: unknown[] }> = []
 
     const knex = {
       async transaction<T>(fn: (trx: typeof knex) => Promise<T>): Promise<T> {
         return fn(knex)
       },
       async raw(sql: string, bindings: unknown[] = []) {
+        sqlCalls.push({ sql, bindings })
         const normalized = sql.replace(/\s+/g, " ").toLowerCase()
+
+        if (
+          normalized.includes("with doomed as") &&
+          normalized.includes("delete from store_idempotency_record")
+        ) {
+          const expiresCutoff = String(bindings[0])
+          const leaseCutoff = String(bindings[1])
+          const limit = Number(bindings[2])
+          const doomedIds: string[] = []
+          const candidates = rows
+            .filter((row) => {
+              const state = String(row.state)
+              const expires = row.expires_at ? String(row.expires_at) : null
+              const lockedAt = row.locked_at ? String(row.locked_at) : null
+              const terminal =
+                state === "completed" ||
+                state === "failed_terminal" ||
+                state === "reconciliation_unresolved"
+              const expired = expires != null && expires <= expiresCutoff
+              const leaseOk = lockedAt == null || lockedAt <= leaseCutoff
+              return terminal && expired && leaseOk
+            })
+            .sort((a, b) =>
+              String(a.expires_at).localeCompare(String(b.expires_at))
+            )
+            .slice(0, limit)
+
+          for (const candidate of candidates) {
+            const idx = rows.findIndex((row) => row.id === candidate.id)
+            if (idx >= 0) {
+              doomedIds.push(String(rows[idx].id))
+              rows.splice(idx, 1)
+            }
+          }
+          return { rows: doomedIds.map((id) => ({ id })) }
+        }
 
         if (
           normalized.includes("insert into store_idempotency_record") &&
@@ -1179,7 +1218,7 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
       },
     })
 
-    return { service, rows }
+    return { service, rows, sqlCalls }
   }
 
   it("allows only SPEC §6.5 transitions and forbids the blocked matrix cells", () => {
@@ -1478,5 +1517,264 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
     })
     expect(fp).toBe(fpAgain)
     expect(fp).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it("keeps cleanup from deleting terminals under a live lifecycle lease", async () => {
+    const expiredAt = new Date(now.getTime() - 60_000).toISOString()
+    const { service, rows } = createServiceHarness([
+      baseRow({
+        id: "stidem_completed_live",
+        state: "completed",
+        state_version: 3,
+        locked_at: null,
+        state_deadline_at: null,
+        terminalized_at: expiredAt,
+        completed_at: expiredAt,
+        expires_at: expiredAt,
+      }),
+    ])
+
+    const due = await service.listDueLifecycleRows({ now })
+    expect(due).toHaveLength(1)
+
+    const claimed = await service.claimLifecycleRow({
+      id: "stidem_completed_live",
+      expectedState: "completed",
+      expectedStateVersion: 3,
+      at: now,
+    })
+    expect(claimed.type).toBe("claimed")
+    if (claimed.type !== "claimed") {
+      throw new Error("expected lifecycle claim on expired terminal")
+    }
+    expect(claimed.record.state_version).toBe(4)
+    expect(isStoreIdempotencyLifecycleLeaseActive(rows[0].locked_at as string, now)).toBe(
+      true
+    )
+
+    const deletedDuringLiveLease = await service.cleanupExpiredTerminals({
+      now,
+    })
+    expect(deletedDuringLiveLease).toBe(0)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe("stidem_completed_live")
+
+    const afterLease = new Date(
+      now.getTime() + STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS + 1
+    )
+    expect(
+      isStoreIdempotencyLifecycleLeaseActive(
+        rows[0].locked_at as string,
+        afterLease
+      )
+    ).toBe(false)
+
+    const deletedAfterExpiry = await service.cleanupExpiredTerminals({
+      now: afterLease,
+    })
+    expect(deletedAfterExpiry).toBe(1)
+    expect(rows).toHaveLength(0)
+
+    const secondCleanup = await service.cleanupExpiredTerminals({
+      now: afterLease,
+    })
+    expect(secondCleanup).toBe(0)
+  })
+
+  it("cleanup removes only expired terminals without an active lifecycle lease", async () => {
+    const expired = new Date(now.getTime() - 1_000).toISOString()
+    const future = new Date(now.getTime() + 3_600_000).toISOString()
+    const staleLocked = new Date(
+      now.getTime() - STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS - 1
+    ).toISOString()
+
+    const { service, rows } = createServiceHarness([
+      baseRow({
+        id: "stidem_fresh_completed",
+        state: "completed",
+        state_version: 2,
+        locked_at: null,
+        state_deadline_at: null,
+        terminalized_at: now.toISOString(),
+        completed_at: now.toISOString(),
+        expires_at: future,
+      }),
+      baseRow({
+        id: "stidem_expired_completed",
+        state: "completed",
+        state_version: 2,
+        locked_at: null,
+        state_deadline_at: null,
+        terminalized_at: expired,
+        completed_at: expired,
+        expires_at: expired,
+      }),
+      baseRow({
+        id: "stidem_expired_failed_terminal",
+        state: "failed_terminal",
+        state_version: 2,
+        locked_at: staleLocked,
+        state_deadline_at: null,
+        terminalized_at: expired,
+        expires_at: expired,
+        failure_code: "timeout",
+      }),
+      baseRow({
+        id: "stidem_expired_unresolved",
+        state: "reconciliation_unresolved",
+        state_version: 2,
+        locked_at: null,
+        state_deadline_at: null,
+        terminalized_at: expired,
+        expires_at: expired,
+      }),
+      baseRow({
+        id: "stidem_processing",
+        state: "processing",
+        state_version: 1,
+        locked_at: null,
+        state_deadline_at: expired,
+        expires_at: expired,
+      }),
+    ])
+
+    const deleted = await service.cleanupExpiredTerminals({ now })
+    expect(deleted).toBe(3)
+    expect(rows.map((row) => row.id).sort()).toEqual([
+      "stidem_fresh_completed",
+      "stidem_processing",
+    ])
+
+    const again = await service.cleanupExpiredTerminals({ now })
+    expect(again).toBe(0)
+  })
+
+  it("rejects invalid top-level response_status before SQL", async () => {
+    expect(assertValidStoreIdempotencyResponseStatus(null)).toBeNull()
+    expect(assertValidStoreIdempotencyResponseStatus(100)).toBe(100)
+    expect(assertValidStoreIdempotencyResponseStatus(200)).toBe(200)
+    expect(assertValidStoreIdempotencyResponseStatus(409)).toBe(409)
+    expect(assertValidStoreIdempotencyResponseStatus(500)).toBe(500)
+    expect(assertValidStoreIdempotencyResponseStatus(599)).toBe(599)
+
+    for (const invalid of [99, 600, 0, -1, 200.5, Number.NaN, Number.POSITIVE_INFINITY, "200"]) {
+      expect(() => assertValidStoreIdempotencyResponseStatus(invalid)).toThrow(
+        /STORE_IDEMPOTENCY_RESPONSE_STATUS_INVALID/
+      )
+    }
+
+    const { service, rows, sqlCalls } = createServiceHarness([baseRow()])
+    const updateCallsBefore = sqlCalls.filter((call) =>
+      call.sql.toLowerCase().includes("update store_idempotency_record")
+    ).length
+
+    await expect(
+      service.transitionWithPredicate({
+        id: "stidem_1",
+        expectedState: "processing",
+        expectedStateVersion: 1,
+        at: now,
+        next: {
+          state: "completed",
+          response_status: 99,
+          terminalized_at: now,
+          expires_at: new Date(now.getTime() + 86_400_000),
+          completed_at: now,
+          state_deadline_at: null,
+        },
+      })
+    ).rejects.toThrow(/STORE_IDEMPOTENCY_RESPONSE_STATUS_INVALID/)
+
+    await expect(
+      service.transitionWithPredicate({
+        id: "stidem_1",
+        expectedState: "processing",
+        expectedStateVersion: 1,
+        at: now,
+        next: {
+          state: "completed",
+          response_status: 600 as unknown as number,
+          terminalized_at: now,
+          expires_at: new Date(now.getTime() + 86_400_000),
+          completed_at: now,
+          state_deadline_at: null,
+        },
+      })
+    ).rejects.toThrow(/STORE_IDEMPOTENCY_RESPONSE_STATUS_INVALID/)
+
+    await expect(
+      service.transitionWithPredicate({
+        id: "stidem_1",
+        expectedState: "processing",
+        expectedStateVersion: 1,
+        at: now,
+        next: {
+          state: "completed",
+          response_status: 200.5 as unknown as number,
+          terminalized_at: now,
+          expires_at: new Date(now.getTime() + 86_400_000),
+          completed_at: now,
+          state_deadline_at: null,
+        },
+      })
+    ).rejects.toThrow(/STORE_IDEMPOTENCY_RESPONSE_STATUS_INVALID/)
+
+    await expect(
+      service.transitionWithPredicate({
+        id: "stidem_1",
+        expectedState: "processing",
+        expectedStateVersion: 1,
+        at: now,
+        next: {
+          state: "completed",
+          response_status: Number.NaN as unknown as number,
+          terminalized_at: now,
+          expires_at: new Date(now.getTime() + 86_400_000),
+          completed_at: now,
+          state_deadline_at: null,
+        },
+      })
+    ).rejects.toThrow(/STORE_IDEMPOTENCY_RESPONSE_STATUS_INVALID/)
+
+    await expect(
+      service.transitionWithPredicate({
+        id: "stidem_1",
+        expectedState: "processing",
+        expectedStateVersion: 1,
+        at: now,
+        next: {
+          state: "completed",
+          response_status: Number.POSITIVE_INFINITY as unknown as number,
+          terminalized_at: now,
+          expires_at: new Date(now.getTime() + 86_400_000),
+          completed_at: now,
+          state_deadline_at: null,
+        },
+      })
+    ).rejects.toThrow(/STORE_IDEMPOTENCY_RESPONSE_STATUS_INVALID/)
+
+    const updateCallsAfter = sqlCalls.filter((call) =>
+      call.sql.toLowerCase().includes("update store_idempotency_record")
+    ).length
+    expect(updateCallsAfter).toBe(updateCallsBefore)
+    expect(rows[0].state).toBe("processing")
+    expect(rows[0].response_status).toBeNull()
+
+    const ok = await service.transitionWithPredicate({
+      id: "stidem_1",
+      expectedState: "processing",
+      expectedStateVersion: 1,
+      at: now,
+      next: {
+        state: "completed",
+        response_status: 200,
+        terminalized_at: now,
+        expires_at: new Date(now.getTime() + 86_400_000),
+        completed_at: now,
+        state_deadline_at: null,
+      },
+    })
+    expect(ok.type).toBe("claimed")
+    expect(rows[0].response_status).toBe(200)
   })
 })
