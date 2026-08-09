@@ -361,20 +361,19 @@ Known deferred artifact items at v1.0 close: 0.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-04-PLAN.md
+**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-04-SUMMARY.md
 
 Last session: 2026-08-09T16:22:19.482Z
 
-Stopped at: 13-03 HUMAN APPROVED — PASS; 13-04 EXECUTION AUTHORIZED; 13-05..13-07 NOT AUTHORIZED
+Stopped at: 13-04 TECHNICAL PASS — AWAITING HUMAN REVIEW; 13-05..13-07 NOT AUTHORIZED
 
 Resume files:
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-04-SUMMARY.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-04-PLAN.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-03-SUMMARY.md`,
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-03-PLAN.md`,
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-02-SUMMARY.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: execute only 13-04 under its approved plan, then stop for human review. Do not start 13-05 without separate explicit authorization after 13-04 HUMAN APPROVED — PASS.
+Next permitted step: human review of 13-04. Do not start 13-05 without separate explicit authorization after 13-04 HUMAN APPROVED — PASS.
 
 Do not automatically start 13-05..13-07, Phase 14, or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
