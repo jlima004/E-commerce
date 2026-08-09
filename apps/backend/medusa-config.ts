@@ -98,6 +98,10 @@ const modules = [
     resolve: "./src/modules/store-idempotency",
   },
   {
+    key: "store_resource_version",
+    resolve: "./src/modules/store-resource-version",
+  },
+  {
     resolve: "./src/modules/payment-attempt",
   },
   {

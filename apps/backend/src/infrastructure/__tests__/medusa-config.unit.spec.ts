@@ -195,10 +195,14 @@ describe("medusa-config final Redis wiring", () => {
     expectSanitizedFailure(() => loadFinalConfig(productionEnv("worker")))
   })
 
-  it("registers store_idempotency exactly once without altering Redis providers", () => {
+  it("registers Store foundation modules exactly once without altering modules or Redis providers", () => {
     const config = loadFinalConfig(productionEnv("server"))
+    const repeatedConfig = loadFinalConfig(productionEnv("server"))
     const storeIdempotency = config.modules.filter(
       (module) => module.resolve === "./src/modules/store-idempotency"
+    )
+    const storeResourceVersion = config.modules.filter(
+      (module) => module.resolve === "./src/modules/store-resource-version"
     )
     const redisModules = config.modules.filter((module) =>
       [
@@ -209,14 +213,35 @@ describe("medusa-config final Redis wiring", () => {
       ].includes(module.resolve ?? "")
     )
     const serialized = JSON.stringify(config.modules)
+    const expectedLocalModules = [
+      "./src/modules/webhooks",
+      "./src/modules/checkout-completion",
+      "./src/modules/analytics-event-log",
+      "./src/modules/email-delivery-log",
+      "./src/modules/gelato-fulfillment",
+      "./src/modules/operational-alert",
+      "./src/modules/admin-action-log",
+      "./src/modules/tracking-access-token",
+      "./src/modules/store-idempotency",
+      "./src/modules/store-resource-version",
+      "./src/modules/payment-attempt",
+      "./src/modules/refund-request",
+      "./src/modules/exchange-request",
+    ]
 
     expect(storeIdempotency).toHaveLength(1)
+    expect(storeResourceVersion).toHaveLength(1)
     expect(redisModules).toHaveLength(4)
-    expect(serialized).toContain("checkoutCompletion")
-    expect(serialized).toContain("tracking_access_token")
-    expect(serialized).not.toContain("event-bus-local")
     expect(
-      serialized.match(/store-idempotency/g)?.length ?? 0
-    ).toBe(1)
+      config.modules
+        .map((module) => module.resolve)
+        .filter((resolve): resolve is string =>
+          Boolean(resolve?.startsWith("./src/modules/"))
+        )
+    ).toEqual(expectedLocalModules)
+    expect(repeatedConfig).toEqual(config)
+    expect(serialized).not.toContain("event-bus-local")
+    expect(serialized.match(/store-idempotency/g)?.length ?? 0).toBe(1)
+    expect(serialized.match(/store-resource-version/g)?.length ?? 0).toBe(1)
   })
 })
