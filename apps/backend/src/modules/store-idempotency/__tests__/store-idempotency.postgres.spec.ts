@@ -210,6 +210,60 @@ if (!requestedDatabaseName) {
           ])
         )
 
+        // R1-01: exact UNIQUE catalog proof (indisunique / indpred / ordered cols).
+        const claimUnique = await dbConnection.raw(`
+          select
+            i.indisunique,
+            i.indpred,
+            pg_get_indexdef(i.indexrelid) as indexdef,
+            json_agg(a.attname order by u.ord) as ordered_columns
+          from pg_index i
+          join pg_class idx on idx.oid = i.indexrelid
+          join pg_class tbl on tbl.oid = i.indrelid
+          join pg_namespace n on n.oid = tbl.relnamespace
+          join lateral unnest(i.indkey) with ordinality as u(attnum, ord) on true
+          join pg_attribute a
+            on a.attrelid = tbl.oid and a.attnum = u.attnum
+          where n.nspname = 'public'
+            and tbl.relname = 'store_idempotency_record'
+            and idx.relname = 'UQ_store_idempotency_record_claim_scope'
+          group by i.indisunique, i.indpred, i.indexrelid
+        `)
+        expect(claimUnique.rows).toHaveLength(1)
+        expect(claimUnique.rows[0].indisunique).toBe(true)
+        expect(claimUnique.rows[0].indpred).toBeNull()
+        const orderedColumnsRaw = claimUnique.rows[0].ordered_columns
+        const orderedColumns = Array.isArray(orderedColumnsRaw)
+          ? orderedColumnsRaw
+          : JSON.parse(String(orderedColumnsRaw))
+        expect(orderedColumns).toEqual([
+          "operation",
+          "actor_scope_hash",
+          "resource_scope_hash",
+          "idempotency_key_hash",
+        ])
+        expect(String(claimUnique.rows[0].indexdef)).not.toMatch(
+          /where\s+deleted_at\s+is\s+null/i
+        )
+
+        const competingPartial = await dbConnection.raw(`
+          select idx.relname as indexname, pg_get_indexdef(i.indexrelid) as indexdef
+          from pg_index i
+          join pg_class idx on idx.oid = i.indexrelid
+          join pg_class tbl on tbl.oid = i.indrelid
+          join pg_namespace n on n.oid = tbl.relnamespace
+          where n.nspname = 'public'
+            and tbl.relname = 'store_idempotency_record'
+            and i.indisunique = true
+            and i.indpred is not null
+            and idx.relname <> 'UQ_store_idempotency_record_claim_scope'
+            and pg_get_indexdef(i.indexrelid) ilike '%operation%'
+            and pg_get_indexdef(i.indexrelid) ilike '%actor_scope_hash%'
+            and pg_get_indexdef(i.indexrelid) ilike '%resource_scope_hash%'
+            and pg_get_indexdef(i.indexrelid) ilike '%idempotency_key_hash%'
+        `)
+        expect(competingPartial.rows).toEqual([])
+
         const checks = await dbConnection.raw(`
           select conname, pg_get_constraintdef(oid) as def
           from pg_constraint
@@ -217,12 +271,187 @@ if (!requestedDatabaseName) {
             and contype = 'c'
           order by conname
         `)
-        const defs = checks.rows.map((row: { def: string }) => row.def)
-        expect(defs.join(" | ")).toMatch(/processing/)
-        expect(defs.join(" | ")).toMatch(/reconciliation_unresolved/)
-        expect(defs.join(" | ")).toMatch(/hmac-sha256-v1/)
-        expect(defs.join(" | ")).toMatch(/pepper_version/)
-        expect(defs.join(" | ")).toMatch(/state_version/)
+        const defsByName = new Map<string, string>(
+          (checks.rows as Array<{ conname: string; def: string }>).map(
+            (row) => [row.conname, row.def] as [string, string]
+          )
+        )
+        const allDefs = (
+          checks.rows as Array<{ def: string }>
+        ).map((row) => row.def)
+
+        const expectedStates = [
+          "processing",
+          "completed",
+          "failed_retryable",
+          "failed_terminal",
+          "reconciliation_required",
+          "reconciliation_unresolved",
+        ]
+        // PostgreSQL may rewrite CHECK (... IN (...)) as (... = ANY (ARRAY[...])).
+        const stateDef =
+          allDefs.find((def: string) => {
+            const n = def.replace(/"/g, "").toLowerCase()
+            return (
+              /\bstate\s+in\s*\(/.test(n) ||
+              /\bstate\b.*\bany\s*\(\s*array\[/.test(n) ||
+              /\(\s*state\s*\)\s*::\s*text\s*=\s*any\s*\(/.test(n)
+            )
+          }) ?? ""
+        expect(stateDef.length).toBeGreaterThan(0)
+        const stateMatches = [...stateDef.matchAll(/'([^']+)'/g)].map(
+          (m) => m[1]
+        )
+        expect(new Set(stateMatches)).toEqual(new Set(expectedStates))
+        expect(stateMatches).toHaveLength(expectedStates.length)
+        // No extra / missing members after closed normalization.
+        expect([...new Set(stateMatches)].sort()).toEqual(
+          [...expectedStates].sort()
+        )
+
+        const normalizeCheck = (def: string) =>
+          def
+            .replace(/::[a-zA-Z0-9_]+/g, "")
+            .replace(/"/g, "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .toLowerCase()
+
+        const hashDef =
+          defsByName.get("store_idempotency_record_hash_version_check") ?? ""
+        expect(normalizeCheck(hashDef)).toMatch(
+          /check\s*\(+hash_version\s*=\s*'hmac-sha256-v1'\)+/
+        )
+
+        const pepperDef =
+          defsByName.get("store_idempotency_record_pepper_version_check") ?? ""
+        expect(normalizeCheck(pepperDef)).toMatch(
+          /check\s*\(+pepper_version\s*=\s*1\)+/
+        )
+
+        const stateVersionDef =
+          defsByName.get("store_idempotency_record_state_version_check") ?? ""
+        expect(normalizeCheck(stateVersionDef)).toMatch(
+          /check\s*\(+state_version\s*>=\s*1\)+/
+        )
+
+        // Behavioral negative/positive enforcement for version CHECKs.
+        const hex = (n: number) => "a".repeat(n)
+        const baseInsert = {
+          id: "stidem_ddl_check_01",
+          operation: STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION,
+          actor_scope_hash: hex(64),
+          resource_scope_hash: hex(64),
+          idempotency_key_hash: hex(64),
+          request_fingerprint: hex(64),
+        }
+
+        await expect(
+          dbConnection.raw(
+            `insert into store_idempotency_record
+              (id, operation, actor_scope_hash, resource_scope_hash,
+               idempotency_key_hash, hash_version, pepper_version,
+               request_fingerprint, state, state_version)
+             values (?, ?, ?, ?, ?, ?, ?, ?, 'processing', 1)`,
+            [
+              baseInsert.id + "_hash",
+              baseInsert.operation,
+              baseInsert.actor_scope_hash,
+              baseInsert.resource_scope_hash,
+              baseInsert.idempotency_key_hash,
+              "hmac-sha256-v0",
+              1,
+              baseInsert.request_fingerprint,
+            ]
+          )
+        ).rejects.toThrow()
+
+        await expect(
+          dbConnection.raw(
+            `insert into store_idempotency_record
+              (id, operation, actor_scope_hash, resource_scope_hash,
+               idempotency_key_hash, hash_version, pepper_version,
+               request_fingerprint, state, state_version)
+             values (?, ?, ?, ?, ?, ?, ?, ?, 'processing', 1)`,
+            [
+              baseInsert.id + "_pepper",
+              baseInsert.operation,
+              baseInsert.actor_scope_hash,
+              baseInsert.resource_scope_hash,
+              baseInsert.idempotency_key_hash,
+              "hmac-sha256-v1",
+              2,
+              baseInsert.request_fingerprint,
+            ]
+          )
+        ).rejects.toThrow()
+
+        await expect(
+          dbConnection.raw(
+            `insert into store_idempotency_record
+              (id, operation, actor_scope_hash, resource_scope_hash,
+               idempotency_key_hash, hash_version, pepper_version,
+               request_fingerprint, state, state_version)
+             values (?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
+            [
+              baseInsert.id + "_sv",
+              baseInsert.operation,
+              baseInsert.actor_scope_hash,
+              baseInsert.resource_scope_hash,
+              baseInsert.idempotency_key_hash,
+              "hmac-sha256-v1",
+              1,
+              baseInsert.request_fingerprint,
+            ]
+          )
+        ).rejects.toThrow()
+
+        await expect(
+          dbConnection.raw(
+            `insert into store_idempotency_record
+              (id, operation, actor_scope_hash, resource_scope_hash,
+               idempotency_key_hash, hash_version, pepper_version,
+               request_fingerprint, state, state_version)
+             values (?, ?, ?, ?, ?, ?, ?, ?, 'bogus_state', 1)`,
+            [
+              baseInsert.id + "_state",
+              baseInsert.operation,
+              baseInsert.actor_scope_hash,
+              baseInsert.resource_scope_hash,
+              baseInsert.idempotency_key_hash,
+              "hmac-sha256-v1",
+              1,
+              baseInsert.request_fingerprint,
+            ]
+          )
+        ).rejects.toThrow()
+
+        await dbConnection.raw(
+          `insert into store_idempotency_record
+            (id, operation, actor_scope_hash, resource_scope_hash,
+             idempotency_key_hash, hash_version, pepper_version,
+             request_fingerprint, state, state_version)
+           values (?, ?, ?, ?, ?, 'hmac-sha256-v1', 1, ?, 'processing', 1)`,
+          [
+            baseInsert.id + "_ok",
+            baseInsert.operation,
+            baseInsert.actor_scope_hash,
+            baseInsert.resource_scope_hash,
+            baseInsert.idempotency_key_hash,
+            baseInsert.request_fingerprint,
+          ]
+        )
+        await dbConnection.raw(
+          `delete from store_idempotency_record where id = ?`,
+          [baseInsert.id + "_ok"]
+        )
+
+        const leftovers = await dbConnection.raw(
+          `select count(*)::int as count from store_idempotency_record
+           where id like ?`,
+          [baseInsert.id + "%"]
+        )
+        expect(leftovers.rows).toEqual([{ count: 0 }])
 
         const configModule = getContainer().resolve(
           ContainerRegistrationKeys.CONFIG_MODULE
@@ -794,66 +1023,269 @@ if (!requestedDatabaseName) {
         })
       })
 
-      it("14) terminal expiry cleanup respects live lease and exact stale boundary", async () => {
+      it("14) cleanup matrix: all expired terminals deleted; processing preserved; lease + idempotence", async () => {
         const service = resolveService()
         const now = new Date("2026-08-09T12:00:00.000Z")
         const expired = addMs(now, -60_000).toISOString()
 
-        const completed = await service.claim({
+        async function forceExpired(id: string) {
+          // Setup-only clock control: service retention helpers keep expires_at
+          // relative to transition time; cleanup proof needs past expires_at.
+          await dbConnection.raw(
+            `update store_idempotency_record
+             set expires_at = ?, terminalized_at = coalesce(terminalized_at, ?)
+             where id = ?`,
+            [expired, expired, id]
+          )
+        }
+
+        // --- Seed: expired completed ---
+        const completedClaim = await service.claim({
           operation: STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION,
-          actorScope: { customer_id: "cus_clean_01" },
-          resourceScope: { cart_id: "cart_clean_01" },
-          rawIdempotencyKey: "Clean-Key-01",
+          actorScope: { customer_id: "cus_clean_completed" },
+          resourceScope: { cart_id: "cart_clean_completed" },
+          rawIdempotencyKey: "Clean-Completed",
           canonicalSemanticObject: { n: 1 },
           at: now,
         })
-        expect(completed.type).toBe("claimed")
-        if (completed.type !== "claimed") {
-          throw new Error("expected claimed")
+        expect(completedClaim.type).toBe("claimed")
+        if (completedClaim.type !== "claimed") {
+          throw new Error("expected completed claim")
         }
-
-        const marked = await service.markCompleted({
-          id: completed.record.id,
+        const completedMarked = await service.markCompleted({
+          id: completedClaim.record.id,
           expectedState: "processing",
           expectedStateVersion: 1,
           result_type: "local_mutation_result",
-          result_id: "ord_01HCLEAN",
+          result_id: "ord_01HCLEAN_C",
           response_status: 200,
-          retentionMs: STORE_IDEMPOTENCY_DEFAULT_TERMINAL_RETENTION_MS,
-          at: addMs(now, -STORE_IDEMPOTENCY_DEFAULT_TERMINAL_RETENTION_MS - 60_000),
+          at: now,
         })
-        expect(marked.type).toBe("claimed")
+        expect(completedMarked.type).toBe("claimed")
+        await forceExpired(completedClaim.record.id)
 
-        // Force expires_at into the past for cleanup proof.
+        // --- Seed: expired failed_terminal ---
+        const failedClaim = await service.claim({
+          operation: STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION,
+          actorScope: { customer_id: "cus_clean_failed" },
+          resourceScope: { cart_id: "cart_clean_failed" },
+          rawIdempotencyKey: "Clean-Failed",
+          canonicalSemanticObject: { n: 2 },
+          at: now,
+        })
+        expect(failedClaim.type).toBe("claimed")
+        if (failedClaim.type !== "claimed") {
+          throw new Error("expected failed claim")
+        }
+        const failedMarked = await service.markFailedTerminal({
+          id: failedClaim.record.id,
+          expectedState: "processing",
+          expectedStateVersion: 1,
+          failure_code: "timeout",
+          at: now,
+        })
+        expect(failedMarked.type).toBe("claimed")
+        await forceExpired(failedClaim.record.id)
+
+        // --- Seed: expired reconciliation_unresolved ---
+        const unresolvedClaim = await service.claim({
+          operation: STORE_IDEMPOTENCY_PHASE13_UNCERTAIN_EFFECT,
+          actorScope: { customer_id: "cus_clean_unresolved" },
+          resourceScope: { cart_id: "cart_clean_unresolved" },
+          rawIdempotencyKey: "Clean-Unresolved",
+          canonicalSemanticObject: { n: 3 },
+          at: now,
+        })
+        expect(unresolvedClaim.type).toBe("claimed")
+        if (unresolvedClaim.type !== "claimed") {
+          throw new Error("expected unresolved claim")
+        }
+        const required = await service.markReconciliationRequired({
+          id: unresolvedClaim.record.id,
+          expectedState: "processing",
+          expectedStateVersion: 1,
+          failure_code: "uncertain",
+          at: now,
+        })
+        expect(required.type).toBe("claimed")
+        if (required.type !== "claimed") {
+          throw new Error("expected reconciliation_required")
+        }
+        const unresolved = await service.markReconciliationUnresolved({
+          id: unresolvedClaim.record.id,
+          expectedState: "reconciliation_required",
+          expectedStateVersion: 2,
+          at: now,
+        })
+        expect(unresolved.type).toBe("claimed")
+        await forceExpired(unresolvedClaim.record.id)
+
+        // --- Seed: expired processing canary (non-terminal must never delete) ---
+        const processingClaim = await service.claim({
+          operation: STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION,
+          actorScope: { customer_id: "cus_clean_processing" },
+          resourceScope: { cart_id: "cart_clean_processing" },
+          rawIdempotencyKey: "Clean-Processing",
+          canonicalSemanticObject: { n: 4 },
+          at: now,
+        })
+        expect(processingClaim.type).toBe("claimed")
+        if (processingClaim.type !== "claimed") {
+          throw new Error("expected processing claim")
+        }
         await dbConnection.raw(
-          `update store_idempotency_record set expires_at = ?, terminalized_at = ? where id = ?`,
-          [expired, expired, completed.record.id]
+          `update store_idempotency_record set expires_at = ? where id = ?`,
+          [expired, processingClaim.record.id]
         )
 
+        // --- Seed: expired completed with fresh lifecycle lease ---
+        const leasedClaim = await service.claim({
+          operation: STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION,
+          actorScope: { customer_id: "cus_clean_leased" },
+          resourceScope: { cart_id: "cart_clean_leased" },
+          rawIdempotencyKey: "Clean-Leased",
+          canonicalSemanticObject: { n: 5 },
+          at: now,
+        })
+        expect(leasedClaim.type).toBe("claimed")
+        if (leasedClaim.type !== "claimed") {
+          throw new Error("expected leased claim")
+        }
+        const leasedMarked = await service.markCompleted({
+          id: leasedClaim.record.id,
+          expectedState: "processing",
+          expectedStateVersion: 1,
+          result_type: "local_mutation_result",
+          result_id: "ord_01HCLEAN_L",
+          response_status: 200,
+          at: now,
+        })
+        expect(leasedMarked.type).toBe("claimed")
+        await forceExpired(leasedClaim.record.id)
         const leaseAt = now
         const leased = await service.claimLifecycleRow({
-          id: completed.record.id,
+          id: leasedClaim.record.id,
           expectedState: "completed",
           expectedStateVersion: 2,
           at: leaseAt,
         })
         expect(leased.type).toBe("claimed")
 
+        // --- Seed: expired completed for exact stale-boundary (T+15m) ---
+        const staleClaim = await service.claim({
+          operation: STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION,
+          actorScope: { customer_id: "cus_clean_stale" },
+          resourceScope: { cart_id: "cart_clean_stale" },
+          rawIdempotencyKey: "Clean-Stale",
+          canonicalSemanticObject: { n: 6 },
+          at: now,
+        })
+        expect(staleClaim.type).toBe("claimed")
+        if (staleClaim.type !== "claimed") {
+          throw new Error("expected stale claim")
+        }
+        const staleMarked = await service.markCompleted({
+          id: staleClaim.record.id,
+          expectedState: "processing",
+          expectedStateVersion: 1,
+          result_type: "local_mutation_result",
+          result_id: "ord_01HCLEAN_S",
+          response_status: 200,
+          at: now,
+        })
+        expect(staleMarked.type).toBe("claimed")
+        await forceExpired(staleClaim.record.id)
+        const staleLeaseAt = addMs(now, -STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS)
+        const staleLeased = await service.claimLifecycleRow({
+          id: staleClaim.record.id,
+          expectedState: "completed",
+          expectedStateVersion: 2,
+          at: staleLeaseAt,
+        })
+        expect(staleLeased.type).toBe("claimed")
+
+        const ids = {
+          completed: completedClaim.record.id,
+          failed_terminal: failedClaim.record.id,
+          reconciliation_unresolved: unresolvedClaim.record.id,
+          processing: processingClaim.record.id,
+          leased: leasedClaim.record.id,
+          stale: staleClaim.record.id,
+        }
+
+        // Live lease protects leased terminal; unprotected terminals + exact stale delete.
+        const firstCleanup = await service.cleanupExpiredTerminals({ now })
+        expect(firstCleanup).toBe(4)
+
+        const afterFirst = await dbConnection.raw(
+          `select id, state from store_idempotency_record
+           where id in (?, ?, ?, ?, ?, ?)
+           order by id`,
+          [
+            ids.completed,
+            ids.failed_terminal,
+            ids.reconciliation_unresolved,
+            ids.processing,
+            ids.leased,
+            ids.stale,
+          ]
+        )
+        const remainingIds = new Set(
+          afterFirst.rows.map((row: { id: string }) => row.id)
+        )
+        expect(remainingIds.has(ids.completed)).toBe(false)
+        expect(remainingIds.has(ids.failed_terminal)).toBe(false)
+        expect(remainingIds.has(ids.reconciliation_unresolved)).toBe(false)
+        expect(remainingIds.has(ids.stale)).toBe(false)
+        expect(remainingIds.has(ids.processing)).toBe(true)
+        expect(remainingIds.has(ids.leased)).toBe(true)
+
+        const processingRow = afterFirst.rows.find(
+          (row: { id: string; state: string }) => row.id === ids.processing
+        )
+        expect(processingRow?.state).toBe("processing")
+
+        // Explicit negative: cleanupExpiredTerminals NEVER deletes processing.
+        const processingStill = await dbConnection.raw(
+          `select count(*)::int as count from store_idempotency_record
+           where id = ? and state = 'processing'`,
+          [ids.processing]
+        )
+        expect(processingStill.rows).toEqual([{ count: 1 }])
+
+        // Fresh lease still protects at T1+14m59s.
         const duringLive = await service.cleanupExpiredTerminals({
           now: addMs(leaseAt, 14 * 60_000 + 59_000),
         })
         expect(duringLive).toBe(0)
+        const leasedStill = await dbConnection.raw(
+          `select count(*)::int as count from store_idempotency_record where id = ?`,
+          [ids.leased]
+        )
+        expect(leasedStill.rows).toEqual([{ count: 1 }])
 
+        // Exact stale boundary T+15m deletes the previously leased terminal.
         const atBoundary = await service.cleanupExpiredTerminals({
           now: addMs(leaseAt, STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS),
         })
         expect(atBoundary).toBe(1)
-
-        const remaining = await dbConnection.raw(
+        const leasedGone = await dbConnection.raw(
           `select count(*)::int as count from store_idempotency_record where id = ?`,
-          [completed.record.id]
+          [ids.leased]
         )
-        expect(remaining.rows).toEqual([{ count: 0 }])
+        expect(leasedGone.rows).toEqual([{ count: 0 }])
+
+        // Idempotent second cleanup → 0; processing still preserved.
+        const secondCleanup = await service.cleanupExpiredTerminals({
+          now: addMs(leaseAt, STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS),
+        })
+        expect(secondCleanup).toBe(0)
+        const processingFinal = await dbConnection.raw(
+          `select count(*)::int as count from store_idempotency_record
+           where id = ? and state = 'processing'`,
+          [ids.processing]
+        )
+        expect(processingFinal.rows).toEqual([{ count: 1 }])
       })
 
       it("15) finite lifecycle: non-terminal deadlines and terminal expires_at enforced", async () => {
