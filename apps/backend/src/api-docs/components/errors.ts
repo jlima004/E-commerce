@@ -16,6 +16,23 @@ export function registerStoreErrorSchemas(
   registry.registerComponent("store", "schemas", "StoreErrorResponse", {
     type: "object",
     additionalProperties: false,
+    "x-store-foundation-components": {
+      description:
+        "Transversal Phase 13 components retained for later owner-phase operations without making those operations executable.",
+      requestParameters: [
+        { $ref: "#/components/parameters/IdempotencyKey" },
+        { $ref: "#/components/parameters/IfMatch" },
+        { $ref: "#/components/parameters/XCorrelationId" },
+      ],
+      responseHeaders: [
+        { $ref: "#/components/headers/ETag" },
+        { $ref: "#/components/headers/RetryAfter" },
+      ],
+      moneySchemas: [
+        { $ref: "#/components/schemas/StoreMajorMoney" },
+        { $ref: "#/components/schemas/StoreMinorMoney" },
+      ],
+    },
     required: ["code", "message", "retryable"],
     properties: {
       code: {

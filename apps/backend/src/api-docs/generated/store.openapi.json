@@ -1,14 +1,70 @@
 {
   "components": {
     "headers": {
+      "ETag": {
+        "description": "Opaque server-authoritative resource version. Cart runtime emission belongs to Phase 15.",
+        "schema": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "RetryAfter": {
+        "description": "Conditional retry delay emitted only when retryability is factual and no external effect is uncertain.",
+        "schema": {
+          "oneOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "format": "http-date",
+              "type": "string"
+            }
+          ]
+        }
+      },
       "XCorrelationId": {
-        "description": "Correlation identifier returned by the server on every response. Echoes the request x-correlation-id when provided; otherwise a server-generated value.",
+        "description": "Server-sanitized correlation identifier returned on every response. Invalid or missing input is replaced, never echoed arbitrarily.",
         "schema": {
           "type": "string"
         }
       }
     },
-    "parameters": {},
+    "parameters": {
+      "IdempotencyKey": {
+        "description": "Server-side BFF retry identity only. It is NOT authentication, NOT authorization, NOT ownership, and NOT a capability.",
+        "in": "header",
+        "name": "Idempotency-Key",
+        "required": true,
+        "schema": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[!-~]+$",
+          "type": "string"
+        }
+      },
+      "IfMatch": {
+        "description": "Opaque server-issued resource version precondition. Cart enforcement and stale 412 behavior belong to Phase 15.",
+        "in": "header",
+        "name": "If-Match",
+        "required": true,
+        "schema": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "XCorrelationId": {
+        "description": "Optional correlation candidate. The server accepts only the closed format and replaces invalid or missing values; unsafe input is never echoed.",
+        "in": "header",
+        "name": "x-correlation-id",
+        "required": false,
+        "schema": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]{1,128}$",
+          "type": "string"
+        }
+      }
+    },
     "responses": {},
     "schemas": {
       "PublicStoreCartItem": {
@@ -620,30 +676,87 @@
         ],
         "type": "object"
       },
-      "StoreError": {
+      "StoreErrorResponse": {
         "additionalProperties": false,
         "properties": {
-          "code": {
-            "description": "Optional machine-readable error code when present.",
-            "type": [
-              "string",
-              "null"
+          "cart": {
+            "description": "Optional safe primitive cart reference. The canonical Cart snapshot belongs to Phase 15.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
-          "message": {
-            "description": "Human-readable sanitized error message.",
+          "code": {
+            "description": "Stable machine-readable public Store error code.",
             "type": "string"
           },
-          "type": {
-            "description": "Medusa or project error type code.",
+          "correlationId": {
+            "description": "Server-sanitized correlation identifier matching the response header when present.",
+            "pattern": "^[A-Za-z0-9._-]{1,128}$",
             "type": "string"
+          },
+          "fieldErrors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Allowlisted public field names mapped to sanitized messages.",
+            "type": "object"
+          },
+          "message": {
+            "description": "Sanitized presentation message; clients must branch on code, not message.",
+            "type": "string"
+          },
+          "retryable": {
+            "description": "True only when a retry is factually safe and no external effect is uncertain.",
+            "type": "boolean"
           }
         },
         "required": [
-          "type",
-          "message"
+          "code",
+          "message",
+          "retryable"
         ],
-        "type": "object"
+        "type": "object",
+        "x-store-foundation-components": {
+          "description": "Transversal Phase 13 components retained for later owner-phase operations without making those operations executable.",
+          "moneySchemas": [
+            {
+              "$ref": "#/components/schemas/StoreMajorMoney"
+            },
+            {
+              "$ref": "#/components/schemas/StoreMinorMoney"
+            }
+          ],
+          "requestParameters": [
+            {
+              "$ref": "#/components/parameters/IdempotencyKey"
+            },
+            {
+              "$ref": "#/components/parameters/IfMatch"
+            },
+            {
+              "$ref": "#/components/parameters/XCorrelationId"
+            }
+          ],
+          "responseHeaders": [
+            {
+              "$ref": "#/components/headers/ETag"
+            },
+            {
+              "$ref": "#/components/headers/RetryAfter"
+            }
+          ]
+        }
       },
       "StoreHealthChecks": {
         "additionalProperties": false,
@@ -725,6 +838,50 @@
           "timestamp",
           "version",
           "checks"
+        ],
+        "type": "object"
+      },
+      "StoreMajorMoney": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "const": "BRL",
+            "type": "string"
+          },
+          "unit": {
+            "const": "major",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency",
+          "unit"
+        ],
+        "type": "object"
+      },
+      "StoreMinorMoney": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "type": "integer"
+          },
+          "currency": {
+            "const": "BRL",
+            "type": "string"
+          },
+          "unit": {
+            "const": "minor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency",
+          "unit"
         ],
         "type": "object"
       },
@@ -901,18 +1058,18 @@
     "securitySchemes": {
       "customerBearer": {
         "bearerFormat": "JWT",
-        "description": "Optional or required customer JWT bearer token, depending on the operation.",
+        "description": "Optional or required customer JWT used only on the server-to-server BFF to Medusa hop. The same-origin BFF keeps it server-side; the browser is not authorized to call Medusa directly with it.",
         "scheme": "bearer",
         "type": "http"
       },
       "customerSession": {
-        "description": "Optional or required customer session cookie, depending on the operation.",
+        "description": "Optional or required Medusa customer session assembled by the same-origin BFF for server-to-server use. It is not a browser credential for direct Medusa access; guest and confirmation capabilities likewise remain server-side.",
         "in": "cookie",
         "name": "connect.sid",
         "type": "apiKey"
       },
       "publishableApiKey": {
-        "description": "Medusa publishable API key required for Store namespace routes.",
+        "description": "Server-to-server credential assembled only by the same-origin Next.js BFF for Medusa Store API calls. The browser is not an authorized direct Medusa client and never receives this key as a Medusa credential.",
         "in": "header",
         "name": "x-publishable-api-key",
         "type": "apiKey"
@@ -930,7 +1087,7 @@
       "url": "https://github.com/jlima004/E-commerce"
     },
     "title": "Indicio Cult Store API",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "openapi": "3.1.2",
   "paths": {
@@ -940,7 +1097,7 @@
         "operationId": "storeHealthGetLive",
         "parameters": [
           {
-            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
             "in": "header",
             "name": "x-correlation-id",
             "required": false,
@@ -969,7 +1126,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -994,7 +1151,7 @@
         "operationId": "storeHealthGetReady",
         "parameters": [
           {
-            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
             "in": "header",
             "name": "x-correlation-id",
             "required": false,
@@ -1023,7 +1180,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1063,7 +1220,7 @@
         "operationId": "storePaymentAttemptCreateCard",
         "parameters": [
           {
-            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
             "in": "header",
             "name": "x-correlation-id",
             "required": false,
@@ -1111,7 +1268,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1126,7 +1283,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1141,7 +1298,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1156,7 +1313,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1193,7 +1350,7 @@
         "operationId": "storePaymentAttemptCreatePix",
         "parameters": [
           {
-            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
             "in": "header",
             "name": "x-correlation-id",
             "required": false,
@@ -1241,7 +1398,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1256,7 +1413,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1271,7 +1428,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1286,7 +1443,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1323,7 +1480,7 @@
         "operationId": "storeCartGetActive",
         "parameters": [
           {
-            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
             "in": "header",
             "name": "x-correlation-id",
             "required": false,
@@ -1352,7 +1509,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1367,7 +1524,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1382,7 +1539,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1417,7 +1574,7 @@
         "operationId": "storeCartCreateOrGetActive",
         "parameters": [
           {
-            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
             "in": "header",
             "name": "x-correlation-id",
             "required": false,
@@ -1461,7 +1618,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1476,7 +1633,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -1513,7 +1670,7 @@
         "operationId": "storeProductsList",
         "parameters": [
           {
-            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
             "in": "header",
             "name": "x-correlation-id",
             "required": false,
@@ -2811,7 +2968,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -2826,7 +2983,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -2841,7 +2998,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -2878,7 +3035,7 @@
         "operationId": "storeProductsRetrieve",
         "parameters": [
           {
-            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
             "in": "header",
             "name": "x-correlation-id",
             "required": false,
@@ -4185,7 +4342,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -4200,7 +4357,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -4215,7 +4372,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -4230,7 +4387,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -4267,7 +4424,7 @@
         "operationId": "storeTrackingLookup",
         "parameters": [
           {
-            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
             "in": "header",
             "name": "x-correlation-id",
             "required": false,
@@ -4306,7 +4463,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -4321,7 +4478,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -4336,7 +4493,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
@@ -4351,7 +4508,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreError"
+                  "$ref": "#/components/schemas/StoreErrorResponse"
                 }
               }
             },
