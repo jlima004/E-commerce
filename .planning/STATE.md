@@ -5,10 +5,10 @@ milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: storefront-contract-foundation-surface-lockdown
 status: blocked
-stopped_at: 13-05 R1 BLOCKED — MODEL/MIGRATION CONTRACT DECISION REQUIRED; 13-06..13-07 NOT AUTHORIZED
-last_updated: "2026-08-09T19:53:30.000Z"
+stopped_at: P13-13-05-R2 TECHNICAL PASS — AWAITING HUMAN REVIEW; 13-06..13-07 NOT AUTHORIZED
+last_updated: "2026-08-09T20:21:56.000Z"
 last_activity: 2026-08-09
-last_activity_desc: 13-05 R1 closed generated CRUD bypass; schema consistency BLOCKED; FND-06 EVIDENCED — NOT COMPLETE
+last_activity_desc: P13-13-05-R2 closed schema drift with DML-native integer + partial UNIQUE; technical PASS awaiting human review
 progress:
   total_phases: 10
   completed_phases: 0
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; P13-13-02-R1 technical human re-review PASS; P13-13-02-R2 human re-review PASS; 13-02 HUMAN APPROVED — PASS; P13-13-03-R1 technical human re-review PASS; P13-13-03-R2 HUMAN REVIEW PASS; 13-03 HUMAN APPROVED — PASS; 13-04 HUMAN APPROVED — PASS after P13-13-04-T3-R1 human re-review PASS; 13-05 HUMAN REVIEW required R1. P13-13-05-R1 closed B13-05-R1-02 (generated CRUD bypass) but B13-05-R1-01 remains OPEN — BLOCKER because Medusa 2.16.0 DML cannot represent the approved bigint plus non-partial UNIQUE schema. 13-05 is BLOCKED — MODEL/MIGRATION CONTRACT DECISION REQUIRED. Há 7 planos e 4 human-approved executed. FND-06 is EVIDENCED — NOT COMPLETE; Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-06..13-07 remain NOT AUTHORIZED. Deploy and frontend are not authorized.
+**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; 13-01..13-04 HUMAN APPROVED — PASS. `P13-13-05-HCD-01` approved the DML-native `integer + partial UNIQUE` supersession and rejected direct MikroORM. `P13-13-05-R2` is TECHNICAL PASS: DML/snapshot/generated migration/PostgreSQL catalog are semantically consistent; config 8/8, PostgreSQL 9/9, generated writes refused 5/5 and build PASS. `B13-05-R1-01` and `B13-05-R1-02` are CLOSED — PASS. 13-05 is AWAITING HUMAN REVIEW and is not human-approved. Há 7 planos e 4 human-approved executed. FND-06 is EVIDENCED — NOT COMPLETE; Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-06..13-07 remain NOT AUTHORIZED. Deploy and frontend are not authorized.
 
 ```text
 Phase 12 CONTEXT approved
@@ -141,11 +141,13 @@ P13-13-03-R1: TECHNICAL HUMAN RE-REVIEW PASS
 P13-13-03-R2: HUMAN REVIEW PASS
 13-03: HUMAN APPROVED — PASS
 13-04: HUMAN APPROVED — PASS (P13-13-04-T3-R1 HUMAN RE-REVIEW PASS)
-13-05: R1 BLOCKED — MODEL/MIGRATION CONTRACT DECISION REQUIRED
-P13-13-05-R1 B13-05-R1-01: OPEN — BLOCKER (DML/snapshot/physical DDL divergence)
+P13-13-05-HCD-01: APPROVED — DML-native integer + partial UNIQUE; direct MikroORM REJECTED
+P13-13-05-R2: TECHNICAL PASS — AWAITING HUMAN REVIEW
+P13-13-05-R1 B13-05-R1-01: CLOSED — PASS (DML/snapshot/migration/catalog consistent)
 P13-13-05-R1 B13-05-R1-02: CLOSED — PASS (generated writes refused 5/5; PostgreSQL suite 9/9)
+13-05: NOT YET HUMAN APPROVED
 13-06..13-07: NOT AUTHORIZED
-Phase 13 plans: 7 planned / 4 human-approved executed; 13-05 blocked pending contract decision
+Phase 13 plans: 7 planned / 4 human-approved executed; 13-05 R2 technical PASS awaiting human review
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 FND-06: EVIDENCED — NOT COMPLETE
@@ -153,7 +155,7 @@ Milestone requirements complete: 0/91
 Phases complete: 0/10
 Deploy: NOT AUTHORIZED
 frontend blocked / not started / not authorized
-next permitted step: human model/migration contract decision for B13-05-R1-01 only; do not start 13-06.
+next permitted step: human review of P13-13-05-R2 only; do not start 13-06.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -193,11 +195,11 @@ Produção: saudável
 ## Current Position
 
 Phase: 13 (storefront-contract-foundation-surface-lockdown) — EXECUTING
-Plan: 4 of 7 human-approved; 13-05 R1 BLOCKED — MODEL/MIGRATION CONTRACT DECISION REQUIRED
-Status: 13-01..13-04 HUMAN APPROVED — PASS; 13-05 R1 BLOCKED; 13-06..13-07 NOT AUTHORIZED
-Current gate: B13-05-R1-02 CLOSED — PASS; B13-05-R1-01 OPEN — BLOCKER; 13-05 HUMAN APPROVED — PASS not granted
-Last activity: 2026-08-09 — generated CRUD bypass closed; schema consistency blocked; FND-06 EVIDENCED — NOT COMPLETE
-Next: human model/migration contract decision for B13-05-R1-01 only; do not start 13-06
+Plan: 4 of 7 human-approved; P13-13-05-R2 TECHNICAL PASS — AWAITING HUMAN REVIEW
+Status: 13-01..13-04 HUMAN APPROVED — PASS; 13-05 not yet human-approved; 13-06..13-07 NOT AUTHORIZED
+Current gate: B13-05-R1-01 CLOSED — PASS; B13-05-R1-02 CLOSED — PASS; 13-05 HUMAN APPROVED — PASS not granted
+Last activity: 2026-08-09 — DML-native integer/partial UNIQUE consistency and behavioral gates PASS; FND-06 EVIDENCED — NOT COMPLETE
+Next: human review of P13-13-05-R2 only; do not start 13-06
 
 Progress: [░░░░░░░░░░] 0% phases (0/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
@@ -367,16 +369,16 @@ Known deferred artifact items at v1.0 close: 0.
 
 **Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-05-PLAN.md
 
-Last session: 2026-08-09T19:53:30.000Z
+Last session: 2026-08-09T20:21:56.000Z
 
-Stopped at: 13-05 R1 BLOCKED — MODEL/MIGRATION CONTRACT DECISION REQUIRED; 13-06..13-07 NOT AUTHORIZED
+Stopped at: P13-13-05-R2 TECHNICAL PASS — AWAITING HUMAN REVIEW; 13-06..13-07 NOT AUTHORIZED
 
 Resume files:
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-05-PLAN.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-05-SUMMARY.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: provide a human model/migration contract decision for B13-05-R1-01. Do not start 13-06.
+Next permitted step: human review of P13-13-05-R2. Do not start 13-06.
 
 Do not automatically start 13-06..13-07, Phase 14, or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
