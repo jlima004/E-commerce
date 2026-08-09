@@ -23,7 +23,7 @@ export function registerStoreSecuritySchemes(
     in: "header",
     name: "x-publishable-api-key",
     description:
-      "Medusa publishable API key required for Store namespace routes.",
+      "Server-to-server credential assembled only by the same-origin Next.js BFF for Medusa Store API calls. The browser is not an authorized direct Medusa client and never receives this key as a Medusa credential.",
   })
 
   registry.registerComponent("store", "securitySchemes", "customerBearer", {
@@ -31,7 +31,7 @@ export function registerStoreSecuritySchemes(
     scheme: "bearer",
     bearerFormat: "JWT",
     description:
-      "Optional or required customer JWT bearer token, depending on the operation.",
+      "Optional or required customer JWT used only on the server-to-server BFF to Medusa hop. The same-origin BFF keeps it server-side; the browser is not authorized to call Medusa directly with it.",
   })
 
   registry.registerComponent("store", "securitySchemes", "customerSession", {
@@ -39,7 +39,7 @@ export function registerStoreSecuritySchemes(
     in: "cookie",
     name: "connect.sid",
     description:
-      "Optional or required customer session cookie, depending on the operation.",
+      "Optional or required Medusa customer session assembled by the same-origin BFF for server-to-server use. It is not a browser credential for direct Medusa access; guest and confirmation capabilities likewise remain server-side.",
   })
 }
 

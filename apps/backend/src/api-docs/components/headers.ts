@@ -6,9 +6,28 @@ export function registerStoreResponseHeaders(
   registry.registerComponent("store", "headers", "XCorrelationId", {
     schema: {
       type: "string",
+      pattern: "^[A-Za-z0-9._-]{1,128}$",
+      maxLength: 128,
     },
     description:
-      "Correlation identifier returned by the server on every response. Echoes the request x-correlation-id when provided; otherwise a server-generated value.",
+      "Server-sanitized correlation identifier returned on every response. Invalid or missing input is replaced, never echoed arbitrarily.",
+  })
+
+  registry.registerComponent("store", "headers", "ETag", {
+    schema: { type: "string", minLength: 1 },
+    description:
+      "Opaque server-authoritative resource version. Cart runtime emission belongs to Phase 15.",
+  })
+
+  registry.registerComponent("store", "headers", "RetryAfter", {
+    schema: {
+      oneOf: [
+        { type: "integer", minimum: 0 },
+        { type: "string", format: "http-date" },
+      ],
+    },
+    description:
+      "Conditional retry delay emitted only when retryability is factual and no external effect is uncertain.",
   })
 }
 
