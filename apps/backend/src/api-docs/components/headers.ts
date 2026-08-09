@@ -6,8 +6,6 @@ export function registerStoreResponseHeaders(
   registry.registerComponent("store", "headers", "XCorrelationId", {
     schema: {
       type: "string",
-      pattern: "^[A-Za-z0-9._-]{1,128}$",
-      maxLength: 128,
     },
     description:
       "Server-sanitized correlation identifier returned on every response. Invalid or missing input is replaced, never echoed arbitrarily.",
