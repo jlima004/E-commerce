@@ -1,7 +1,7 @@
 ---
 phase: 13-storefront-contract-foundation-surface-lockdown
 artifact: spec
-status: r1-complete-awaiting-human-re-review
+status: approved-active-execution
 created_at: 2026-08-07
 updated_at: 2026-08-09
 scope: spec-sdd-only
@@ -10,9 +10,9 @@ requirements: [FND-01, FND-02, FND-03, FND-04, FND-05, FND-06, FND-07, FND-08]
 requirements_covered: 8
 requirements_complete: 0
 plans: 7
-plans_executed: 0
-implementation_prompt: not-authorized
-execution_status: blocked
+plans_executed: 5
+implementation_prompt: approved
+execution_status: executing
 manual_review_gate: true
 baseline_plan_commit: 973310f7b6fb8d9731beca8368bdb131da092bfb
 branch: gsd/phase-13-storefront-contract-foundation-surface-lockdown
@@ -50,8 +50,7 @@ Rotulagem obrigatória de afirmações materiais:
 Artefato irmão (como): `13-SDD.md`.
 Convenção factual do repositório: SPEC e SDD separados (igual Phase 12).
 
-Este gate documental está completo e aguarda revisão humana.
-Implementation Prompt e execução permanecem **NOT AUTHORIZED**.
+Este gate documental foi posteriormente **HUMAN APPROVED — PASS**. O Implementation Prompt também foi aprovado e a execução da Phase 13 está em andamento sob gates manuais; 13-01..13-05 estão HUMAN APPROVED — PASS, 13-06 está EXECUTION AUTHORIZED e 13-07 permanece NOT AUTHORIZED.
 
 ---
 
@@ -126,7 +125,7 @@ Implementation Prompt e execução permanecem **NOT AUTHORIZED**.
 ```text
 13-01 → 13-02 → 13-03 → 13-04 → 13-05 → 13-06 → 13-07
 Waves: 7 | parallelization: false | autonomous: false
-Plans executed: 0/7
+Plans human-approved executed: 5/7
 Phase 13 requirements covered: 8/8 | complete: 0/8
 Milestone requirements complete: 0/91 | phases complete: 0/10
 ```
@@ -550,7 +549,7 @@ resource_type
 resource_id
 version PostgreSQL integer
 timestamps
-UNIQUE(resource_type, resource_id)
+UNIQUE(resource_type,resource_id)
 WHERE deleted_at IS NULL
 CHECK(version > 0)
 ```
@@ -943,7 +942,7 @@ SPEC/SDD complete != implementation authorization
 SPEC/SDD complete != execution authorization
 requirements remain incomplete (0/8 Phase 13; 0/91 milestone)
 frontend remains blocked
-plans remain 0/7 executed
+plans human-approved executed = 5/7; 13-06 execution authorized; 13-07 not authorized
 ```
 
 Unresolved during this gate (must stay unresolved):
@@ -963,5 +962,4 @@ Não declarar PASS de execução futura.
 ## 19. Critério de conclusão desta etapa documental
 
 O SPEC cobre FND-01..FND-08 (8/8 covered, 0/8 complete), B13-01..B13-07 (7/7),
-D13-01..D13-32 (32/32) e os 7 planos lineares. O gate permanece
-`awaiting human review`; Implementation Prompt e execução continuam não iniciados.
+D13-01..D13-32 (32/32) e os 7 planos lineares. O gate SPEC/SDD está **HUMAN APPROVED — PASS**. O Implementation Prompt foi aprovado; a Phase 13 está em execução manual-gated com 13-01..13-05 HUMAN APPROVED — PASS, 13-06 EXECUTION AUTHORIZED e 13-07 NOT AUTHORIZED.
