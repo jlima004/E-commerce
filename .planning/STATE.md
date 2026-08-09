@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: storefront-contract-foundation-surface-lockdown
-status: blocked
-stopped_at: P13-13-05-R2 TECHNICAL PASS — AWAITING HUMAN REVIEW; 13-06..13-07 NOT AUTHORIZED
-last_updated: "2026-08-09T20:21:56.000Z"
+status: executing
+stopped_at: 13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED; 13-07 NOT AUTHORIZED
+last_updated: "2026-08-09T22:27:00.000Z"
 last_activity: 2026-08-09
-last_activity_desc: P13-13-05-R2 closed schema drift with DML-native integer + partial UNIQUE; technical PASS awaiting human review
+last_activity_desc: P13-13-05-R2 human review PASS; 13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED
 progress:
   total_phases: 10
   completed_phases: 0
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; 13-01..13-04 HUMAN APPROVED — PASS. `P13-13-05-HCD-01` approved the DML-native `integer + partial UNIQUE` supersession and rejected direct MikroORM. `P13-13-05-R2` is TECHNICAL PASS: DML/snapshot/generated migration/PostgreSQL catalog are semantically consistent; config 8/8, PostgreSQL 9/9, generated writes refused 5/5 and build PASS. `B13-05-R1-01` and `B13-05-R1-02` are CLOSED — PASS. 13-05 is AWAITING HUMAN REVIEW and is not human-approved. Há 7 planos e 4 human-approved executed. FND-06 is EVIDENCED — NOT COMPLETE; Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-06..13-07 remain NOT AUTHORIZED. Deploy and frontend are not authorized.
+**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; 13-01..13-05 HUMAN APPROVED — PASS. `P13-13-05-HCD-01` approved the DML-native `integer + partial UNIQUE` supersession and rejected direct MikroORM. `P13-13-05-R2` HUMAN REVIEW PASS: DML/snapshot/generated migration/PostgreSQL catalog are semantically consistent; config 8/8, PostgreSQL 9/9, generated writes refused 5/5 and build PASS. `B13-05-R1-01` and `B13-05-R1-02` are CLOSED — PASS. Há 7 planos e 5 human-approved executed. FND-06 is EVIDENCED — NOT COMPLETE; Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-06 is EXECUTION AUTHORIZED; 13-07 remains NOT AUTHORIZED. Deploy and frontend are not authorized.
 
 ```text
 Phase 12 CONTEXT approved
@@ -142,12 +142,13 @@ P13-13-03-R2: HUMAN REVIEW PASS
 13-03: HUMAN APPROVED — PASS
 13-04: HUMAN APPROVED — PASS (P13-13-04-T3-R1 HUMAN RE-REVIEW PASS)
 P13-13-05-HCD-01: APPROVED — DML-native integer + partial UNIQUE; direct MikroORM REJECTED
-P13-13-05-R2: TECHNICAL PASS — AWAITING HUMAN REVIEW
+P13-13-05-R2: HUMAN REVIEW PASS
 P13-13-05-R1 B13-05-R1-01: CLOSED — PASS (DML/snapshot/migration/catalog consistent)
 P13-13-05-R1 B13-05-R1-02: CLOSED — PASS (generated writes refused 5/5; PostgreSQL suite 9/9)
-13-05: NOT YET HUMAN APPROVED
-13-06..13-07: NOT AUTHORIZED
-Phase 13 plans: 7 planned / 4 human-approved executed; 13-05 R2 technical PASS awaiting human review
+13-05: HUMAN APPROVED — PASS
+13-06: EXECUTION AUTHORIZED
+13-07: NOT AUTHORIZED
+Phase 13 plans: 7 planned / 5 human-approved executed; 13-05 HUMAN APPROVED — PASS; 13-06 execution authorized
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 FND-06: EVIDENCED — NOT COMPLETE
@@ -195,18 +196,18 @@ Produção: saudável
 ## Current Position
 
 Phase: 13 (storefront-contract-foundation-surface-lockdown) — EXECUTING
-Plan: 4 of 7 human-approved; P13-13-05-R2 TECHNICAL PASS — AWAITING HUMAN REVIEW
-Status: 13-01..13-04 HUMAN APPROVED — PASS; 13-05 not yet human-approved; 13-06..13-07 NOT AUTHORIZED
-Current gate: B13-05-R1-01 CLOSED — PASS; B13-05-R1-02 CLOSED — PASS; 13-05 HUMAN APPROVED — PASS not granted
-Last activity: 2026-08-09 — DML-native integer/partial UNIQUE consistency and behavioral gates PASS; FND-06 EVIDENCED — NOT COMPLETE
-Next: human review of P13-13-05-R2 only; do not start 13-06
+Plan: 5 of 7 human-approved; 13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED
+Status: 13-01..13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED; 13-07 NOT AUTHORIZED
+Current gate: B13-05-R1-01 CLOSED — PASS; B13-05-R1-02 CLOSED — PASS; 13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED
+Last activity: 2026-08-09 — P13-13-05-R2 human review PASS; 13-05 approved; 13-06 authorized; FND-06 EVIDENCED — NOT COMPLETE
+Next: execute 13-06 only under its approved plan; do not start 13-07
 
 Progress: [░░░░░░░░░░] 0% phases (0/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 Milestone requirements complete: 0/91
 Phases complete: 0/10
-Plans human-approved executed: 4/7
+Plans human-approved executed: 5/7
 frontend blocked
 
 ## Historical v1.0 Performance Metrics
@@ -347,9 +348,9 @@ None yet.
 - [Phase 11]: Refund/exchange/admin scope is complete and closed on branch `gsd/phase-11-refunds-exchanges-admin` (`11-CLOSURE.md`). Refund financial truth finalized only by Stripe refund object webhook confirmation; `charge.refunded` does not double-count; refund does not auto-cancel `order_status`; exchanges remain operational without automatic refunds; Correios remains manual/semi-automatic with no API integration; broad `OperationalAlert` / `AdminActionLog` stays Phase 12. The closure-time migration blocker is historical: the RC1 read-only audit confirmed refund/exchange migrations applied. Cross-dyno refund lock and any future Stripe smoke remain separate gates.
 - [Quick 260710-dz0]: Stripe refund smoke preflight stopped before mutation because core `refund` has no `order_id`/`status`/`currency_code` and no local `refund_request` exists for the target Order. A direct Stripe refund would be ignored as `REFUND_WEBHOOK_REQUEST_NOT_FOUND`. The adjusted gate requires authenticated `POST /admin/refunds/request` before the Stripe test-mode refund. It also records that current runtime updates `refund_request` + Order metadata, not core `refund`/`payment_collection.refunded_amount`, and has no refund-email flow.
 - [Quick 260710-rc1 / RC1-A até RC1-H]: RC1-H está `PASS`: a fixture deixou de ser coletada sem remover suíte real; modules passou 28/28 e 454/454; HTTP passou 14/14 e 170/170; unitários 43/43 e 676/676; lint 0/208; build PASS. As 12 falhas RC1-G foram recuperadas somente em Jest/quatro specs, sem runtime, schema, manifest ou lockfile. Upgrade/bootstrap do RC1-G permaneceram válidos e não precisaram repetição. Nenhum Supabase, Heroku, provider externo, deploy, rollback, tag, push ou Phase 12 foi acionado.
-- [Quick 260713-mny01]: MNY-01 está `PASS`: Medusa core/PaymentSession agora usam major units, Stripe/PaymentAttempt/refund/downstream customizado preservam minor units, e o guard da Order converte componentes antes da soma. Unit 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0/208 e build PASS. Nenhum schema, package/lockfile, APP_VERSION, infraestrutura, produção, provider externo, push ou Phase 12 foi tocado. Preços existentes do catálogo permanecem para correção manual em gate separado.
+- [Quick 260713-mny01]: MNY-01 está `PASS`: Medusa core/PaymentSession agora usam major units, Stripe/PaymentAttempt/refund/downstream customizado preservam minor units, e o guard da Order converte componentes antes da soma. Unit 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0/208 e build PASS. Nenhum schema, package/lockfile, APP_VERSION, infraestrutura, produção, provider externo, push ou Phase 12.
 - [Quick 260715-rel01]: REL-01 está `PASS`: `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry usam a mesma versão resolvida e PM2/VPS preserva o fallback `APP_VERSION`. Env 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit 44/44 e 730/730, lint 0/208 e build PASS. O versionamento automático está resolvido e não há investigação de `APP_VERSION` pendente.
-- [Quick 260715-infra01]: INFRA-01 está `PASS`: release DB-only isolation and Redis production fail-fast; Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0/207, build PASS. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
+- [Quick 260715-infra01]: INFRA-01 está `PASS`: release DB-only isolation and Redis production fail-fast; Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0/207, build PASS. CACHE-01A/B PASS; two local commits; no push/deploy. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
 - [Release stabilization closure]: incidente monetário resolvido; versionamento automático resolvido; cache Redis TLS resolvido; CACHE-01A/B e INFRA-01 PASS; cache Redis ativo em `web.1` e `worker.1`; fallbacks do release classificados e isolados; produção saudável. Não restam próximos passos para investigar `APP_VERSION`, reativar cache Redis, provar Redis em `web.1`/`worker.1` ou revisar fallbacks do release.
 - [Phase 12 — historical pre-P12-PLAN-R1 snapshot]: CONTEXT and RESEARCH were approved and the earlier PLAN had 6 plans / 0 executed with `12-VALIDATION.md`; its checker passed with 0 blockers and 0 warnings, and human review remained required. That earlier PASS was superseded/invalidated when P12-PLAN-R1 reopened and revised PLAN/VALIDATION. P12-PLAN-R1 later passed its checker. The separately authorized SPEC/SDD gate initially found two transient documentary blockers, resolved by P12-SPEC-SDD-R1. The implementation prompt gate later completed with checker PASS; the current authority is recorded at the top.
 
@@ -367,20 +368,20 @@ Known deferred artifact items at v1.0 close: 0.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-05-PLAN.md
+**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-06-PLAN.md
 
-Last session: 2026-08-09T20:21:56.000Z
+Last session: 2026-08-09T22:27:00.000Z
 
-Stopped at: P13-13-05-R2 TECHNICAL PASS — AWAITING HUMAN REVIEW; 13-06..13-07 NOT AUTHORIZED
+Stopped at: 13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED; 13-07 NOT AUTHORIZED
 
 Resume files:
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-05-PLAN.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-06-PLAN.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-05-SUMMARY.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: human review of P13-13-05-R2. Do not start 13-06.
+Next permitted step: execute 13-06 only under its approved plan. Do not start 13-07.
 
-Do not automatically start 13-06..13-07, Phase 14, or frontend,
+Do not automatically start 13-07, Phase 14, or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
 rollback, or move or recreate tag `v1.0`.
 
