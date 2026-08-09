@@ -53,7 +53,7 @@ requirements-evidenced: [FND-04, FND-05]
 
 duration: 10min
 completed: 2026-08-09
-status: technical-pass-awaiting-human-review
+status: technical-pass-awaiting-human-re-review
 ---
 
 # Phase 13 Plan 04: Store Idempotency Migration & Lifecycle Summary
@@ -62,11 +62,12 @@ status: technical-pass-awaiting-human-review
 
 ## Identity
 
-Plan: 13-04  
-Status: TECHNICAL PASS — AWAITING HUMAN REVIEW  
-Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`  
-Pre-Task-3 HEAD: `c065cd920c9cb8f414fd4e3ab114214950f9c536`  
+Plan: 13-04
+Status: TECHNICAL PASS — AWAITING HUMAN RE-REVIEW
+Branch: `gsd/phase-13-storefront-contract-foundation-surface-lockdown`
+Pre-Task-3 HEAD: `c065cd920c9cb8f414fd4e3ab114214950f9c536`
 Post-Task-3 HEAD: `19b0ff14f12b2d5139185f064c838f00f48052ec`
+Pre-R1 HEAD: `8d28cf3cc562660e4fbe096e04f9d8a8490f0d0a`
 
 ## Performance
 
@@ -108,6 +109,31 @@ Post-Task-3 HEAD: `19b0ff14f12b2d5139185f064c838f00f48052ec`
 - `locked_at` nullable (no default lease on insert)
 - No plaintext secret columns
 
+### R1-01 — Exact PostgreSQL Catalog DDL (PASS)
+
+Verified on disposable PostgreSQL after migration apply (catalog + behavioral rejects):
+
+```text
+Claim unique:
+UNIQUE: true (indisunique)
+PARTIAL: false (indpred NULL; no WHERE deleted_at IS NULL)
+ORDERED COLUMNS:
+  1. operation
+  2. actor_scope_hash
+  3. resource_scope_hash
+  4. idempotency_key_hash
+COMPETING PARTIAL INDEX: NONE
+
+State CHECK exact-set: PASS
+  {processing, completed, failed_retryable, failed_terminal,
+   reconciliation_required, reconciliation_unresolved}
+
+hash_version CHECK: hash_version = 'hmac-sha256-v1' PASS
+pepper_version CHECK: pepper_version = 1 PASS
+state_version CHECK: state_version >= 1 PASS
+Behavioral rejects: wrong hash_version / pepper_version=2 / state_version=0 / bogus state → DB rejects
+```
+
 ## Task Commits
 
 1. **Migration generate** — `21796e8` feat(13-04): generate Store idempotency migration
@@ -119,7 +145,7 @@ Post-Task-3 HEAD: `19b0ff14f12b2d5139185f064c838f00f48052ec`
 
 ## Test Evidence
 
-### Real PostgreSQL (disposable)
+### Real PostgreSQL (disposable) — Task 3 baseline (historical)
 
 ```text
 Command: node scripts/run-disposable-postgres-tests.mjs -- npm run test:integration:modules -- --runTestsByPath src/modules/store-idempotency/__tests__/store-idempotency.postgres.spec.ts --runInBand
@@ -128,9 +154,36 @@ Suites: 1 passed / 1 total
 Tests: 18 passed / 18 total
 ```
 
-Scenarios covered: migration DDL; concurrent claim; same-intent replay; conflict; scope isolation; initial claim locked_at null + deadline T0+5m; due at T+5m; Worker A/B lease race; T+15m stale boundary; restart recovery; Redis empty env; CAS; terminal replay; cleanup lease boundary; finite lifecycle; retention 24h/30d/override; sensitive canaries; hash-only persistence.
+Scenarios covered (Task 3): migration DDL (nominal); concurrent claim; same-intent replay; conflict; scope isolation; initial claim locked_at null + deadline T0+5m; due at T+5m; Worker A/B lease race; T+15m stale boundary; restart recovery; Redis empty env; CAS; terminal replay; cleanup lease boundary (completed only); finite lifecycle; retention 24h/30d/override; sensitive canaries; hash-only persistence.
 
-### Lifecycle unit
+### Real PostgreSQL (disposable) — P13-13-04-T3-R1
+
+```text
+Command: node scripts/run-disposable-postgres-tests.mjs -- npm run test:integration:modules -- --runTestsByPath src/modules/store-idempotency/__tests__/store-idempotency.postgres.spec.ts --runInBand
+Exit: 0
+Suites: 1 passed / 1 total
+Tests: 18 passed / 18 total
+```
+
+R1 strengthened scenarios (same suite count; deeper assertions):
+
+- Exact UNIQUE catalog proof (`indisunique` / `indpred` / ordered columns / no competing partial)
+- Exact six-state CHECK set + version CHECK catalog + behavioral rejects
+- Cleanup matrix for all terminal states + non-terminal preservation + lease + idempotence
+
+### R1-03 — PostgreSQL Cleanup Matrix (PASS)
+
+```text
+expired completed: DELETED PASS
+expired failed_terminal: DELETED PASS
+expired reconciliation_unresolved: DELETED PASS
+non-terminal (processing) preserved: PASS
+fresh lifecycle lease terminal: PRESERVED PASS
+exact stale-boundary terminal (T+15m): DELETED PASS
+idempotent second cleanup → 0: PASS
+```
+
+### Lifecycle unit — Task 3 baseline (historical)
 
 ```text
 Command: npm run test:unit -- --runTestsByPath src/jobs/__tests__/store-idempotency-lifecycle.unit.spec.ts --runInBand
@@ -139,17 +192,37 @@ Suites: 1 passed / 1 total
 Tests: 12 passed / 12 total
 ```
 
-### Frozen Task-2 regressions
+### Lifecycle unit — P13-13-04-T3-R1
 
 ```text
-env.unit.spec.ts + medusa-config.unit.spec.ts + guard.unit.spec.ts (+ lifecycle unit in same run):
-Exit: 0 | Suites 4 | Tests 113 passed
+Command: npm run test:unit -- --runTestsByPath src/jobs/__tests__/store-idempotency-lifecycle.unit.spec.ts --runInBand
+Exit: 0
+Suites: 1 passed / 1 total
+Tests: 18 passed / 18 total
+```
+
+### R1-02 — failed_retryable 8/24h matrix (PASS)
+
+```text
+future next_retry_at: PASS (not eligible / no transition)
+due below cap: PASS → markCompleted (phase13.local-mutation)
+attempt cap (=8): PASS → markFailedTerminal
+23h59m59s: PASS → markCompleted (still eligible)
+24h exact boundary: PASS → markFailedTerminal
+infinite retry possible: NO
+```
+
+### Frozen Task-2 regressions — P13-13-04-T3-R1
+
+```text
+env.unit.spec.ts + medusa-config.unit.spec.ts + guard.unit.spec.ts + lifecycle unit:
+Exit: 0 | Suites 4 | Tests 119 passed
 
 store-foundation-transaction-compatibility.spec.ts (disposable PG / integration:modules):
 Exit: 0 | Suites 1 | Tests 6 passed
 ```
 
-### Build
+### Build — P13-13-04-T3-R1
 
 ```text
 Command: ADMIN_DISABLED=true npm run build -w @dtc/backend
@@ -161,7 +234,8 @@ Result: Backend build completed successfully
 ### Diff check
 
 ```text
-git diff --check c065cd920c9cb8f414fd4e3ab114214950f9c536 → PASS
+git diff --check (R1 working tree) → PASS
+Migration/runtime vs Pre-R1 HEAD 8d28cf3 → UNCHANGED
 ```
 
 ## Lifecycle Job
@@ -209,11 +283,26 @@ apps/backend/src/modules/store-idempotency/migrations/Migration20260809161242.ts
 ## Requirements / Governance
 
 - Evidence: FND-04, FND-05
-- `requirements-completed: []` (awaiting human approval)
-- Plans human-approved executed remain **3/7**
+- `requirements-completed: []` (awaiting human approval — unchanged by R1)
+- `requirements-evidenced: [FND-04, FND-05]`
+- Plans human-approved executed remain **3/7** (`STATE.md` front matter `completed_plans: 3`)
 - Phase 13 requirements complete remain **0/8**
+- 13-04 is NOT human-approved
 - 13-05..13-07: NOT AUTHORIZED
 - Deploy: NOT AUTHORIZED
+
+## P13-13-04-T3-R1
+
+Human-review blockers closed with evidence-only changes (no migration/runtime/DDL edits):
+
+| ID | Finding | Disposition |
+|---|---|---|
+| B13-04-T3-R1-01 | Exact post-CLI UNIQUE/CHECK DDL proof incomplete | CLOSED — catalog + behavioral |
+| B13-04-T3-R1-02 | failed_retryable next_retry_at + 8/24h lifecycle proof incomplete | CLOSED — Cases A–E executed |
+| B13-04-T3-R1-03 | Real PostgreSQL cleanup proof incomplete | CLOSED — full terminal matrix |
+| B13-04-T3-R1-04 | STATE `completed_plans=4` vs 3/7 human-approved | CLOSED — front matter = 3 |
+
+R1 authorized paths only: postgres.spec.ts, lifecycle.unit.spec.ts, 13-04-SUMMARY.md, STATE.md.
 
 ## Deviations from Plan
 
@@ -243,10 +332,13 @@ apps/backend/src/modules/store-idempotency/migrations/Migration20260809161242.ts
 **Total deviations:** 3 auto-fixed (1× Rule 2, 2× Rule 1)  
 **Impact on plan:** Necessary for DB Model / frozen service / build correctness. No scope creep. No frozen-file edits.
 
+R1 introduced no runtime/DDL deviation; evidence gaps only.
+
 ## Issues Encountered
 
-- First disposable PG run failed on ON CONFLICT vs partial unique — fixed in authorized migration only.
+- First disposable PG run failed on ON CONFLICT vs partial unique — fixed in authorized migration only (Task 3 provenance preserved).
 - User-listed `guard.unit.spec.ts` / foundation paths differ from filesystem (`store-surface` / integration modules); correct factual paths used.
+- R1 PG catalog proof: knex returns `json_agg` as parseable JSON; PostgreSQL rewrites state `IN` to `ANY(ARRAY[...])` — exact-set parser handles both.
 
 ## Self-Check: PASSED
 
@@ -254,7 +346,8 @@ apps/backend/src/modules/store-idempotency/migrations/Migration20260809161242.ts
 - [x] Postgres suite file exists
 - [x] Lifecycle job + unit suite exist
 - [x] Commits present: `21796e8`, `9d92a63`, `4618e24`, `895122a`, `16f2c75`, `19b0ff1`
-- [x] Frozen files unchanged
+- [x] Frozen files unchanged (migration/service/lifecycle/DB Model/package)
 - [x] Build exit 0 / 0 TS errors
-- [x] Status is technical-pass-awaiting-human-review (not human-approved-pass)
+- [x] Status is technical-pass-awaiting-human-re-review (not human-approved-pass)
+- [x] P13-13-04-T3-R1 evidence blockers closed; `completed_plans: 3`
 )
