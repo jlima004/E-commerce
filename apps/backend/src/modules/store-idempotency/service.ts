@@ -29,8 +29,17 @@ export const STORE_IDEMPOTENCY_UNRESOLVED_RETENTION_MS =
   30 * 24 * 60 * 60 * 1000
 /**
  * Exclusive lifecycle-worker lease (locked_at freshness).
+ *
  * Distinct from claimStaleAfter (processing recovery deadline).
- * Sized to outlive one scheduled tick while remaining restart-recoverable.
+ * Distinct from state_version (protects stale final transitions only — it does
+ * NOT prevent two workers from performing side effects concurrently if a lease
+ * expires while the first worker still runs).
+ *
+ * CONTRACT STATUS (B13-04-CP-R2-02):
+ * No approved authority (CONTEXT / SPEC / SDD / PLAN / DB_MODEL) defines a
+ * lifecycle-worker lease duration. This value is retained only so scan/claim/
+ * cleanup share one predicate while the human contract decision is pending.
+ * Cron cadence and claimStaleAfter are NOT lease authorities.
  */
 export const STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS = 60 * 1000
 
@@ -461,6 +470,27 @@ export function assertStoreIdempotencyTransitionAllowed(
   }
 }
 
+/** Top-level response_status: null or integer HTTP status in 100..599. */
+export function assertValidStoreIdempotencyResponseStatus(
+  value: unknown
+): number | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 100 ||
+    value > 599
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "STORE_IDEMPOTENCY_RESPONSE_STATUS_INVALID"
+    )
+  }
+  return value
+}
+
 export function isStoreIdempotencyLifecycleLeaseActive(
   lockedAt: string | Date | null | undefined,
   now: Date,
@@ -759,6 +789,9 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       result_id: input.next.result_id,
       failure_code: input.next.failure_code,
     })
+    const responseStatus = assertValidStoreIdempotencyResponseStatus(
+      input.next.response_status
+    )
 
     if (
       isStoreIdempotencyTerminalState(input.next.state) &&
@@ -832,7 +865,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
         input.next.locked_at ? input.next.locked_at.toISOString() : null,
         input.next.result_type ?? null,
         input.next.result_id ?? null,
-        input.next.response_status ?? null,
+        responseStatus,
         metadata ? JSON.stringify(metadata) : null,
         input.next.failure_code ?? null,
         input.next.completed_at
@@ -1102,7 +1135,11 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     now?: Date
     limit?: number
   }): Promise<number> {
-    const now = (input?.now ?? new Date()).toISOString()
+    const at = input?.now ?? new Date()
+    const now = at.toISOString()
+    // Same leaseCutoff policy as listDueLifecycleRows / claimLifecycleRow.
+    // Live lifecycle lease must block cleanup; SKIP LOCKED alone is insufficient.
+    const leaseCutoff = storeIdempotencyLifecycleLeaseCutoff(at).toISOString()
     const limit = input?.limit ?? 100
     const result = await this.knex().raw(
       `
@@ -1111,6 +1148,10 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
           where state in ('completed', 'failed_terminal', 'reconciliation_unresolved')
             and expires_at is not null
             and expires_at <= ?
+            and (
+              locked_at is null
+              or locked_at <= ?
+            )
           order by expires_at asc
           limit ?
           for update skip locked
@@ -1119,7 +1160,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
         where id in (select id from doomed)
         returning id
       `,
-      [now, limit]
+      [now, leaseCutoff, limit]
     )
     return result.rows?.length ?? 0
   }
