@@ -5,10 +5,10 @@ milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: storefront-contract-foundation-surface-lockdown
 status: executing
-stopped_at: 13-04 HUMAN APPROVED — PASS; 13-05 EXECUTION AUTHORIZED; 13-06..13-07 NOT AUTHORIZED
-last_updated: "2026-08-09T17:11:00.000Z"
+stopped_at: 13-05 TECHNICAL PASS — AWAITING HUMAN REVIEW; 13-06..13-07 NOT AUTHORIZED
+last_updated: "2026-08-09T17:59:30.000Z"
 last_activity: 2026-08-09
-last_activity_desc: 13-04 HUMAN APPROVED — PASS; 13-05 execution authorized
+last_activity_desc: 13-05 TECHNICAL PASS — AWAITING HUMAN REVIEW; FND-06 EVIDENCED — NOT COMPLETE
 progress:
   total_phases: 10
   completed_phases: 0
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; P13-13-02-R1 technical human re-review PASS; P13-13-02-R2 human re-review PASS; 13-02 HUMAN APPROVED — PASS; P13-13-03-R1 technical human re-review PASS; P13-13-03-R2 HUMAN REVIEW PASS; 13-03 HUMAN APPROVED — PASS; 13-04 HUMAN APPROVED — PASS after P13-13-04-T3-R1 human re-review PASS. Há 7 planos e 4 human-approved executed. Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-05 is EXECUTION AUTHORIZED; 13-06..13-07 remain NOT AUTHORIZED. Deploy and frontend are not authorized.
+**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; P13-13-01-R1 HUMAN RE-REVIEW PASS; 13-01 HUMAN APPROVED — PASS; P13-13-02-R1 technical human re-review PASS; P13-13-02-R2 human re-review PASS; 13-02 HUMAN APPROVED — PASS; P13-13-03-R1 technical human re-review PASS; P13-13-03-R2 HUMAN REVIEW PASS; 13-03 HUMAN APPROVED — PASS; 13-04 HUMAN APPROVED — PASS after P13-13-04-T3-R1 human re-review PASS; 13-05 TECHNICAL PASS — AWAITING HUMAN REVIEW. Há 7 planos e 4 human-approved executed. FND-06 is EVIDENCED — NOT COMPLETE; Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-06..13-07 remain NOT AUTHORIZED. Deploy and frontend are not authorized.
 
 ```text
 Phase 12 CONTEXT approved
@@ -141,16 +141,17 @@ P13-13-03-R1: TECHNICAL HUMAN RE-REVIEW PASS
 P13-13-03-R2: HUMAN REVIEW PASS
 13-03: HUMAN APPROVED — PASS
 13-04: HUMAN APPROVED — PASS (P13-13-04-T3-R1 HUMAN RE-REVIEW PASS)
-13-05: EXECUTION AUTHORIZED
+13-05: TECHNICAL PASS — AWAITING HUMAN REVIEW
 13-06..13-07: NOT AUTHORIZED
-Phase 13 plans: 7 planned / 4 human-approved executed; 13-05 execution authorized
+Phase 13 plans: 7 planned / 4 human-approved executed; 13-05 awaiting human review
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
+FND-06: EVIDENCED — NOT COMPLETE
 Milestone requirements complete: 0/91
 Phases complete: 0/10
 Deploy: NOT AUTHORIZED
 frontend blocked / not started / not authorized
-next permitted step: execute 13-05 under its approved plan and stop at its human-review checkpoint; do not start 13-06 without separate explicit authorization.
+next permitted step: human review of 13-05 only; do not start 13-06 without separate explicit authorization.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -190,11 +191,11 @@ Produção: saudável
 ## Current Position
 
 Phase: 13 (storefront-contract-foundation-surface-lockdown) — EXECUTING
-Plan: 4 of 7 (HUMAN APPROVED — PASS); 13-05 EXECUTION AUTHORIZED
-Status: 13-04 HUMAN APPROVED — PASS; 13-05 EXECUTION AUTHORIZED; 13-06..13-07 NOT AUTHORIZED
-Current gate: CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; 13-01..13-04 HUMAN APPROVED — PASS; 13-05 EXECUTION AUTHORIZED
-Last activity: 2026-08-09 — 13-04 HUMAN APPROVED — PASS; 13-05 execution authorized
-Next: execute 13-05 only; stop for human review before 13-06
+Plan: 4 of 7 human-approved; 13-05 TECHNICAL PASS — AWAITING HUMAN REVIEW
+Status: 13-01..13-04 HUMAN APPROVED — PASS; 13-05 TECHNICAL PASS — AWAITING HUMAN REVIEW; 13-06..13-07 NOT AUTHORIZED
+Current gate: CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; 13-01..13-04 HUMAN APPROVED — PASS; 13-05 awaiting human verification
+Last activity: 2026-08-09 — 13-05 TECHNICAL PASS — AWAITING HUMAN REVIEW; FND-06 EVIDENCED — NOT COMPLETE
+Next: human review of 13-05 only; do not start 13-06
 
 Progress: [░░░░░░░░░░] 0% phases (0/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
@@ -364,16 +365,16 @@ Known deferred artifact items at v1.0 close: 0.
 
 **Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-05-PLAN.md
 
-Last session: 2026-08-09T17:11:00.000Z
+Last session: 2026-08-09T17:59:30.000Z
 
-Stopped at: 13-04 HUMAN APPROVED — PASS; 13-05 EXECUTION AUTHORIZED; 13-06..13-07 NOT AUTHORIZED
+Stopped at: 13-05 TECHNICAL PASS — AWAITING HUMAN REVIEW; 13-06..13-07 NOT AUTHORIZED
 
 Resume files:
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-05-PLAN.md`,
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-04-SUMMARY.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-05-SUMMARY.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: execute 13-05 under the approved 13-05-PLAN.md and stop for human review. Do not start 13-06 without separate explicit authorization.
+Next permitted step: perform human review of 13-05 and provide an explicit verdict. Do not start 13-06 without separate explicit authorization.
 
 Do not automatically start 13-06..13-07, Phase 14, or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute

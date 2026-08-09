@@ -18,7 +18,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - `parallelization = false`;
 - sequência obrigatória: `13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22`;
 - cada gate CONTEXT, RESEARCH, PLAN, SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW e CLOSURE para revisão humana;
-- Phase 13 CONTEXT, RESEARCH, PLAN R5, SPEC/SDD R1 e Implementation Prompt estão aprovados; 13-01..13-04 HUMAN APPROVED — PASS; 4/7 planos human-approved executed; 13-05 EXECUTION AUTHORIZED; 13-06..13-07, deploy e frontend permanecem não autorizados/bloqueados.
+- Phase 13 CONTEXT, RESEARCH, PLAN R5, SPEC/SDD R1 e Implementation Prompt estão aprovados; 13-01..13-04 HUMAN APPROVED — PASS; 4/7 planos human-approved executed; 13-05 TECHNICAL PASS — AWAITING HUMAN REVIEW, com FND-06 EVIDENCED — NOT COMPLETE; 13-06..13-07, deploy e frontend permanecem não autorizados/bloqueados.
 
 ## Milestones
 
@@ -33,7 +33,7 @@ O snapshot histórico de v1.0 permanece em [v1.0-ROADMAP.md](milestones/v1.0-ROA
 
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
-| 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | 4/7 human-approved; 13-05 EXECUTION AUTHORIZED |
+| 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | 4/7 human-approved; 13-05 TECHNICAL PASS — AWAITING HUMAN REVIEW |
 | 14 | Customer Auth & Verification | 13 | 9 | Not started |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
@@ -234,7 +234,7 @@ HUMAN RE-REVIEW PASS
 HUMAN APPROVED — PASS
 
 13-05:
-EXECUTION AUTHORIZED
+TECHNICAL PASS — AWAITING HUMAN REVIEW
 
 13-06..13-07:
 NOT AUTHORIZED
@@ -246,7 +246,7 @@ Plans human-approved executed:
 - [x] 13-02-PLAN.md (HUMAN APPROVED — PASS)
 - [x] 13-03-PLAN.md (HUMAN APPROVED — PASS)
 - [x] 13-04-PLAN.md (HUMAN APPROVED — PASS)
-- [ ] 13-05-PLAN.md (EXECUTION AUTHORIZED)
+- [ ] 13-05-PLAN.md (TECHNICAL PASS — AWAITING HUMAN REVIEW)
 - [ ] 13-06-PLAN.md
 - [ ] 13-07-PLAN.md
 
@@ -256,11 +256,14 @@ Phase 13 requirements covered:
 Phase 13 requirements complete:
 0/8
 
+FND-06:
+EVIDENCED — NOT COMPLETE
+
 Milestone requirements complete:
 0/91
 
 13-04: HUMAN APPROVED — PASS
-13-05: EXECUTION AUTHORIZED
+13-05: TECHNICAL PASS — AWAITING HUMAN REVIEW
 13-06..13-07: NOT AUTHORIZED
 Deploy: NOT AUTHORIZED
 Frontend Milestone 1: BLOCKED / not started / not authorized
