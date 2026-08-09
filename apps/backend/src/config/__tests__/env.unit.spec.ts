@@ -945,7 +945,10 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
       result_id: null,
       response_status: null,
       result_safe_metadata: null,
-      locked_at: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+      // Stale at/after the human 15-minute lease boundary so scan/claim can reclaim.
+      locked_at: new Date(
+        now.getTime() - STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS
+      ).toISOString(),
       state_deadline_at: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
       next_retry_at: null,
       retry_attempt_count: 0,
@@ -1347,7 +1350,40 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
     expect(rows[0].locked_at).toBeNull()
   })
 
+  it("pins the human 15-minute lifecycle-worker lease contract and exact boundary", () => {
+    // P13-13-04 Task 2 Human Contract Decision — independent of cron/claimStaleAfter.
+    // Phase 13 assumes lifecycle work is bounded within this lease; heartbeat is
+    // out of scope until a new human-approved contract exists.
+    expect(STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS).toBe(15 * 60 * 1000)
+    expect(STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS).toBe(900_000)
+
+    const t0 = new Date("2026-08-08T12:00:00.000Z")
+    const lockedAt = t0.toISOString()
+
+    const at14m59s = new Date(t0.getTime() + 14 * 60 * 1000 + 59 * 1000)
+    expect(isStoreIdempotencyLifecycleLeaseActive(lockedAt, at14m59s)).toBe(true)
+
+    const atExact15m = new Date(t0.getTime() + 15 * 60 * 1000)
+    // Helper + SQL share the same stale boundary: locked_at <= now - 900000.
+    expect(isStoreIdempotencyLifecycleLeaseActive(lockedAt, atExact15m)).toBe(
+      false
+    )
+
+    const at15mPlus1ms = new Date(t0.getTime() + 15 * 60 * 1000 + 1)
+    expect(isStoreIdempotencyLifecycleLeaseActive(lockedAt, at15mPlus1ms)).toBe(
+      false
+    )
+
+    expect(storeIdempotencyLifecycleLeaseCutoff(t0).getTime()).toBe(
+      t0.getTime() - 900_000
+    )
+    expect(storeIdempotencyLifecycleLeaseCutoff(t0).getTime()).toBe(
+      t0.getTime() - STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS
+    )
+  })
+
   it("enforces exclusive fresh lifecycle lease and allows stale lease recovery", async () => {
+    expect(STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS).toBe(15 * 60 * 1000)
     const { service, rows } = createServiceHarness([baseRow()])
 
     const dueBefore = await service.listDueLifecycleRows({ now })
@@ -1380,9 +1416,15 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
     expect(workerB.type).toBe("lost")
     expect(rows[0].state_version).toBe(2)
 
-    const staleAt = new Date(
-      now.getTime() + STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS + 1
-    )
+    const atExact15m = new Date(now.getTime() + 15 * 60 * 1000)
+    expect(
+      isStoreIdempotencyLifecycleLeaseActive(
+        rows[0].locked_at as string,
+        atExact15m
+      )
+    ).toBe(false)
+
+    const staleAt = new Date(now.getTime() + 15 * 60 * 1000 + 1)
     expect(
       isStoreIdempotencyLifecycleLeaseActive(
         rows[0].locked_at as string,
@@ -1390,7 +1432,7 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
       )
     ).toBe(false)
     expect(storeIdempotencyLifecycleLeaseCutoff(staleAt).getTime()).toBe(
-      staleAt.getTime() - STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS
+      staleAt.getTime() - 900_000
     )
 
     const dueStale = await service.listDueLifecycleRows({ now: staleAt })
@@ -1520,6 +1562,7 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
   })
 
   it("keeps cleanup from deleting terminals under a live lifecycle lease", async () => {
+    expect(STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS).toBe(15 * 60 * 1000)
     const expiredAt = new Date(now.getTime() - 60_000).toISOString()
     const { service, rows } = createServiceHarness([
       baseRow({
@@ -1552,31 +1595,37 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
       true
     )
 
+    // Before the human 15-minute stale boundary, cleanup must not delete.
+    const before15m = new Date(now.getTime() + 14 * 60 * 1000 + 59 * 1000)
+    expect(
+      isStoreIdempotencyLifecycleLeaseActive(
+        rows[0].locked_at as string,
+        before15m
+      )
+    ).toBe(true)
     const deletedDuringLiveLease = await service.cleanupExpiredTerminals({
-      now,
+      now: before15m,
     })
     expect(deletedDuringLiveLease).toBe(0)
     expect(rows).toHaveLength(1)
     expect(rows[0].id).toBe("stidem_completed_live")
 
-    const afterLease = new Date(
-      now.getTime() + STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS + 1
-    )
+    const atExact15m = new Date(now.getTime() + 15 * 60 * 1000)
     expect(
       isStoreIdempotencyLifecycleLeaseActive(
         rows[0].locked_at as string,
-        afterLease
+        atExact15m
       )
     ).toBe(false)
 
-    const deletedAfterExpiry = await service.cleanupExpiredTerminals({
-      now: afterLease,
+    const deletedAtBoundary = await service.cleanupExpiredTerminals({
+      now: atExact15m,
     })
-    expect(deletedAfterExpiry).toBe(1)
+    expect(deletedAtBoundary).toBe(1)
     expect(rows).toHaveLength(0)
 
     const secondCleanup = await service.cleanupExpiredTerminals({
-      now: afterLease,
+      now: atExact15m,
     })
     expect(secondCleanup).toBe(0)
   })

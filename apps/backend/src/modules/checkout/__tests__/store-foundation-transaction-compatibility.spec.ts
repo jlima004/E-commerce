@@ -134,9 +134,13 @@ if (!requestedDatabaseName) {
     cwd: process.cwd(),
     testSuite: ({ dbConnection, getContainer }) => {
       function resolveCheckoutCompletionService(): CheckoutCompletionServiceLike {
-        return getContainer().resolve(
+        // Runtime service exposes baseRepository_ for harness transaction probes;
+        // public module type does not declare it — narrow via unknown at the
+        // test boundary only (no runtime CheckoutCompletion changes).
+        const resolved: unknown = getContainer().resolve(
           CHECKOUT_COMPLETION_MODULE
-        ) as CheckoutCompletionServiceLike
+        )
+        return resolved as CheckoutCompletionServiceLike
       }
 
       function repository(): TransactionalRepositoryLike {

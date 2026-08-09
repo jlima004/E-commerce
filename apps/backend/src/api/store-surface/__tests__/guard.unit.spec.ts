@@ -95,9 +95,9 @@ describe("Store surface guard (FND-02)", () => {
     })
 
     it("registers /store* in middlewares.ts before specific Store business matchers", () => {
-      const matchers = defaultMiddlewares.routes.map((route) =>
-        String(route.matcher)
-      )
+      expect(defaultMiddlewares.routes).toBeDefined()
+      const routes = defaultMiddlewares.routes!
+      const matchers = routes.map((route) => String(route.matcher))
       const guardIndex = matchers.indexOf("/store*")
       expect(guardIndex).toBeGreaterThanOrEqual(0)
       expect(guardIndex).toBeLessThan(matchers.indexOf("/store/products"))
@@ -251,6 +251,9 @@ describe("Store surface guard (FND-02)", () => {
     it("denies UNKNOWN method/path combinations before any business allow", () => {
       const unknown = decideStoreSurfaceAccess("POST", "/store/not-a-real-route")
       expect(unknown.action).toBe("deny")
+      if (unknown.action !== "deny") {
+        throw new Error("expected DENY decision for unknown Store route")
+      }
       expect(unknown.reason).toMatch(/UNKNOWN|absent/i)
 
       const wrongMethod = decideStoreSurfaceAccess("DELETE", "/store/carts/active")
