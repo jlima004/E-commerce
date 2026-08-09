@@ -11,6 +11,7 @@ import {
 } from "../../modules/store-idempotency/models/store-idempotency-record"
 import {
   STORE_IDEMPOTENCY_ALLOWED_TRANSITIONS,
+  STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS,
   STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS,
   StoreIdempotencyModuleService,
   assertNoSensitiveStoreIdempotencyPersistence,
@@ -927,7 +928,12 @@ describe("STORE_IDEMPOTENCY_KEY_PEPPER contract", () => {
 describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
   const now = new Date("2026-08-08T12:00:00.000Z")
 
-  function baseRow(
+  /**
+   * Initial Store claim shape: processing + progress deadline, NO lifecycle lease.
+   * locked_at stays null until claimLifecycleRow() succeeds.
+   */
+  function initialProcessingRow(
+    claimAt: Date = now,
     overrides: Record<string, unknown> = {}
   ): Record<string, unknown> {
     return {
@@ -945,11 +951,10 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
       result_id: null,
       response_status: null,
       result_safe_metadata: null,
-      // Stale at/after the human 15-minute lease boundary so scan/claim can reclaim.
-      locked_at: new Date(
-        now.getTime() - STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS
+      locked_at: null,
+      state_deadline_at: new Date(
+        claimAt.getTime() + STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS
       ).toISOString(),
-      state_deadline_at: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
       next_retry_at: null,
       retry_attempt_count: 0,
       retry_started_at: null,
@@ -957,10 +962,53 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
       completed_at: null,
       failure_code: null,
       expires_at: null,
-      created_at: now.toISOString(),
-      updated_at: now.toISOString(),
+      created_at: claimAt.toISOString(),
+      updated_at: claimAt.toISOString(),
       ...overrides,
     }
+  }
+
+  /** Row after a successful claimLifecycleRow() at leaseAt (15m exclusive lease). */
+  function lifecycleLeasedRow(
+    leaseAt: Date,
+    overrides: Record<string, unknown> = {}
+  ): Record<string, unknown> {
+    return initialProcessingRow(leaseAt, {
+      state_version: 2,
+      locked_at: leaseAt.toISOString(),
+      // Typically already due when a lifecycle worker claims for recovery.
+      state_deadline_at: new Date(leaseAt.getTime() - 1).toISOString(),
+      updated_at: leaseAt.toISOString(),
+      ...overrides,
+    })
+  }
+
+  /** Lifecycle lease that is stale at/after the exact 15m boundary relative to nowAt. */
+  function staleLifecycleLeasedRow(
+    nowAt: Date = now,
+    overrides: Record<string, unknown> = {}
+  ): Record<string, unknown> {
+    const leaseAt = new Date(
+      nowAt.getTime() - STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS
+    )
+    return lifecycleLeasedRow(leaseAt, {
+      state_deadline_at: new Date(
+        nowAt.getTime() - STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS
+      ).toISOString(),
+      ...overrides,
+    })
+  }
+
+  /** Generic seed helper — defaults to an already-due processing row without a lease. */
+  function baseRow(
+    overrides: Record<string, unknown> = {}
+  ): Record<string, unknown> {
+    return initialProcessingRow(now, {
+      state_deadline_at: new Date(
+        now.getTime() - STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS
+      ).toISOString(),
+      ...overrides,
+    })
   }
 
   function createServiceHarness(seed: Record<string, unknown>[]) {
@@ -1044,7 +1092,7 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
             result_id: null,
             response_status: null,
             result_safe_metadata: null,
-            locked_at: String(bindings[8]),
+            locked_at: bindings[8] == null ? null : String(bindings[8]),
             state_deadline_at: String(bindings[9]),
             next_retry_at: null,
             retry_attempt_count: 0,
@@ -1350,12 +1398,15 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
     expect(rows[0].locked_at).toBeNull()
   })
 
-  it("pins the human 15-minute lifecycle-worker lease contract and exact boundary", () => {
-    // P13-13-04 Task 2 Human Contract Decision — independent of cron/claimStaleAfter.
-    // Phase 13 assumes lifecycle work is bounded within this lease; heartbeat is
-    // out of scope until a new human-approved contract exists.
+  it("pins independent processing-stale and lifecycle-lease clocks", () => {
+    // P13-13-04-CP-R4 — clocks must remain distinct; never fuse to one timeout.
+    expect(STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS).toBe(5 * 60 * 1000)
+    expect(STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS).toBe(300_000)
     expect(STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS).toBe(15 * 60 * 1000)
     expect(STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS).toBe(900_000)
+    expect(STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS).not.toBe(
+      STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS
+    )
 
     const t0 = new Date("2026-08-08T12:00:00.000Z")
     const lockedAt = t0.toISOString()
@@ -1382,8 +1433,135 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
     )
   })
 
+  it("P13-13-04-CP-R4: processing recovery at 5m is independent of 15m lifecycle lease", async () => {
+    expect(STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS).toBe(5 * 60 * 1000)
+    expect(STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS).toBe(15 * 60 * 1000)
+    expect(STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS).not.toBe(
+      STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS
+    )
+
+    const t0 = new Date("2026-08-08T12:00:00.000Z")
+    const rawKey = "Retry-Key-R4-Clocks"
+    const actorScope = { customer_id: "cus_r4" }
+    const resourceScope = { cart_id: "cart_01HR4CLOCK" }
+    const semantic = {
+      cart_id: "cart_01HR4CLOCK",
+      op: "phase13.local-mutation",
+    }
+    const { service, rows } = createServiceHarness([])
+
+    // T0 — initial Store claim: processing + 5m deadline; NO lifecycle lease.
+    const claimed = await service.claim({
+      operation: "phase13.local-mutation",
+      actorScope,
+      resourceScope,
+      rawIdempotencyKey: rawKey,
+      canonicalSemanticObject: semantic,
+      at: t0,
+    })
+    expect(claimed.type).toBe("claimed")
+    if (claimed.type !== "claimed") {
+      throw new Error("expected initial claim")
+    }
+    expect(claimed.record.state).toBe("processing")
+    expect(claimed.record.locked_at).toBeNull()
+    expect(claimed.record.state_deadline_at).toBe(
+      new Date(t0.getTime() + STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS).toISOString()
+    )
+    expect(rows[0].locked_at).toBeNull()
+
+    // Same-intent retry while processing: in_progress, no ownership transfer.
+    const retry = await service.claim({
+      operation: "phase13.local-mutation",
+      actorScope,
+      resourceScope,
+      rawIdempotencyKey: rawKey,
+      canonicalSemanticObject: semantic,
+      at: new Date(t0.getTime() + 30_000),
+    })
+    expect(retry.type).toBe("in_progress")
+    expect(rows[0].locked_at).toBeNull()
+    expect(rows[0].state_version).toBe(1)
+
+    // T0 + 4m59s — progress deadline not expired; must NOT be recovery-eligible
+    // even with no active lifecycle lease (proves no premature recovery).
+    const at4m59s = new Date(t0.getTime() + 4 * 60 * 1000 + 59 * 1000)
+    const dueBefore5m = await service.listDueLifecycleRows({ now: at4m59s })
+    expect(dueBefore5m).toHaveLength(0)
+
+    // T0 + 5m exact — processing recovery eligible immediately (not delayed to 15m).
+    const at5m = new Date(t0.getTime() + STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS)
+    const dueAt5m = await service.listDueLifecycleRows({ now: at5m })
+    expect(dueAt5m).toHaveLength(1)
+    expect(dueAt5m[0].id).toBe(rows[0].id)
+
+    // Eligibility ≠ automatic transition: state unchanged until lifecycle claim.
+    expect(rows[0].state).toBe("processing")
+    expect(rows[0].state_version).toBe(1)
+    expect(rows[0].locked_at).toBeNull()
+
+    // Worker A acquires lifecycle lease at T0 + 5m → locked_at = T+5m.
+    const workerA = await service.claimLifecycleRow({
+      id: String(rows[0].id),
+      expectedState: "processing",
+      expectedStateVersion: 1,
+      at: at5m,
+    })
+    expect(workerA.type).toBe("claimed")
+    if (workerA.type !== "claimed") {
+      throw new Error("expected Worker A lifecycle claim at T+5m")
+    }
+    expect(workerA.record.locked_at).toBe(at5m.toISOString())
+    expect(workerA.record.state_version).toBe(2)
+    expect(rows[0].locked_at).toBe(at5m.toISOString())
+
+    // T0 + 5m + 14m59s = T+19m59s — Worker B blocked on scan and direct claim.
+    const at19m59s = new Date(
+      at5m.getTime() + 14 * 60 * 1000 + 59 * 1000
+    )
+    expect(
+      isStoreIdempotencyLifecycleLeaseActive(
+        rows[0].locked_at as string,
+        at19m59s
+      )
+    ).toBe(true)
+    const dueDuringLease = await service.listDueLifecycleRows({
+      now: at19m59s,
+    })
+    expect(dueDuringLease).toHaveLength(0)
+    const workerBDuring = await service.claimLifecycleRow({
+      id: String(rows[0].id),
+      expectedState: "processing",
+      expectedStateVersion: 2,
+      at: at19m59s,
+    })
+    expect(workerBDuring.type).toBe("lost")
+    expect(rows[0].state_version).toBe(2)
+
+    // T0 + 5m + 15m = T+20m — lease STALE at exact boundary; B may reclaim.
+    const at20m = new Date(at5m.getTime() + STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS)
+    expect(
+      isStoreIdempotencyLifecycleLeaseActive(rows[0].locked_at as string, at20m)
+    ).toBe(false)
+    const dueAt20m = await service.listDueLifecycleRows({ now: at20m })
+    expect(dueAt20m).toHaveLength(1)
+    const workerBReclaim = await service.claimLifecycleRow({
+      id: String(rows[0].id),
+      expectedState: "processing",
+      expectedStateVersion: 2,
+      at: at20m,
+    })
+    expect(workerBReclaim.type).toBe("claimed")
+    if (workerBReclaim.type !== "claimed") {
+      throw new Error("expected Worker B reclaim at exact T+20m")
+    }
+    expect(workerBReclaim.record.state_version).toBe(3)
+    expect(workerBReclaim.record.locked_at).toBe(at20m.toISOString())
+  })
+
   it("enforces exclusive fresh lifecycle lease and allows stale lease recovery", async () => {
     expect(STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS).toBe(15 * 60 * 1000)
+    // Already-due processing row without a lease (not a pre-stale 15m lock).
     const { service, rows } = createServiceHarness([baseRow()])
 
     const dueBefore = await service.listDueLifecycleRows({ now })
@@ -1416,39 +1594,41 @@ describe("P13-13-04-CP-R1 store idempotency foundation regressions", () => {
     expect(workerB.type).toBe("lost")
     expect(rows[0].state_version).toBe(2)
 
-    const atExact15m = new Date(now.getTime() + 15 * 60 * 1000)
+    // Exact T+15m from Worker A's lease is STALE for both scan and claim.
+    const atExact15m = new Date(now.getTime() + STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS)
     expect(
       isStoreIdempotencyLifecycleLeaseActive(
         rows[0].locked_at as string,
         atExact15m
       )
     ).toBe(false)
-
-    const staleAt = new Date(now.getTime() + 15 * 60 * 1000 + 1)
-    expect(
-      isStoreIdempotencyLifecycleLeaseActive(
-        rows[0].locked_at as string,
-        staleAt
-      )
-    ).toBe(false)
-    expect(storeIdempotencyLifecycleLeaseCutoff(staleAt).getTime()).toBe(
-      staleAt.getTime() - 900_000
+    expect(storeIdempotencyLifecycleLeaseCutoff(atExact15m).getTime()).toBe(
+      atExact15m.getTime() - STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS
     )
 
-    const dueStale = await service.listDueLifecycleRows({ now: staleAt })
-    expect(dueStale).toHaveLength(1)
+    const dueAtExact15m = await service.listDueLifecycleRows({
+      now: atExact15m,
+    })
+    expect(dueAtExact15m).toHaveLength(1)
 
     const workerRecover = await service.claimLifecycleRow({
       id: "stidem_1",
       expectedState: "processing",
       expectedStateVersion: 2,
-      at: staleAt,
+      at: atExact15m,
     })
     expect(workerRecover.type).toBe("claimed")
     if (workerRecover.type !== "claimed") {
-      throw new Error("expected stale lifecycle reclaim")
+      throw new Error("expected stale lifecycle reclaim at exact T+15m")
     }
     expect(workerRecover.record.state_version).toBe(3)
+
+    // Harness helpers remain distinguishable.
+    expect(initialProcessingRow(now).locked_at).toBeNull()
+    expect(lifecycleLeasedRow(now).locked_at).toBe(now.toISOString())
+    expect(staleLifecycleLeasedRow(now).locked_at).toBe(
+      new Date(now.getTime() - STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS).toISOString()
+    )
   })
 
   it("rejects sensitive canaries inside allowlisted metadata and result fields", () => {
