@@ -33,6 +33,12 @@ export const STORE_IDEMPOTENCY_UNRESOLVED_RETENTION_MS =
  * Human contract decision: P13-13-04 Task 2 — 15 minutes (900000 ms).
  * Purpose: exclusive PostgreSQL lifecycle-worker ownership via locked_at.
  *
+ * Lease begins when claimLifecycleRow() succeeds — NOT on initial Store claim().
+ * Initial claim() inserts processing with locked_at = null and
+ * state_deadline_at = claim_time + claimStaleAfter (5m). Progress recovery
+ * eligibility is driven solely by state_deadline_at; the 15m lease must not
+ * delay the approved 5m stale/recovery trigger.
+ *
  * Distinct from:
  * - claimStaleAfter (processing recovery deadline = 5m)
  * - recovery horizon (decision window = 15m; same magnitude, different concept)
@@ -671,7 +677,10 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     const fingerprint = buildStoreIdempotencyRequestFingerprint(
       input.canonicalSemanticObject
     )
-    const lockedAt = at
+    // Initial Store claim does NOT acquire the lifecycle-worker lease.
+    // Concurrency for the first writer is UNIQUE(scope+key) + INSERT ON CONFLICT.
+    // locked_at is set only by claimLifecycleRow() (15m exclusive worker lease).
+    // Progress stale/recovery uses state_deadline_at = claim_time + 5m alone.
     const deadline = addMs(at, STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS)
     const id = generateEntityId(undefined, "stidem")
     const timestamp = at.toISOString()
@@ -711,7 +720,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
           STORE_IDEMPOTENCY_HASH_VERSION,
           STORE_IDEMPOTENCY_PEPPER_VERSION,
           fingerprint,
-          lockedAt.toISOString(),
+          null, // locked_at: lifecycle lease starts only at claimLifecycleRow()
           deadline.toISOString(),
           timestamp,
           timestamp,
@@ -1097,7 +1106,8 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
   }): Promise<LifecycleClaimResult> {
     const at = input.at ?? new Date()
     const leaseCutoff = storeIdempotencyLifecycleLeaseCutoff(at).toISOString()
-    // Atomic exclusive lease: version predicate + locked_at freshness in one UPDATE.
+    // Atomic exclusive lifecycle-worker lease starts here (locked_at = at).
+    // Version predicate + locked_at freshness in one UPDATE.
     // Fresh lease excludes the row from listDue and rejects concurrent claimants.
     const result = await this.knex().raw(
       `
