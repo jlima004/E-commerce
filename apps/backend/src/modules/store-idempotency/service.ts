@@ -30,18 +30,25 @@ export const STORE_IDEMPOTENCY_UNRESOLVED_RETENTION_MS =
 /**
  * Exclusive lifecycle-worker lease (locked_at freshness).
  *
- * Distinct from claimStaleAfter (processing recovery deadline).
- * Distinct from state_version (protects stale final transitions only — it does
- * NOT prevent two workers from performing side effects concurrently if a lease
- * expires while the first worker still runs).
+ * Human contract decision: P13-13-04 Task 2 — 15 minutes (900000 ms).
+ * Purpose: exclusive PostgreSQL lifecycle-worker ownership via locked_at.
  *
- * CONTRACT STATUS (B13-04-CP-R2-02):
- * No approved authority (CONTEXT / SPEC / SDD / PLAN / DB_MODEL) defines a
- * lifecycle-worker lease duration. This value is retained only so scan/claim/
- * cleanup share one predicate while the human contract decision is pending.
- * Cron cadence and claimStaleAfter are NOT lease authorities.
+ * Distinct from:
+ * - claimStaleAfter (processing recovery deadline = 5m)
+ * - recovery horizon (decision window = 15m; same magnitude, different concept)
+ * - cron cadence (1m schedule; not a lease authority)
+ * - state_version (CAS / stale-transition protection only — does NOT replace lease)
+ *
+ * Active:  locked_at > now - 15 minutes
+ * Stale:   locked_at <= now - 15 minutes (exact T+15m is reclaimable)
+ *
+ * Heartbeat is NOT part of Phase 13. Phase 13 assumes lifecycle work is bounded
+ * within this 15-minute lease; ownership beyond 15 minutes requires a new
+ * human-approved heartbeat/lease contract.
+ *
+ * Redis is NOT part of lease correctness.
  */
-export const STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS = 60 * 1000
+export const STORE_IDEMPOTENCY_LIFECYCLE_LEASE_MS = 15 * 60 * 1000
 
 export const STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION =
   "phase13.local-mutation" as const
