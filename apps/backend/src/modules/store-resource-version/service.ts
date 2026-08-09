@@ -12,6 +12,8 @@ import StoreResourceVersion from "./models/store-resource-version"
 
 export const STORE_RESOURCE_VERSION_TRANSACTION_REQUIRED =
   "STORE_RESOURCE_VERSION_TRANSACTION_REQUIRED"
+export const STORE_RESOURCE_VERSION_WRITE_FORBIDDEN =
+  "STORE_RESOURCE_VERSION_WRITE_FORBIDDEN"
 
 type StoreResourceVersionTransactionManager = TransactionalManagerLike & {
   getTransactionContext?: () => KnexLike | undefined | null
@@ -120,6 +122,41 @@ async function rows(
 const BaseStoreResourceVersionService = MedusaService({ StoreResourceVersion })
 
 export class StoreResourceVersionModuleService extends BaseStoreResourceVersionService {
+  /**
+   * StoreResourceVersion is server-authoritative. MedusaService generates these
+   * write methods, so each one is overridden fail-closed: callers must use the
+   * transaction-required initialize/increment/CAS primitives below.
+   */
+  override createStoreResourceVersions = async (
+    ..._args: unknown[]
+  ): Promise<never> => {
+    throw new Error(STORE_RESOURCE_VERSION_WRITE_FORBIDDEN)
+  }
+
+  override updateStoreResourceVersions = async (
+    ..._args: unknown[]
+  ): Promise<never> => {
+    throw new Error(STORE_RESOURCE_VERSION_WRITE_FORBIDDEN)
+  }
+
+  override deleteStoreResourceVersions = async (
+    ..._args: unknown[]
+  ): Promise<never> => {
+    throw new Error(STORE_RESOURCE_VERSION_WRITE_FORBIDDEN)
+  }
+
+  override softDeleteStoreResourceVersions = async (
+    ..._args: unknown[]
+  ): Promise<never> => {
+    throw new Error(STORE_RESOURCE_VERSION_WRITE_FORBIDDEN)
+  }
+
+  override restoreStoreResourceVersions = async (
+    ..._args: unknown[]
+  ): Promise<never> => {
+    throw new Error(STORE_RESOURCE_VERSION_WRITE_FORBIDDEN)
+  }
+
   async initialize(
     resourceType: string,
     resourceId: string,

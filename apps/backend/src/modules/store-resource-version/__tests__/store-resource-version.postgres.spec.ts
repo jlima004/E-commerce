@@ -12,6 +12,7 @@ import {
 import {
   STORE_RESOURCE_VERSION_MODULE,
   STORE_RESOURCE_VERSION_TRANSACTION_REQUIRED,
+  STORE_RESOURCE_VERSION_WRITE_FORBIDDEN,
   type StoreResourceVersionModuleService,
 } from ".."
 import { Migration20260809175009 } from "../migrations/Migration20260809175009"
@@ -81,10 +82,6 @@ const requestedDatabaseName = process.env.DB_TEMP_NAME
 
 type StoreResourceVersionServiceLike = StoreResourceVersionModuleService & {
   baseRepository_: TransactionalRepositoryLike
-  createStoreResourceVersions: (
-    data: Record<string, unknown>,
-    sharedContext?: SharedTransactionContext
-  ) => Promise<unknown>
 }
 
 if (!requestedDatabaseName) {
@@ -147,12 +144,9 @@ if (!requestedDatabaseName) {
         entityId: string,
         context: SharedTransactionContext
       ) => {
-        await resolveVersionService().createStoreResourceVersions(
-          {
-            resource_type: "mutation_probe",
-            resource_id: entityId,
-            version: 1,
-          },
+        await resolveVersionService().initialize(
+          "mutation_probe",
+          entityId,
           context
         )
       }
@@ -248,6 +242,54 @@ if (!requestedDatabaseName) {
         ).rejects.toThrow(STORE_RESOURCE_VERSION_TRANSACTION_REQUIRED)
         expect(await readVersion("product", "prod_no_tx")).toBeNull()
         expect(await readVersion("product", "prod_fake_tx")).toBeNull()
+      })
+
+      it("blocks every MedusaService-generated write path even with a transaction", async () => {
+        const service = resolveVersionService()
+        const generatedWrites = [
+          (context: SharedTransactionContext) =>
+            service.createStoreResourceVersions(
+              {
+                resource_type: "bypass",
+                resource_id: "create",
+                version: 10,
+              },
+              context
+            ),
+          (context: SharedTransactionContext) =>
+            service.updateStoreResourceVersions(
+              {
+                id: "strver_bypass",
+                version: 1,
+              },
+              context
+            ),
+          (context: SharedTransactionContext) =>
+            service.deleteStoreResourceVersions("strver_bypass", context),
+          (context: SharedTransactionContext) =>
+            service.softDeleteStoreResourceVersions(
+              "strver_bypass",
+              {},
+              context
+            ),
+          (context: SharedTransactionContext) =>
+            service.restoreStoreResourceVersions(
+              "strver_bypass",
+              {},
+              context
+            ),
+        ]
+
+        for (const generatedWrite of generatedWrites) {
+          await expect(
+            inTransaction((context) => generatedWrite(context))
+          ).rejects.toThrow(STORE_RESOURCE_VERSION_WRITE_FORBIDDEN)
+        }
+
+        const rows = await dbConnection.raw(
+          `select count(*)::int as count from store_resource_version`
+        )
+        expect(rows.rows).toEqual([{ count: 0 }])
       })
 
       it("bootstraps lazily at version 1 and isolates resource scopes", async () => {
