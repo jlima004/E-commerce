@@ -1,7 +1,11 @@
-import type { ContractSurface } from "./contracts"
+import type { ContractSurface, ContractVersion } from "./contracts"
 
 export const OPENAPI_VERSION = "3.1.2" as const
-export const CONTRACT_VERSION = "1.0.0" as const
+export const CONTRACT_VERSIONS = {
+  store: "1.1.0",
+  admin: "1.0.0",
+  webhooks: "1.0.0",
+} as const satisfies Record<ContractSurface, ContractVersion>
 export const MEDUSA_VERSION = "2.16.0" as const
 
 export const CONTRACT_TITLES: Record<ContractSurface, string> = {

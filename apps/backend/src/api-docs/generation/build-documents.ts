@@ -8,7 +8,7 @@ import {
 import {
   CONTRACT_DESCRIPTIONS,
   CONTRACT_TITLES,
-  CONTRACT_VERSION,
+  CONTRACT_VERSIONS,
   MEDUSA_VERSION,
   OPENAPI_VERSION,
   PROJECT_CONTACT,
@@ -61,7 +61,7 @@ export function buildDocument(
     openapi: OPENAPI_VERSION,
     info: {
       title: CONTRACT_TITLES[surface],
-      version: CONTRACT_VERSION,
+      version: CONTRACT_VERSIONS[surface],
       description: CONTRACT_DESCRIPTIONS[surface],
       contact: PROJECT_CONTACT,
       license: PROJECT_LICENSE,

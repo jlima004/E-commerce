@@ -3,6 +3,7 @@ import type {
   OpenApiDocument,
   OperationMetadata,
 } from "../contracts"
+import { CONTRACT_VERSIONS } from "../document"
 import { assertSafeExamples } from "../safe-examples"
 
 const HTTP_METHOD_KEYS = new Set([
@@ -91,8 +92,10 @@ export function validateDocument(
   if (document.openapi !== "3.1.2") {
     throw new Error(`Unexpected OpenAPI version: ${document.openapi}`)
   }
-  if (document.info.version !== "1.0.0") {
-    throw new Error(`Unexpected contract version: ${document.info.version}`)
+  if (document.info.version !== CONTRACT_VERSIONS[surface]) {
+    throw new Error(
+      `Unexpected contract version for ${surface}: ${document.info.version}`
+    )
   }
   if (document["x-medusa-version"] !== "2.16.0") {
     throw new Error("Unexpected Medusa metadata version")
