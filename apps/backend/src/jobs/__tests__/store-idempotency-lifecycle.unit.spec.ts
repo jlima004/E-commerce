@@ -1,8 +1,10 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
 import {
+  STORE_IDEMPOTENCY_MAX_RETRY_ATTEMPTS,
   STORE_IDEMPOTENCY_MODULE,
   STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION,
   STORE_IDEMPOTENCY_PHASE13_UNCERTAIN_EFFECT,
+  STORE_IDEMPOTENCY_RETRY_WINDOW_MS,
   type StoreIdempotencyRecordRow,
 } from "../../modules/store-idempotency"
 import {
@@ -361,6 +363,238 @@ describe("store-idempotency-lifecycle job", () => {
     expect(result.transitioned).toBe(1)
     expect(service.markFailedTerminal).toHaveBeenCalledTimes(1)
     expect(service.markCompleted).not.toHaveBeenCalled()
+  })
+
+  describe("failed_retryable 8/24h lifecycle matrix (R1-02)", () => {
+    const matrixNow = new Date("2026-08-09T12:05:00.000Z")
+
+    function addMs(at: Date, ms: number): Date {
+      return new Date(at.getTime() + ms)
+    }
+
+    function createFailedRetryableEligibleMock(
+      seed: StoreIdempotencyRecordRow[]
+    ) {
+      const service = createServiceMock(seed)
+      // Mirror service listDue predicate for failed_retryable eligibility:
+      // next_retry_at <= now OR state_deadline_at <= now; live locked_at excludes.
+      service.listDueLifecycleRows.mockImplementation(
+        async (input?: { now?: Date; limit?: number }) => {
+          const at = input?.now ?? matrixNow
+          const due = service.rows.filter((row) => {
+            if (row.locked_at != null) {
+              return false
+            }
+            if (row.state !== "failed_retryable") {
+              return true
+            }
+            const nextDue =
+              row.next_retry_at != null &&
+              new Date(row.next_retry_at).getTime() <= at.getTime()
+            const deadlineDue =
+              row.state_deadline_at != null &&
+              new Date(row.state_deadline_at).getTime() <= at.getTime()
+            return nextDue || deadlineDue
+          })
+          const limit = input?.limit ?? 100
+          return due.slice(0, limit).map((row) => ({ ...row }))
+        }
+      )
+      return service
+    }
+
+    function failedRetryableRow(
+      overrides: Partial<StoreIdempotencyRecordRow> = {}
+    ): StoreIdempotencyRecordRow {
+      const started = addMs(matrixNow, -60 * 60_000) // 1h ago, within 24h
+      return baseRow({
+        id: "stidem_retry_matrix",
+        state: "failed_retryable",
+        operation: STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION,
+        retry_attempt_count: 3,
+        retry_started_at: started.toISOString(),
+        next_retry_at: addMs(matrixNow, -1_000).toISOString(),
+        state_deadline_at: addMs(
+          started,
+          STORE_IDEMPOTENCY_RETRY_WINDOW_MS
+        ).toISOString(),
+        failure_code: "timeout",
+        ...overrides,
+      })
+    }
+
+    it("Case A: future next_retry_at → not lifecycle eligible / no transition", async () => {
+      expect(STORE_IDEMPOTENCY_MAX_RETRY_ATTEMPTS).toBe(8)
+      expect(STORE_IDEMPOTENCY_RETRY_WINDOW_MS).toBe(86_400_000)
+
+      const started = addMs(matrixNow, -60 * 60_000)
+      const row = failedRetryableRow({
+        retry_attempt_count: 3,
+        retry_started_at: started.toISOString(),
+        next_retry_at: addMs(matrixNow, 60_000).toISOString(),
+        state_deadline_at: addMs(
+          started,
+          STORE_IDEMPOTENCY_RETRY_WINDOW_MS
+        ).toISOString(),
+      })
+      const service = createFailedRetryableEligibleMock([row])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => matrixNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.scanned).toBe(0)
+      expect(result.claimed).toBe(0)
+      expect(result.transitioned).toBe(0)
+      expect(service.claimLifecycleRow).not.toHaveBeenCalled()
+      expect(service.markCompleted).not.toHaveBeenCalled()
+      expect(service.markFailedTerminal).not.toHaveBeenCalled()
+      expect(service.rows[0].state).toBe("failed_retryable")
+    })
+
+    it("Case B: due below attempt/time cap → markCompleted (phase13.local-mutation)", async () => {
+      const row = failedRetryableRow({
+        retry_attempt_count: 3,
+        next_retry_at: addMs(matrixNow, -1_000).toISOString(),
+      })
+      const service = createFailedRetryableEligibleMock([row])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => matrixNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.scanned).toBe(1)
+      expect(result.claimed).toBe(1)
+      expect(result.transitioned).toBe(1)
+      expect(service.markCompleted).toHaveBeenCalledTimes(1)
+      expect(service.markCompleted.mock.calls[0][0]).toMatchObject({
+        id: row.id,
+        expectedState: "failed_retryable",
+      })
+      expect(service.markFailedTerminal).not.toHaveBeenCalled()
+      expect(service.rows[0].state).toBe("completed")
+    })
+
+    it("Case C: attempts = 8 → markFailedTerminal (no new retry)", async () => {
+      const started = addMs(matrixNow, -60 * 60_000)
+      const row = failedRetryableRow({
+        retry_attempt_count: STORE_IDEMPOTENCY_MAX_RETRY_ATTEMPTS,
+        retry_started_at: started.toISOString(),
+        next_retry_at: addMs(matrixNow, -1_000).toISOString(),
+        state_deadline_at: addMs(
+          started,
+          STORE_IDEMPOTENCY_RETRY_WINDOW_MS
+        ).toISOString(),
+      })
+      const service = createFailedRetryableEligibleMock([row])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => matrixNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.transitioned).toBe(1)
+      expect(service.markFailedTerminal).toHaveBeenCalledTimes(1)
+      expect(service.markFailedTerminal.mock.calls[0][0]).toMatchObject({
+        id: row.id,
+        expectedState: "failed_retryable",
+      })
+      expect(service.markCompleted).not.toHaveBeenCalled()
+      expect(service.rows[0].state).toBe("failed_terminal")
+    })
+
+    it("Case D: age = exact 24h → markFailedTerminal (window cap)", async () => {
+      const started = addMs(matrixNow, -STORE_IDEMPOTENCY_RETRY_WINDOW_MS)
+      const row = failedRetryableRow({
+        retry_attempt_count: 3,
+        retry_started_at: started.toISOString(),
+        next_retry_at: addMs(matrixNow, -1_000).toISOString(),
+        // deadline also at exact window end; eligibility via next_retry_at
+        state_deadline_at: matrixNow.toISOString(),
+      })
+      const service = createFailedRetryableEligibleMock([row])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => matrixNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.transitioned).toBe(1)
+      expect(service.markFailedTerminal).toHaveBeenCalledTimes(1)
+      expect(service.markCompleted).not.toHaveBeenCalled()
+      expect(service.rows[0].state).toBe("failed_terminal")
+    })
+
+    it("Case E: age = 23h59m59s → still eligible → markCompleted", async () => {
+      const started = addMs(
+        matrixNow,
+        -(STORE_IDEMPOTENCY_RETRY_WINDOW_MS - 1_000)
+      )
+      const row = failedRetryableRow({
+        retry_attempt_count: 3,
+        retry_started_at: started.toISOString(),
+        next_retry_at: addMs(matrixNow, -1_000).toISOString(),
+        state_deadline_at: addMs(
+          started,
+          STORE_IDEMPOTENCY_RETRY_WINDOW_MS
+        ).toISOString(),
+      })
+      const service = createFailedRetryableEligibleMock([row])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => matrixNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.transitioned).toBe(1)
+      expect(service.markCompleted).toHaveBeenCalledTimes(1)
+      expect(service.markFailedTerminal).not.toHaveBeenCalled()
+      expect(service.rows[0].state).toBe("completed")
+    })
+
+    it("infinite retry impossible: cap dispositions are terminal", async () => {
+      const attemptCap = failedRetryableRow({
+        id: "stidem_infinite_attempts",
+        retry_attempt_count: 8,
+        next_retry_at: addMs(matrixNow, -1_000).toISOString(),
+      })
+      const windowCap = failedRetryableRow({
+        id: "stidem_infinite_window",
+        retry_attempt_count: 2,
+        retry_started_at: addMs(
+          matrixNow,
+          -STORE_IDEMPOTENCY_RETRY_WINDOW_MS
+        ).toISOString(),
+        next_retry_at: addMs(matrixNow, -1_000).toISOString(),
+      })
+      const service = createFailedRetryableEligibleMock([attemptCap, windowCap])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => matrixNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.transitioned).toBe(2)
+      expect(service.markFailedTerminal).toHaveBeenCalledTimes(2)
+      expect(service.markCompleted).not.toHaveBeenCalled()
+      expect(
+        service.rows.every((row) => row.state === "failed_terminal")
+      ).toBe(true)
+    })
   })
 
   it("restart/no Redis: two independent invocations depend only on service/PG results", async () => {
