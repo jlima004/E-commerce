@@ -629,3 +629,96 @@ No technical execution of `13-07`, deploy, remote provider mutation, or frontend
 
 ---
 *Phase: 13-storefront-contract-foundation-surface-lockdown — Plan 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED*
+
+## P13-13-06-R3 — B13-07-R1-01 Source Drift Correction
+
+**Executed:** 2026-08-09
+
+**Technical commit:** `cb4f98a`
+
+**Status:** TECHNICAL PASS — AWAITING HUMAN REVIEW
+
+### Authorized boundary
+
+R3 corrected only the cross-surface correlation-parameter coupling owned by
+`13-06`. The shared `CORRELATION_ID_HEADER` again has exactly the historical
+pre-`13-06` Admin semantics. The new `STORE_CORRELATION_ID_HEADER` preserves
+the Store sanitization semantics already published by `13-06`, and only the
+two Store health operations were rewired to it.
+
+No generated OpenAPI JSON, runtime path, migration, provider, config, secret,
+`STATE.md`, `ROADMAP.md`, `13-07` test, deploy, or frontend surface was changed.
+The OpenAPI writer was not executed.
+
+### Regression lock
+
+`generation.unit.spec.ts` now proves all of the following in one regression:
+
+- `/health/live` and `/health/ready` use the Store-specific sanitized
+  correlation parameter;
+- Admin `/admin/products` continues to use the historical shared/Admin
+  correlation parameter;
+- the Store and Admin parameter objects are semantically distinct;
+- freshly built Store, Admin, and Webhooks bytes equal all three committed
+  generated artifacts.
+
+### R3 verification
+
+| Gate | Suites | Tests / evidence | Exit | Result |
+|---|---:|---:|---:|---|
+| Generation focal | 1/1 | 162/162 | 0 | PASS |
+| Relevant API Docs regression | 14/14 | 363/363 | 0 | PASS |
+| OpenAPI lint | — | 0 warn-or-higher | 0 | PASS |
+| Backend build | — | TypeScript errors 0 | 0 | PASS |
+| Generated JSON diff | — | Store/Admin/Webhooks unchanged | 0 | PASS |
+| `git diff --check` | — | no whitespace errors | 0 | PASS |
+| `openapi:check` after `cb4f98a` | — | clean, tracked, read-only global gate | 0 | PASS |
+
+The build retained 297 pre-existing Medusa lint warnings and completed
+successfully; R3 introduced no build error. One non-gate Jest invocation passed
+a directory to `--runTestsByPath` and returned `No tests found`; it was corrected
+to the explicit closed list of 14 test files, which passed 363/363.
+
+```text
+B13-07-R1-01:
+TECHNICALLY CLOSED — AWAITING HUMAN REVIEW
+
+shared/Admin CORRELATION_ID_HEADER:
+RESTORED TO PRE-13-06 SEMANTICS
+
+Store correlation parameter:
+STORE-SPECIFIC — SANITIZED SEMANTICS PRESERVED
+
+Store OpenAPI:
+1.1.0 — GENERATED JSON UNCHANGED
+
+Admin OpenAPI:
+1.0.0 — GENERATED JSON UNCHANGED
+
+Webhooks OpenAPI:
+1.0.0 — GENERATED JSON UNCHANGED
+
+writer:
+NOT EXECUTED
+
+P13-13-06-R3:
+TECHNICAL PASS — AWAITING HUMAN REVIEW
+
+B13-07-R1-02:
+OPEN — NOT TOUCHED
+
+13-07 retry:
+NOT AUTHORIZED / NOT STARTED
+
+FND-08:
+BLOCKED AT FINAL CLEAN CHECK
+
+Phase 13:
+NOT CLOSED
+
+Phase 14 / Frontend / Deploy:
+NOT AUTHORIZED
+```
+
+---
+*P13-13-06-R3 stopped at the mandatory human-review gate; no 13-07 retry was started.*
