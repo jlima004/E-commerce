@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: storefront-contract-foundation-surface-lockdown
-status: executing
-stopped_at: 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
-last_updated: "2026-08-10T00:30:00.000Z"
-last_activity: 2026-08-09
-last_activity_desc: P13-13-06-R2 human review PASS; 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
+status: closure-prepared-awaiting-human-review
+stopped_at: Phase 13 CLOSURE PREPARED — AWAITING HUMAN REVIEW
+last_updated: "2026-08-10T22:32:25.000Z"
+last_activity: 2026-08-10
+last_activity_desc: Phase 13 documentary closure prepared; FND-01..FND-08 COMPLETE; awaiting human closure review
 progress:
   total_phases: 10
   completed_phases: 0
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; 13-01..13-06 HUMAN APPROVED — PASS. `P13-13-05-HCD-01` approved the DML-native `integer + partial UNIQUE` supersession and rejected direct MikroORM. `P13-13-05-R2` HUMAN REVIEW PASS closed both 13-05 blockers. `P13-13-06-R2` HUMAN REVIEW PASS closed `B13-06-R2-01` (native evidence fingerprints) and `B13-06-R2-02` (Store OpenAPI public exact-set); Store 1.1.0 now publishes 0 Store business `path+method` and keeps two health/support operations. Há 7 planos e 6 human-approved executed. FND-03, FND-06, FND-07 and FND-08 are EVIDENCED — NOT COMPLETE; Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-07 is EXECUTION AUTHORIZED. Deploy and frontend are not authorized.
+**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; 13-01..13-07 HUMAN APPROVED — PASS (7/7). `P13-13-06-R3`, `P13-13-07-R1`, and `P13-13-07-R1-C4` HUMAN APPROVED — PASS. `B13-01`..`B13-07` eliminated/closed; `B13-07-R1-01` and `B13-07-R1-02` CLOSED — PASS. FND-01..FND-08 COMPLETE. Phase 13 requirements complete: 8/8. Milestone requirements complete: 8/91. Phases fully closed remain 0/10. Phase 13 CLOSURE PREPARED — AWAITING HUMAN REVIEW (`13-CLOSURE.md`). Phase 14 is NOT AUTHORIZED. Deploy and frontend are not authorized. `mode=interactive`; `workflow.auto_advance=false`; `workflow._auto_chain_active=false`; `parallelization=false`.
 
 ```text
 Phase 12 CONTEXT approved
@@ -152,19 +152,31 @@ P13-13-06-R2: HUMAN REVIEW PASS
 B13-06-R2-01: CLOSED — PASS (native evidence 6/6 stale bindings refreshed; 24/24 current)
 B13-06-R2-02: CLOSED — PASS (Store 1.1 public business path+method = 0; health/support = 2)
 13-06: HUMAN APPROVED — PASS
-13-07: EXECUTION AUTHORIZED
-Phase 13 plans: 7 planned / 6 human-approved executed; 13-06 HUMAN APPROVED — PASS; 13-07 execution authorized
+P13-13-06-R3: HUMAN APPROVED — PASS
+P13-13-07-R1: HUMAN APPROVED — PASS
+P13-13-07-R1-C4: HUMAN APPROVED — PASS
+B13-07-R1-01: CLOSED — PASS
+B13-07-R1-02: CLOSED — PASS
+B13-07: ELIMINATED — EVIDENCED
+13-07: HUMAN APPROVED — PASS
+Phase 13 plans: 7 planned / 7 human-approved executed
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
-Phase 13 requirements complete: 0/8
-FND-03: EVIDENCED — NOT COMPLETE
-FND-06: EVIDENCED — NOT COMPLETE
-FND-07: EVIDENCED — NOT COMPLETE
-FND-08: EVIDENCED — NOT COMPLETE
-Milestone requirements complete: 0/91
+Phase 13 requirements complete: 8/8
+FND-01: COMPLETE
+FND-02: COMPLETE
+FND-03: COMPLETE
+FND-04: COMPLETE
+FND-05: COMPLETE
+FND-06: COMPLETE
+FND-07: COMPLETE
+FND-08: COMPLETE
+Milestone requirements complete: 8/91
 Phases complete: 0/10
+Phase 13: CLOSURE PREPARED — AWAITING HUMAN REVIEW
+Phase 14: NOT AUTHORIZED
 Deploy: NOT AUTHORIZED
 frontend blocked / not started / not authorized
-next permitted step: execute 13-07 only under its approved plan; do not start Phase 14.
+next permitted step: human review of Phase 13 closure; do not start Phase 14 until separate explicit human authorization.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -203,19 +215,19 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 13 (storefront-contract-foundation-surface-lockdown) — EXECUTING
-Plan: 6 of 7 human-approved; 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
-Status: 13-01..13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
-Current gate: P13-13-06-R2 HUMAN REVIEW PASS; B13-06-R2-01 CLOSED — PASS; B13-06-R2-02 CLOSED — PASS; 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
-Last activity: 2026-08-09 — P13-13-06-R2 human review PASS; 13-06 approved; 13-07 authorized; FND-03/FND-06/FND-07/FND-08 EVIDENCED — NOT COMPLETE
-Next: execute 13-07 only under its approved plan; do not start Phase 14
+Phase: 13 (storefront-contract-foundation-surface-lockdown) — CLOSURE PREPARED — AWAITING HUMAN REVIEW
+Plan: 7 of 7 human-approved
+Status: 13-01..13-07 HUMAN APPROVED — PASS; FND-01..FND-08 COMPLETE; Phase 13 closure prepared
+Current gate: Phase 13 CLOSURE PREPARED — AWAITING HUMAN REVIEW (`13-CLOSURE.md`); Phase 14 NOT AUTHORIZED
+Last activity: 2026-08-10 — Phase 13 documentary closure prepared from approved 13-01..13-07 evidence
+Next: await explicit human approval of Phase 13 closure; do not start Phase 14 without a separate explicit human authorization
 
-Progress: [░░░░░░░░░░] 0% phases (0/10)
+Progress: [░░░░░░░░░░] 0% phases closed (0/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
-Phase 13 requirements complete: 0/8
-Milestone requirements complete: 0/91
+Phase 13 requirements complete: 8/8
+Milestone requirements complete: 8/91
 Phases complete: 0/10
-Plans human-approved executed: 6/7
+Plans human-approved executed: 7/7
 frontend blocked
 
 ## Historical v1.0 Performance Metrics
@@ -376,18 +388,18 @@ Known deferred artifact items at v1.0 close: 0.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-07-PLAN.md
+**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CLOSURE.md
 
-Last session: 2026-08-10T00:30:00.000Z
+Last session: 2026-08-10T22:32:25.000Z
 
-Stopped at: 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
+Stopped at: Phase 13 CLOSURE PREPARED — AWAITING HUMAN REVIEW
 
 Resume files:
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-07-PLAN.md`,
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-06-SUMMARY.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CLOSURE.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-07-SUMMARY.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: execute 13-07 only under its approved plan. Do not start Phase 14.
+Next permitted step: human review of Phase 13 closure. Phase 13 closure awaits explicit human approval. Phase 14 execution remains blocked until a separate explicit human authorization.
 
 Do not automatically start Phase 14 or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute

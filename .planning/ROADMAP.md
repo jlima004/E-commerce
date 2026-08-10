@@ -8,7 +8,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 
 ## Milestone v1.1: Backend Storefront Readiness
 
-**Status:** OPEN — 0/10 phases, 0/91 requirements.
+**Status:** OPEN — 0/10 phases closed (Phase 13 CLOSURE PREPARED — AWAITING HUMAN REVIEW), 8/91 requirements.
 
 ## Governança
 
@@ -18,14 +18,14 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - `parallelization = false`;
 - sequência obrigatória: `13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22`;
 - cada gate CONTEXT, RESEARCH, PLAN, SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW e CLOSURE para revisão humana;
-- Phase 13 CONTEXT, RESEARCH, PLAN R5, SPEC/SDD R1 e Implementation Prompt estão aprovados; 13-01..13-06 HUMAN APPROVED — PASS; 6/7 planos human-approved executed; FND-03/FND-06/FND-07/FND-08 permanecem EVIDENCED — NOT COMPLETE conforme seus gates; 13-07 está EXECUTION AUTHORIZED; deploy e frontend permanecem não autorizados/bloqueados.
+- Phase 13 CONTEXT, RESEARCH, PLAN R5, SPEC/SDD R1 e Implementation Prompt estão aprovados; 13-01..13-07 HUMAN APPROVED — PASS (7/7); FND-01..FND-08 COMPLETE; Phase 13 CLOSURE PREPARED — AWAITING HUMAN REVIEW; Phase 14 permanece NOT AUTHORIZED; deploy e frontend permanecem não autorizados/bloqueados.
 
 ## Milestones
 
 | Milestone | Status | Phases | Requirements |
 |---|---|---:|---:|
 | v1.0 — Backend MVP | COMPLETE / CLOSED / ARCHIVED / IMMUTABLE | 13/13 | 45/45 |
-| v1.1 — Backend Storefront Readiness | OPEN | 0/10 | 0/91 |
+| v1.1 — Backend Storefront Readiness | OPEN | 0/10 closed (Phase 13 closure prepared) | 8/91 |
 
 O snapshot histórico de v1.0 permanece em [v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md). A tag e a GitHub Release `v1.0` são imutáveis e não participam deste milestone.
 
@@ -33,7 +33,7 @@ O snapshot histórico de v1.0 permanece em [v1.0-ROADMAP.md](milestones/v1.0-ROA
 
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
-| 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | 6/7 human-approved; 13-07 EXECUTION AUTHORIZED |
+| 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSURE PREPARED — AWAITING HUMAN REVIEW; 7/7 plans; 8/8 requirements |
 | 14 | Customer Auth & Verification | 13 | 9 | Not started |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
@@ -195,7 +195,7 @@ Frontend Milestone 1: AUTHORIZED TO START
 
 ```text
 Milestone v1.0: archived / immutable
-Milestone v1.1: opened
+Milestone v1.1: OPEN — NOT CLOSED
 
 Phase 13 CONTEXT: APPROVED
 Phase 13 RESEARCH: APPROVED
@@ -243,7 +243,7 @@ P13-13-05-R2:
 HUMAN REVIEW PASS; B13-05-R1-01 e B13-05-R1-02 CLOSED — PASS
 
 P13-13-06-R1:
-BLOCKED — VALID
+BLOCKED — VALID (historical)
 
 P13-13-06-PLAN-R2:
 HUMAN APPROVED — PASS
@@ -251,14 +251,23 @@ HUMAN APPROVED — PASS
 P13-13-06-R2:
 HUMAN REVIEW PASS; B13-06-R2-01 e B13-06-R2-02 CLOSED — PASS
 
+P13-13-06-R3:
+HUMAN APPROVED — PASS
+
 13-06:
 HUMAN APPROVED — PASS
 
+P13-13-07-R1:
+HUMAN APPROVED — PASS
+
+P13-13-07-R1-C4:
+HUMAN APPROVED — PASS
+
 13-07:
-EXECUTION AUTHORIZED
+HUMAN APPROVED — PASS
 
 Plans human-approved executed:
-6/7
+7/7
 
 - [x] 13-01-PLAN.md (HUMAN APPROVED — PASS)
 - [x] 13-02-PLAN.md (HUMAN APPROVED — PASS)
@@ -266,36 +275,50 @@ Plans human-approved executed:
 - [x] 13-04-PLAN.md (HUMAN APPROVED — PASS)
 - [x] 13-05-PLAN.md (HUMAN APPROVED — PASS)
 - [x] 13-06-PLAN.md (HUMAN APPROVED — PASS)
-- [ ] 13-07-PLAN.md (EXECUTION AUTHORIZED)
+- [x] 13-07-PLAN.md (HUMAN APPROVED — PASS)
 
 Phase 13 requirements covered:
 8/8
 
 Phase 13 requirements complete:
-0/8
+8/8
+
+FND-01:
+COMPLETE
+
+FND-02:
+COMPLETE
 
 FND-03:
-EVIDENCED — NOT COMPLETE
+COMPLETE
+
+FND-04:
+COMPLETE
+
+FND-05:
+COMPLETE
 
 FND-06:
-EVIDENCED — NOT COMPLETE
+COMPLETE
 
 FND-07:
-EVIDENCED — NOT COMPLETE
+COMPLETE
 
 FND-08:
-EVIDENCED — NOT COMPLETE
+COMPLETE
 
 Milestone requirements complete:
-0/91
+8/91
 
-13-04: HUMAN APPROVED — PASS
-13-05: HUMAN APPROVED — PASS
-13-06: HUMAN APPROVED — PASS
-13-07: EXECUTION AUTHORIZED
+Phase 13:
+CLOSURE PREPARED — AWAITING HUMAN REVIEW
+
+Phase 14:
+NOT AUTHORIZED
+
 Deploy: NOT AUTHORIZED
 Frontend Milestone 1: BLOCKED / not started / not authorized
 ```
 
 ---
-*Roadmap opened: 2026-08-06 · 10 phases · 91 open requirements · manual-review gated · no auto-chain*
+*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-10 — Phase 13 closure prepared (8/91 requirements); manual-review gated · no auto-chain*

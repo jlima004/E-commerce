@@ -1,10 +1,10 @@
 # Requirements: Milestone v1.1 — Backend Storefront Readiness
 
 **Definido:** 2026-08-06
-**Status:** aberto; 0 requisitos concluídos
+**Status:** aberto; 8 requisitos concluídos (FND-01..FND-08); 83 abertos
 **Escopo:** somente backend; o Frontend Milestone 1 permanece bloqueado
 
-> Decisões existentes em PRD/SRS/rastreabilidade não equivalem a implementação. Todos os requisitos abaixo começam abertos e só podem ser concluídos com a evidência prevista no roadmap.
+> Decisões existentes em PRD/SRS/rastreabilidade não equivalem a implementação. Requisitos só podem ser concluídos com a evidência prevista no roadmap e gate de closure da phase correspondente.
 
 ## Objetivo
 
@@ -14,16 +14,20 @@ Deixar o backend completamente preparado para o início do Frontend Milestone 1,
 
 ### Phase 13 — Storefront Contract Foundation & Surface Lockdown
 
-| ID | Classe | Requisito verificável |
-|---|---|---|
-| FND-01 | Contrato | Auditar a superfície Store instalada e classificar cada operação nativa como autorizada, bloqueada, estendida ou fora do Frontend M1. |
-| FND-02 | Segurança | Aplicar allowlist explícita e provar que nenhuma rota nativa alternativa contorna autenticação, capability, concorrência, checkout ou a proibição de criar `Order`. |
-| FND-03 | Contrato | Padronizar `StoreErrorResponse`, códigos estáveis, `fieldErrors`, status HTTP e `x-correlation-id` sanitizado. |
-| FND-04 | Persistência | Definir e persistir registros de idempotência escopados por operação, ator e recurso, com fingerprint, resultado e retenção. |
-| FND-05 | Segurança | Rejeitar reutilização de `Idempotency-Key` com payload semanticamente incompatível e impedir que idempotência substitua locks/constraints. |
-| FND-06 | Persistência | Definir primitivo de versão monotônica e optimistic concurrency reutilizável pelos recursos Store concorrentes. |
-| FND-07 | Contrato | Fixar BFF same-origin como consumidor storefront, com security schemes e headers transversais explícitos, sem autorizar browser → Medusa direto. |
-| FND-08 | Contrato | Preparar a fundação do Store OpenAPI `1.1.0`, incluindo schemas monetários BRL com unidade explícita e operação/erro/header estáveis. |
+| ID | Classe | Requisito verificável | Status |
+|---|---|---|---|
+| FND-01 | Contrato | Auditar a superfície Store instalada e classificar cada operação nativa como autorizada, bloqueada, estendida ou fora do Frontend M1. | COMPLETE |
+| FND-02 | Segurança | Aplicar allowlist explícita e provar que nenhuma rota nativa alternativa contorna autenticação, capability, concorrência, checkout ou a proibição de criar `Order`. | COMPLETE |
+| FND-03 | Contrato | Padronizar `StoreErrorResponse`, códigos estáveis, `fieldErrors`, status HTTP e `x-correlation-id` sanitizado. | COMPLETE |
+| FND-04 | Persistência | Definir e persistir registros de idempotência escopados por operação, ator e recurso, com fingerprint, resultado e retenção. | COMPLETE |
+| FND-05 | Segurança | Rejeitar reutilização de `Idempotency-Key` com payload semanticamente incompatível e impedir que idempotência substitua locks/constraints. | COMPLETE |
+| FND-06 | Persistência | Definir primitivo de versão monotônica e optimistic concurrency reutilizável pelos recursos Store concorrentes. | COMPLETE |
+| FND-07 | Contrato | Fixar BFF same-origin como consumidor storefront, com security schemes e headers transversais explícitos, sem autorizar browser → Medusa direto. | COMPLETE |
+| FND-08 | Contrato | Preparar a fundação do Store OpenAPI `1.1.0`, incluindo schemas monetários BRL com unidade explícita e operação/erro/header estáveis. | COMPLETE |
+
+`requirements-completed:` `[FND-01, FND-02, FND-03, FND-04, FND-05, FND-06, FND-07, FND-08]`
+
+Phase 13 closure artifact: `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CLOSURE.md` — CLOSURE PREPARED — AWAITING HUMAN REVIEW.
 
 ### Phase 14 — Customer Auth & Verification
 
@@ -244,10 +248,13 @@ Deixar o backend completamente preparado para o início do Frontend Milestone 1,
 
 ## Coverage
 
-- Requisitos v1.1: 91 abertos, 0 concluídos.
+- Requisitos v1.1: 83 abertos, 8 concluídos (FND-01..FND-08).
 - Mapeados a exatamente uma phase: 91.
 - FE requirements com responsabilidade explícita: 54/54.
 - Phases: 13–22, lineares.
+- Phase 13: 8/8 COMPLETE; closure prepared, awaiting human review.
+- Phase 14..22: not started / not authorized.
+- Frontend Milestone 1: BLOCKED.
 
 ---
-*Última atualização: 2026-08-06 — milestone v1.1 aberto documentariamente; Phase 13 CONTEXT não iniciado; frontend bloqueado.*
+*Última atualização: 2026-08-10 — Phase 13 documentary closure prepared; FND-01..FND-08 COMPLETE pending human closure approval; Phase 14 and frontend blocked.*
