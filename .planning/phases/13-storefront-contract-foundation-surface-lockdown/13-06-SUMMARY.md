@@ -37,6 +37,7 @@ key-files:
     - apps/backend/src/api-docs/components/security-schemes.ts
     - apps/backend/src/api-docs/components/index.ts
     - apps/backend/src/api-docs/coverage/verify-coverage.ts
+    - apps/backend/src/api-docs/coverage/native-routes.ts
     - apps/backend/src/api-docs/__tests__/generation.unit.spec.ts
     - apps/backend/src/api-docs/__tests__/store-contract.unit.spec.ts
     - apps/backend/src/api-docs/__tests__/coverage.unit.spec.ts
@@ -46,19 +47,20 @@ key-decisions:
   - "ContractVersion remains closed to 1.0.0 | 1.1.0; arbitrary strings are not accepted"
   - "Store resolves to 1.1.0 while Admin and Webhooks remain 1.0.0 and validate fail-closed per surface"
   - "PRESERVE_LEGACY runtime availability is not M1 enablement and does not enter the executable M1 exact-set"
-  - "A stale native evidence fingerprint requires a 15th technical path, so the R1 execution is BLOCKED rather than scope-expanded"
+  - "R1 correctly blocked on stale native evidence outside the 14-path allowlist; R2 refreshed only stale fingerprint metadata and expanded the authorized technical set to 15 paths"
+  - "Store OpenAPI 1.1.0 materializes zero Store business path+method while preserving runtime and registry historical/support knowledge"
 
 requirements-completed: []
 requirements-evidenced: [FND-03, FND-07, FND-08]
 
 duration: 10min
 completed: 2026-08-09
-status: blocked-awaiting-human-review
+status: human-approved-pass
 ---
 
 # Phase 13 Plan 06: Store OpenAPI 1.1.0 Foundation Summary
 
-**Store OpenAPI 1.1.0 was generated from a closed per-surface registry with transversal components and exact-set coverage, but the mandatory relevant regression remains BLOCKED by a pre-existing native evidence fingerprint that cannot be corrected inside the 14-path R1 allowlist.**
+**13-06 is HUMAN APPROVED — PASS after R2 closed the native-evidence drift and enforced the approved Store OpenAPI 1.1.0 public exact-set of zero Store business `path+method`, while preserving the 58-route runtime surface and registry historical/support knowledge.**
 
 ## Identity and Lineage
 
@@ -196,7 +198,7 @@ NOT EXECUTED — RESERVED FOR 13-07
 
 The first lint attempt correctly rejected seven unused future foundation components. The source was corrected inside the allowlist by retaining explicit non-executable component references in Store foundation metadata; the Store writer was rerun and final lint passed. No Admin/Webhooks artifact was regenerated or changed.
 
-## Test Evidence
+## Test Evidence — R1 Historical Checkpoint
 
 | Gate | Command/result | Suites | Tests | Exit |
 |---|---|---:|---:|---:|
@@ -207,7 +209,7 @@ The first lint attempt correctly rejected seven unused future foundation compone
 | Relevant API Docs post-writer | 13 explicit API Docs suites excluding the separately reported failing native-fingerprint suite | 13/13 | 342/342 | 0 |
 | Native extension evidence | `native-extensions.unit.spec.ts` | 0/1 | 13 passed / 2 failed / 15 | 1 |
 
-### Blocking regression
+### Blocking regression — R1 Historical
 
 ```text
 Suite:
@@ -227,9 +229,9 @@ R1 allowlist status:
 NOT AUTHORIZED — would be a 15th technical path
 ```
 
-`apps/backend/src/api/middlewares.ts` is unchanged from the authorized baseline. The executor did not refresh fingerprints or alter middleware because P13-13-06-PLAN-R1 forbids a 15th technical path. Per the failure gate, this is `BLOCKED`, not PASS with debt.
+`apps/backend/src/api/middlewares.ts` was unchanged from the authorized baseline. R1 correctly stopped rather than expanding scope. This historical blocker was later closed by the human-approved R2 contract below without modifying the middleware evidence file.
 
-## Build
+## Build — R1 Historical Checkpoint
 
 ```text
 Command:
@@ -245,15 +247,15 @@ Result:
 PASS
 ```
 
-The build completed successfully. Its 297 warnings are non-blocking; no warning was widened into an out-of-scope edit.
+The build completed successfully. Its 297 warnings were non-blocking; no warning was widened into an out-of-scope edit.
 
 ## Sensitive Proof
 
 Generated Store OpenAPI contains zero `example`/`examples` nodes and zero sensitive matches. No raw Idempotency-Key, JWT, capability, confirmation token, CPF, `client_secret`, Pix payload, Authorization credential, cookie, or provider secret example was introduced.
 
-## Scope and Integrity
+## Scope and Integrity — R1 Historical Checkpoint
 
-- Technical paths changed: exactly 14/14 authorized paths.
+- Technical paths changed: exactly 14/14 R1-authorized paths.
 - Unexpected technical paths: none.
 - `manifest.ts`: unchanged.
 - Store runtime outside the allowlist: unchanged.
@@ -261,11 +263,11 @@ Generated Store OpenAPI contains zero `example`/`examples` nodes and zero sensit
 - `package-lock.json`: unchanged.
 - `apps/backend/package.json`: unchanged.
 - Admin/Webhooks generated JSON: unchanged.
-- STATE/ROADMAP/REQUIREMENTS/PLAN: unchanged.
+- STATE/ROADMAP/REQUIREMENTS/PLAN: unchanged during technical execution.
 - `git diff --check`: PASS.
-- Remote effects: none (no Supabase, remote DB, Heroku, deploy, Stripe, Gelato, Resend, PostHog, Sentry external, frontend, push, or PR).
+- Remote effects: none (no Supabase, remote DB, Heroku, deploy, Stripe, Gelato, Resend, PostHog, Sentry external, frontend, push, or PR during technical execution).
 
-## Commits
+## Commits — R1
 
 - `0c508dc` — `test(13-06): define Store OpenAPI 1.1 regressions`
 - `e164576` — `feat(13-06): add per-surface OpenAPI contract versions`
@@ -294,9 +296,9 @@ Generated Store OpenAPI contains zero `example`/`examples` nodes and zero sensit
 - **Files modified:** `components/errors.ts`, generated Store JSON
 - **Commit:** `8c8cd8c`
 
-### Deferred / Blocking Issue
+### Deferred / Blocking Issue — R1 Historical
 
-The native extension fingerprint drift cannot be auto-fixed: every legitimate correction requires a path outside the exact 14-path allowlist. Execution stopped as `BLOCKED` after recording complete evidence.
+The native extension fingerprint drift could not be auto-fixed under R1 because every legitimate correction required a path outside the exact 14-path allowlist. R1 stopped as `BLOCKED`. R2 later closed this issue by authorizing `native-routes.ts` as the 15th technical path while keeping `middlewares.ts` immutable.
 
 ## Known Stubs
 
@@ -306,7 +308,7 @@ None. Cart runtime ETag/If-Match and downstream owner-phase operations are expli
 
 No new network endpoint, auth path, file access boundary, schema migration, provider call, or secret persistence was introduced. The BFF boundary was tightened documentarily and sensitive examples remain absent.
 
-## Requirements and Governance
+## Requirements and Governance — R1 Historical Checkpoint
 
 ```text
 FND-03:
@@ -337,16 +339,16 @@ BLOCKED — RELEVANT API DOCS REGRESSION REQUIRES 15TH TECHNICAL PATH
 NOT AUTHORIZED
 ```
 
-## Self-Check: PASSED
+## Self-Check — R1 Historical: PASSED
 
-- All 14 authorized technical files exist and are committed.
+- All 14 R1-authorized technical files existed and were committed.
 - Commits `0c508dc`, `e164576`, `eaa4ed3`, `6e119a5`, `355e4f7`, and `8c8cd8c` exist.
-- Store writer output exists at `store.openapi.json`; Admin/Webhooks artifacts are unchanged.
-- The blocker is reproducible, exact, outside the R1 allowlist, and not concealed as a technical PASS.
-- Governance files remain unchanged and 13-07 remains unauthorized.
+- Store writer output existed at `store.openapi.json`; Admin/Webhooks artifacts were unchanged.
+- The blocker was reproducible, exact, outside the R1 allowlist, and was not concealed as a technical PASS.
+- Governance files remained unchanged during the R1 technical execution and 13-07 remained unauthorized at that historical checkpoint.
 
 ---
-*Phase: 13-storefront-contract-foundation-surface-lockdown — Plan 13-06 R1 BLOCKED at mandatory relevant regression gate*
+*Historical checkpoint: Phase 13 Plan 13-06 R1 BLOCKED at mandatory relevant regression gate*
 
 ## P13-13-06-R2
 
@@ -541,7 +543,7 @@ Remote effects:
 NONE
 ```
 
-### R2 governance checkpoint
+### R2 technical checkpoint
 
 ```text
 FND-03:
@@ -573,4 +575,57 @@ NOT AUTHORIZED
 ```
 
 ---
-*Phase: 13-storefront-contract-foundation-surface-lockdown — P13-13-06-R2 TECHNICAL PASS — AWAITING HUMAN REVIEW*
+*Historical technical checkpoint: P13-13-06-R2 TECHNICAL PASS — AWAITING HUMAN REVIEW*
+
+## Human Review and Current Gate
+
+Human review of `P13-13-06-R2` accepted both corrective blockers as closed and approved Plan `13-06`.
+
+```text
+P13-13-06-R2 HUMAN REVIEW:
+PASS
+
+B13-06-R2-01:
+CLOSED — PASS
+
+B13-06-R2-02:
+CLOSED — PASS
+
+13-06:
+HUMAN APPROVED — PASS
+
+Plans human-approved executed:
+6/7
+
+FND-03:
+EVIDENCED — NOT COMPLETE
+
+FND-07:
+EVIDENCED — NOT COMPLETE
+
+FND-08:
+EVIDENCED — NOT COMPLETE
+
+requirements-completed:
+[]
+
+Phase 13 requirements complete:
+0/8
+
+Milestone requirements complete:
+0/91
+
+13-07:
+EXECUTION AUTHORIZED
+
+Deploy:
+NOT AUTHORIZED
+
+Frontend Milestone 1:
+BLOCKED / NOT AUTHORIZED
+```
+
+No technical execution of `13-07`, deploy, remote provider mutation, or frontend work is performed by this documentary approval sync.
+
+---
+*Phase: 13-storefront-contract-foundation-surface-lockdown — Plan 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED*
