@@ -347,3 +347,230 @@ NOT AUTHORIZED
 
 ---
 *Phase: 13-storefront-contract-foundation-surface-lockdown — Plan 13-06 R1 BLOCKED at mandatory relevant regression gate*
+
+## P13-13-06-R2
+
+```text
+R2 baseline:
+2c1f5738f9dc9e502f98731018130a387945844c
+
+P13-13-06-PLAN-R2:
+HUMAN APPROVED — PASS
+
+B13-06-R2-01:
+CLOSED — PASS
+
+B13-06-R2-02:
+CLOSED — PASS
+
+R2 result:
+TECHNICAL PASS — AWAITING HUMAN REVIEW
+```
+
+### Native evidence fingerprint closure
+
+```text
+Native extension entries:
+6
+
+Fingerprint bindings:
+24
+
+Evidence files changed:
+0
+
+Bindings matching before refresh:
+18
+
+Bindings stale before refresh:
+6
+
+Fingerprints refreshed:
+6
+
+native-routes.ts:
+ONLY fingerprint metadata updated for stale bindings
+
+middlewares.ts:
+UNCHANGED
+
+native-extensions.unit.spec.ts:
+15/15 PASS
+```
+
+Os seis bindings stale eram os fingerprints de
+`apps/backend/src/api/middlewares.ts` associados a `GET /store/products`,
+`GET /store/products/{id}`, `POST /admin/products`,
+`POST /admin/products/{id}`, `POST /admin/products/{id}/variants` e
+`POST /admin/products/{id}/variants/{variant_id}`. Todos os 24 bindings foram
+recalculados pela implementação canônica `fingerprintEvidence`; nenhum evidence
+file estava ausente ou precisou de alteração.
+
+### Store OpenAPI public exact-set closure
+
+```text
+Store OpenAPI:
+1.1.0
+
+Runtime Store routes:
+58
+
+Registry historical/support Store operations:
+PRESERVED
+
+Public Store business path+method:
+0
+
+Health/support path+method:
+2
+
+GET /store/products:
+ABSENT
+
+GET /store/products/{id}:
+ABSENT
+
+GET /store/carts/active:
+ABSENT
+
+POST /store/carts/active:
+ABSENT
+
+POST /store/carts/{id}/payment-attempts/card:
+ABSENT
+
+POST /store/carts/{id}/payment-attempts/pix:
+ABSENT
+
+POST /store/tracking/lookup:
+ABSENT
+```
+
+O writer agora materializa operações Store business somente quando a entrada
+do manifest satisfaz simultaneamente classification `AUTHORIZED|EXTENDED`,
+`m1_enablement=enabled`, `runtime_policy=M1_ENABLED` e
+`openapi_m1_expectation=include_executable_m1`. A regra não contém allowlist
+artesanal de endpoints e admite enablement futuro pelo manifest. O registry
+continua com as sete operações históricas/support e os componentes úteis.
+
+```text
+Manifest:
+58
+
+AUTHORIZED:
+0
+
+EXTENDED:
+10
+
+BLOCKED:
+17
+
+OUTSIDE_FRONTEND_M1:
+31
+
+M1_ENABLED:
+0
+
+Expected executable Store business:
+0
+
+Actual public Store business path+method:
+0
+
+PRESERVE_LEGACY public:
+0
+
+EXTENDED disabled public:
+0
+
+BLOCKED public:
+0
+
+OUTSIDE public:
+0
+```
+
+Coverage inspeciona explicitamente os arrays esperado e real, ambos vazios, e
+prova rejeição de operação injetada `PRESERVE_LEGACY`, `EXTENDED disabled`,
+`BLOCKED`, `OUTSIDE_FRONTEND_M1` e desconhecida.
+
+### R2 verification
+
+| Gate | Suites | Tests | Exit | Result |
+|---|---:|---:|---:|---|
+| Native evidence | 1/1 | 15/15 | 0 | PASS |
+| Generation unit | 1/1 | 161/161 | 0 | PASS |
+| Store contract unit | 1/1 | 17/17 | 0 | PASS |
+| Coverage unit | 1/1 | 20/20 | 0 | PASS |
+| Combined focal R2 | 4/4 | 213/213 | 0 | PASS |
+| Full relevant API Docs regression | 14/14 | 362/362 | 0 | PASS |
+| OpenAPI writer Store | — | — | 0 | PASS |
+| OpenAPI lint final | — | 0 warn-or-higher | 0 | PASS |
+| Backend build | — | TypeScript errors 0 | 0 | PASS |
+
+O primeiro lint R2 encontrou oito componentes históricos sem referência após
+a retirada dos paths públicos. Eles foram preservados por metadata
+não-executável no `StoreErrorResponse`, o focal foi reexecutado antes do segundo
+writer e o lint final passou sem warning. O JSON final possui zero nodes
+`example`/`examples` e nenhum exemplo sensível.
+
+```text
+openapi:check:
+NOT EXECUTED — RESERVED FOR 13-07
+
+Admin JSON:
+UNCHANGED
+
+Webhooks JSON:
+UNCHANGED
+
+Evidence files:
+UNCHANGED
+
+manifest.ts:
+UNCHANGED
+
+native-fingerprints.ts:
+UNCHANGED
+
+package.json / package-lock.json / apps/backend/package.json:
+UNCHANGED
+
+Remote effects:
+NONE
+```
+
+### R2 governance checkpoint
+
+```text
+FND-03:
+EVIDENCED — NOT COMPLETE
+
+FND-07:
+EVIDENCED — NOT COMPLETE
+
+FND-08:
+EVIDENCED — NOT COMPLETE
+
+requirements-completed:
+[]
+
+Plans human-approved executed:
+5/7
+
+Phase 13 requirements complete:
+0/8
+
+Milestone requirements complete:
+0/91
+
+13-06:
+TECHNICAL PASS — AWAITING HUMAN REVIEW
+
+13-07:
+NOT AUTHORIZED
+```
+
+---
+*Phase: 13-storefront-contract-foundation-surface-lockdown — P13-13-06-R2 TECHNICAL PASS — AWAITING HUMAN REVIEW*
