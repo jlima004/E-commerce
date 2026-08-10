@@ -2,6 +2,11 @@ import type { MedusaContainer } from "@medusajs/framework/types"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import {
+  completeCartWorkflow,
+  createPaymentCollectionForCartWorkflow,
+  createProductsWorkflow,
+} from "@medusajs/core-flows"
+import {
   assertDisposableMedusaEnvironment,
   buildDisposableMedusaEnvironment,
   requireDisposableDatabaseName,
@@ -105,12 +110,22 @@ if (!requestedDatabaseName) {
     metadata?: Record<string, unknown> | null
   }
 
-  function attempt(identity: string): PaymentAttemptRecord {
+  type PersistedPrerequisites = {
+    cartId: string
+    paymentCollectionId: string
+    paymentSessionId: string
+    email: string
+  }
+
+  function attempt(
+    identity: string,
+    prerequisites: PersistedPrerequisites
+  ): PaymentAttemptRecord {
     return {
       id: `payatt_${identity}`,
-      cart_id: `cart_${identity}`,
-      payment_collection_id: `paycol_${identity}`,
-      payment_session_id: `payses_${identity}`,
+      cart_id: prerequisites.cartId,
+      payment_collection_id: prerequisites.paymentCollectionId,
+      payment_session_id: prerequisites.paymentSessionId,
       provider: "stripe",
       provider_payment_intent_id: `pi_${identity}`,
       provider_payment_session_id: `ps_${identity}`,
@@ -211,33 +226,6 @@ if (!requestedDatabaseName) {
     return res as unknown as MedusaResponse & typeof res
   }
 
-  function cart(identity: string) {
-    return {
-      id: `cart_${identity}`,
-      currency_code: "brl",
-      completed_at: null,
-      items: [
-        {
-          id: `item_${identity}`,
-          quantity: 1,
-          unit_price: 99,
-          metadata: {},
-          variant: {
-            id: `variant_${identity}`,
-            sku: `SKU-${identity}`,
-            metadata: {
-              gelato_product_uid: `gelato_${identity}`,
-              gelato_template_id: `template_${identity}`,
-              gelato_variant_options: { size: "M", color: "Preto" },
-              template_mode: "fixed",
-            },
-            prices: [{ amount: 99, currency_code: "brl" }],
-          },
-        },
-      ],
-    }
-  }
-
   medusaIntegrationTestRunner({
     dbName: databaseName,
     env: disposableEnvironment,
@@ -257,25 +245,118 @@ if (!requestedDatabaseName) {
         }
       })
 
-      function harness(identity: string) {
-        const payment = paymentAttemptService(attempt(identity))
+      async function seedPersistedPrerequisites(
+        identity: string
+      ): Promise<PersistedPrerequisites> {
+        const handleIdentity = identity.replace(/_/g, "-")
+        const realContainer = getContainer()
+        const fulfillmentModule = realContainer.resolve(Modules.FULFILLMENT) as {
+          createShippingProfiles(input: {
+            name: string
+            type: string
+          }): Promise<{ id: string }>
+        }
+        const cartModule = realContainer.resolve(Modules.CART) as {
+          createCarts(input: Record<string, unknown>): Promise<{ id: string }>
+        }
+        const paymentModule = realContainer.resolve(Modules.PAYMENT) as {
+          createPaymentSession(
+            paymentCollectionId: string,
+            input: Record<string, unknown>
+          ): Promise<{ id: string }>
+          authorizePaymentSession(
+            paymentSessionId: string,
+            context: Record<string, unknown>
+          ): Promise<unknown>
+        }
+
+        const shippingProfile = await fulfillmentModule.createShippingProfiles({
+          name: `No shipping ${identity}`,
+          type: "default",
+        })
+        const { result: products } = await createProductsWorkflow(realContainer).run({
+          input: {
+            products: [
+              {
+                title: `Canonical Order proof ${identity}`,
+                handle: `canonical-order-proof-${handleIdentity}`,
+                shipping_profile_id: shippingProfile.id,
+                options: [{ title: "Size", values: ["M"] }],
+                variants: [
+                  {
+                    title: "M",
+                    sku: `SKU-${identity}`,
+                    options: { Size: "M" },
+                    manage_inventory: false,
+                    allow_backorder: true,
+                    metadata: {
+                      gelato_product_uid: `gelato_${identity}`,
+                      gelato_template_id: `template_${identity}`,
+                      gelato_variant_options: { size: "M", color: "Preto" },
+                      template_mode: "fixed",
+                    },
+                    prices: [{ amount: 99, currency_code: "brl" }],
+                  },
+                ],
+              },
+            ],
+          },
+        })
+        const variant = products[0].variants[0]
+        const email = `${identity}@canonical-order.test`
+        const cart = await cartModule.createCarts({
+          currency_code: "brl",
+          email,
+          items: [
+            {
+              title: `Canonical item ${identity}`,
+              quantity: 1,
+              unit_price: 99,
+              variant_id: variant.id,
+              variant_sku: variant.sku,
+              requires_shipping: false,
+              is_custom_price: true,
+            },
+          ],
+        })
+        const { result: paymentCollection } =
+          await createPaymentCollectionForCartWorkflow(realContainer).run({
+            input: { cart_id: cart.id },
+          })
+        const paymentSession = await paymentModule.createPaymentSession(
+          paymentCollection.id,
+          {
+            provider_id: "pp_system_default",
+            amount: 99,
+            currency_code: "brl",
+            data: {},
+          }
+        )
+        await paymentModule.authorizePaymentSession(paymentSession.id, {})
+
+        return {
+          cartId: cart.id,
+          paymentCollectionId: paymentCollection.id,
+          paymentSessionId: paymentSession.id,
+          email,
+        }
+      }
+
+      async function persistedOrders(email: string) {
+        const orderModule = getContainer().resolve(Modules.ORDER) as {
+          listOrders(selector: Record<string, unknown>): Promise<Array<{ id: string }>>
+        }
+        return orderModule.listOrders({ email })
+      }
+
+      function harness(identity: string, prerequisites: PersistedPrerequisites) {
+        const realContainer = getContainer()
+        const payment = paymentAttemptService(attempt(identity, prerequisites))
         const webhooks = webhookService()
-        const orders: Array<Record<string, unknown>> = []
         const analytics: Array<Record<string, unknown>> = []
         let completeCartInvocations = 0
-        let createOrderInvocations = 0
-        const realCheckout = getContainer().resolve(CHECKOUT_COMPLETION_MODULE)
+        const realCheckout = realContainer.resolve(CHECKOUT_COMPLETION_MODULE)
 
-        const orderModule = {
-          listOrders: jest.fn(async (selector?: Record<string, unknown>) =>
-            orders.filter((order) => !selector?.id || order.id === selector.id)
-          ),
-          updateOrders: jest.fn(async (selector, update) => {
-            const index = orders.findIndex((order) => order.id === selector.id)
-            if (index >= 0) orders[index] = { ...orders[index], ...update }
-            return index >= 0 ? [orders[index]] : []
-          }),
-        }
         const analyticsModule = {
           listAnalyticsEventLogs: jest.fn(async (filters?: Record<string, unknown>) =>
             analytics.filter(
@@ -301,14 +382,7 @@ if (!requestedDatabaseName) {
             if (key === ANALYTICS_EVENT_LOG_MODULE || key === "analytics_event_log") {
               return analyticsModule
             }
-            if (key === Modules.ORDER) return orderModule
-            if (key === Modules.CART) {
-              return { updateLineItems: jest.fn(async (rows) => rows) }
-            }
-            if (key === ContainerRegistrationKeys.QUERY) {
-              return { graph: jest.fn(async () => ({ data: [cart(identity)] })) }
-            }
-            return getContainer().resolve(key)
+            return realContainer.resolve(key)
           },
         } as unknown as MedusaContainer
 
@@ -318,32 +392,12 @@ if (!requestedDatabaseName) {
         ): Promise<CreateOrderFromConfirmedPaymentAttemptResult> =>
           runCreateOrderFromConfirmedPaymentAttemptEntrypoint(container, input, {
             now: () => new Date("2026-08-09T13:00:00.000Z"),
-            getCart: async () => cart(identity),
-            persistCartSnapshots: async () => undefined,
-            persistOrderState: async (_container, orderId) => {
-              const index = orders.findIndex((order) => order.id === orderId)
-              if (index >= 0) {
-                orders[index] = {
-                  ...orders[index],
-                  metadata: {
-                    order_status: "confirmed",
-                    payment_status: "captured",
-                  },
-                }
-              }
-            },
-            runCompleteCart: async () => {
+            runCompleteCart: async (_scope, cartId) => {
               completeCartInvocations += 1
-              if (orders.length === 0) {
-                createOrderInvocations += 1
-                orders.push({
-                  id: `order_${identity}`,
-                  email: "synthetic-order@example.test",
-                  display_id: 1307,
-                  metadata: null,
-                })
-              }
-              return { id: String(orders[0].id) }
+              const { result } = await completeCartWorkflow(realContainer).run({
+                input: { id: cartId },
+              })
+              return result
             },
           })
 
@@ -395,16 +449,18 @@ if (!requestedDatabaseName) {
 
         return {
           container,
-          orders,
           payment,
           webhooks,
           post,
-          counts: () => ({ completeCartInvocations, createOrderInvocations }),
+          counts: () => ({ completeCartInvocations }),
         }
       }
 
       it("Store attempts including native complete reach zero Order-birth entrypoints", async () => {
-        const state = harness("store_negative_1307")
+        const prerequisites = await seedPersistedPrerequisites(
+          "store_negative_1307_r1"
+        )
+        const state = harness("store_negative_1307_r1", prerequisites)
         const guard = createStoreSurfaceGuardMiddleware()
         const attempts = [
           ["POST", "/store/carts/cart_negative/complete"],
@@ -439,65 +495,66 @@ if (!requestedDatabaseName) {
         }
         await completeCartOverride(completeReq as never, completeRes)
         expect(completeReq.scope.resolve).not.toHaveBeenCalled()
-        expect(state.counts()).toEqual({
-          completeCartInvocations: 0,
-          createOrderInvocations: 0,
-        })
-        expect(state.orders).toHaveLength(0)
+        expect(state.counts()).toEqual({ completeCartInvocations: 0 })
+        expect(await persistedOrders(prerequisites.email)).toHaveLength(0)
 
         const rows = await dbConnection.raw(
-          "select count(*)::int as count from checkout_completion_log where payment_intent_id = 'pi_store_negative_1307'"
+          "select count(*)::int as count from checkout_completion_log where payment_intent_id = 'pi_store_negative_1307_r1'"
         )
         expect(rows.rows).toEqual([{ count: 0 }])
       })
 
       it("trusted canonical webhook creates exactly one correlated Order and replay stays one", async () => {
-        const state = harness("canonical_1307")
-        const first = await state.post("evt_canonical_1307")
+        const prerequisites = await seedPersistedPrerequisites("canonical_1307_r1")
+        const state = harness("canonical_1307_r1", prerequisites)
+        const first = await state.post("evt_canonical_1307_r1")
         expect(first.statusCode).toBe(200)
         expect(first.body).toEqual(expect.objectContaining({ ok: true, status: "processed" }))
         expect(state.payment.rows[0].status).toBe("payment_confirmed_by_webhook")
-        expect(state.orders).toHaveLength(1)
-        expect(state.counts()).toEqual({
-          completeCartInvocations: 1,
-          createOrderInvocations: 1,
-        })
+        const firstOrders = await persistedOrders(prerequisites.email)
+        expect(firstOrders).toHaveLength(1)
+        expect(state.counts()).toEqual({ completeCartInvocations: 1 })
 
-        const replay = await state.post("evt_canonical_1307")
+        const replay = await state.post("evt_canonical_1307_r1")
         expect(replay.statusCode).toBe(200)
         expect(replay.body).toEqual(expect.objectContaining({ ok: true, duplicate: true }))
-        expect(state.orders).toHaveLength(1)
+        const replayOrders = await persistedOrders(prerequisites.email)
+        expect(replayOrders).toHaveLength(1)
+        expect(replayOrders[0].id).toBe(firstOrders[0].id)
 
         const rows = await dbConnection.raw(
-          "select status, order_id, payment_attempt_id from checkout_completion_log where payment_intent_id = 'pi_canonical_1307'"
+          "select status, order_id, payment_attempt_id from checkout_completion_log where payment_intent_id = 'pi_canonical_1307_r1'"
         )
         expect(rows.rows).toEqual([
           {
             status: "completed",
-            order_id: "order_canonical_1307",
-            payment_attempt_id: "payatt_canonical_1307",
+            order_id: firstOrders[0].id,
+            payment_attempt_id: "payatt_canonical_1307_r1",
           },
         ])
       })
 
       it("concurrent canonical replay has multiple accepted attempts but one persisted birth", async () => {
-        const state = harness("concurrent_1307")
+        const prerequisites = await seedPersistedPrerequisites("concurrent_1307_r1")
+        const state = harness("concurrent_1307_r1", prerequisites)
         const results = await Promise.all([
-          state.post("evt_concurrent_1307_a"),
-          state.post("evt_concurrent_1307_b"),
-          state.post("evt_concurrent_1307_c"),
+          state.post("evt_concurrent_1307_r1_a"),
+          state.post("evt_concurrent_1307_r1_b"),
+          state.post("evt_concurrent_1307_r1_c"),
         ])
 
         expect(results.every((result) => result.statusCode === 200)).toBe(true)
         expect(results).toHaveLength(3)
-        expect(state.orders).toHaveLength(1)
-        expect(state.counts().createOrderInvocations).toBe(1)
+        const orders = await persistedOrders(prerequisites.email)
+        expect(orders).toHaveLength(1)
+        expect(new Set(orders.map((order) => order.id)).size).toBe(1)
+        expect(state.counts().completeCartInvocations).toBe(1)
 
         const rows = await dbConnection.raw(
-          "select count(*)::int as count, max(order_id) as order_id from checkout_completion_log where payment_intent_id = 'pi_concurrent_1307'"
+          "select count(*)::int as count, max(order_id) as order_id from checkout_completion_log where payment_intent_id = 'pi_concurrent_1307_r1'"
         )
         expect(rows.rows).toEqual([
-          { count: 1, order_id: "order_concurrent_1307" },
+          { count: 1, order_id: orders[0].id },
         ])
       })
     },
