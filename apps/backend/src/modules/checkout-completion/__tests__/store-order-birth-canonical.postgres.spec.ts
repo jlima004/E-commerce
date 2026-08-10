@@ -256,10 +256,10 @@ if (!requestedDatabaseName) {
             type: string
           }): Promise<{ id: string }>
         }
-        const cartModule = realContainer.resolve(Modules.CART) as {
+        const cartModule = realContainer.resolve(Modules.CART) as unknown as {
           createCarts(input: Record<string, unknown>): Promise<{ id: string }>
         }
-        const paymentModule = realContainer.resolve(Modules.PAYMENT) as {
+        const paymentModule = realContainer.resolve(Modules.PAYMENT) as unknown as {
           createPaymentSession(
             paymentCollectionId: string,
             input: Record<string, unknown>
