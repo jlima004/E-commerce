@@ -320,6 +320,9 @@ function classify(
   const statusHint = resolveStatusHint(err)
   const medusaType = readString(err.type)
   const uncertainSideEffect = err.uncertainSideEffect === true
+  // Monotonic fail-closed: a prior explicit false must never promote to true
+  // on re-normalization (e.g. sentry → envelope). Explicit true is never trusted.
+  const explicitlyNonRetryable = err.retryable === false
 
   if (isRateLimit(err, type, statusHint)) {
     const retryAfterSeconds = readNumber(err.retryAfterSeconds)
@@ -327,7 +330,7 @@ function classify(
       statusCode: 429,
       code: STORE_ERROR_CODES.RATE_LIMITED,
       // Known RATE_LIMITED category: retry is safe unless side effect is uncertain.
-      retryable: !uncertainSideEffect,
+      retryable: !uncertainSideEffect && !explicitlyNonRetryable,
       ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
     }
   }
@@ -344,7 +347,7 @@ function classify(
     return {
       statusCode: 503,
       code: STORE_ERROR_CODES.SERVICE_UNAVAILABLE,
-      retryable: !uncertainSideEffect,
+      retryable: !uncertainSideEffect && !explicitlyNonRetryable,
     }
   }
 

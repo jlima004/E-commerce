@@ -20,6 +20,7 @@ import {
   STORE_ERROR_CODES,
   STORE_PUBLIC_FIELD_ERROR_MESSAGE,
   isStoreErrorResponse,
+  toStoreErrorResponse,
   type StoreErrorResponse,
 } from "../../src/api/store-surface/errors"
 import { buildSentryCaptureContext } from "../../src/observability/sentry-scrub"
@@ -264,6 +265,40 @@ describe("Store error contract HTTP (FND-03 / 13-03 / R1)", () => {
       return { req, res, next, captureException, medusaErrorHandler }
     }
 
+    /**
+     * Real composed Store error path:
+     * correlation → storeErrorEnvelopeMiddleware → sentryErrorHandler → wrapped res.json
+     * (second normalization must remain fail-closed for retryable=false).
+     */
+    function invokeComposedStoreErrorStack(
+      error: unknown,
+      headers: Record<string, string> = {}
+    ) {
+      const captureException = jest.fn(() => "event-id")
+      const medusaErrorHandler = jest.fn()
+      const handler = createSentryErrorHandler({
+        captureException,
+        medusaErrorHandler,
+        processRole: "server",
+      })
+      const correlation = createCorrelationAndAccessLogMiddleware()
+      const envelope = createStoreErrorEnvelopeMiddleware()
+      const req = createMockRequest({
+        method: "POST",
+        originalUrl: "/store/carts/active",
+        headers,
+        routePath: "/store/carts/active",
+      })
+      const res = createMockResponse()
+      const next = jest.fn()
+
+      correlation(req as never, res as never, () => {
+        envelope(req as never, res as never, () => undefined)
+      })
+      handler(error, req as never, res as never, next)
+      return { req, res, next, captureException, medusaErrorHandler }
+    }
+
     it("normalizes validation errors with sanitized fieldErrors values", () => {
       const { res, medusaErrorHandler } = invokeStoreError(
         Object.assign(
@@ -493,6 +528,116 @@ describe("Store error contract HTTP (FND-03 / 13-03 / R1)", () => {
       })
       expect(rebuilt.extra).toEqual({ correlation_id: "corr_sentry_01" })
       expectNoCanaries(rebuilt)
+    })
+
+    describe("composed stack double normalization (fail-closed retryable)", () => {
+      it("Case A — uncertain RATE_LIMITED stays retryable=false after envelope re-normalize", () => {
+        const { res, medusaErrorHandler } = invokeComposedStoreErrorStack(
+          {
+            type: "rate_limit",
+            statusCode: 429,
+            message: `rl ${CANARIES.clientSecret} ${CANARIES.cpf}`,
+            uncertainSideEffect: true,
+            stack: CANARIES.stackFrame,
+            providerPayload: CANARIES.providerPayload,
+          },
+          {
+            "x-correlation-id": "corr_composed_rate_uncertain",
+            authorization: CANARIES.authorization,
+            "idempotency-key": CANARIES.idempotencyKey,
+          }
+        )
+
+        expect(medusaErrorHandler).not.toHaveBeenCalled()
+        expect(res.statusCode).toBe(429)
+        const body = res.body as StoreErrorResponse
+        expect(isStoreErrorResponse(body)).toBe(true)
+        expect(body.code).toBe(STORE_ERROR_CODES.RATE_LIMITED)
+        expect(body.retryable).toBe(false)
+        expect(body.message).toBe("Too Many Requests")
+        expectNoCanaries(body)
+      })
+
+      it("Case B — uncertain known SERVICE_UNAVAILABLE stays retryable=false after envelope re-normalize", () => {
+        const { res } = invokeComposedStoreErrorStack(
+          {
+            type: "provider_unavailable",
+            providerUnavailable: true,
+            message: `down ${CANARIES.jwt} ${CANARIES.capability}`,
+            uncertainSideEffect: true,
+            stack: CANARIES.stackFrame,
+          },
+          { "x-correlation-id": "corr_composed_503_uncertain" }
+        )
+
+        expect(res.statusCode).toBe(503)
+        const body = res.body as StoreErrorResponse
+        expect(isStoreErrorResponse(body)).toBe(true)
+        expect(body.code).toBe(STORE_ERROR_CODES.SERVICE_UNAVAILABLE)
+        expect(body.retryable).toBe(false)
+        expectNoCanaries(body)
+      })
+
+      it("Case C — generic 503 stays retryable=false after envelope re-normalize", () => {
+        const { res } = invokeComposedStoreErrorStack(
+          {
+            message: `mystery unavailable ${CANARIES.pixPayload}`,
+            statusCode: 503,
+            stack: CANARIES.stackFrame,
+          },
+          { "x-correlation-id": "corr_composed_503_generic" }
+        )
+
+        expect(res.statusCode).toBe(503)
+        const body = res.body as StoreErrorResponse
+        expect(isStoreErrorResponse(body)).toBe(true)
+        expect(body.code).toBe(STORE_ERROR_CODES.SERVICE_UNAVAILABLE)
+        expect(body.retryable).toBe(false)
+        expectNoCanaries(body)
+      })
+
+      it("Case D — known-safe RATE_LIMITED remains retryable=true after envelope re-normalize", () => {
+        const { res } = invokeComposedStoreErrorStack(
+          {
+            type: "rate_limit",
+            statusCode: 429,
+            message: "slow down",
+            retryAfterSeconds: 9,
+          },
+          { "x-correlation-id": "corr_composed_rate_safe" }
+        )
+
+        expect(res.statusCode).toBe(429)
+        const body = res.body as StoreErrorResponse
+        expect(isStoreErrorResponse(body)).toBe(true)
+        expect(body.code).toBe(STORE_ERROR_CODES.RATE_LIMITED)
+        expect(body.retryable).toBe(true)
+        expect(res.getHeader("retry-after")).toBe("9")
+        expectNoCanaries(body)
+      })
+
+      it("direct normalizer: second pass of public body preserves retryable=false", () => {
+        const first = toStoreErrorResponse(
+          {
+            type: "rate_limit",
+            statusCode: 429,
+            message: `rl ${CANARIES.clientSecret}`,
+            uncertainSideEffect: true,
+          },
+          { correlationId: "corr_double_norm_01" }
+        )
+        expect(first.body.retryable).toBe(false)
+
+        const second = toStoreErrorResponse(first.body, {
+          correlationId: first.body.correlationId,
+          statusCode: first.statusCode,
+        })
+        expect(second.statusCode).toBe(429)
+        expect(second.body.code).toBe(STORE_ERROR_CODES.RATE_LIMITED)
+        expect(second.body.retryable).toBe(false)
+        expect(isStoreErrorResponse(second.body)).toBe(true)
+        expectNoCanaries(second.body)
+      })
     })
   })
 
