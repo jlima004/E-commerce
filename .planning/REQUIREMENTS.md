@@ -27,7 +27,9 @@ Deixar o backend completamente preparado para o início do Frontend Milestone 1,
 
 `requirements-completed:` `[FND-01, FND-02, FND-03, FND-04, FND-05, FND-06, FND-07, FND-08]`
 
-Phase 13 closure artifact: `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CLOSURE.md` — CLOSURE PREPARED — AWAITING HUMAN REVIEW.
+Phase 13 closure artifact: `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CLOSURE.md` — CLOSED — HUMAN APPROVED.
+
+Phase 14 authorization: **AUTHORIZED — CONTEXT NOT STARTED**. Subsequent Phase 14 gates remain separately human-gated.
 
 ### Phase 14 — Customer Auth & Verification
 
@@ -252,9 +254,10 @@ Phase 13 closure artifact: `.planning/phases/13-storefront-contract-foundation-s
 - Mapeados a exatamente uma phase: 91.
 - FE requirements com responsabilidade explícita: 54/54.
 - Phases: 13–22, lineares.
-- Phase 13: 8/8 COMPLETE; closure prepared, awaiting human review.
-- Phase 14..22: not started / not authorized.
+- Phase 13: 8/8 COMPLETE; CLOSED — HUMAN APPROVED.
+- Phase 14: AUTHORIZED — CONTEXT NOT STARTED.
+- Phase 15..22: not started / not authorized.
 - Frontend Milestone 1: BLOCKED.
 
 ---
-*Última atualização: 2026-08-10 — Phase 13 documentary closure prepared; FND-01..FND-08 COMPLETE pending human closure approval; Phase 14 and frontend blocked.*
+*Última atualização: 2026-08-10 — Phase 13 HUMAN APPROVED — CLOSED; FND-01..FND-08 COMPLETE; Phase 14 AUTHORIZED for CONTEXT only; frontend blocked.*

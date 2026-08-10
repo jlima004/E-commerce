@@ -1,7 +1,7 @@
 ---
 phase: 13-storefront-contract-foundation-surface-lockdown
 artifact: closure
-status: closure-prepared-awaiting-human-review
+status: closed-human-approved
 prepared_at: 2026-08-10
 requirements_completed:
   - FND-01
@@ -13,8 +13,9 @@ requirements_completed:
   - FND-07
   - FND-08
 plans_completed: 7
-human_review: awaiting
-closure_gate: prepared
+human_review: approved
+closure_gate: passed
+closed_at: 2026-08-10
 ---
 
 # Phase 13 Closure — Storefront Contract Foundation & Surface Lockdown
@@ -26,7 +27,7 @@ Phase:
 13 — Storefront Contract Foundation & Surface Lockdown
 
 Closure status:
-TECHNICAL/DOCUMENTARY CLOSURE PREPARED — AWAITING HUMAN REVIEW
+HUMAN APPROVED — CLOSED
 
 Plans:
 7/7 HUMAN APPROVED
@@ -38,7 +39,7 @@ Milestone v1.1:
 NOT CLOSED
 
 Phase 14:
-NOT AUTHORIZED
+AUTHORIZED — CONTEXT NOT STARTED
 
 Frontend:
 BLOCKED
@@ -186,8 +187,8 @@ Milestone requirements:
 8/91
 ```
 
-Requirement completion here is the Phase 13 closure audit decision. Final phase
-human closure approval remains a separate gate.
+Requirement completion here is the Phase 13 closure audit decision. Human closure
+approval was granted on 2026-08-10; this artifact is the final Phase 13 closure authority.
 
 ---
 
@@ -550,6 +551,9 @@ NO
 
 PR:
 NO
+
+Post-closure GitHub documentary sync:
+YES — governance docs only; no technical paths
 ```
 
 ---
@@ -564,16 +568,16 @@ Phase sequence:
 13 → 22
 
 Phase 13:
-CLOSURE PREPARED — AWAITING HUMAN REVIEW
+CLOSED — HUMAN APPROVED
 
 Phases fully closed in v1.1:
-0/10
+1/10
 
 Requirements complete after this audit:
 8/91
 
 Phase 14:
-NOT AUTHORIZED
+AUTHORIZED — CONTEXT NOT STARTED
 
 Frontend Milestone 1:
 BLOCKED
@@ -582,7 +586,7 @@ Deploy:
 NOT AUTHORIZED
 ```
 
-No Phase 14 CONTEXT/RESEARCH/PLAN/execution is authorized by this document.
+Phase 14 is authorized to begin at the CONTEXT gate only. RESEARCH, PLAN, SPEC/SDD, implementation prompt, execution, verification, review and closure remain separately human-gated.
 
 ---
 
@@ -590,16 +594,16 @@ No Phase 14 CONTEXT/RESEARCH/PLAN/execution is authorized by this document.
 
 ```text
 PHASE 13 CLOSURE:
-PREPARED — AWAITING HUMAN REVIEW
+HUMAN APPROVED — CLOSED
 
 Plans human-approved:
 7/7
 
 FND-01..FND-08:
-COMPLETE — PENDING HUMAN CLOSURE APPROVAL
+COMPLETE
 
 Phase 14:
-NOT AUTHORIZED
+AUTHORIZED — CONTEXT NOT STARTED
 
 Frontend:
 BLOCKED
@@ -620,6 +624,6 @@ parallelization:
 false
 ```
 
-**STOP** at the Phase 13 CLOSURE HUMAN REVIEW gate.
-Do not start Phase 14, frontend, deploy, push, or PR until explicit human
-authorization after this review.
+**NEXT GATE:** Phase 14 CONTEXT — AUTHORIZED, NOT STARTED.
+Stop for human review after CONTEXT. Do not auto-advance to RESEARCH, PLAN,
+SPEC/SDD, implementation, execution, frontend, or deploy.
