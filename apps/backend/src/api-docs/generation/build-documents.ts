@@ -20,6 +20,64 @@ import {
   createFoundationRegistry,
 } from "../registry"
 import { serializeDocument } from "./serialize"
+import {
+  STORE_SURFACE_MANIFEST,
+  storeSurfaceOperationKey,
+} from "../../api/store-surface/manifest"
+
+const OPENAPI_OPERATION_METHODS = new Set([
+  "get",
+  "post",
+  "put",
+  "patch",
+  "delete",
+  "options",
+  "head",
+])
+
+function materializeStoreM1Paths(
+  paths: OpenApiDocument["paths"]
+): OpenApiDocument["paths"] {
+  const manifestByKey = new Map(
+    STORE_SURFACE_MANIFEST.map((entry) => [
+      storeSurfaceOperationKey(entry.method, entry.pathTemplate),
+      entry,
+    ])
+  )
+  const materialized: OpenApiDocument["paths"] = {}
+
+  for (const [routePath, pathItem] of Object.entries(paths)) {
+    if (!routePath.startsWith("/store/")) {
+      materialized[routePath] = pathItem
+      continue
+    }
+
+    const retained = Object.fromEntries(
+      Object.entries(pathItem).filter(([method]) => {
+        if (!OPENAPI_OPERATION_METHODS.has(method)) {
+          return true
+        }
+        const entry = manifestByKey.get(
+          storeSurfaceOperationKey(method, routePath)
+        )
+        return Boolean(
+          entry &&
+            (entry.classification === "AUTHORIZED" ||
+              entry.classification === "EXTENDED") &&
+            entry.m1_enablement === "enabled" &&
+            entry.runtime_policy === "M1_ENABLED" &&
+            entry.openapi_m1_expectation === "include_executable_m1"
+        )
+      })
+    )
+
+    if (Object.keys(retained).some((key) => OPENAPI_OPERATION_METHODS.has(key))) {
+      materialized[routePath] = retained
+    }
+  }
+
+  return materialized
+}
 
 function ensureStructuralComponents(
   document: Record<string, unknown>
@@ -81,7 +139,12 @@ export function buildDocument(
   return {
     ...(generated as Omit<OpenApiDocument, "components" | "openapi">),
     openapi: OPENAPI_VERSION,
-    paths: (generated.paths ?? {}) as OpenApiDocument["paths"],
+    paths:
+      surface === "store"
+        ? materializeStoreM1Paths(
+            (generated.paths ?? {}) as OpenApiDocument["paths"]
+          )
+        : ((generated.paths ?? {}) as OpenApiDocument["paths"]),
     components: ensureStructuralComponents(generated),
     "x-medusa-version": MEDUSA_VERSION,
   }

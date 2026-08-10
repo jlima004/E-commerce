@@ -37,6 +37,7 @@ export type StoreSurfaceExactSetEvidence = {
     m1Enabled: number
   }
   executableStoreBusinessKeys: string[]
+  documentStoreBusinessKeys: string[]
   healthSupportKeys: string[]
 }
 
@@ -148,13 +149,7 @@ export function verifyStoreSurfaceExactSets(
     if (!entry) {
       throw new Error(`Unknown Store OpenAPI business operation: ${key}`)
     }
-    if (
-      !expectedExecutable.has(key) &&
-      !(
-        entry.runtime_policy === "PRESERVE_LEGACY" &&
-        entry.m1_enablement === "disabled"
-      )
-    ) {
+    if (!expectedExecutable.has(key)) {
       throw new Error(`Disabled Store operation exposed as executable M1: ${key}`)
     }
   }
@@ -177,6 +172,7 @@ export function verifyStoreSurfaceExactSets(
       m1Enabled: counts.m1EnablementEnabled,
     },
     executableStoreBusinessKeys: [...expectedExecutable].sort(),
+    documentStoreBusinessKeys: documentStoreKeys,
     healthSupportKeys: documentOperationKeys(storeDocument, "/health/"),
   }
 }

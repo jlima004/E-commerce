@@ -87,13 +87,12 @@ describe("OpenAPI foundation generation", () => {
     expect(Object.keys(store?.document.paths ?? {}).sort()).toEqual([
       "/health/live",
       "/health/ready",
-      "/store/carts/active",
-      "/store/carts/{id}/payment-attempts/card",
-      "/store/carts/{id}/payment-attempts/pix",
-      "/store/products",
-      "/store/products/{id}",
-      "/store/tracking/lookup",
     ])
+    expect(
+      Object.keys(store?.document.paths ?? {}).filter((routePath) =>
+        routePath.startsWith("/store/")
+      )
+    ).toEqual([])
     expect(Object.keys(admin?.document.paths ?? {}).sort()).toEqual([
       "/admin/exchanges",
       "/admin/exchanges/{id}",
@@ -142,22 +141,25 @@ describe("OpenAPI foundation generation", () => {
 
   it("uses an explicit operation description and otherwise falls back to summary", () => {
     const registry = new ContractRegistryBundle()
-    registry.registerOperation(syntheticOperation())
+    registry.registerOperation(
+      syntheticOperation({ surface: "admin", path: "/admin/synthetic" })
+    )
     registry.registerOperation(
       syntheticOperation({
+        surface: "admin",
         method: "POST",
-        path: "/store/synthetic-described",
+        path: "/admin/synthetic-described",
         operationId: "storeSyntheticDescribed",
         description: "Explicit operation description",
       })
     )
 
-    const store = buildContracts(registry).find(
-      (contract) => contract.surface === "store"
+    const admin = buildContracts(registry).find(
+      (contract) => contract.surface === "admin"
     )?.document
-    expect((store?.paths["/store/synthetic"] as { get: { description: string } }).get.description)
+    expect((admin?.paths["/admin/synthetic"] as { get: { description: string } }).get.description)
       .toBe("Synthetic operation")
-    expect((store?.paths["/store/synthetic-described"] as { post: { description: string } }).post.description)
+    expect((admin?.paths["/admin/synthetic-described"] as { post: { description: string } }).post.description)
       .toBe("Explicit operation description")
   })
 

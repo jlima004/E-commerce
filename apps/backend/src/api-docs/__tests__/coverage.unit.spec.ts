@@ -289,10 +289,55 @@ describe("OpenAPI route coverage foundation", () => {
       m1Enabled: 0,
     })
     expect(evidence.executableStoreBusinessKeys).toEqual([])
+    expect(evidence.documentStoreBusinessKeys).toEqual([])
     expect(evidence.healthSupportKeys).toEqual([
       "GET /health/live",
       "GET /health/ready",
     ])
+  })
+
+  it.each([
+    ["PRESERVE_LEGACY", (entry: StoreSurfaceEntry) =>
+      entry.runtime_policy === "PRESERVE_LEGACY"],
+    ["EXTENDED disabled", (entry: StoreSurfaceEntry) =>
+      entry.classification === "EXTENDED" && entry.m1_enablement === "disabled"],
+    ["BLOCKED", (entry: StoreSurfaceEntry) => entry.classification === "BLOCKED"],
+    ["OUTSIDE_FRONTEND_M1", (entry: StoreSurfaceEntry) =>
+      entry.classification === "OUTSIDE_FRONTEND_M1"],
+  ])("rejects a %s operation injected into the public Store document", (_label, predicate) => {
+    const registry = createFoundationRegistry()
+    const store = buildContracts(registry).find(
+      (contract) => contract.surface === "store"
+    )?.document
+    const discovered = scanInstalledStoreSurface().discovered
+    const entry = STORE_SURFACE_MANIFEST.find(predicate)
+
+    expect(store).toBeDefined()
+    expect(entry).toBeDefined()
+    const injected = structuredClone(store!)
+    injected.paths[entry!.pathTemplate] = {
+      [entry!.method.toLowerCase()]: { operationId: "injectedStoreOperation" },
+    }
+
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, injected, discovered)
+    ).toThrow(/Disabled Store operation exposed as executable M1/i)
+  })
+
+  it("rejects an unknown Store operation injected into the public document", () => {
+    const registry = createFoundationRegistry()
+    const store = buildContracts(registry).find(
+      (contract) => contract.surface === "store"
+    )?.document
+    const discovered = scanInstalledStoreSurface().discovered
+    const injected = structuredClone(store!)
+    injected.paths["/store/unknown-r2"] = {
+      get: { operationId: "unknownStoreR2" },
+    }
+
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, injected, discovered)
+    ).toThrow(/Unknown Store OpenAPI business operation/i)
   })
 
   it("fails closed on runtime drift, duplicate/unknown manifest, and invalid exposure", () => {

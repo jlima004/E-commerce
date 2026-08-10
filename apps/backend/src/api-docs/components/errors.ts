@@ -32,6 +32,16 @@ export function registerStoreErrorSchemas(
         { $ref: "#/components/schemas/StoreMajorMoney" },
         { $ref: "#/components/schemas/StoreMinorMoney" },
       ],
+      supportSchemas: [
+        { $ref: "#/components/schemas/StoreCardPaymentAttemptEnvelope" },
+        { $ref: "#/components/schemas/StoreCartResponse" },
+        { $ref: "#/components/schemas/StorePaymentAttemptStartRequest" },
+        { $ref: "#/components/schemas/StorePixPaymentAttemptEnvelope" },
+        { $ref: "#/components/schemas/StoreProductResponse" },
+        { $ref: "#/components/schemas/StoreProductsListResponse" },
+        { $ref: "#/components/schemas/StoreTrackingLookupEnvelope" },
+        { $ref: "#/components/schemas/StoreTrackingLookupRequest" },
+      ],
     },
     required: ["code", "message", "retryable"],
     properties: {

@@ -36,6 +36,12 @@ describe("OpenAPI Store contract wave", () => {
           operation.path === "/store/customers/me/cart/attach"
       )
     ).toBe(false)
+    expect(Object.keys(store?.document.paths ?? {}).sort()).toEqual([
+      "/health/live",
+      "/health/ready",
+    ])
+    expect(storeOperations.some((operation) => operation.path.startsWith("/store/")))
+      .toBe(true)
   })
 
   it("omits ambiguous object and recursive catalog query parameters", () => {
@@ -424,21 +430,7 @@ describe("OpenAPI Store contract wave", () => {
         /access denied|ownership|access/i
       )
 
-      const documentOperation = store?.document.paths?.[path]?.post as
-        | {
-            responses?: Record<string, { description?: string }>
-          }
-        | undefined
-      expect(documentOperation?.responses?.["400"]).toBeDefined()
-      expect(documentOperation?.responses?.["403"]).toBeUndefined()
-      expect(documentOperation?.responses?.["400"]?.description).toMatch(
-        /access denied|ownership|access/i
-      )
-      expect(
-        Object.keys(documentOperation?.responses ?? {})
-      ).toEqual(
-        expect.arrayContaining(["201", "400", "401", "404", "500"])
-      )
+      expect(store?.document.paths?.[path]).toBeUndefined()
     }
   })
 
