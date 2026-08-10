@@ -14,6 +14,10 @@ import {
   type DirectionSafeSchema,
 } from "../registry"
 import { parseGenerateArguments } from "../../../scripts/openapi/generate"
+import {
+  CORRELATION_ID_HEADER,
+  STORE_CORRELATION_ID_HEADER,
+} from "../components"
 
 function syntheticOperation(
   overrides: Partial<OperationMetadata> = {}
@@ -135,6 +139,36 @@ describe("OpenAPI foundation generation", () => {
       wrong.info.version = "1.1.0"
       expect(() => validateDocument(surface, wrong)).toThrow(
         `Unexpected contract version for ${surface}`
+      )
+    }
+  })
+
+  it("keeps Store correlation semantics isolated from stable Admin and generated artifacts", () => {
+    const contracts = buildContracts()
+    const bySurface = Object.fromEntries(
+      contracts.map((contract) => [contract.surface, contract.document])
+    ) as Record<"store" | "admin" | "webhooks", OpenApiDocument>
+
+    for (const healthPath of ["/health/live", "/health/ready"] as const) {
+      const operation = bySurface.store.paths[healthPath] as {
+        get: { parameters: Array<Record<string, unknown>> }
+      }
+      expect(operation.get.parameters[0]).toEqual(STORE_CORRELATION_ID_HEADER)
+      expect(operation.get.parameters[0]).not.toEqual(CORRELATION_ID_HEADER)
+    }
+
+    const adminProductList = bySurface.admin.paths["/admin/products"] as {
+      post: { parameters: Array<Record<string, unknown>> }
+    }
+    expect(adminProductList.post.parameters[0]).toEqual(CORRELATION_ID_HEADER)
+    expect(adminProductList.post.parameters[0]).not.toEqual(
+      STORE_CORRELATION_ID_HEADER
+    )
+
+    const generatedDir = path.resolve(__dirname, "..", "generated")
+    for (const contract of contracts) {
+      expect(contract.bytes).toBe(
+        fs.readFileSync(path.join(generatedDir, contract.fileName), "utf8")
       )
     }
   })

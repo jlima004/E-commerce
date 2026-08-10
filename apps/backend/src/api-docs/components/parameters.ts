@@ -63,6 +63,17 @@ export const CORRELATION_ID_HEADER = {
     type: "string",
   },
   description:
+    "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+} as const
+
+export const STORE_CORRELATION_ID_HEADER = {
+  name: "x-correlation-id",
+  in: "header",
+  required: false,
+  schema: {
+    type: "string",
+  },
+  description:
     "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
 } as const
 
