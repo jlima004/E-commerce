@@ -5,15 +5,15 @@ milestone_name: Backend Storefront Readiness
 current_phase: 13
 current_phase_name: storefront-contract-foundation-surface-lockdown
 status: executing
-stopped_at: 13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED; 13-07 NOT AUTHORIZED
-last_updated: "2026-08-09T22:27:00.000Z"
+stopped_at: 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
+last_updated: "2026-08-10T00:30:00.000Z"
 last_activity: 2026-08-09
-last_activity_desc: P13-13-05-R2 human review PASS; 13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED
+last_activity_desc: P13-13-06-R2 human review PASS; 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
 progress:
   total_phases: 10
   completed_phases: 0
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; 13-01..13-05 HUMAN APPROVED — PASS. `P13-13-05-HCD-01` approved the DML-native `integer + partial UNIQUE` supersession and rejected direct MikroORM. `P13-13-05-R2` HUMAN REVIEW PASS: DML/snapshot/generated migration/PostgreSQL catalog are semantically consistent; config 8/8, PostgreSQL 9/9, generated writes refused 5/5 and build PASS. `B13-05-R1-01` and `B13-05-R1-02` are CLOSED — PASS. Há 7 planos e 5 human-approved executed. FND-06 is EVIDENCED — NOT COMPLETE; Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-06 is EXECUTION AUTHORIZED; 13-07 remains NOT AUTHORIZED. Deploy and frontend are not authorized.
+**Current gate:** Phase 13 CONTEXT APPROVED; RESEARCH APPROVED; PLAN R5 APPROVED; SPEC/SDD R1 APPROVED; Implementation Prompt APPROVED; 13-01..13-06 HUMAN APPROVED — PASS. `P13-13-05-HCD-01` approved the DML-native `integer + partial UNIQUE` supersession and rejected direct MikroORM. `P13-13-05-R2` HUMAN REVIEW PASS closed both 13-05 blockers. `P13-13-06-R2` HUMAN REVIEW PASS closed `B13-06-R2-01` (native evidence fingerprints) and `B13-06-R2-02` (Store OpenAPI public exact-set); Store 1.1.0 now publishes 0 Store business `path+method` and keeps two health/support operations. Há 7 planos e 6 human-approved executed. FND-03, FND-06, FND-07 and FND-08 are EVIDENCED — NOT COMPLETE; Phase 13 requirements covered: FND-01..FND-08 = 8/8; Phase 13 requirements complete: 0/8; Milestone requirements complete: 0/91; completed phases remain 0/10. 13-07 is EXECUTION AUTHORIZED. Deploy and frontend are not authorized.
 
 ```text
 Phase 12 CONTEXT approved
@@ -146,17 +146,25 @@ P13-13-05-R2: HUMAN REVIEW PASS
 P13-13-05-R1 B13-05-R1-01: CLOSED — PASS (DML/snapshot/migration/catalog consistent)
 P13-13-05-R1 B13-05-R1-02: CLOSED — PASS (generated writes refused 5/5; PostgreSQL suite 9/9)
 13-05: HUMAN APPROVED — PASS
-13-06: EXECUTION AUTHORIZED
-13-07: NOT AUTHORIZED
-Phase 13 plans: 7 planned / 5 human-approved executed; 13-05 HUMAN APPROVED — PASS; 13-06 execution authorized
+P13-13-06-R1: BLOCKED — VALID
+P13-13-06-PLAN-R2: HUMAN APPROVED — PASS
+P13-13-06-R2: HUMAN REVIEW PASS
+B13-06-R2-01: CLOSED — PASS (native evidence 6/6 stale bindings refreshed; 24/24 current)
+B13-06-R2-02: CLOSED — PASS (Store 1.1 public business path+method = 0; health/support = 2)
+13-06: HUMAN APPROVED — PASS
+13-07: EXECUTION AUTHORIZED
+Phase 13 plans: 7 planned / 6 human-approved executed; 13-06 HUMAN APPROVED — PASS; 13-07 execution authorized
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
+FND-03: EVIDENCED — NOT COMPLETE
 FND-06: EVIDENCED — NOT COMPLETE
+FND-07: EVIDENCED — NOT COMPLETE
+FND-08: EVIDENCED — NOT COMPLETE
 Milestone requirements complete: 0/91
 Phases complete: 0/10
 Deploy: NOT AUTHORIZED
 frontend blocked / not started / not authorized
-next permitted step: execute 13-06 only under its approved plan; do not start 13-07.
+next permitted step: execute 13-07 only under its approved plan; do not start Phase 14.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -196,18 +204,18 @@ Produção: saudável
 ## Current Position
 
 Phase: 13 (storefront-contract-foundation-surface-lockdown) — EXECUTING
-Plan: 5 of 7 human-approved; 13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED
-Status: 13-01..13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED; 13-07 NOT AUTHORIZED
-Current gate: B13-05-R1-01 CLOSED — PASS; B13-05-R1-02 CLOSED — PASS; 13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED
-Last activity: 2026-08-09 — P13-13-05-R2 human review PASS; 13-05 approved; 13-06 authorized; FND-06 EVIDENCED — NOT COMPLETE
-Next: execute 13-06 only under its approved plan; do not start 13-07
+Plan: 6 of 7 human-approved; 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
+Status: 13-01..13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
+Current gate: P13-13-06-R2 HUMAN REVIEW PASS; B13-06-R2-01 CLOSED — PASS; B13-06-R2-02 CLOSED — PASS; 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
+Last activity: 2026-08-09 — P13-13-06-R2 human review PASS; 13-06 approved; 13-07 authorized; FND-03/FND-06/FND-07/FND-08 EVIDENCED — NOT COMPLETE
+Next: execute 13-07 only under its approved plan; do not start Phase 14
 
 Progress: [░░░░░░░░░░] 0% phases (0/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
 Phase 13 requirements complete: 0/8
 Milestone requirements complete: 0/91
 Phases complete: 0/10
-Plans human-approved executed: 5/7
+Plans human-approved executed: 6/7
 frontend blocked
 
 ## Historical v1.0 Performance Metrics
@@ -290,7 +298,7 @@ Recent decisions affecting current work:
 - [Phase 04 closure — histórico]: Phase 04 completed the money-path pre-Order implementation/test scope. At the 2026-06-29 closure, production activation was blocked by the draft migration and missing real Stripe layers/config. Later safe-layer work, the RC1 applied-migration audit, Phases 05–11 closures, and formal production stabilization superseded that blocker. Separately deferred Stripe smokes/config without specific evidence do not reopen PAY-01..PAY-04.
 - [Gate 04A]: Real Stripe card/Pix initiation layers are implemented and registered behind `STRIPE_REAL_INITIATION_ENABLED=true` with `sk_test_...` only. The layers call Stripe directly, not native-first Medusa Stripe, and hand raw PaymentIntent data immediately to the existing safe boundary. `client_secret`, Pix QR/copia-e-cola, hosted instructions, and integral `next_action` remain response-only; `PaymentAttempt` migration is prepared but not applied; no webhook, Order, `purchase_completed`, or Gelato work was introduced.
 - [Gate 04A validation]: Real Stripe card initiation smoke passed in test mode on local port 9001. The card route returned `201 Created`, created a Stripe test-mode PaymentIntent through the real safe layer, and persisted `PaymentAttempt` with `payment_method_type=card`, `status=card_client_secret_created`, `amount=9900`, `currency_code=brl`, and `order_id=null`. No Order, webhook, `CheckoutCompletionLog`, `WebhookEventLog`, `purchase_completed`, or Gelato fulfillment was created. Pix real smoke remains deferred due to Stripe account eligibility. Phase 05 remains not started.
-- [Phase 05 planning]: Phase 05 was drafted as planning-only into four manual slices: WebhookEventLog schema/config, raw-body `/hooks/stripe` signature route, PaymentIntent-to-PaymentAttempt processing, and final validation/negative proofs. Planned success state is `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 06 remains responsible for `Order` creation via `CheckoutCompletionLog`. No runtime code, endpoint, migration execution, Order, `purchase_completed`, Gelato, e-mail, analytics or refund flow was implemented during planning.
+- [Phase 05 planning]: Phase 05 was drafted as planning-only into four manual slices: WebhookEventLog schema/config, raw-body `/hooks/stripe` signature route, PaymentIntent-to-PaymentAttempt processing, and final validation/negative proofs. Planned success state is `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 06 remains responsible for `Order` creation via `CheckoutCompletionLog`. No runtime code, endpoint, migration execution, Order, `purchase_completed`, Gelato, e-mail, analytics ou refund flow was implemented during planning.
 - [Phase 05 execution]: Plans `05-01`..`05-04` completed under manual gating. Final validation closed with 29 targeted unit tests, 10 HTTP integration tests, green build, focused runtime greps green, and broad grep false positives limited to tests/canaries or Stripe initiation code outside webhook runtime. `PaymentAttempt` webhook handling now stops at `payment_confirmed_by_webhook` with `order_id = null`; no Order, `CheckoutCompletionLog`, `purchase_completed`, Gelato, e-mail, analytics, refund or Stripe CLI real smoke was introduced.
 - [Phase 05 closure]: Human review accepted Phase 05 at manual gate on 2026-06-30 (evidence: `05-04-SUMMARY.md`, 29/29 unit, 10/10 HTTP integration, build green, negative greps green). `05-CLOSURE.md` recorded. WHK-01 and WHK-02 complete. Phase 06 may be planned next; execution blocked. Hard constraint: Order creation must consume only `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`.
 - [Phase 06 planning]: Planning-only artifacts created for Idempotent Webhook-Driven Order Creation: `06-CONTEXT.md`, `06-RESEARCH.md`, `06-VALIDATION.md`, and five slices `06-01`..`06-05`. The plan defines a single internal post-webhook entrypoint, `CheckoutCompletionLog` idempotency keyed by PaymentIntent, transactional `Order + CheckoutCompletionLog + PaymentAttempt.order_id` correlation, decoupled `order_status/payment_status`, immutable Gelato snapshots on Order LineItems, and negative proofs excluding `purchase_completed`, Gelato, email, analytics, refund and Stripe CLI smoke. No runtime implementation was started.
@@ -368,20 +376,20 @@ Known deferred artifact items at v1.0 close: 0.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-06-PLAN.md
+**Resume file:** .planning/phases/13-storefront-contract-foundation-surface-lockdown/13-07-PLAN.md
 
-Last session: 2026-08-09T22:27:00.000Z
+Last session: 2026-08-10T00:30:00.000Z
 
-Stopped at: 13-05 HUMAN APPROVED — PASS; 13-06 EXECUTION AUTHORIZED; 13-07 NOT AUTHORIZED
+Stopped at: 13-06 HUMAN APPROVED — PASS; 13-07 EXECUTION AUTHORIZED
 
 Resume files:
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-06-PLAN.md`,
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-05-SUMMARY.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-07-PLAN.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-06-SUMMARY.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: execute 13-06 only under its approved plan. Do not start 13-07.
+Next permitted step: execute 13-07 only under its approved plan. Do not start Phase 14.
 
-Do not automatically start 13-07, Phase 14, or frontend,
+Do not automatically start Phase 14 or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
 rollback, or move or recreate tag `v1.0`.
 
