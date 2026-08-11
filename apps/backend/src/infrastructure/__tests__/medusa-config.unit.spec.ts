@@ -56,6 +56,7 @@ function productionEnv(workerMode: "server" | "worker" | "shared"): AppEnv {
     GELATO_WEBHOOK_AUTH_HEADER_NAME: "X-GELATO-WEBHOOK-SECRET",
     GELATO_WEBHOOK_SECRET: undefined,
     TRACKING_TOKEN_PEPPER: undefined,
+    STORE_IDEMPOTENCY_KEY_PEPPER: Buffer.alloc(32, 7).toString("base64url"),
     ADMIN_REFUND_REQUEST_ENABLED: true,
     ADMIN_EXCHANGE_REQUEST_ENABLED: true,
     API_DOCS_ENABLED: false,
@@ -192,5 +193,55 @@ describe("medusa-config final Redis wiring", () => {
     process.env.REDIS_CACHE_PROVIDER_DISABLED = "true"
 
     expectSanitizedFailure(() => loadFinalConfig(productionEnv("worker")))
+  })
+
+  it("registers Store foundation modules exactly once without altering modules or Redis providers", () => {
+    const config = loadFinalConfig(productionEnv("server"))
+    const repeatedConfig = loadFinalConfig(productionEnv("server"))
+    const storeIdempotency = config.modules.filter(
+      (module) => module.resolve === "./src/modules/store-idempotency"
+    )
+    const storeResourceVersion = config.modules.filter(
+      (module) => module.resolve === "./src/modules/store-resource-version"
+    )
+    const redisModules = config.modules.filter((module) =>
+      [
+        "@medusajs/medusa/caching",
+        "@medusajs/medusa/locking",
+        "@medusajs/medusa/event-bus-redis",
+        "@medusajs/medusa/workflow-engine-redis",
+      ].includes(module.resolve ?? "")
+    )
+    const serialized = JSON.stringify(config.modules)
+    const expectedLocalModules = [
+      "./src/modules/webhooks",
+      "./src/modules/checkout-completion",
+      "./src/modules/analytics-event-log",
+      "./src/modules/email-delivery-log",
+      "./src/modules/gelato-fulfillment",
+      "./src/modules/operational-alert",
+      "./src/modules/admin-action-log",
+      "./src/modules/tracking-access-token",
+      "./src/modules/store-idempotency",
+      "./src/modules/store-resource-version",
+      "./src/modules/payment-attempt",
+      "./src/modules/refund-request",
+      "./src/modules/exchange-request",
+    ]
+
+    expect(storeIdempotency).toHaveLength(1)
+    expect(storeResourceVersion).toHaveLength(1)
+    expect(redisModules).toHaveLength(4)
+    expect(
+      config.modules
+        .map((module) => module.resolve)
+        .filter((resolve): resolve is string =>
+          Boolean(resolve?.startsWith("./src/modules/"))
+        )
+    ).toEqual(expectedLocalModules)
+    expect(repeatedConfig).toEqual(config)
+    expect(serialized).not.toContain("event-bus-local")
+    expect(serialized.match(/store-idempotency/g)?.length ?? 0).toBe(1)
+    expect(serialized.match(/store-resource-version/g)?.length ?? 0).toBe(1)
   })
 })

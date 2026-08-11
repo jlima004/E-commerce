@@ -1,5 +1,5 @@
 import {
-  CORRELATION_ID_HEADER,
+  STORE_CORRELATION_ID_HEADER,
   storeErrorResponse,
 } from "../../components"
 import type { ContractRegistryBundle } from "../../registry"
@@ -16,7 +16,7 @@ export function registerStoreHealthOperations(
     summary: "Liveness probe",
     tags: ["Infrastructure"],
     security: [],
-    parameters: [CORRELATION_ID_HEADER],
+    parameters: [STORE_CORRELATION_ID_HEADER],
     requestBody: null,
     responses: {
       "200": storeJsonResponse(
@@ -51,7 +51,7 @@ export function registerStoreHealthOperations(
     summary: "Readiness probe",
     tags: ["Infrastructure"],
     security: [],
-    parameters: [CORRELATION_ID_HEADER],
+    parameters: [STORE_CORRELATION_ID_HEADER],
     requestBody: null,
     responses: {
       "200": storeJsonResponse(

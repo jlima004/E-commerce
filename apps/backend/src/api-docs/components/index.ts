@@ -5,6 +5,7 @@ import type {
 } from "../registry"
 import { registerStoreErrorSchemas } from "./errors"
 import { registerStoreResponseHeaders } from "./headers"
+import { registerStoreRequestParameters } from "./parameters"
 import { registerStoreSecuritySchemes } from "./security-schemes"
 import { registerAdminErrorSchemas } from "./errors"
 import { registerAdminResponseHeaders } from "./headers"
@@ -26,8 +27,29 @@ export function registerStoreSharedComponents(
   registry: ContractRegistryBundle
 ): void {
   registerStoreSecuritySchemes(registry)
+  registerStoreRequestParameters(registry)
   registerStoreResponseHeaders(registry)
   registerStoreErrorSchemas(registry)
+  registry.registerComponent("store", "schemas", "StoreMajorMoney", {
+    type: "object",
+    additionalProperties: false,
+    required: ["amount", "currency", "unit"],
+    properties: {
+      amount: { type: "number" },
+      currency: { type: "string", const: "BRL" },
+      unit: { type: "string", const: "major" },
+    },
+  })
+  registry.registerComponent("store", "schemas", "StoreMinorMoney", {
+    type: "object",
+    additionalProperties: false,
+    required: ["amount", "currency", "unit"],
+    properties: {
+      amount: { type: "integer" },
+      currency: { type: "string", const: "BRL" },
+      unit: { type: "string", const: "minor" },
+    },
+  })
 }
 
 export function registerAdminSharedComponents(
@@ -70,6 +92,7 @@ export {
 } from "./security-schemes"
 export {
   CORRELATION_ID_HEADER,
+  STORE_CORRELATION_ID_HEADER,
   STORE_CART_ID_PATH,
   STORE_PRODUCT_ID_PATH,
   STORE_PRODUCT_LIST_QUERY,

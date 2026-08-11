@@ -11,6 +11,7 @@ import {
   validateRouteExclusions,
 } from "../coverage/exclusions"
 import { verifyCoverage } from "../coverage/verify-coverage"
+import { verifyStoreSurfaceExactSets } from "../coverage/verify-coverage"
 import {
   NATIVE_EXTENSIONS,
   type NativeExtensionEntry,
@@ -19,6 +20,12 @@ import {
   ContractRegistryBundle,
   createFoundationRegistry,
 } from "../registry"
+import { buildContracts } from "../generation/build-documents"
+import { scanInstalledStoreSurface } from "../../../scripts/store-surface/scan-installed"
+import {
+  STORE_SURFACE_MANIFEST,
+  type StoreSurfaceEntry,
+} from "../../api/store-surface/manifest"
 
 function fixtureRoot(): { repositoryRoot: string; apiRoot: string } {
   const repositoryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "api-docs-routes-"))
@@ -32,7 +39,7 @@ function write(file: string, content: string): void {
   fs.writeFileSync(file, content, "utf8")
 }
 
-const SCAFFOLD_ROUTES: DiscoveredRoute[] = [
+const EXCLUDED_ROUTES: DiscoveredRoute[] = [
   {
     sourceFile: "apps/backend/src/api/store/custom/route.ts",
     method: "GET",
@@ -43,6 +50,18 @@ const SCAFFOLD_ROUTES: DiscoveredRoute[] = [
     sourceFile: "apps/backend/src/api/admin/custom/route.ts",
     method: "GET",
     path: "/admin/custom",
+    exportKind: "function",
+  },
+  {
+    sourceFile: "apps/backend/src/api/store/carts/[id]/complete/route.ts",
+    method: "POST",
+    path: "/store/carts/{id}/complete",
+    exportKind: "const",
+  },
+  {
+    sourceFile: "apps/backend/src/api/store/customers/me/cart/attach/route.ts",
+    method: "POST",
+    path: "/store/customers/me/cart/attach",
     exportKind: "function",
   },
 ]
@@ -108,13 +127,19 @@ function completeStoreRegistry(): ContractRegistryBundle {
 describe("OpenAPI route coverage foundation", () => {
   it("discovers all current route files and bracket segments through the TypeScript AST", () => {
     const routes = discoverRoutes()
-    expect(routes).toHaveLength(22)
+    expect(routes).toHaveLength(23)
     expect(routes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           method: "POST",
           path: "/store/carts/{id}/payment-attempts/card",
           exportKind: "function",
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/store/carts/{id}/complete",
+          exportKind: "const",
+          sourceFile: "apps/backend/src/api/store/carts/[id]/complete/route.ts",
         }),
         expect.objectContaining({
           method: "POST",
@@ -209,15 +234,25 @@ describe("OpenAPI route coverage foundation", () => {
     fs.rmSync(ambiguous.repositoryRoot, { recursive: true, force: true })
   })
 
-  it("allows exactly the two explicit scaffold exclusions with complete metadata", () => {
-    expect(ROUTE_EXCLUSIONS.map(({ method, path: routePath }) => `${method} ${routePath}`))
-      .toEqual(["GET /store/custom", "GET /admin/custom"])
+  it("allows exactly the explicit route exclusions with complete metadata", () => {
+    expect(
+      ROUTE_EXCLUSIONS.map(({ method, path: routePath }) => `${method} ${routePath}`).sort()
+    ).toEqual(
+      [
+        "GET /admin/custom",
+        "GET /store/custom",
+        "POST /store/carts/{id}/complete",
+        "POST /store/customers/me/cart/attach",
+      ].sort()
+    )
     expect(() => validateRouteExclusions(discoverRoutes())).not.toThrow()
 
     expect(() =>
       validateRouteExclusions(discoverRoutes(), [
         { ...ROUTE_EXCLUSIONS[0], reason: "" },
         ROUTE_EXCLUSIONS[1],
+        ROUTE_EXCLUSIONS[2],
+        ROUTE_EXCLUSIONS[3],
       ])
     ).toThrow("missing reason")
   })
@@ -231,12 +266,124 @@ describe("OpenAPI route coverage foundation", () => {
     expect(() => verifyCoverage("global", registry)).not.toThrow()
   })
 
+  it("proves runtime, manifest, and executable Store M1 as separate exact sets", () => {
+    const registry = createFoundationRegistry()
+    const scan = scanInstalledStoreSurface()
+    const store = buildContracts(registry).find(
+      (contract) => contract.surface === "store"
+    )
+    const evidence = verifyStoreSurfaceExactSets(
+      registry,
+      store?.document,
+      scan.discovered
+    )
+
+    expect(scan.ok).toBe(true)
+    expect(evidence.runtime).toEqual({ native: 51, local: 7, total: 58 })
+    expect(evidence.manifest).toEqual({
+      total: 58,
+      authorized: 0,
+      extended: 10,
+      blocked: 17,
+      outsideFrontendM1: 31,
+      m1Enabled: 0,
+    })
+    expect(evidence.executableStoreBusinessKeys).toEqual([])
+    expect(evidence.documentStoreBusinessKeys).toEqual([])
+    expect(evidence.healthSupportKeys).toEqual([
+      "GET /health/live",
+      "GET /health/ready",
+    ])
+  })
+
+  it.each([
+    ["PRESERVE_LEGACY", (entry: StoreSurfaceEntry) =>
+      entry.runtime_policy === "PRESERVE_LEGACY"],
+    ["EXTENDED disabled", (entry: StoreSurfaceEntry) =>
+      entry.classification === "EXTENDED" && entry.m1_enablement === "disabled"],
+    ["BLOCKED", (entry: StoreSurfaceEntry) => entry.classification === "BLOCKED"],
+    ["OUTSIDE_FRONTEND_M1", (entry: StoreSurfaceEntry) =>
+      entry.classification === "OUTSIDE_FRONTEND_M1"],
+  ])("rejects a %s operation injected into the public Store document", (_label, predicate) => {
+    const registry = createFoundationRegistry()
+    const store = buildContracts(registry).find(
+      (contract) => contract.surface === "store"
+    )?.document
+    const discovered = scanInstalledStoreSurface().discovered
+    const entry = STORE_SURFACE_MANIFEST.find(predicate)
+
+    expect(store).toBeDefined()
+    expect(entry).toBeDefined()
+    const injected = structuredClone(store!)
+    injected.paths[entry!.pathTemplate] = {
+      [entry!.method.toLowerCase()]: { operationId: "injectedStoreOperation" },
+    }
+
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, injected, discovered)
+    ).toThrow(/Disabled Store operation exposed as executable M1/i)
+  })
+
+  it("rejects an unknown Store operation injected into the public document", () => {
+    const registry = createFoundationRegistry()
+    const store = buildContracts(registry).find(
+      (contract) => contract.surface === "store"
+    )?.document
+    const discovered = scanInstalledStoreSurface().discovered
+    const injected = structuredClone(store!)
+    injected.paths["/store/unknown-r2"] = {
+      get: { operationId: "unknownStoreR2" },
+    }
+
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, injected, discovered)
+    ).toThrow(/Unknown Store OpenAPI business operation/i)
+  })
+
+  it("fails closed on runtime drift, duplicate/unknown manifest, and invalid exposure", () => {
+    const registry = createFoundationRegistry()
+    const store = buildContracts(registry).find(
+      (contract) => contract.surface === "store"
+    )?.document
+    const discovered = scanInstalledStoreSurface().discovered
+
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, store, discovered.slice(1))
+    ).toThrow(/runtime exact-set/i)
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, store, [
+        ...discovered,
+        discovered[0],
+      ])
+    ).toThrow(/duplicate runtime/i)
+
+    const duplicateManifest = [
+      ...STORE_SURFACE_MANIFEST,
+      STORE_SURFACE_MANIFEST[0],
+    ]
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, store, discovered, duplicateManifest)
+    ).toThrow(/manifest/i)
+
+    const invalidPreserve = STORE_SURFACE_MANIFEST.map((entry, index) =>
+      index === 42
+        ? {
+            ...entry,
+            m1_enablement: "enabled",
+          }
+        : entry
+    ) as readonly StoreSurfaceEntry[]
+    expect(() =>
+      verifyStoreSurfaceExactSets(registry, store, discovered, invalidPreserve)
+    ).toThrow(/PRESERVE_LEGACY|manifest/i)
+  })
+
   it("accepts bidirectional local and native Store coverage", () => {
     expect(() =>
       verifyCoverage(
         "store",
         completeStoreRegistry(),
-        [...SCAFFOLD_ROUTES, LOCAL_STORE_ROUTE]
+        [...EXCLUDED_ROUTES, LOCAL_STORE_ROUTE]
       )
     ).not.toThrow()
   })
@@ -254,7 +401,7 @@ describe("OpenAPI route coverage foundation", () => {
       verifyCoverage(
         "store",
         withoutLocal,
-        [...SCAFFOLD_ROUTES, LOCAL_STORE_ROUTE]
+        [...EXCLUDED_ROUTES, LOCAL_STORE_ROUTE]
       )
     ).toThrow("store GET /store/local")
 
@@ -272,7 +419,7 @@ describe("OpenAPI route coverage foundation", () => {
       verifyCoverage(
         "store",
         withoutNative,
-        [...SCAFFOLD_ROUTES, LOCAL_STORE_ROUTE]
+        [...EXCLUDED_ROUTES, LOCAL_STORE_ROUTE]
       )
     ).toThrow("store GET /store/products/{id}")
   })
@@ -316,7 +463,7 @@ describe("OpenAPI route coverage foundation", () => {
       verifyCoverage(
         "foundation",
         registry,
-        [...SCAFFOLD_ROUTES, LOCAL_STORE_ROUTE]
+        [...EXCLUDED_ROUTES, LOCAL_STORE_ROUTE]
       )
     ).toThrow(expected)
   })

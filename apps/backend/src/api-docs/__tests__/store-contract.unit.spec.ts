@@ -2,6 +2,7 @@ import { CLIENT_MONEY_BODY_FIELDS } from "../../api/store/carts/payment-attempts
 import { verifyCoverage } from "../coverage/verify-coverage"
 import { ROUTE_EXCLUSIONS } from "../coverage/exclusions"
 import { buildContracts } from "../generation/build-documents"
+import { STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS } from "../operations/store/schemas"
 import { createFoundationRegistry } from "../registry"
 
 describe("OpenAPI Store contract wave", () => {
@@ -12,7 +13,7 @@ describe("OpenAPI Store contract wave", () => {
 
   it("covers every included Store route and both native catalog extensions", () => {
     expect(() => verifyCoverage("store", registry)).not.toThrow()
-    expect(storeOperations).toHaveLength(10)
+    expect(storeOperations).toHaveLength(9)
     expect(
       storeOperations.map((operation) => `${operation.method} ${operation.path}`).sort()
     ).toEqual(
@@ -25,10 +26,22 @@ describe("OpenAPI Store contract wave", () => {
         "POST /store/carts/active",
         "POST /store/carts/{id}/payment-attempts/card",
         "POST /store/carts/{id}/payment-attempts/pix",
-        "POST /store/customers/me/cart/attach",
         "POST /store/tracking/lookup",
       ].sort()
     )
+    expect(
+      storeOperations.some(
+        (operation) =>
+          operation.method === "POST" &&
+          operation.path === "/store/customers/me/cart/attach"
+      )
+    ).toBe(false)
+    expect(Object.keys(store?.document.paths ?? {}).sort()).toEqual([
+      "/health/live",
+      "/health/ready",
+    ])
+    expect(storeOperations.some((operation) => operation.path.startsWith("/store/")))
+      .toBe(true)
   })
 
   it("omits ambiguous object and recursive catalog query parameters", () => {
@@ -94,14 +107,24 @@ describe("OpenAPI Store contract wave", () => {
     }
   })
 
-  it("keeps the two scaffold exclusions valid and undocumented", () => {
+  it("keeps explicitly excluded routes valid and undocumented", () => {
     expect(
       ROUTE_EXCLUSIONS.map((entry) => `${entry.method} ${entry.path}`).sort()
-    ).toEqual(["GET /admin/custom", "GET /store/custom"])
+    ).toEqual(
+      [
+        "GET /admin/custom",
+        "GET /store/custom",
+        "POST /store/carts/{id}/complete",
+        "POST /store/customers/me/cart/attach",
+      ].sort()
+    )
     expect(
       storeOperations.some(
         (operation) =>
-          operation.path === "/store/custom" || operation.path === "/admin/custom"
+          operation.path === "/store/custom" ||
+          operation.path === "/admin/custom" ||
+          operation.path === "/store/carts/{id}/complete" ||
+          operation.path === "/store/customers/me/cart/attach"
       )
     ).toBe(false)
   })
@@ -205,6 +228,63 @@ describe("OpenAPI Store contract wave", () => {
     ).toBeDefined()
   })
 
+  it("publishes the closed Store 1.1 transversal component foundation", () => {
+    const document = store?.document
+    const schemas = document?.components.schemas ?? {}
+    const parameters = document?.components.parameters ?? {}
+    const headers = document?.components.headers ?? {}
+    const securitySchemes = document?.components.securitySchemes ?? {}
+
+    expect(document?.info.version).toBe("1.1.0")
+    expect(schemas.StoreErrorResponse).toEqual(
+      expect.objectContaining({
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "message", "retryable"],
+      })
+    )
+    expect(parameters).toEqual(
+      expect.objectContaining({
+        IdempotencyKey: expect.objectContaining({ name: "Idempotency-Key" }),
+        IfMatch: expect.objectContaining({ name: "If-Match" }),
+        XCorrelationId: expect.objectContaining({ name: "x-correlation-id" }),
+      })
+    )
+    expect(headers).toEqual(
+      expect.objectContaining({
+        ETag: expect.any(Object),
+        XCorrelationId: expect.any(Object),
+        RetryAfter: expect.any(Object),
+      })
+    )
+    expect(schemas.StoreMajorMoney).toEqual(
+      expect.objectContaining({ additionalProperties: false })
+    )
+    expect(schemas.StoreMinorMoney).toEqual(
+      expect.objectContaining({ additionalProperties: false })
+    )
+    expect(JSON.stringify(schemas.StoreMajorMoney)).toMatch(/BRL.*major/)
+    expect(JSON.stringify(schemas.StoreMinorMoney)).toMatch(/BRL.*minor/)
+
+    for (const scheme of Object.values(securitySchemes) as Array<{
+      description?: string
+    }>) {
+      expect(scheme.description).toMatch(/BFF|server-to-server/i)
+      expect(scheme.description).toMatch(/browser/i)
+    }
+  })
+
+  it("describes Idempotency-Key as retry identity and never as authority", () => {
+    const parameter = store?.document.components.parameters.IdempotencyKey as {
+      description?: string
+    }
+    expect(parameter.description).toMatch(/retry identity/i)
+    expect(parameter.description).toMatch(/not authentication/i)
+    expect(parameter.description).toMatch(/not authorization/i)
+    expect(parameter.description).toMatch(/not ownership/i)
+    expect(parameter.description).toMatch(/not (?:a )?capability/i)
+  })
+
   it("does not register Admin or Webhook operations in the Store registry", () => {
     expect(
       storeOperations.some(
@@ -285,17 +365,21 @@ describe("OpenAPI Store contract wave", () => {
     )
   })
 
-  it("keeps attach request cart_id optional without additionalProperties:false", () => {
-    const attachSchema = store?.document.components.schemas
-      .StoreCustomerCartAttachRequest as {
-      additionalProperties?: boolean
-      properties?: { cart_id?: { type?: string } }
-      required?: string[]
-    }
+  it("retains attach support schemas without publishing attach path+method", () => {
+    expect(store?.document.paths?.["/store/customers/me/cart/attach"]).toBeUndefined()
+    expect(
+      store?.document.components.schemas.StoreCustomerCartAttachRequest
+    ).toBeUndefined()
 
-    expect(attachSchema?.additionalProperties).not.toBe(false)
-    expect(attachSchema?.required).toBeUndefined()
-    expect(attachSchema?.properties?.cart_id?.type).toBe("string")
+    const attachSchema =
+      STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS.StoreCustomerCartAttachRequest
+    expect(
+      (attachSchema as { additionalProperties?: boolean }).additionalProperties
+    ).not.toBe(false)
+    expect(
+      (attachSchema as { required?: string[] }).required
+    ).toBeUndefined()
+    expect(attachSchema.properties.cart_id.type).toBe("string")
   })
 
   it("documents synchronous PaymentAttempt status consts for card and pix", () => {
@@ -346,21 +430,7 @@ describe("OpenAPI Store contract wave", () => {
         /access denied|ownership|access/i
       )
 
-      const documentOperation = store?.document.paths?.[path]?.post as
-        | {
-            responses?: Record<string, { description?: string }>
-          }
-        | undefined
-      expect(documentOperation?.responses?.["400"]).toBeDefined()
-      expect(documentOperation?.responses?.["403"]).toBeUndefined()
-      expect(documentOperation?.responses?.["400"]?.description).toMatch(
-        /access denied|ownership|access/i
-      )
-      expect(
-        Object.keys(documentOperation?.responses ?? {})
-      ).toEqual(
-        expect.arrayContaining(["201", "400", "401", "404", "500"])
-      )
+      expect(store?.document.paths?.[path]).toBeUndefined()
     }
   })
 

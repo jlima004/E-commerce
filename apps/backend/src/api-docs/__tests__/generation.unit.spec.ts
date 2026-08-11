@@ -2,7 +2,7 @@ import fs from "fs"
 import path from "path"
 import { z, type ZodType } from "zod"
 import type { OpenApiDocument, OperationMetadata } from "../contracts"
-import { CONTRACT_TITLES } from "../document"
+import { CONTRACT_TITLES, CONTRACT_VERSIONS } from "../document"
 import { buildContracts } from "../generation/build-documents"
 import { canonicalize } from "../generation/canonicalize"
 import { serializeDocument } from "../generation/serialize"
@@ -14,6 +14,10 @@ import {
   type DirectionSafeSchema,
 } from "../registry"
 import { parseGenerateArguments } from "../../../scripts/openapi/generate"
+import {
+  CORRELATION_ID_HEADER,
+  STORE_CORRELATION_ID_HEADER,
+} from "../components"
 
 function syntheticOperation(
   overrides: Partial<OperationMetadata> = {}
@@ -66,7 +70,9 @@ describe("OpenAPI foundation generation", () => {
 
     for (const contract of first) {
       expect(contract.document.openapi).toBe("3.1.2")
-      expect(contract.document.info.version).toBe("1.0.0")
+      expect(contract.document.info.version).toBe(
+        CONTRACT_VERSIONS[contract.surface]
+      )
       expect(contract.document.info.title).toBe(CONTRACT_TITLES[contract.surface])
       expect(contract.document["x-medusa-version"]).toBe("2.16.0")
       expect(contract.document.servers).toEqual([
@@ -85,14 +91,12 @@ describe("OpenAPI foundation generation", () => {
     expect(Object.keys(store?.document.paths ?? {}).sort()).toEqual([
       "/health/live",
       "/health/ready",
-      "/store/carts/active",
-      "/store/carts/{id}/payment-attempts/card",
-      "/store/carts/{id}/payment-attempts/pix",
-      "/store/customers/me/cart/attach",
-      "/store/products",
-      "/store/products/{id}",
-      "/store/tracking/lookup",
     ])
+    expect(
+      Object.keys(store?.document.paths ?? {}).filter((routePath) =>
+        routePath.startsWith("/store/")
+      )
+    ).toEqual([])
     expect(Object.keys(admin?.document.paths ?? {}).sort()).toEqual([
       "/admin/exchanges",
       "/admin/exchanges/{id}",
@@ -110,24 +114,86 @@ describe("OpenAPI foundation generation", () => {
     ])
   })
 
+  it("validates the closed contract version expected by each surface", () => {
+    const contracts = buildContracts()
+    const bySurface = Object.fromEntries(
+      contracts.map((contract) => [contract.surface, contract.document])
+    ) as Record<"store" | "admin" | "webhooks", OpenApiDocument>
+
+    expect(bySurface.store.info.version).toBe("1.1.0")
+    expect(bySurface.admin.info.version).toBe("1.0.0")
+    expect(bySurface.webhooks.info.version).toBe("1.0.0")
+
+    expect(() => validateDocument("store", bySurface.store)).not.toThrow()
+    expect(() => validateDocument("admin", bySurface.admin)).not.toThrow()
+    expect(() => validateDocument("webhooks", bySurface.webhooks)).not.toThrow()
+
+    const wrongStore = structuredClone(bySurface.store)
+    wrongStore.info.version = "1.0.0"
+    expect(() => validateDocument("store", wrongStore)).toThrow(
+      "Unexpected contract version for store"
+    )
+
+    for (const surface of ["admin", "webhooks"] as const) {
+      const wrong = structuredClone(bySurface[surface])
+      wrong.info.version = "1.1.0"
+      expect(() => validateDocument(surface, wrong)).toThrow(
+        `Unexpected contract version for ${surface}`
+      )
+    }
+  })
+
+  it("keeps Store correlation semantics isolated from stable Admin and generated artifacts", () => {
+    const contracts = buildContracts()
+    const bySurface = Object.fromEntries(
+      contracts.map((contract) => [contract.surface, contract.document])
+    ) as Record<"store" | "admin" | "webhooks", OpenApiDocument>
+
+    for (const healthPath of ["/health/live", "/health/ready"] as const) {
+      const operation = bySurface.store.paths[healthPath] as {
+        get: { parameters: Array<Record<string, unknown>> }
+      }
+      expect(operation.get.parameters[0]).toEqual(STORE_CORRELATION_ID_HEADER)
+      expect(operation.get.parameters[0]).not.toEqual(CORRELATION_ID_HEADER)
+    }
+
+    const adminProductList = bySurface.admin.paths["/admin/products"] as {
+      post: { parameters: Array<Record<string, unknown>> }
+    }
+    expect(adminProductList.post.parameters[0]).toEqual(CORRELATION_ID_HEADER)
+    expect(adminProductList.post.parameters[0]).not.toEqual(
+      STORE_CORRELATION_ID_HEADER
+    )
+
+    const generatedDir = path.resolve(__dirname, "..", "generated")
+    for (const contract of contracts) {
+      expect(contract.bytes).toBe(
+        fs.readFileSync(path.join(generatedDir, contract.fileName), "utf8")
+      )
+    }
+  })
+
   it("uses an explicit operation description and otherwise falls back to summary", () => {
     const registry = new ContractRegistryBundle()
-    registry.registerOperation(syntheticOperation())
+    registry.registerOperation(
+      syntheticOperation({ surface: "admin", path: "/admin/synthetic" })
+    )
     registry.registerOperation(
       syntheticOperation({
+        surface: "admin",
         method: "POST",
-        path: "/store/synthetic-described",
+        path: "/admin/synthetic-described",
         operationId: "storeSyntheticDescribed",
         description: "Explicit operation description",
       })
     )
 
-    const store = buildContracts(registry).find(
-      (contract) => contract.surface === "store"
+    const admin = buildContracts(registry).find(
+      (contract) => contract.surface === "admin"
     )?.document
-    expect((store?.paths["/store/synthetic"] as { get: { description: string } }).get.description)
+    expect((admin?.paths["/admin/synthetic"] as { get: { description: string } }).get.description)
       .toBe("Synthetic operation")
-    expect((store?.paths["/store/synthetic-described"] as { post: { description: string } }).post.description)
+    expect((admin?.paths["/admin/synthetic-described"] as { post: { description: string } }).post.description)
       .toBe("Explicit operation description")
   })
 

@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
-current_phase: 13
-current_phase_name: Storefront Contract Foundation & Surface Lockdown
-status: milestone-v1-1-open-phase-13-context-not-started
-stopped_at: Milestone v1.1 opened / awaiting explicit human authorization for Phase 13 CONTEXT
-last_updated: "2026-08-06"
-last_activity: 2026-08-06
-last_activity_desc: Milestone v1.1 Backend Storefront Readiness opened documentarily; no Phase 13 CONTEXT, implementation, deploy or frontend work started.
+current_phase: 14
+current_phase_name: customer-auth-verification
+status: authorized-context-not-started
+stopped_at: Phase 14 AUTHORIZED — CONTEXT NOT STARTED
+last_updated: "2026-08-10T22:48:00.000Z"
+last_activity: 2026-08-10
+last_activity_desc: Phase 13 HUMAN APPROVED — CLOSED; Phase 14 AUTHORIZED for CONTEXT only
 progress:
   total_phases: 10
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 7
+  completed_plans: 7
+  percent: 10
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-06)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Milestone v1.1 — Backend Storefront Readiness está formalmente aberto com 10 phases lineares (13–22) e 91 requirements abertos. Phase 13 está selecionada, mas seu CONTEXT não foi iniciado e exige nova autorização humana explícita. O Frontend Milestone 1 permanece bloqueado, não iniciado e não autorizado. Milestone v1.0 continua completo, fechado, arquivado, tagueado e publicado; sua identidade de arquivo, tag anotada e GitHub Release são históricas e imutáveis. A iniciativa API-DOCS-01 continua fechada; OpenAPI/Swagger UI permanecem desabilitados em produção por padrão.
+**Current focus:** Phase 14 — customer-auth-verification (CONTEXT authorized, not started)
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Milestone v1.1 opening complete documentarily. `completed_phases: 0/10`; `completed_plans: 0`; requirements `0/91`. Do not start Phase 13 CONTEXT, RESEARCH, PLAN, implementation, deploy or frontend automatically.
+**Current gate:** Phase 13 HUMAN APPROVED — CLOSED; 13-01..13-07 HUMAN APPROVED — PASS (7/7); FND-01..FND-08 COMPLETE; milestone requirements 8/91; phases fully closed 1/10. Phase 14 is AUTHORIZED — CONTEXT NOT STARTED. Only the Phase 14 CONTEXT gate is authorized now; RESEARCH and all later gates require separate human approval. Deploy and frontend remain not authorized. `mode=interactive`; `workflow.auto_advance=false`; `workflow._auto_chain_active=false`; `parallelization=false`.
 
 ```text
 Phase 12 CONTEXT approved
@@ -125,10 +125,58 @@ GitHub Release published at: 2026-07-30T17:08:24Z
 GitHub Release URL: https://github.com/jlima004/E-commerce/releases/tag/v1.0
 repository archive identity differs from current main: true
 repository archive identity differs from runtime deployed SHA: true
-next milestone: not defined / not started
-Phase 13 not started / not authorized
-frontend not started / not authorized
-next permitted step: human decision on the next milestone only
+next milestone: v1.1 open
+Phase 13 CONTEXT: APPROVED
+Phase 13 RESEARCH: APPROVED
+Phase 13 PLAN R5: APPROVED
+Phase 13 SPEC/SDD R1: APPROVED
+Phase 13 Implementation Prompt: APPROVED
+Phase 13 EXECUTING
+P13-13-01-R1: HUMAN RE-REVIEW PASS
+13-01: HUMAN APPROVED — PASS
+P13-13-02-R1: TECHNICAL HUMAN RE-REVIEW PASS
+P13-13-02-R2: HUMAN RE-REVIEW PASS
+13-02: HUMAN APPROVED — PASS
+P13-13-03-R1: TECHNICAL HUMAN RE-REVIEW PASS
+P13-13-03-R2: HUMAN REVIEW PASS
+13-03: HUMAN APPROVED — PASS
+13-04: HUMAN APPROVED — PASS (P13-13-04-T3-R1 HUMAN RE-REVIEW PASS)
+P13-13-05-HCD-01: APPROVED — DML-native integer + partial UNIQUE; direct MikroORM REJECTED
+P13-13-05-R2: HUMAN REVIEW PASS
+P13-13-05-R1 B13-05-R1-01: CLOSED — PASS (DML/snapshot/migration/catalog consistent)
+P13-13-05-R1 B13-05-R1-02: CLOSED — PASS (generated writes refused 5/5; PostgreSQL suite 9/9)
+13-05: HUMAN APPROVED — PASS
+P13-13-06-R1: BLOCKED — VALID
+P13-13-06-PLAN-R2: HUMAN APPROVED — PASS
+P13-13-06-R2: HUMAN REVIEW PASS
+B13-06-R2-01: CLOSED — PASS (native evidence 6/6 stale bindings refreshed; 24/24 current)
+B13-06-R2-02: CLOSED — PASS (Store 1.1 public business path+method = 0; health/support = 2)
+13-06: HUMAN APPROVED — PASS
+P13-13-06-R3: HUMAN APPROVED — PASS
+P13-13-07-R1: HUMAN APPROVED — PASS
+P13-13-07-R1-C4: HUMAN APPROVED — PASS
+B13-07-R1-01: CLOSED — PASS
+B13-07-R1-02: CLOSED — PASS
+B13-07: ELIMINATED — EVIDENCED
+13-07: HUMAN APPROVED — PASS
+Phase 13 plans: 7 planned / 7 human-approved executed
+Phase 13 requirements covered: FND-01..FND-08 = 8/8
+Phase 13 requirements complete: 8/8
+FND-01: COMPLETE
+FND-02: COMPLETE
+FND-03: COMPLETE
+FND-04: COMPLETE
+FND-05: COMPLETE
+FND-06: COMPLETE
+FND-07: COMPLETE
+FND-08: COMPLETE
+Milestone requirements complete: 8/91
+Phases complete: 1/10
+Phase 13: CLOSED — HUMAN APPROVED
+Phase 14: AUTHORIZED — CONTEXT NOT STARTED
+Deploy: NOT AUTHORIZED
+frontend blocked / not started / not authorized
+next permitted step: execute Phase 14 CONTEXT only, then stop for human review before RESEARCH.
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -146,7 +194,7 @@ rollback real: not executed
 
 Os registros `BLOCKED` históricos permanecem preservados e foram supersedidos pela linhagem corretiva aprovada. Nenhuma dessas limitações é blocker ativo do milestone.
 
-**Não-ações desta abertura:** nenhum CONTEXT/RESEARCH/PLAN de Phase 13, código runtime, migration, pacote/lockfile, teste de runtime, build, banco, provider real, deploy, rollback, restart, scale, secret/env real, frontend ou projeto Next.js. A GitHub Release e a tag `v1.0` não foram criadas, editadas, movidas ou republicadas.
+**Não-ações históricas no momento da abertura do milestone v1.1:** naquele momento original, nenhum CONTEXT/RESEARCH/PLAN de Phase 13 havia sido iniciado; tampouco código runtime, migration, pacote/lockfile, teste de runtime, build, banco, provider real, deploy, rollback, restart, scale, secret/env real, frontend ou projeto Next.js. A GitHub Release e a tag `v1.0` não foram criadas, editadas, movidas ou republicadas naquela abertura. Este registro é histórico e não contradiz o estado corrente da Phase 13 registrado no front matter, Current Position e Session Continuity.
 
 A estabilização do release permanece formalmente encerrada (produção saudável; débitos MNY/REL/CACHE/INFRA não reabertos).
 
@@ -167,13 +215,20 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 13 — Storefront Contract Foundation & Surface Lockdown
-Plan: —
-Status: milestone-v1-1-open-phase-13-context-not-started
-Last activity: 2026-08-06 — Milestone v1.1 opened documentarily
-Next: explicit human authorization to start Phase 13 CONTEXT
+Phase: 14 (customer-auth-verification) — AUTHORIZED — CONTEXT NOT STARTED
+Plan: not planned — CONTEXT gate is next
+Status: Phase 13 HUMAN APPROVED — CLOSED; FND-01..FND-08 COMPLETE; Phase 14 CONTEXT authorized
+Current gate: Phase 14 CONTEXT — AUTHORIZED, NOT STARTED; stop for human review before RESEARCH
+Last activity: 2026-08-10 — Phase 13 closure human-approved; Phase 14 authorized for CONTEXT only
+Next: execute Phase 14 CONTEXT only; do not auto-advance to RESEARCH
 
-Progress: [░░░░░░░░░░] 0% phases (0/10); 0/91 requirements complete; frontend blocked
+Progress: [█░░░░░░░░░] 10% phases closed (1/10)
+Phase 13 requirements covered: FND-01..FND-08 = 8/8
+Phase 13 requirements complete: 8/8
+Milestone requirements complete: 8/91
+Phases complete: 1/10
+Plans human-approved executed: 7/7 (Phase 13)
+frontend blocked
 
 ## Historical v1.0 Performance Metrics
 
@@ -247,7 +302,7 @@ Recent decisions affecting current work:
 - [Phase 03 execution]: Plans 03-01..03-05 implemented and verified — 64 tests green (40 unit + 24 integration HTTP), negative grep clean, build green with `ADMIN_DISABLED=true`.
 - [Phase 03 closure]: `03-CLOSURE.md` records CART-01..CART-04 complete; `checkout_data_complete` derived only; `federal_tax_id` in shipping metadata with public mask; guest attach session-backed; no Order/PaymentAttempt/PaymentSession/webhook/Stripe/Pix/Gelato; Phase 04 not started.
 - [Phase 04 execution]: Plans 04-01..04-05 complete on branch `gsd/phase-04-stripe-payments-payment-attempt`. Card (04-04) and Pix (04-05) use `filtering_wrapper` + injectable Stripe layers; no native-first Medusa Stripe. Migration draft not applied; Stripe real/config still pending.
-- [Phase 04 replan]: Plans 04-04 and 04-05 revised after 04-01 proved native-first pure unsafe. Card/Pix execution proved safe boundary via custom layer + allowlist-only persistence; `PaymentSession.data` allowlist-only when used. `client_secret`, QR/copia-e-cola, `next_action` and raw Stripe payloads are response-only and never persisted.
+- [Phase 04 replan]: Plans 04-04 and 04-05 revised after 04-01 proved native-first pure unsafe. Card/Pix execution proved safe boundary via custom layer + allowlist-only persistence; `PaymentSession.data` allowlist-only when used. `client_secret`, QR/copia-e-cola, `next_action` and raw Stripe payloads são response-only e never persisted.
 - [Phase 04 pre-execution alignment]: `PAYMENT_SESSION_ID_NULLABLE_DECISION=model_and_migration_nullable`; `PaymentAttempt.payment_session_id` is nullable/opcional in model, types, and helpers to allow local `created` attempts before provider session association. Migration draft remains not applied.
 - [Plan 04-04]: Card initiation pre-Order via `STRIPE_CARD_INITIATION_LAYER`; `client_secret` response-only; fail-closed without audit trail.
 - [Plan 04-05]: Pix initiation pre-Order via `STRIPE_PIX_INITIATION_LAYER`; QR/copia-e-cola/`expires_at` response-only for instructions, `expires_at` persisted; local states `awaiting_pix_payment`, `pix_expired`, `payment_failed`, `payment_canceled` never create Order.
@@ -255,7 +310,7 @@ Recent decisions affecting current work:
 - [Phase 04 closure — histórico]: Phase 04 completed the money-path pre-Order implementation/test scope. At the 2026-06-29 closure, production activation was blocked by the draft migration and missing real Stripe layers/config. Later safe-layer work, the RC1 applied-migration audit, Phases 05–11 closures, and formal production stabilization superseded that blocker. Separately deferred Stripe smokes/config without specific evidence do not reopen PAY-01..PAY-04.
 - [Gate 04A]: Real Stripe card/Pix initiation layers are implemented and registered behind `STRIPE_REAL_INITIATION_ENABLED=true` with `sk_test_...` only. The layers call Stripe directly, not native-first Medusa Stripe, and hand raw PaymentIntent data immediately to the existing safe boundary. `client_secret`, Pix QR/copia-e-cola, hosted instructions, and integral `next_action` remain response-only; `PaymentAttempt` migration is prepared but not applied; no webhook, Order, `purchase_completed`, or Gelato work was introduced.
 - [Gate 04A validation]: Real Stripe card initiation smoke passed in test mode on local port 9001. The card route returned `201 Created`, created a Stripe test-mode PaymentIntent through the real safe layer, and persisted `PaymentAttempt` with `payment_method_type=card`, `status=card_client_secret_created`, `amount=9900`, `currency_code=brl`, and `order_id=null`. No Order, webhook, `CheckoutCompletionLog`, `WebhookEventLog`, `purchase_completed`, or Gelato fulfillment was created. Pix real smoke remains deferred due to Stripe account eligibility. Phase 05 remains not started.
-- [Phase 05 planning]: Phase 05 was drafted as planning-only into four manual slices: WebhookEventLog schema/config, raw-body `/hooks/stripe` signature route, PaymentIntent-to-PaymentAttempt processing, and final validation/negative proofs. Planned success state is `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 06 remains responsible for `Order` creation via `CheckoutCompletionLog`. No runtime code, endpoint, migration execution, Order, `purchase_completed`, Gelato, e-mail, analytics or refund flow was implemented during planning.
+- [Phase 05 planning]: Phase 05 was drafted as planning-only into four manual slices: WebhookEventLog schema/config, raw-body `/hooks/stripe` signature route, PaymentIntent-to-PaymentAttempt processing, and final validation/negative proofs. Planned success state is `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`; Phase 06 remains responsible for `Order` creation via `CheckoutCompletionLog`. No runtime code, endpoint, migration execution, Order, `purchase_completed`, Gelato, e-mail, analytics ou refund flow was implemented during planning.
 - [Phase 05 execution]: Plans `05-01`..`05-04` completed under manual gating. Final validation closed with 29 targeted unit tests, 10 HTTP integration tests, green build, focused runtime greps green, and broad grep false positives limited to tests/canaries or Stripe initiation code outside webhook runtime. `PaymentAttempt` webhook handling now stops at `payment_confirmed_by_webhook` with `order_id = null`; no Order, `CheckoutCompletionLog`, `purchase_completed`, Gelato, e-mail, analytics, refund or Stripe CLI real smoke was introduced.
 - [Phase 05 closure]: Human review accepted Phase 05 at manual gate on 2026-06-30 (evidence: `05-04-SUMMARY.md`, 29/29 unit, 10/10 HTTP integration, build green, negative greps green). `05-CLOSURE.md` recorded. WHK-01 and WHK-02 complete. Phase 06 may be planned next; execution blocked. Hard constraint: Order creation must consume only `PaymentAttempt.status = payment_confirmed_by_webhook` with `order_id = null`.
 - [Phase 06 planning]: Planning-only artifacts created for Idempotent Webhook-Driven Order Creation: `06-CONTEXT.md`, `06-RESEARCH.md`, `06-VALIDATION.md`, and five slices `06-01`..`06-05`. The plan defines a single internal post-webhook entrypoint, `CheckoutCompletionLog` idempotency keyed by PaymentIntent, transactional `Order + CheckoutCompletionLog + PaymentAttempt.order_id` correlation, decoupled `order_status/payment_status`, immutable Gelato snapshots on Order LineItems, and negative proofs excluding `purchase_completed`, Gelato, email, analytics, refund and Stripe CLI smoke. No runtime implementation was started.
@@ -263,22 +318,22 @@ Recent decisions affecting current work:
 - [Phase 06 closure]: Human review accepted Phase 06 at manual gate on 2026-06-30 (evidence: `06-05-SUMMARY.md`, `06-CLOSURE.md`, 5/50 unit matrix, 2/15 HTTP matrix, build PASS, focused negative greps PASS). `ORD-01`, `ORD-02`, and `ORD-03` are complete. Phase 07 may be planned next, but execution is blocked until explicit human approval.
 - [Phase 07 planning]: Planning-only artifacts created for Analytics Outbox (`purchase_completed`): `07-CONTEXT.md`, `07-RESEARCH.md`, `07-VALIDATION.md`, and three slices `07-01`..`07-03`. The plan defines `AnalyticsEventLog`, `purchase_completed:stripe:{payment_intent_id}` idempotency, local durable downstream gate independent of PostHog success, async PostHog relay with retry/dead-letter, and negative proofs excluding Email, Gelato, fulfillment, refund, tracking, Stripe CLI smoke and migration application. Follow-up documentary correction split the prohibited-payload grep into a blocking analytics-payload scope plus broad informational scan so legitimate Phase 06 `gelato_snapshot` usage in Order workflows does not block Phase 07 validation; `07-03` records controlled lockfile handling for any future PostHog SDK install. No runtime implementation was started during planning.
 - [Phase 07 execution]: Plans `07-01`..`07-03` completed under manual gating. Final validation closed with 35 unit tests, 3 filtered HTTP integration tests, build PASS, negative greps PASS, and `git diff --check` PASS. `purchase_completed` is durably recorded in `AnalyticsEventLog` on accepted Order success; local downstream gate accepts `recorded | queued | sending | sent | failed | dead_letter`; async PostHog relay with retry/backoff/dead-letter; PostHog is not a business gate and `status = sent` is not a downstream requirement. `posthog-node@^5.38.2` added (resolved `5.39.2`); root `package-lock.json` updated by workspace npm. No PostHog real call, Email, Gelato, fulfillment, refund, tracking, Stripe CLI smoke, or real migration execution.
-- [Phase 07 closure]: Human review accepted Phase 07 at manual gate on 2026-07-01 (evidence: `07-03-SUMMARY.md`, `07-CLOSURE.md`, 35/35 unit, 3/3 HTTP filtered, build PASS, negative greps PASS). `ANL-01`, `ANL-02`, and `ANL-03` are complete. Phase 08 may be planned next, but execution is blocked until explicit human approval. Phase 09 execution blocked until explicit human approval and required dependencies.
+- [Phase 07 closure]: Human review accepted Phase 07 at manual gate on 2026-07-01 (evidence: `07-03-SUMMARY.md`, `07-CLOSURE.md`, 35/35 unit, 3/3 HTTP filtered, build PASS, negative greps PASS). `ANL-01` `ANL-02` and `ANL-03` are complete. Phase 08 may be planned next, but execution is blocked until explicit human approval. Phase 09 execution blocked until explicit human approval and required dependencies.
 - [Phase 08 planning]: Planning-only artifacts created for Transactional Email (Resend): `08-CONTEXT.md`, `08-RESEARCH.md`, `08-VALIDATION.md`, and three slices `08-01`..`08-03`. The plan defines `EmailDeliveryLog`, idempotency key `order-confirmation/{order_id}`, local enqueue after confirmed Order + durable local `purchase_completed`, canonical recipient source `Order.email`, async Resend relay with retry/backoff/dead-letter, and negative proofs excluding Gelato, fulfillment, refund, exchange, tracking, Stripe CLI smoke and migration application. No runtime implementation, tests, migrations, install, package/lockfile change, Resend call, real e-mail, PostHog call, Gelato, fulfillment, refund, exchange or tracking work was started during planning.
 - [Phase 08 execution]: Plans `08-01`..`08-03` completed under manual gating. Final validation closed with 41 unit tests, 4 filtered HTTP integration tests, build PASS, negative greps PASS, and `git diff --check` PASS. Confirmation e-mail is enqueued locally after accepted Order success + durable local `purchase_completed`; async Resend relay with retry/backoff/dead-letter; idempotency key `order-confirmation/{order_id}`; `Order.email` sole recipient source; full e-mail not persisted in `EmailDeliveryLog`; Resend is not a gate of Order; `status = sent` is not required to validate Order; future automatic Gelato requires `EmailDeliveryLog(order_confirmation).status = sent` or explicit operational decision; `dead_letter` never authorizes automatic Gelato. `resend@^4.8.0` added (resolved `4.8.0`); root `package-lock.json` updated by workspace npm. No Resend real call, real e-mail, PostHog real call, Gelato, fulfillment, refund, exchange, tracking, Stripe CLI smoke, or real migration execution.
-- [Phase 08 closure]: Human review accepted Phase 08 at manual gate on 2026-07-01 (evidence: `08-03-SUMMARY.md`, `08-CLOSURE.md`, 41/41 unit, 4/4 HTTP filtered, build PASS, negative greps PASS). `EMAIL-01` and `EMAIL-02` are complete. Phase 09 may be planned next, but execution is blocked until explicit human approval.
+- [Phase 08 closure]: Human review accepted Phase 08 at manual gate on 2026-07-01 (evidence: `08-03-SUMMARY.md`, `08-CLOSURE.md`, 41/41 unit, 4/4 HTTP filtered, build PASS, negative greps PASS). `EMAIL-01` and `EMAIL-02` complete. Phase 09 may be planned next, but execution is blocked until explicit human approval.
 - [Phase 09 planning]: Planning-only artifacts created for Gelato Fulfillment & Webhook: `09-CONTEXT.md`, `09-RESEARCH.md`, `09-VALIDATION.md`, and five manual-review-gated slices `09-01`..`09-05`. Branch decision B was recorded: use `gsd/phase-09-gelato-fulfillment-webhook`. Documentary correction before execution requires real runtime registration as `gelato_fulfillment`, preserves e-mail `sent` as hard automatic-dispatch gate, moves normal post-email creation/reuse into the `09-03` relay eligibility scan so Stripe webhook replay is not required, closes `FUL-04` through minimal operator-alert fields on `GelatoFulfillment`, requires build for `09-02` and `09-03`, and preserves the `09-04` Gelato webhook authenticity blocker. The plan defines local `GelatoFulfillment`, single-active guard per `Order`, `gelato-dispatch:{order_id}` local idempotency, eligibility after confirmed `Order` + local durable `purchase_completed` + `EmailDeliveryLog(order_confirmation).status = sent`, async dispatch retry/dead-letter/alert contract, Gelato webhook dedupe/status/tracking, and negative proofs excluding refund, exchange, tracking public, Stripe CLI smoke and Phase 10. No runtime implementation, tests, migrations, install, package/lockfile change, real Gelato call/order/webhook/fulfillment, Resend call, PostHog call, refund, exchange, tracking or Stripe CLI smoke was started.
 - [Phase 09 post-hardening reconciliation]: Phase 09 planning reconciled after Phase 08 Email Outbox Hardening. Gelato relay planning includes stale in-flight recovery and no blind redispatch after possible external Gelato call. Phase 09 execution remains blocked until explicit human approval.
 - [Phase 09 pre-09-04 reconciliation]: Gelato webhook authenticity blocker resolved documentally (2026-07-02). Dashboard/API Portal confirms Authorization Type = HTTP Header with configurable Header Name/Value. Chosen mechanism: dedicated header `X-GELATO-WEBHOOK-SECRET`, env `GELATO_WEBHOOK_AUTH_HEADER_NAME` + `GELATO_WEBHOOK_SECRET`; do not reuse `GELATO_API_KEY`; no HMAC/signature/timestamp confirmed; fail-closed before DB side effect; dedupe via `WebhookEventLog.payload.id` with `payload_hash` as safe fallback only. Phase 09 MVP accepts only `order_status_updated`; other official Gelato underscore event names remain out of MVP.
 - [Phase 09 execution]: Plans `09-01`..`09-04` completed under manual gating on branch `gsd/phase-09-gelato-fulfillment-webhook`. Branch decision B preserved.
 - [Phase 09 validation]: Plan `09-05` completed (2026-07-02). Final battery: 7 unit suites / 75 tests, 11 HTTP filtered + 6 HTTP Gelato webhook = **92 tests PASS**, build PASS. Negative proofs documented. `FUL-01`..`FUL-04` and `WHK-03` evidenced.
 - [Phase 09 closure]: Human review accepted Phase 09 at manual gate on 2026-07-02 (evidence: `09-05-SUMMARY.md`, `09-CLOSURE.md`, 92/92 tests, build PASS). `FUL-01`..`FUL-04` and `WHK-03` complete. Branch decision B preserved (`gsd/phase-09-gelato-fulfillment-webhook`). Migration real not applied; production Gelato dispatch/webhook smoke deferred. Phase 10 may be planned next, but execution remains blocked until explicit human approval.
-- [Phase 10 planning]: Planning-only artifacts created for Secure Guest Tracking: `10-CONTEXT.md`, `10-RESEARCH.md`, `10-VALIDATION.md`, and three manual-review-gated slices `10-01`..`10-03`. The plan defines a tokenized public guest tracking surface, `TrackingAccessToken` hash-only persistence with `expires_at`/`revoked_at`, server-side constant-time comparison, sanitized minimal public response, rate limit against enumeration, and explicit negative proofs excluding `order_id`-only lookup, e-mail/telefone/CPF lookup, financial data exposure, refund, exchange, admin ops, and Phase 11. No runtime implementation, tests, build, migration, deploy, real Gelato, real webhook smoke, or Phase 11 work was started during planning.
+- [Phase 10 planning]: Planning-only artifacts created for Secure Guest Tracking: `10-CONTEXT.md`, `10-RESEARCH.md`, `10-VALIDATION.md`, and three manual-review-gated slices `10-01`..`10-03`. The plan defines a tokenized public guest tracking surface, `TrackingAccessToken` hash-only persistence with `expires_at`/`revoked_at`, server-side constant-time comparison, sanitized minimal public response, rate limit against enumeration, and explicit negative proofs excluding `order_id`-only lookup, e-mail/telefone/CPF lookup, financial data exposure, refund, exchange, admin ops, and Phase 11. No runtime implementation, tests, build, migration, deploy, real Gelato, real webhook smoke, ou Phase 11 work was started.
 - [Phase 10 execution]: Plans `10-01`..`10-03` completed under manual gating on branch `gsd/phase-10-secure-guest-tracking`. Final validation closed with 45 unit tests, 11 HTTP integration tests, build PASS, blocking runtime grep PASS, config/lockfile no diff, and `git diff --check` PASS. `TrackingAccessToken` hash-only module; `POST /store/tracking/lookup` body-only token route; allowlist-only public response; rate limit / enumeration guard with indistinguishable 429; process-local limitation documented. No migration applied, no Gelato real, no webhook smoke real, no refund, exchange, admin ops, deploy, or Phase 11 work.
 - [Phase 10 closure]: Human review accepted Phase 10 at manual gate on 2026-07-02 (evidence: `10-03-SUMMARY.md`, `10-CLOSURE.md`, 45/45 unit, 11/11 HTTP, build PASS, blocking grep PASS). `TRK-01` and `TRK-02` complete. Migration real, global Redis rate limit, and client token delivery remain deferred. Phase 11 may be planned next, but execution remains blocked until explicit human approval.
 - [Phase 11 planning]: Planning-only artifacts created for Refunds & Exchanges (Admin): `11-CONTEXT.md`, `11-RESEARCH.md`, `11-VALIDATION.md`, and four manual-review-gated slices `11-01`..`11-04`. Branch registered as `gsd/phase-11-refunds-exchanges-admin`. The plan defines local `RefundRequest`, Admin-safe refund request/reservation, Stripe refund object webhook confirmation as the only local final financial truth, transactional `payment_status` recomputation without automatic `order_status = canceled`, local concurrency/idempotency guards against over-refund, operational `ExchangeRequest`, and manual/semi-automatic Correios reverse-logistics fields entered in Admin. `charge.refunded` cannot double-count financial truth; if handled, it is informational/idempotent and subordinate to refund object events. No runtime implementation, tests, build, migration, deploy, real Stripe, real Gelato, Correios API call, Stripe CLI smoke, broad `OperationalAlert`, broad `AdminActionLog`, or Phase 12 work was started.
-- [Phase 11 execution]: Plans `11-01`..`11-04` completed under manual gating on branch `gsd/phase-11-refunds-exchanges-admin`. Final validation closed with 75 unit tests, 29 HTTP integration tests, build PASS, negative greps G1–G7 PASS (G4 informational only — sanitizer Gelato URL pattern), config/lockfile no diff, and `git diff --check` PASS. RefundRequest Admin-safe reservation with captured-truth guards, idempotency, and process-local per-order concurrency claim; Stripe refund object webhook as sole local financial truth with `refund.created` never finalizing money and `charge.refunded` informational/idempotent; `payment_status` recomputation without auto-canceling `order_status`; ExchangeRequest operational workflow for `defect`/`wrong_product` with manual Correios fields and raw body allowlist on exchange routes; sanitization of notes, affected_items, and payloads. No real migration, `medusa db:migrate`, deploy, Stripe real, Stripe CLI smoke, Gelato real, Correios API, broad OperationalAlert, broad AdminActionLog, or Phase 12 work.
-- [Phase 11 closure — histórico]: Human review accepted Phase 11 at manual gate on 2026-07-03 (evidence: `11-04-SUMMARY.md`, `11-CLOSURE.md`, 75/75 unit, 29/29 HTTP, 104/104 total, build PASS, greps G1–G7 PASS, `git diff --check` PASS). `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Migration real, cross-dyno refund lock, Stripe refund production smoke, and broad alert/audit modules remain deferred. At that closure, Phase 12 was not planned or started and remained blocked until explicit human approval.
+- [Phase 11 execution]: Plans `11-01`..`11-04` completed under manual gating on branch `gsd/phase-11-refunds-exchanges-admin`. Final validation closed with 75 unit tests, 29 HTTP integration tests, build PAS, negative greps G1–G7 PASS (G4 informational only — sanitizer Gelato URL pattern), config/lockfile no diff, and `git diff --check` PASS. RefundRequest Admin-safe reservation with captured-truth guards, idempotency, and process-local per-order concurrency claim; Stripe refund object webhook as sole local financial truth with `refund.created` never finalizing money and `charge.refunded` informational/idempotent; `payment_status` recomputation without auto-canceling `order_status`; ExchangeRequest operational workflow for `defect`/`wrong_product` with manual Correios fields and raw body allowlist on exchange routes; sanitization of notes, affected_items, and payloads. No real migration, `medusa db:migrate`, deploy, Stripe real, Stripe CLI smoke, Gelato real, Correios API, broad OperationalAlert, broad AdminActionLog, or Phase 12 work.
+- [Phase 11 closure — histórico]: Human review accepted Phase 11 at manual gate on 2026-07-03 (evidence: `11-04-SUMMARY.md`, `11-CLOSURE.md`, 75/75 unit, 29/29 HTTP, 104/104 total, build PASS, greps G1–G7 PASS, `git diff --check` PASS). `REF-01`, `REF-02`, `EXC-01`, and `EXC-02` are complete. Migration real, cross-dyno refund lock, Stripe refund production smoke, and broad alert/audit modules remain deferred. At that closure gate, Phase 12 was not planned or started and remained blocked until explicit human approval.
 - [Phase 12 CONTEXT]: Authorized CONTEXT-only gate completed and approved on branch `gsd/phase-12-ops-audit-critical-tests`. Decisions D12-01..D12-15 lock MVP `OperationalAlert` types (`payment_stuck`, `fulfillment_failed`), stuck-payment predicates (confirmed-without-Order; Pix past Stripe `expires_at`), AdminActionLog on refund/exchange Admin surfaces, hybrid INV suite for TEST-01, and explicit out-of-scope (alert email, REL-02 sweeper, dashboards, real providers). PLAN/execution have not started.
 - [Phase 12 RESEARCH R1]: `12-RESEARCH.md` was revised after human-review blockers R12-01..R12-07 and is approved. Strategy A cross-module atomicity is infeasible on current proof; Strategy B correlated append-only is required. OperationalAlert uses atomic PostgreSQL `ON CONFLICT`; actor is user-only; stale window is local 15m with stable timestamps; invariant HTTP files are flat and persistence/concurrency requires disposable real PostgreSQL. PLAN/VALIDATION/execution remain not started and blocked pending explicit authorization.
 - [Phase 09/12 boundary]: `GelatoFulfillment.requires_operator_attention` / `dead_letter` remains the Phase 09 local fulfillment truth and keeps FUL-04 closed. Phase 12 OPS-01 promotes that condition to a persisted, consultable `OperationalAlert`; it does not reopen FUL-04.
@@ -313,9 +368,9 @@ None yet.
 - [Phase 11]: Refund/exchange/admin scope is complete and closed on branch `gsd/phase-11-refunds-exchanges-admin` (`11-CLOSURE.md`). Refund financial truth finalized only by Stripe refund object webhook confirmation; `charge.refunded` does not double-count; refund does not auto-cancel `order_status`; exchanges remain operational without automatic refunds; Correios remains manual/semi-automatic with no API integration; broad `OperationalAlert` / `AdminActionLog` stays Phase 12. The closure-time migration blocker is historical: the RC1 read-only audit confirmed refund/exchange migrations applied. Cross-dyno refund lock and any future Stripe smoke remain separate gates.
 - [Quick 260710-dz0]: Stripe refund smoke preflight stopped before mutation because core `refund` has no `order_id`/`status`/`currency_code` and no local `refund_request` exists for the target Order. A direct Stripe refund would be ignored as `REFUND_WEBHOOK_REQUEST_NOT_FOUND`. The adjusted gate requires authenticated `POST /admin/refunds/request` before the Stripe test-mode refund. It also records that current runtime updates `refund_request` + Order metadata, not core `refund`/`payment_collection.refunded_amount`, and has no refund-email flow.
 - [Quick 260710-rc1 / RC1-A até RC1-H]: RC1-H está `PASS`: a fixture deixou de ser coletada sem remover suíte real; modules passou 28/28 e 454/454; HTTP passou 14/14 e 170/170; unitários 43/43 e 676/676; lint 0/208; build PASS. As 12 falhas RC1-G foram recuperadas somente em Jest/quatro specs, sem runtime, schema, manifest ou lockfile. Upgrade/bootstrap do RC1-G permaneceram válidos e não precisaram repetição. Nenhum Supabase, Heroku, provider externo, deploy, rollback, tag, push ou Phase 12 foi acionado.
-- [Quick 260713-mny01]: MNY-01 está `PASS`: Medusa core/PaymentSession agora usam major units, Stripe/PaymentAttempt/refund/downstream customizado preservam minor units, e o guard da Order converte componentes antes da soma. Unit 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0/208 e build PASS. Nenhum schema, package/lockfile, APP_VERSION, infraestrutura, produção, provider externo, push ou Phase 12 foi tocado. Preços existentes do catálogo permanecem para correção manual em gate separado.
+- [Quick 260713-mny01]: MNY-01 está `PASS`: Medusa core/PaymentSession agora usam major units, Stripe/PaymentAttempt/refund/downstream customizado preservam minor units, e o guard da Order converte componentes antes da soma. Unit 44/44 e 717/717, modules 28/28 e 462/462, HTTP 14/14 e 170/170, lint 0/208 e build PASS. Nenhum schema, package/lockfile, APP_VERSION, infraestrutura, produção, provider externo, push ou Phase 12.
 - [Quick 260715-rel01]: REL-01 está `PASS`: `HEROKU_BUILD_COMMIT > HEROKU_SLUG_COMMIT > APP_VERSION`, com `dev` somente fora de produção; live, ready e Sentry usam a mesma versão resolvida e PM2/VPS preserva o fallback `APP_VERSION`. Env 53/53, health 9/9, Sentry 13/13, PM2 6/6, unit 44/44 e 730/730, lint 0/208 e build PASS. O versionamento automático está resolvido e não há investigação de `APP_VERSION` pendente.
-- [Quick 260715-infra01]: INFRA-01 está `PASS`: release dyno migration-only DB-only; produção exige quatro contratos/módulos Redis sem fallback; CACHE-01A/B PASS. Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0/207, build PASS. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
+- [Quick 260715-infra01]: INFRA-01 está `PASS`: release DB-only isolation and Redis production fail-fast; Unit 49/49 e 766/766, Modules 29/29 e 463/463, HTTP 14/14 e 172/172, lint 0/207, build PASS. CACHE-01A/B PASS; two local commits; no push/deploy. Nenhum config var, deploy, push, tag, Supabase, provider externo ou Phase 12 foi acionado.
 - [Release stabilization closure]: incidente monetário resolvido; versionamento automático resolvido; cache Redis TLS resolvido; CACHE-01A/B e INFRA-01 PASS; cache Redis ativo em `web.1` e `worker.1`; fallbacks do release classificados e isolados; produção saudável. Não restam próximos passos para investigar `APP_VERSION`, reativar cache Redis, provar Redis em `web.1`/`worker.1` ou revisar fallbacks do release.
 - [Phase 12 — historical pre-P12-PLAN-R1 snapshot]: CONTEXT and RESEARCH were approved and the earlier PLAN had 6 plans / 0 executed with `12-VALIDATION.md`; its checker passed with 0 blockers and 0 warnings, and human review remained required. That earlier PASS was superseded/invalidated when P12-PLAN-R1 reopened and revised PLAN/VALIDATION. P12-PLAN-R1 later passed its checker. The separately authorized SPEC/SDD gate initially found two transient documentary blockers, resolved by P12-SPEC-SDD-R1. The implementation prompt gate later completed with checker PASS; the current authority is recorded at the top.
 
@@ -333,16 +388,20 @@ Known deferred artifact items at v1.0 close: 0.
 
 ## Session Continuity
 
-Last session: 2026-08-06
+**Resume file:** .planning/STATE.md
 
-Stopped at: Milestone v1.1 opened; Phase 13 CONTEXT not started.
+Last session: 2026-08-10T22:48:00.000Z
+
+Stopped at: Phase 14 AUTHORIZED — CONTEXT NOT STARTED
 
 Resume files:
+`.planning/STATE.md`,
+`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CLOSURE.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: explicit human authorization to start Phase 13 CONTEXT only.
+Next permitted step: execute Phase 14 CONTEXT only. Stop for explicit human review after CONTEXT; RESEARCH, PLAN, SPEC/SDD, implementation prompt, execution, verification, review and closure are not auto-authorized.
 
-Do not automatically start Phase 13 CONTEXT/RESEARCH/PLAN, start frontend,
+Do not automatically advance beyond Phase 14 CONTEXT or start frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
 rollback, or move or recreate tag `v1.0`.
 
@@ -359,10 +418,10 @@ rollback, or move or recreate tag `v1.0`.
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R4 | Moved stale/reclaim policy to pure `checkout-completion/staleness.ts`; OperationalAlert consumes it; money path no longer imports alert module; focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R3 | Restricted OperationalAlert Admin reads to user actors via `requireAdminActor`; API-key actors rejected; focused HTTP/Unit + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | P12-POST-CLOSURE-PR7-R2 | Removed runtime `rtk` dependency from disposable PostgreSQL Docker harness; Cursor/WSL2 Docker proven; serial PG 5/5 + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
-| 2026-07-23 | P12-POST-CLOSURE-PR7-R1 | Corrected three Codex PR7 findings (refund replay audit, exchange reconciliation, alert scanner pagination); focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
+| 2026-07-23 | P12-POST-CLOSURE-PR1 | Corrected three Codex PR7 findings (refund replay audit, exchange reconciliation, alert scanner pagination); focused + full regression PASS; two local commits; no push/deploy; Phase 12.1 not started. |
 | 2026-07-23 | phase-12-closure | Closed Phase 12 documentally after accepted execution, validation and human REVIEW; all 12 backend MVP phases closed; no Phase 13, milestone closeout, push or deploy. |
 | 2026-07-16 | 260716-p3o-encerrar-formalmente-a-estabiliza-o-no-s | Estabilização formalmente encerrada; incidente monetário, versionamento automático e TLS do cache Redis resolvidos; fallbacks classificados e isolados; produção saudável; próximos passos obsoletos removidos. |
-| 2026-07-16 | 260715-infra01-release-infrastructure | INFRA-01 PASS: release DB-only isolation and Redis production fail-fast; Unit 766/766, Modules 463/463, HTTP 172/172, lint 0/207, build PASS; CACHE-01A/B PASS; two local commits; no push/deploy. |
+| 2026-07-16 | 260715-infra01-release-infrastructure | INFRA-01 PASS: release DB-only isolation and Redis production fail-fast; Unit 766/766, Modules 463/463, HTTP 172/172, lint 0/207, build PASS. CACHE-01A/B PASS; two local commits; no push/deploy. |
 | 2026-06-25 | 260625-i9n-remover-canary-de-stripe-com-formato-rea | Removed a Stripe-shaped test canary from observability tests and rewrote the local 01-04 commit with autosquash so GitHub Push Protection can accept the branch push. |
 | 2026-06-26 | 260626-hsr-heroku-supabase-redis-checkpoint | Documented the Heroku/Supabase/Redis deployment stabilization checkpoint and recorded the next cycle as production backend smoke test. |
 | 2026-06-26 | 2026-06-26-production-backend-smoke | Validated production backend smoke on Heroku/Supabase/Redis with health, version, dynos, logs, public read-only routes, and no business-data mutation; Phase 01 is ready for closure while Phase 02 remains blocked. |
@@ -378,7 +437,7 @@ rollback, or move or recreate tag `v1.0`.
 | 2026-06-30 | phase-06-closure | Closed Phase 06 documentally after accepted `06-01`..`06-05` evidence; `ORD-01`..`ORD-03` complete; Phase 07 planning-ready only, with execution still blocked. |
 | 2026-07-01 | phase-07-planning | Planned Phase 07 into 3 manual-review-gated slices plus context, research and validation artifacts; later corrected payload grep scope and future PostHog lockfile handling documentally; no runtime, tests, migrations, Stripe CLI smoke, PostHog call, Email, Gelato, fulfillment, refund or tracking work started. |
 | 2026-07-01 | phase-07-closure | Closed Phase 07 documentally after accepted `07-01`..`07-03` evidence; `ANL-01`..`ANL-03` complete; Phase 08 planning-ready only, execution blocked; Phase 09 blocked by dependencies. |
-| 2026-07-01 | phase-08-planning | Planned Phase 08 into 3 manual-review-gated slices plus context, research and validation artifacts; no runtime, tests, migrations, install, Resend call, e-mail, PostHog call, Gelato, fulfillment, refund, exchange, tracking or Stripe CLI smoke started. |
+| 2026-07-01 | phase-08-planning | Planned Phase 08 into 3 manual-review-gated slices plus context, research and validation artifacts; no runtime, tests, migrations, install, Resend call, e-mail, PostHog call, Gelato, fulfillment, refund, exchange, tracking, Stripe CLI smoke started. |
 | 2026-07-01 | phase-08-closure | Closed Phase 08 documentally after accepted `08-01`..`08-03` evidence; `EMAIL-01`..`EMAIL-02` complete; Phase 09 planning-ready only, execution blocked. |
 | 2026-07-02 | phase-09-planning | Planned Phase 09 into 5 manual-review-gated slices plus context, research and validation artifacts; branch decision B recorded for `gsd/phase-09-gelato-fulfillment-webhook`; documentary blockers corrected before execution; no runtime, tests, migrations, install, package/lockfile change, real Gelato call/order/webhook/fulfillment, Resend call, PostHog call, refund, exchange, tracking, Stripe CLI smoke or Phase 10 work started. |
 | 2026-07-02 | phase-09-validation | Final validation at `09-05-SUMMARY.md` — 92 tests green, build PASS, FUL-01..FUL-04 and WHK-03 evidenced, negative greps documented; manual gate before closure; Phase 10 not started. |
@@ -389,10 +448,10 @@ rollback, or move or recreate tag `v1.0`.
 | 2026-07-08 | 260708-q76-propagar-erro-real-da-cria-o-de-order-no | Propagated sanitized real Order creation errors through `CheckoutCompletionLog`, `WebhookEventLog` and structured Stripe webhook logs; no Phase 12, migrations, package changes, real Stripe/Gelato/Correios or manual Order work. |
 | 2026-07-09 | 260709-mkp-gate-tecnico-corrigir-amount-do-purchase | Corrected `purchase_completed` analytics amount normalization from `PaymentAttempt.amount`, preserving Order/PaymentAttempt creation and validating with focused unit tests plus build; no Phase 12, migrations, refund smoke, Stripe refund, `sk_live`, or real Stripe/Supabase/Gelato/Correios calls. |
 | 2026-07-09 | 260709-qtj-gate-tecnico-corrigir-email-delivery-sup | Gated confirmation-email enqueue on complete Resend config, so an incomplete smoke provider preserves terminal Order and local analytics without resolving EmailDeliveryLog or calling Resend; no migration, package/config secret, real provider, or Phase 12 work. |
-| 2026-07-09 | 260709-r41-gate-tecnico-substituir-id-fixo-anlevt-o | Removed the fixed AnalyticsEventLog preview ID before persistence, preserving PaymentIntent idempotency while letting the module generate unique IDs for distinct checkouts; no migration, package/config change, real provider, or Phase 12 work. |
+| 2026-07-09 | 260709-r41-gate-tecnico-substituir-id-fixo-anlevt-w | Removed the fixed AnalyticsEventLog preview ID before persistence, preserving PaymentIntent idempotency while letting the module generate unique IDs for distinct checkouts; no migration, package/config change, real provider, or Phase 12 work. |
 | 2026-07-10 | 260710-dz0-gate-t-cnico-stripe-refund-smoke-test-mo | Completed and smoke-refund validated, no DB mutation occurred. |
 | 2026-07-10 | 260710-iyt-corrigir-perda-de-contexto-this-do-refun | Preserved RefundRequest MedusaService method context in the Admin refund endpoint; context-dependent regression, 201/200 replay, related tests and build pass; remote Stripe smoke remains manually gated. |
 | 2026-07-15 | 260715-rel01-runtime-version | Resolved runtime version from Heroku build/slug metadata before APP_VERSION, preserved PM2/VPS fallback, and passed env, health, Sentry, PM2, full unit, lint, build, and integrity gates without external actions. |
 | 2026-07-03 | phase-11-closure | Closed Phase 11 documentally after accepted `11-01`..`11-04` evidence; `REF-01`..`REF-02`, `EXC-01`..`EXC-02` complete; Phase 12 blocked until explicit approval. |
 | 2026-07-13 | 260710-rc1-estabilizacao-release-backend | RC1-H PASS: fixture discovery repaired; modules 28/28 and 454/454, HTTP 14/14 and 170/170, unit 43/43 and 676/676, lint 0/208, build/integrity/cleanup PASS; test commit `e45adf9`; no runtime, schema, provider, push or Phase 12 work. |
-| 2026-07-13 | 260713-mny01-major-minor-units | MNY-01 PASS: Medusa/PaymentSession major units separated from Stripe/PaymentAttempt/custom minor units; exact conversion and Order guard proved; unit 717/717, modules 462/462, HTTP 170/170, lint/build/integrity/cleanup PASS; no production, schema, package, infra, push or Phase 12. |
+| 2026-07-13 | 260713-mny01-major-minor-units | MNY-01 PASS: Medusa/PaymentSession major units separated from Stripe/PaymentAttempt/custom minor units; exact conversion and Order guard proved; unit 717/717, modules 462/462, HTTP 170/170, lint/build/integrity/cleanup PASS; no production, schema, package, infra, push ou Phase 12. |

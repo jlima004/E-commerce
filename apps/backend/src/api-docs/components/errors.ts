@@ -13,22 +13,72 @@ const nullableString = {
 export function registerStoreErrorSchemas(
   registry: ContractRegistryBundle
 ): void {
-  registry.registerComponent("store", "schemas", "StoreError", {
+  registry.registerComponent("store", "schemas", "StoreErrorResponse", {
     type: "object",
     additionalProperties: false,
-    required: ["type", "message"],
+    "x-store-foundation-components": {
+      description:
+        "Transversal Phase 13 components retained for later owner-phase operations without making those operations executable.",
+      requestParameters: [
+        { $ref: "#/components/parameters/IdempotencyKey" },
+        { $ref: "#/components/parameters/IfMatch" },
+        { $ref: "#/components/parameters/XCorrelationId" },
+      ],
+      responseHeaders: [
+        { $ref: "#/components/headers/ETag" },
+        { $ref: "#/components/headers/RetryAfter" },
+      ],
+      moneySchemas: [
+        { $ref: "#/components/schemas/StoreMajorMoney" },
+        { $ref: "#/components/schemas/StoreMinorMoney" },
+      ],
+      supportSchemas: [
+        { $ref: "#/components/schemas/StoreCardPaymentAttemptEnvelope" },
+        { $ref: "#/components/schemas/StoreCartResponse" },
+        { $ref: "#/components/schemas/StorePaymentAttemptStartRequest" },
+        { $ref: "#/components/schemas/StorePixPaymentAttemptEnvelope" },
+        { $ref: "#/components/schemas/StoreProductResponse" },
+        { $ref: "#/components/schemas/StoreProductsListResponse" },
+        { $ref: "#/components/schemas/StoreTrackingLookupEnvelope" },
+        { $ref: "#/components/schemas/StoreTrackingLookupRequest" },
+      ],
+    },
+    required: ["code", "message", "retryable"],
     properties: {
-      type: {
+      code: {
         type: "string",
-        description: "Medusa or project error type code.",
+        description: "Stable machine-readable public Store error code.",
       },
       message: {
         type: "string",
-        description: "Human-readable sanitized error message.",
+        description:
+          "Sanitized presentation message; clients must branch on code, not message.",
       },
-      code: {
-        ...nullableString,
-        description: "Optional machine-readable error code when present.",
+      correlationId: {
+        type: "string",
+        pattern: "^[A-Za-z0-9._-]{1,128}$",
+        description:
+          "Server-sanitized correlation identifier matching the response header when present.",
+      },
+      retryable: {
+        type: "boolean",
+        description:
+          "True only when a retry is factually safe and no external effect is uncertain.",
+      },
+      fieldErrors: {
+        type: "object",
+        additionalProperties: { type: "string" },
+        description: "Allowlisted public field names mapped to sanitized messages.",
+      },
+      cart: {
+        description:
+          "Optional safe primitive cart reference. The canonical Cart snapshot belongs to Phase 15.",
+        oneOf: [
+          { type: "string" },
+          { type: "number" },
+          { type: "boolean" },
+          { type: "null" },
+        ],
       },
     },
   })
@@ -41,7 +91,7 @@ export function storeErrorResponse(description: string) {
     content: {
       "application/json": {
         schema: {
-          $ref: "#/components/schemas/StoreError",
+          $ref: "#/components/schemas/StoreErrorResponse",
         },
       },
     },

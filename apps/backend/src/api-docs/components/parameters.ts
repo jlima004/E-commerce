@@ -13,6 +13,48 @@
  * narrower public OpenAPI contract.
  */
 
+import type { ContractRegistryBundle } from "../registry"
+
+export function registerStoreRequestParameters(
+  registry: ContractRegistryBundle
+): void {
+  registry.registerComponent("store", "parameters", "IdempotencyKey", {
+    name: "Idempotency-Key",
+    in: "header",
+    required: true,
+    schema: {
+      type: "string",
+      minLength: 1,
+      maxLength: 255,
+      pattern: "^[!-~]+$",
+    },
+    description:
+      "Server-side BFF retry identity only. It is NOT authentication, NOT authorization, NOT ownership, and NOT a capability.",
+  })
+
+  registry.registerComponent("store", "parameters", "IfMatch", {
+    name: "If-Match",
+    in: "header",
+    required: true,
+    schema: { type: "string", minLength: 1 },
+    description:
+      "Opaque server-issued resource version precondition. Cart enforcement and stale 412 behavior belong to Phase 15.",
+  })
+
+  registry.registerComponent("store", "parameters", "XCorrelationId", {
+    name: "x-correlation-id",
+    in: "header",
+    required: false,
+    schema: {
+      type: "string",
+      pattern: "^[A-Za-z0-9._-]{1,128}$",
+      maxLength: 128,
+    },
+    description:
+      "Optional correlation candidate. The server accepts only the closed format and replaces invalid or missing values; unsafe input is never echoed.",
+  })
+}
+
 export const CORRELATION_ID_HEADER = {
   name: "x-correlation-id",
   in: "header",
@@ -22,6 +64,17 @@ export const CORRELATION_ID_HEADER = {
   },
   description:
     "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+} as const
+
+export const STORE_CORRELATION_ID_HEADER = {
+  name: "x-correlation-id",
+  in: "header",
+  required: false,
+  schema: {
+    type: "string",
+  },
+  description:
+    "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
 } as const
 
 export const STORE_CART_ID_PATH = {

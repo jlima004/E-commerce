@@ -2,6 +2,8 @@ import type { RouteConfig } from "@asteasolutions/zod-to-openapi"
 
 export const CONTRACT_SURFACES = ["store", "admin", "webhooks"] as const
 export type ContractSurface = (typeof CONTRACT_SURFACES)[number]
+export const CONTRACT_VERSIONS = ["1.0.0", "1.1.0"] as const
+export type ContractVersion = (typeof CONTRACT_VERSIONS)[number]
 
 export const HTTP_METHODS = [
   "GET",
@@ -50,7 +52,7 @@ export type OpenApiDocument = {
   openapi: "3.1.2"
   info: {
     title: string
-    version: "1.0.0"
+    version: ContractVersion
     description: string
     contact: {
       name: string
