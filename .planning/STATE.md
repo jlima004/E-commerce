@@ -5,10 +5,10 @@ milestone_name: Backend Storefront Readiness
 current_phase: 14
 current_phase_name: customer-auth-verification
 status: paused
-stopped_at: Phase 14 PLAN documentally complete — awaiting human review; human approval not yet granted
-last_updated: "2026-08-12T01:13:17-03:00"
+stopped_at: Phase 14 SPEC/SDD documentally complete — awaiting human re-review; human approval not yet granted
+last_updated: "2026-08-12T19:14:59-03:00"
 last_activity: 2026-08-12
-last_activity_desc: P14-PLAN-R4.1 documentary correction PASS; checker R4.1 0 blockers / 0 warnings; awaiting human review
+last_activity_desc: P14-SPEC-SDD-R1 DOCUMENTARY CORRECTION PASS; B14-SPEC-SDD-HR-01..03 CLOSED — PASS; Implementation Prompt not authorized
 progress:
   total_phases: 10
   completed_phases: 1
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-06)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 14 — customer-auth-verification (PLAN DOCUMENTALLY COMPLETE — AWAITING HUMAN REVIEW; NOT HUMAN-APPROVED)
+**Current focus:** Phase 14 — customer-auth-verification (SPEC/SDD DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW; NOT HUMAN-APPROVED)
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 14 PLAN — DOCUMENTALLY COMPLETE; AWAITING HUMAN REVIEW; NOT HUMAN-APPROVED
+**Current gate:** Phase 14 SPEC/SDD — DOCUMENTALLY COMPLETE; AWAITING HUMAN RE-REVIEW; NOT HUMAN-APPROVED
 
 ```text
 Phase 12 CONTEXT approved
@@ -199,13 +199,19 @@ Phase 14 PLAN revision limit: 3/3 corrective cycles consumed
 P14-PLAN-R4: DOCUMENTARY CORRECTION COMPLETE
 Phase 14 PLAN checker R4.1: 0 blockers / 0 warnings — PASS
 P14-PLAN-R4.1: DOCUMENTARY CORRECTION PASS
-Phase 14 PLAN: DOCUMENTALLY COMPLETE — AWAITING HUMAN REVIEW
-Phase 14 PLAN human approval: NOT YET GRANTED
-SPEC/SDD: BLOCKED
-IMPLEMENTATION: NOT AUTHORIZED
+Phase 14 PLAN: HUMAN APPROVED — PASS
+Phase 14 PLAN human approval: GRANTED
+Phase 14 SPEC/SDD: DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW
+P14-SPEC-SDD-R1: DOCUMENTARY CORRECTION PASS
+B14-SPEC-SDD-HR-01: CLOSED — PASS
+B14-SPEC-SDD-HR-02: CLOSED — PASS
+B14-SPEC-SDD-HR-03: CLOSED — PASS
+SPEC/SDD human approval: NOT YET GRANTED
+IMPLEMENTATION PROMPT: BLOCKED / NOT AUTHORIZED
+EXECUTION: NOT AUTHORIZED
 Deploy: NOT AUTHORIZED
 FRONTEND: BLOCKED
-next permitted step: revisão humana do Phase 14 PLAN; a aprovação humana ainda não foi concedida; SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW, CLOSURE, frontend e deploy permanecem blocked/not authorized
+next permitted step: revisão humana (re-review) do Phase 14 SPEC/SDD; a aprovação humana ainda não foi concedida; Implementation Prompt, EXECUTION, VERIFICATION, REVIEW, CLOSURE, frontend e deploy permanecem blocked/not authorized
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -244,12 +250,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 14 (customer-auth-verification) — PLAN DOCUMENTALLY COMPLETE — AWAITING HUMAN REVIEW
-Plan: 21 planned / 0 executed — CHECKER R4.1 PASS, NOT HUMAN-APPROVED
-Status: P14-PLAN-R4.1 documentary correction PASS; checker R4.1 0 blockers / 0 warnings
-Current gate: Phase 14 PLAN — AWAITING HUMAN REVIEW; later gates blocked
-Last activity: 2026-08-12 — P14-PLAN-R4.1 PASS; B14-PLAN-R3-01..03 CLOSED
-Next: human review of the Phase 14 PLAN; do not start SPEC/SDD
+Phase: 14 (customer-auth-verification) — SPEC/SDD DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW
+Plan: 21 planned / 0 executed — PLAN HUMAN APPROVED; SPEC/SDD NOT HUMAN-APPROVED
+Status: Phase 14 SPEC/SDD DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW
+Current gate: Phase 14 SPEC/SDD — AWAITING HUMAN RE-REVIEW; later gates blocked
+Last activity: 2026-08-12 — P14-SPEC-SDD-R1 DOCUMENTARY CORRECTION PASS; awaiting human re-review
+Next: human re-review of Phase 14 SPEC/SDD; do not start Implementation Prompt
 
 Progress: [█░░░░░░░░░] 10% phases closed (1/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
@@ -417,23 +423,25 @@ Known deferred artifact items at v1.0 close: 0.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/14-customer-auth-verification/14-VALIDATION.md
+**Resume file:** .planning/phases/14-customer-auth-verification/14-SPEC.md
 
-Last session: 2026-08-12T01:13:17-03:00
+Last session: 2026-08-12T19:14:59-03:00
 
-Stopped at: Phase 14 PLAN documentally complete — awaiting human review; human approval not yet granted
+Stopped at: Phase 14 SPEC/SDD documentally complete — awaiting human re-review; human approval not yet granted
 
 Resume files:
 `.planning/STATE.md`,
+`.planning/phases/14-customer-auth-verification/14-SPEC.md`,
+`.planning/phases/14-customer-auth-verification/14-SDD.md`,
 `.planning/phases/14-customer-auth-verification/14-01-PLAN.md` through `14-21-PLAN.md`,
 `.planning/phases/14-customer-auth-verification/14-VALIDATION.md`,
 `.planning/phases/14-customer-auth-verification/14-RESEARCH.md`,
 `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CLOSURE.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: revisão humana do Phase 14 PLAN. B14-PLAN-R3-01..03 estão CLOSED após checker R4.1 PASS, mas o PLAN segue não human-approved. SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW, CLOSURE, frontend e deploy permanecem blocked/not authorized.
+Next permitted step: revisão humana (re-review) do Phase 14 SPEC/SDD. SPEC/SDD human approval NOT YET GRANTED. Implementation Prompt, EXECUTION, VERIFICATION, REVIEW, CLOSURE, frontend e deploy permanecem blocked/not authorized.
 
-Do not automatically advance beyond Phase 14 PLAN or start SPEC/SDD, implementation, execution, or frontend,
+Do not automatically advance beyond Phase 14 SPEC/SDD, start Implementation Prompt, execution, or frontend,
 edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
 rollback, or move or recreate tag `v1.0`.
 

@@ -18,7 +18,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - `parallelization = false`;
 - sequência obrigatória: `13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22`;
 - cada gate CONTEXT, RESEARCH, PLAN, SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW e CLOSURE para revisão humana;
-- Phase 13 CONTEXT, RESEARCH, PLAN R5, SPEC/SDD R1, Implementation Prompt, 13-01..13-07 e CLOSURE estão HUMAN APPROVED — PASS/CLOSED; FND-01..FND-08 COMPLETE. Phase 14 CONTEXT e RESEARCH estão HUMAN APPROVED — PASS; o PLAN foi explicitamente autorizado e preserva 21 planos em 21 waves seriais. `P14-PLAN-R4: DOCUMENTARY CORRECTION COMPLETE`; `P14-PLAN-R4.1: DOCUMENTARY CORRECTION PASS`; checker R4.1: 0 blockers / 0 warnings — PASS; B14-PLAN-R3-01, B14-PLAN-R3-02 e B14-PLAN-R3-03: CLOSED — PASS. Phase 14 PLAN: DOCUMENTALLY COMPLETE — AWAITING HUMAN REVIEW; human approval NOT YET GRANTED. SPEC/SDD e gates posteriores, deploy e frontend permanecem não autorizados/bloqueados.
+- Phase 13 CONTEXT, RESEARCH, PLAN R5, SPEC/SDD R1, Implementation Prompt, 13-01..13-07 e CLOSURE estão HUMAN APPROVED — PASS/CLOSED; FND-01..FND-08 COMPLETE. Phase 14 CONTEXT, RESEARCH e PLAN estão HUMAN APPROVED — PASS. 21 planos em 21 waves seriais. `P14-PLAN-R4: DOCUMENTARY CORRECTION COMPLETE`; `P14-PLAN-R4.1: DOCUMENTARY CORRECTION PASS`; checker R4.1: 0 blockers / 0 warnings — PASS; B14-PLAN-R3-01, B14-PLAN-R3-02 e B14-PLAN-R3-03: CLOSED — PASS. `P14-SPEC-SDD-R1: DOCUMENTARY CORRECTION PASS`; B14-SPEC-SDD-HR-01, B14-SPEC-SDD-HR-02 e B14-SPEC-SDD-HR-03: CLOSED — PASS. Phase 14 SPEC/SDD: DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW. SPEC/SDD human approval NOT YET GRANTED. Implementation Prompt, EXECUTION, VERIFICATION, REVIEW, CLOSURE, deploy e frontend permanecem não autorizados/bloqueados.
 
 ## Milestones
 
@@ -34,7 +34,7 @@ O snapshot histórico de v1.0 permanece em [v1.0-ROADMAP.md](milestones/v1.0-ROA
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
-| 14 | Customer Auth & Verification | 13 | 9 | PLAN DOCUMENTALLY COMPLETE — AWAITING HUMAN REVIEW; checker R4.1 PASS (0 blockers/0 warnings); 21 plans/21 serial waves/63 tasks/0 executed; NOT HUMAN-APPROVED |
+| 14 | Customer Auth & Verification | 13 | 9 | PLAN HUMAN APPROVED — PASS; SPEC/SDD DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW; P14-SPEC-SDD-R1 PASS; B14-SPEC-SDD-HR-01..03 CLOSED; checker R4.1 PASS; 21 plans/21 serial waves/63 tasks/0 executed; SPEC/SDD NOT HUMAN-APPROVED |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
@@ -65,7 +65,7 @@ O snapshot histórico de v1.0 permanece em [v1.0-ROADMAP.md](milestones/v1.0-ROA
 **Deliverables:** operações auth/Customer, política flexível, estado/token de verificação, outbox auth quando necessário, rate limits e anti-enumeração.
 **Exit criteria:** cadastro coordenado; sessão inicial compra; novo login não verificado bloqueado; reset/update revogam credenciais antigas; refresh inválido falha; tokens são hash-only/uso único/expiráveis.
 **Manual blockers/gates:** não ativar cegamente política Medusa conflitante; decisão de módulo próprio e retenção exige RESEARCH/PLAN aprovado.
-**Planning status:** 21 planos em 21 waves estritamente seriais (`14-01 → ... → 14-21`), 63 tasks / 0 executed e DAG/requirements/decisões preservados. Checker inicial: 7 blockers/1 warning; R1: 5 blockers/2 warnings; R2: 0 blockers/1 warning; R3: 1 blocker/0 warnings; R4: documentary correction; R4.1: 0 blockers/0 warnings — PASS. `P14-PLAN-R4: DOCUMENTARY CORRECTION COMPLETE`; `P14-PLAN-R4.1: DOCUMENTARY CORRECTION PASS`. B14-PLAN-R3-01..03: CLOSED — PASS. AUTH coverage: 9/9; D14 coverage: 16/16; P14-D coverage: 14/14. Phase 14 PLAN: DOCUMENTALLY COMPLETE — AWAITING HUMAN REVIEW; human approval NOT YET GRANTED. SPEC/SDD, execução, deploy e frontend permanecem bloqueados/não autorizados.
+**Planning status:** 21 planos em 21 waves estritamente seriais (`14-01 → ... → 14-21`), 63 tasks / 0 executed e DAG/requirements/decisões preservados. Checker inicial: 7 blockers/1 warning; R1: 5 blockers/2 warnings; R2: 0 blockers/1 warning; R3: 1 blocker/0 warnings; R4: documentary correction; R4.1: 0 blockers/0 warnings — PASS. `P14-PLAN-R4: DOCUMENTARY CORRECTION COMPLETE`; `P14-PLAN-R4.1: DOCUMENTARY CORRECTION PASS`. B14-PLAN-R3-01..03: CLOSED — PASS. AUTH coverage: 9/9; D14 coverage: 16/16; P14-D coverage: 14/14. Phase 14 PLAN: HUMAN APPROVED — PASS. `P14-SPEC-SDD-R1: DOCUMENTARY CORRECTION PASS`. B14-SPEC-SDD-HR-01..03: CLOSED — PASS. Phase 14 SPEC/SDD: DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW. SPEC/SDD human approval NOT YET GRANTED. Implementation Prompt, execução, deploy e frontend permanecem bloqueados/não autorizados.
 
 ### Phase 15: Guest Cart Capability & Concurrency
 
@@ -315,7 +315,9 @@ Phase 13:
 CLOSED — HUMAN APPROVED
 
 Phase 14:
-PLAN DOCUMENTALLY COMPLETE — AWAITING HUMAN REVIEW
+CONTEXT: HUMAN APPROVED — PASS
+RESEARCH: HUMAN APPROVED — PASS
+PLAN: HUMAN APPROVED — PASS
 P14-PLAN-R4: DOCUMENTARY CORRECTION COMPLETE
 P14-PLAN-R4.1: DOCUMENTARY CORRECTION PASS
 Checker R4.1: 0 blockers / 0 warnings — PASS
@@ -327,15 +329,20 @@ AUTH coverage: 9/9
 D14 coverage: 16/16
 P14-D coverage: 14/14
 EXECUTION: SERIAL / MANUAL-GATED
-PLAN human approval: NOT YET GRANTED
-SPEC/SDD: BLOCKED
+SPEC/SDD: DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW
+P14-SPEC-SDD-R1: DOCUMENTARY CORRECTION PASS
+B14-SPEC-SDD-HR-01: CLOSED — PASS
+B14-SPEC-SDD-HR-02: CLOSED — PASS
+B14-SPEC-SDD-HR-03: CLOSED — PASS
+SPEC/SDD human approval: NOT YET GRANTED
+IMPLEMENTATION PROMPT: BLOCKED / NOT AUTHORIZED
 
 Next permitted Phase 14 gate:
-Human review of Phase 14 PLAN
+Human re-review of Phase 14 SPEC/SDD
 
 Deploy: NOT AUTHORIZED
 Frontend Milestone 1: BLOCKED / not started / not authorized
 ```
 
 ---
-*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-12 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 PLAN R4.1 PASS (0 blockers/0 warnings), documentally complete — awaiting human review; B14-PLAN-R3-01..03 CLOSED; 21 plans/21 serial waves/63 tasks/0 executed; 8/91 requirements; manual-review gated · no auto-chain*
+*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-12 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 PLAN HUMAN APPROVED — PASS; P14-SPEC-SDD-R1 DOCUMENTARY CORRECTION PASS; SPEC/SDD DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW; B14-SPEC-SDD-HR-01..03 CLOSED; B14-PLAN-R3-01..03 CLOSED; 21 plans/21 serial waves/63 tasks/0 executed; 8/91 requirements; manual-review gated · no auto-chain*
