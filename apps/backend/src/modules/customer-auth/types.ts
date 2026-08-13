@@ -41,3 +41,38 @@ export const AUTH_CREDENTIAL_OPERATION_STATUSES = [
 export type AuthCredentialOperationStatus =
   (typeof AUTH_CREDENTIAL_OPERATION_STATUSES)[number]
 
+export const AUTH_SESSION_ABSOLUTE_TTL_SECONDS = 30 * 24 * 60 * 60
+
+export const AUTH_SESSION_LINEAGE_STATUSES = [
+  "active",
+  "revoked",
+  "expired",
+] as const
+
+export type AuthSessionLineageStatus =
+  (typeof AUTH_SESSION_LINEAGE_STATUSES)[number]
+
+export const AUTH_SESSION_REVOCATION_REASONS = [
+  "logout",
+  "refresh_replay",
+  "password_reset",
+  "password_change",
+  "security_revocation",
+] as const
+
+export type AuthSessionRevocationReason =
+  (typeof AUTH_SESSION_REVOCATION_REASONS)[number]
+
+export const AUTH_REFRESH_INACTIVITY_TTL_SECONDS = 7 * 24 * 60 * 60
+export const AUTH_REFRESH_RECOVERY_SECONDS = 45
+
+export const AUTH_REFRESH_CREDENTIAL_STATUSES = [
+  "active",
+  "consumed",
+  "replayed",
+  "revoked",
+] as const
+
+export type AuthRefreshCredentialStatus =
+  (typeof AUTH_REFRESH_CREDENTIAL_STATUSES)[number]
+
