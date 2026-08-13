@@ -37,6 +37,7 @@ import {
 import { buildSentryCaptureContext, shouldCaptureError } from "../observability/sentry-scrub"
 import { createStoreTrackingLookupGuardMiddleware } from "../modules/tracking-access-token/lookup"
 import { storeSurfaceGuardMiddleware } from "./store-surface/guard"
+import { authSurfaceGuardMiddleware } from "./auth-surface/guard"
 import {
   attachStoreErrorEnvelope,
   sanitizeStoreCorrelationId,
@@ -402,6 +403,12 @@ export default defineMiddlewares({
     {
       matcher: "/store*",
       middlewares: [storeErrorEnvelopeMiddleware, storeSurfaceGuardMiddleware],
+    },
+    // Method-less /auth* is sorted before native/local handlers. Every Phase 14
+    // entry starts DENY; owner plans may elevate one exact local override only.
+    {
+      matcher: "/auth*",
+      middlewares: [authSurfaceGuardMiddleware],
     },
     {
       method: ["GET"],
