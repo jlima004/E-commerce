@@ -78,8 +78,8 @@ export type AppEnv = {
   API_DOCS_UI_ENABLED: boolean
   API_DOCS_PUBLIC_ENABLED: boolean
   API_DOCS_INTERNAL_ENABLED: boolean
-  CUSTOMER_AUTH_ENABLED: boolean
-  CUSTOMER_AUTH_CAPABILITY_KEYRING: CapabilityKeyring | undefined
+  CUSTOMER_AUTH_ENABLED?: boolean
+  CUSTOMER_AUTH_CAPABILITY_KEYRING?: CapabilityKeyring
 }
 
 /** Synthetic deterministic default for development/test only (32 zero bytes, base64url). */
