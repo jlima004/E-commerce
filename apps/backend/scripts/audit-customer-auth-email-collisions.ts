@@ -23,6 +23,11 @@ type OwnerRow = {
   email: string
 }
 
+type InvalidOwners = {
+  count: number
+  ownerIds: Set<string>
+}
+
 export type CustomerAuthEmailCollisionReport = {
   status: "PASS" | "BLOCKED"
   scanned: {
@@ -56,13 +61,19 @@ function addOwner(
   source: OwnerSource,
   row: OwnerRow,
   secret: string,
-  invalid: { count: number }
+  invalid: Map<OwnerSource, InvalidOwners>
 ): void {
   let normalized: string
   try {
     normalized = normalizeCustomerAuthEmail(row.email)
   } catch {
-    invalid.count += 1
+    const invalidOwners = invalid.get(source) ?? {
+      count: 0,
+      ownerIds: new Set<string>(),
+    }
+    invalidOwners.count += 1
+    invalidOwners.ownerIds.add(opaqueDigest(secret, `owner:${source}`, row.id))
+    invalid.set(source, invalidOwners)
     return
   }
 
@@ -81,7 +92,7 @@ export async function auditCustomerAuthEmailCollisions(
   assertAuditSecret(secret)
 
   const groups = new Map<string, Set<string>>()
-  const invalid = { count: 0 }
+  const invalid = new Map<OwnerSource, InvalidOwners>()
   const identities = await client.query<OwnerRow>(
     "select id::text as id, entity_id::text as email from provider_identity where deleted_at is null and provider = $1",
     ["emailpass"]
@@ -116,12 +127,21 @@ export async function auditCustomerAuthEmailCollisions(
       )
     )
 
-  if (invalid.count > 0) {
+  for (const source of ["identity", "customer"] as const) {
+    const invalidOwners = invalid.get(source)
+    if (!invalidOwners) {
+      continue
+    }
+
     blockers.push({
-      source: "identity",
-      fingerprint: opaqueDigest(secret, "invalid-input", String(invalid.count)),
-      owner_count: invalid.count,
-      owner_ids: [],
+      source,
+      fingerprint: opaqueDigest(
+        secret,
+        `invalid-input:${source}`,
+        String(invalidOwners.count)
+      ),
+      owner_count: invalidOwners.count,
+      owner_ids: [...invalidOwners.ownerIds].sort(),
     })
   }
 
@@ -131,7 +151,10 @@ export async function auditCustomerAuthEmailCollisions(
       identity: identities.rowCount ?? identities.rows.length,
       customer: customers.rowCount ?? customers.rows.length,
       normalized_groups: groups.size,
-      invalid_inputs: invalid.count,
+      invalid_inputs: [...invalid.values()].reduce(
+        (total, current) => total + current.count,
+        0
+      ),
     },
     blockers,
   }
