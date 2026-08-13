@@ -153,4 +153,3 @@ export function createAuthSurfaceGuardMiddleware() {
 }
 
 export const authSurfaceGuardMiddleware = createAuthSurfaceGuardMiddleware()
-

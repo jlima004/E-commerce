@@ -67,4 +67,3 @@ export type VerificationTokenRequest = z.infer<
 >
 export type ResetConfirmRequest = z.infer<typeof ResetConfirmRequestSchema>
 export type PasswordChangeRequest = z.infer<typeof PasswordChangeRequestSchema>
-

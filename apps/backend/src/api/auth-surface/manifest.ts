@@ -100,4 +100,3 @@ export function authSurfaceOperationKey(
 ): string {
   return `${method.toUpperCase()} ${pathTemplate}${origin ? ` ${origin}` : ""}`
 }
-
