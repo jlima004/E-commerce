@@ -2,6 +2,7 @@ import { Client, Pool, PoolClient } from "pg"
 import {
   CustomerAuthModuleService,
   CUSTOMER_AUTH_WRITE_FORBIDDEN,
+  rejectCustomerAuthGeneratedWrite,
   type CustomerAuthMutationContext,
 } from "../../src/modules/customer-auth/service"
 
@@ -142,14 +143,43 @@ if (!databaseUrl || !databaseName) {
   jest.setTimeout(120_000)
   const pool = new Pool({ connectionString: databaseUrl })
   const service = Object.create(CustomerAuthModuleService.prototype) as CustomerAuthModuleService
+  const maintenanceUrl = new URL(databaseUrl)
+  maintenanceUrl.pathname = "/postgres"
+
+  async function createDisposableDatabase() {
+    expect(databaseName).toMatch(/^p12_disposable_[a-z0-9_]+$/)
+    const maintenance = new Client({ connectionString: maintenanceUrl.toString() })
+    await maintenance.connect()
+    try {
+      await maintenance.query(`create database "${databaseName}"`)
+    } finally {
+      await maintenance.end()
+    }
+  }
+
+  async function dropDisposableDatabase() {
+    await pool.end()
+    const maintenance = new Client({ connectionString: maintenanceUrl.toString() })
+    await maintenance.connect()
+    try {
+      await maintenance.query(
+        "select pg_terminate_backend(pid) from pg_stat_activity where datname=$1 and pid<>pg_backend_pid()",
+        [databaseName]
+      )
+      await maintenance.query(`drop database if exists "${databaseName}"`)
+    } finally {
+      await maintenance.end()
+    }
+  }
 
   describe("customer auth PostgreSQL models", () => {
     beforeAll(async () => {
+      await createDisposableDatabase()
       const current = await pool.query("select current_database() as name")
       expect(current.rows[0].name).toBe(databaseName)
       await pool.query(schemaSql)
     })
-    afterAll(async () => pool.end())
+    afterAll(dropDisposableDatabase)
 
     it("enforces unique, generation, deadline and recipient constraints across 7/7 models", async () => {
       await pool.query("insert into registration_intent(id,normalized_email_hash,status,expires_at) values ('r1','h1','pending_identity',now()+interval '1 day')")
@@ -165,6 +195,7 @@ if (!databaseUrl || !databaseName) {
       await pool.query("insert into auth_reset_intent(id,auth_identity_id,token_hash,nonce,key_version,operation_id,expires_at) values ('x1','i2','xh1','n1',1,'op1',now()+interval '15 minutes')")
       await expect(pool.query("update auth_reset_intent set completed_at=now(),status='completed' where id='x1'")).rejects.toMatchObject({ code: "23514" })
       await expect(pool.query("insert into auth_notification_outbox(id,intent_id,recipient_identity_id,recipient_hash,recipient_domain,idempotency_key) values ('o1','v1','','rh','example.test','auth/v1')")).rejects.toMatchObject({ code: "23514" })
+      await pool.query("insert into auth_notification_outbox(id,intent_id,recipient_identity_id,recipient_hash,recipient_domain,idempotency_key) values ('o1','v1','i1','rh','example.test','auth/v1')")
     })
 
     it("allows one CAS winner under a row lock and leaves no partial state on rollback", async () => {
@@ -183,9 +214,78 @@ if (!databaseUrl || !databaseName) {
       expect(state.rows[0]).toMatchObject({ operation_status: "stable", version: 1 })
     })
 
+    it("uses transaction-required CAS transitions for the remaining five models", async () => {
+      await transaction(pool, async (client) => {
+        const shared = context(client)
+        await expect(
+          service.transitionSessionLineage(
+            "l1",
+            1,
+            "revoked",
+            new Date(),
+            "logout",
+            shared
+          )
+        ).resolves.toMatchObject({ type: "updated", capability: "RECONCILIATION_REQUIRED" })
+
+        const consumedAt = new Date()
+        await expect(
+          service.transitionRefreshCredential(
+            "f1",
+            1,
+            "consumed",
+            [
+              { column: "consumed_at", value: consumedAt },
+              { column: "replacement_id", value: "f2" },
+              { column: "request_key_hash", value: "request-hash" },
+              {
+                column: "recovery_until",
+                value: new Date(consumedAt.getTime() + 45_000),
+              },
+            ],
+            shared
+          )
+        ).resolves.toMatchObject({ type: "updated" })
+
+        await expect(
+          service.transitionVerificationIntent(
+            "v1",
+            1,
+            "claimed",
+            "claimed_at",
+            new Date(),
+            shared
+          )
+        ).resolves.toMatchObject({ type: "updated" })
+
+        await expect(
+          service.transitionResetIntent(
+            "x1",
+            1,
+            "claimed",
+            "claimed_at",
+            new Date(),
+            shared
+          )
+        ).resolves.toMatchObject({ type: "updated" })
+
+        await expect(
+          service.claimNotificationOutbox(
+            "o1",
+            1,
+            "worker-1",
+            new Date(),
+            shared
+          )
+        ).resolves.toMatchObject({ type: "updated" })
+      })
+    })
+
     it("keeps Redis outside validity and rejects generated writes", async () => {
       expect(JSON.stringify(CustomerAuthModuleService.prototype)).not.toMatch(/redis|ioredis|bullmq/i)
-      await expect(service.createRegistrationIntents({} as never)).rejects.toThrow(CUSTOMER_AUTH_WRITE_FORBIDDEN)
+      await expect(rejectCustomerAuthGeneratedWrite()).rejects.toThrow(
+        CUSTOMER_AUTH_WRITE_FORBIDDEN
+      )
     })
   })
 }
