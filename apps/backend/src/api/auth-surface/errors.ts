@@ -97,20 +97,22 @@ export function toAuthErrorResponse(
   options: { correlationId?: unknown; resetConfirm?: boolean } = {}
 ): AuthErrorNormalizationResult {
   const error = readError(value)
-  let code = resolveCode(error)
+  const code = resolveCode(error)
 
   if (options.resetConfirm) {
     if (
-      code === "AUTH_RECOVERY_PENDING" &&
-      error.stage !== "correlated_recovery"
+      typeof error.code !== "string" ||
+      !ERROR_CODE_SET.has(error.code)
     ) {
-      code = "AUTH_TEMPORARILY_UNAVAILABLE"
+      throw new Error("Invalid reset-confirm error classification")
     }
     if (
-      code === "AUTH_TEMPORARILY_UNAVAILABLE" &&
-      error.stage !== "pre_lookup"
+      (code === "AUTH_TEMPORARILY_UNAVAILABLE" &&
+        error.stage !== "pre_lookup") ||
+      (code === "AUTH_RECOVERY_PENDING" &&
+        error.stage !== "correlated_recovery")
     ) {
-      code = "AUTH_TEMPORARILY_UNAVAILABLE"
+      throw new Error("Invalid reset-confirm error classification")
     }
   }
 

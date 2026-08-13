@@ -316,5 +316,23 @@ describe("Phase 14 auth HTTP contract", () => {
         correlationId: "corr-safe",
       },
     })
+    expect(() =>
+      toAuthErrorResponse(
+        { code: "AUTH_TEMPORARILY_UNAVAILABLE" },
+        { correlationId: "corr-safe", resetConfirm: true }
+      )
+    ).toThrow("Invalid reset-confirm error classification")
+    expect(() =>
+      toAuthErrorResponse(
+        { code: "AUTH_RECOVERY_PENDING" },
+        { correlationId: "corr-safe", resetConfirm: true }
+      )
+    ).toThrow("Invalid reset-confirm error classification")
+    expect(() =>
+      toAuthErrorResponse(new Error("provider identity db detail"), {
+        correlationId: "corr-safe",
+        resetConfirm: true,
+      })
+    ).toThrow("Invalid reset-confirm error classification")
   })
 })
