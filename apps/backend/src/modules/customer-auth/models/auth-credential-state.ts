@@ -153,4 +153,3 @@ const AuthCredentialState = model
   ])
 
 export default AuthCredentialState
-

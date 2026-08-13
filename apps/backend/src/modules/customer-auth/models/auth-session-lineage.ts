@@ -95,4 +95,3 @@ const AuthSessionLineage = model
   ])
 
 export default AuthSessionLineage
-

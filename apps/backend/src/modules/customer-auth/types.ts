@@ -75,4 +75,3 @@ export const AUTH_REFRESH_CREDENTIAL_STATUSES = [
 
 export type AuthRefreshCredentialStatus =
   (typeof AUTH_REFRESH_CREDENTIAL_STATUSES)[number]
-

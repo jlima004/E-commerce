@@ -121,4 +121,3 @@ const RegistrationIntent = model
   ])
 
 export default RegistrationIntent
-

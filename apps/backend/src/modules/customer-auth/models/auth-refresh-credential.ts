@@ -134,4 +134,3 @@ const AuthRefreshCredential = model
   ])
 
 export default AuthRefreshCredential
-
