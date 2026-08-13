@@ -8,7 +8,6 @@ export type AuthCustomer = {
 }
 
 export type AuthSessionEnvelope = {
-  code: "AUTHENTICATED"
   accessToken: string
   accessExpiresAt: string
   refreshToken: string
@@ -123,7 +122,7 @@ export const AUTH_HTTP_CONTRACT = [
     path: "/auth/customer/emailpass",
     auth: "public_bff",
     request: "login",
-    success: { status: 200, code: "AUTHENTICATED", body: "auth_session" },
+    success: { status: 200, code: null, body: "auth_session" },
     failures: [
       [400, "INVALID_REQUEST"],
       [401, "INVALID_CREDENTIALS"],
@@ -139,7 +138,7 @@ export const AUTH_HTTP_CONTRACT = [
     path: "/auth/token/refresh",
     auth: "refresh_header_and_idempotency_key",
     request: "empty",
-    success: { status: 200, code: "AUTHENTICATED", body: "auth_session" },
+    success: { status: 200, code: null, body: "auth_session" },
     failures: [
       [400, "INVALID_REQUEST"],
       [401, "AUTHENTICATION_REQUIRED"],
@@ -305,7 +304,6 @@ export function serializeAuthSessionEnvelope(
     return null
   }
   return {
-    code: "AUTHENTICATED",
     accessToken: readString(value, "accessToken"),
     accessExpiresAt: readString(value, "accessExpiresAt"),
     refreshToken: readString(value, "refreshToken"),
@@ -338,4 +336,3 @@ export function serializeCurrentAuthCustomer(
     },
   }
 }
-

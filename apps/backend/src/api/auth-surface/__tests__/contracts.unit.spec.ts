@@ -28,7 +28,7 @@ describe("Phase 14 auth HTTP contract", () => {
         path: "/auth/customer/emailpass",
         auth: "public_bff",
         request: "login",
-        success: { status: 200, code: "AUTHENTICATED", body: "auth_session" },
+        success: { status: 200, code: null, body: "auth_session" },
         failures: [
           [400, "INVALID_REQUEST"],
           [401, "INVALID_CREDENTIALS"],
@@ -44,7 +44,7 @@ describe("Phase 14 auth HTTP contract", () => {
         path: "/auth/token/refresh",
         auth: "refresh_header_and_idempotency_key",
         request: "empty",
-        success: { status: 200, code: "AUTHENTICATED", body: "auth_session" },
+        success: { status: 200, code: null, body: "auth_session" },
         failures: [
           [400, "INVALID_REQUEST"],
           [401, "AUTHENTICATION_REQUIRED"],
@@ -241,7 +241,6 @@ describe("Phase 14 auth HTTP contract", () => {
 
     expect(serializeAuthSessionEnvelope(source, { bffAuthorized: false })).toBeNull()
     expect(serializeAuthSessionEnvelope(source, { bffAuthorized: true })).toEqual({
-      code: "AUTHENTICATED",
       accessToken: "synthetic-access-capability",
       accessExpiresAt: "2026-08-13T17:00:00.000Z",
       refreshToken: "synthetic-refresh-capability",
