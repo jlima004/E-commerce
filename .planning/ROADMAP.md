@@ -18,7 +18,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - `parallelization = false`;
 - sequência obrigatória: `13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22`;
 - cada gate CONTEXT, RESEARCH, PLAN, SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW e CLOSURE para revisão humana;
-- Phase 13 CONTEXT, RESEARCH, PLAN R5, SPEC/SDD R1, Implementation Prompt, 13-01..13-07 e CLOSURE estão HUMAN APPROVED — PASS/CLOSED; FND-01..FND-08 COMPLETE. Phase 14 CONTEXT, RESEARCH, PLAN, SPEC/SDD e Implementation Prompt estão HUMAN APPROVED — PASS. A execução permanece serial e manual-gated: `14-01` e `14-02` estão HUMAN APPROVED — PASS; `B14-02-HR-01` está CLOSED — PASS; `14-03..14-21`, deploy e frontend permanecem não autorizados/bloqueados.
+- Phase 13 CONTEXT, RESEARCH, PLAN R5, SPEC/SDD R1, Implementation Prompt, 13-01..13-07 e CLOSURE estão HUMAN APPROVED — PASS/CLOSED; FND-01..FND-08 COMPLETE. Phase 14 CONTEXT, RESEARCH, PLAN, SPEC/SDD e Implementation Prompt estão HUMAN APPROVED — PASS. A execução permanece serial e manual-gated: `14-01`, `14-02` e `14-03` estão HUMAN APPROVED — PASS; `B14-02-HR-01` e `B14-03-HR-01` estão CLOSED — PASS; `14-04..14-21`, deploy e frontend permanecem não autorizados/bloqueados.
 
 ## Milestones
 
@@ -34,7 +34,7 @@ O snapshot histórico de v1.0 permanece em [v1.0-ROADMAP.md](milestones/v1.0-ROA
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
-| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 2/21 plans HUMAN APPROVED — PASS; 6/63 tasks complete; 14-03 NOT AUTHORIZED |
+| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 3/21 plans HUMAN APPROVED — PASS; 9/63 tasks complete; 14-04 NOT AUTHORIZED |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
@@ -65,7 +65,7 @@ O snapshot histórico de v1.0 permanece em [v1.0-ROADMAP.md](milestones/v1.0-ROA
 **Deliverables:** operações auth/Customer, política flexível, estado/token de verificação, outbox auth quando necessário, rate limits e anti-enumeração.
 **Exit criteria:** cadastro coordenado; sessão inicial compra; novo login não verificado bloqueado; reset/update revogam credenciais antigas; refresh inválido falha; tokens são hash-only/uso único/expiráveis.
 **Manual blockers/gates:** não ativar cegamente política Medusa conflitante; decisão de módulo próprio e retenção exige RESEARCH/PLAN aprovado.
-**Execution status:** 21 planos em 21 waves estritamente seriais (`14-01 → ... → 14-21`), 63 tasks totais / 6 complete e DAG/requirements/decisões preservados. `14-01` e `14-02` estão HUMAN APPROVED — PASS; `B14-02-HR-01` está CLOSED — PASS. AUTH coverage planejada: 9/9; D14 coverage: 16/16; P14-D coverage: 14/14. Phase 14 CONTEXT, RESEARCH, PLAN, SPEC/SDD e Implementation Prompt estão HUMAN APPROVED — PASS. `14-03` não está autorizado; deploy e frontend permanecem bloqueados/não autorizados.
+**Execution status:** 21 planos em 21 waves estritamente seriais (`14-01 → ... → 14-21`), 63 tasks totais / 9 complete e DAG/requirements/decisões preservados. `14-01`, `14-02` e `14-03` estão HUMAN APPROVED — PASS; `B14-02-HR-01` e `B14-03-HR-01` estão CLOSED — PASS. AUTH coverage planejada: 9/9; D14 coverage: 16/16; P14-D coverage: 14/14. Phase 14 CONTEXT, RESEARCH, PLAN, SPEC/SDD e Implementation Prompt estão HUMAN APPROVED — PASS. `14-04` não está autorizado; deploy e frontend permanecem bloqueados/não autorizados.
 
 ### Phase 15: Guest Cart Capability & Concurrency
 
@@ -339,14 +339,24 @@ IMPLEMENTATION PROMPT: HUMAN APPROVED — PASS
 14-01: HUMAN APPROVED — PASS
 14-02: HUMAN APPROVED — PASS
 B14-02-HR-01: CLOSED — PASS
-14-03..14-21: NOT AUTHORIZED
+14-03: HUMAN APPROVED — PASS
+B14-03-HR-01: CLOSED — PASS
+14-04..14-21: NOT AUTHORIZED
+
+Phase 14 plans human-approved executed:
+3/21
+
+- [x] 14-01-PLAN.md (HUMAN APPROVED — PASS)
+- [x] 14-02-PLAN.md (HUMAN APPROVED — PASS)
+- [x] 14-03-PLAN.md (HUMAN APPROVED — PASS)
+- [ ] 14-04-PLAN.md (NOT AUTHORIZED)
 
 Next permitted Phase 14 gate:
-Fresh human authorization for 14-03
+Fresh human authorization for 14-04
 
 Deploy: NOT AUTHORIZED
 Frontend Milestone 1: BLOCKED / not started / not authorized
 ```
 
 ---
-*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-13 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01 and 14-02 HUMAN APPROVED — PASS; B14-02-HR-01 CLOSED — PASS; 21 plans/21 serial waves/63 tasks/6 complete; 14-03 NOT AUTHORIZED; 8/91 requirements; manual-review gated · no auto-chain*
+*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-13 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01, 14-02 and 14-03 HUMAN APPROVED — PASS; B14-02-HR-01 and B14-03-HR-01 CLOSED — PASS; 21 plans/21 serial waves/63 tasks/9 complete; 14-04 NOT AUTHORIZED; 8/91 requirements; manual-review gated · no auto-chain*

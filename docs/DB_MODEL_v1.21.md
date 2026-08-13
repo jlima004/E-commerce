@@ -17,7 +17,7 @@
 
 | Versão | Data | Alterações |
 |---|---:|---|
-| 1.21 — reconciliação Phase 14 | 2026-08-13 | Sem renumerar ou apagar o histórico 1.21, materializados os sete estados auth `RegistrationIntent`, `AuthCredentialState`, `AuthSessionLineage`, `AuthRefreshCredential`, `AuthVerificationIntent`, `AuthResetIntent` e `AuthNotificationOutbox`. Declarado o sibling auth separado do `EmailDeliveryLog` order-only as-built, com IDs Medusa apenas lógicos, hash-only/PII minimizada, CAS, lease, retry, proof markers, cardinalidades, lifecycles, TTLs e índices. Model, migration, DDL e collision winner continuam bloqueados até os gates posteriores. |
+| 1.21 — reconciliação Phase 14 | 2026-08-13 | Sem renumerar ou apagar o histórico 1.21, materializados os sete estados auth `RegistrationIntent`, `AuthCredentialState`, `AuthSessionLineage`, `AuthRefreshCredential`, `AuthVerificationIntent`, `AuthResetIntent` e `AuthNotificationOutbox`. Declarado o sibling auth separado do `EmailDeliveryLog`: verification/reset pertencem exclusivamente a `AuthNotificationOutbox`; `EmailDeliveryLog` conserva escopo não-auth/order-operational e, no as-built atual, `order_confirmation`. Atribuições históricas de welcome/reset auth ao `EmailDeliveryLog` ficam superseded por esta reconciliação. Preservados IDs Medusa apenas lógicos, hash-only/PII minimizada, CAS, lease, retry, proof markers, cardinalidades, lifecycles, TTLs e índices. Model, migration, DDL e collision winner continuam bloqueados até os gates posteriores. |
 | 1.21 | 2026-06-22 | Corrigido o achado 4: adicionadas constraints monetárias explícitas para `Payment` e `Refund`. `Payment.amount` e `Payment.captured_amount` devem ser inteiros não negativos na menor unidade monetária; `Payment.captured_amount` não pode exceder `Payment.amount`; `Refund.amount` deve ser inteiro positivo; `Refund.currency_code` deve ser igual a `Payment.currency_code`; no MVP, `Payment.currency_code` e `Refund.currency_code` devem ser `BRL`; e o valor de reembolso deve respeitar o saldo capturado disponível considerando refunds confirmados e bloqueados. Atualizadas seções 2.10, 4.8, 4.9, 5.12, 5.13, regras `DATA-106`, `DATA-117` a `DATA-122` e constraints recomendadas. |
 | 1.20 | 2026-06-21 | Corrigido o achado 3: definida a fonte de verdade financeira para reembolsos. `Refund.status = succeeded` passa a ser a fonte de verdade para valores reembolsados confirmados; `Payment.status` e `Order.payment_status` são campos derivados/denormalizados que devem ser recalculados na mesma transação lógica que confirma reembolso via webhook Stripe. Proibida alteração manual isolada desses status sem recomputação a partir de `Payment.captured_amount` e `Refund.status = succeeded`. Atualizadas as seções 2.10, 4.8, 4.9, 5.12, relações, regras `DATA-053`, `DATA-054`, `DATA-107` e adicionadas `DATA-114` a `DATA-116`. |
 | 1.19 | 2026-06-21 | Corrigido o achado 2: adicionada `WebhookEventLog.deduplication_key` como chave canônica de deduplicação. A deduplicação passa a ser garantida por `unique(provider, deduplication_key)`. Quando `external_event_id` existir e for confiável, a chave deve derivar dele; quando não existir, deve derivar de `payload_hash` normalizado ou de chave determinística equivalente validada na integração. `payload_hash` isolado passa a ser índice diagnóstico, não garantia de unicidade. Atualizadas `DATA-005`, `DATA-030`, `DATA-031`, seção 4.5, seção 5.8 e índices recomendados. |
@@ -28,7 +28,7 @@
 | 1.14 | 2026-06-21 | Adicionadas e consolidadas correções de consistência: `AnalyticsEventLog` para persistência de `purchase_completed`, `OperationalAlert` como entidade real, `Fulfillment.gelato_order_id` top-level, resolução de `not_started` como estado derivado, regras de override de troca, agregação financeira, bloqueio de reembolso acima do capturado, cardinalidades de logs e regras `DATA-001` a `DATA-110`. |
 | 1.13 | 2026-06-21 | Verificadas e aplicadas as regras de integridade complementares exigidas pelo SRS/PRD Backend: `DATA-003` foi confirmada, `DATA-005` e `DATA-006` foram detalhadas com chaves de idempotência/unicidade, e `DATA-013` a `DATA-020` foram reservadas para as regras canônicas de criação de Order, Pix, `purchase_completed`, analytics, tracking, reembolso e uso de `completed`. Regras já existentes foram preservadas e renumeradas sem alterar sua semântica. |
 | 1.12 | 2026-06-21 | Adicionada a entidade customizada `AdminActionLog` para auditar ações administrativas críticas executadas no Admin. A entidade registra `admin_id`, ação, entidade afetada, resultado, motivo, estados antes/depois, correlação operacional e metadados mínimos. Adicionadas relações, regras de integridade, índices e observações operacionais para cancelamentos, reembolsos, reprocessamentos Gelato, trocas e overrides administrativos. |
-| 1.11 | 2026-06-21 | Adicionada a entidade customizada `EmailDeliveryLog` para registrar envios de e-mails transacionais, alertas operacionais, status de entrega via Resend, idempotência, falhas, retries e correlação com `Order`, `Refund`, `ExchangeRequest`, `Customer` e `OperationalAlert`. Adicionadas regras de integridade, cardinalidade, índices e observações operacionais. |
+| 1.11 | 2026-06-21 | Adicionada a entidade customizada `EmailDeliveryLog` para registrar envios de e-mails transacionais, alertas operacionais, status de entrega via Resend, idempotência, falhas, retries e correlação com `Order`, `Refund`, `ExchangeRequest`, `Customer` e `OperationalAlert`. Adicionadas regras de integridade, cardinalidade, índices e observações operacionais. **Histórico preservado:** a atribuição auth implícita na correlação com `Customer` foi superseded pela reconciliação Phase 14/v1.21; verification/reset auth pertencem exclusivamente a `AuthNotificationOutbox`. |
 | 1.10 | 2026-06-21 | Atualizado `ExchangeRequest` para incluir status `canceled`, canal de solicitação, timestamps operacionais, campos de instruções/logística reversa, regras de primeira troca, troca adicional e registro manual/semiautomático via Correios. Adicionadas regras de integridade, cardinalidade, índices e observações operacionais. |
 | 1.9 | 2026-06-21 | Atualizado `LineItem` para armazenar snapshot Gelato no momento de criação do `Order`, preservando `gelato_product_uid`, `gelato_template_id`, opções de variante, SKU de origem e `template_mode`. Adicionadas regras para impedir que alterações futuras em `ProductVariant` alterem pedidos já confirmados. |
 | 1.8 | 2026-06-21 | Atualizado `Fulfillment` para suportar falhas, retries, idempotência, reprocessamento manual e atenção operacional. Adicionados campos de retry, erro, timestamps operacionais, chave de idempotência, motivo de atenção e regras de unicidade/estado para Gelato. |
@@ -217,9 +217,9 @@ O processo de logística reversa dos Correios no MVP é manual ou semiautomátic
 
 A primeira troca da compra deve ter frete de retorno pago pela empresa. Trocas adicionais da mesma compra devem ter frete pago pelo cliente.
 
-### 2.14 E-mails transacionais e alertas operacionais
+### 2.14 E-mails transacionais não-auth e alertas operacionais
 
-E-mails transacionais e alertas operacionais devem ser modelados como registros auditáveis em `EmailDeliveryLog`.
+E-mails transacionais não-auth ligados à operação de pedidos e alertas operacionais devem ser modelados como registros auditáveis em `EmailDeliveryLog`. E-mails de verification/reset de autenticação pertencem exclusivamente a `AuthNotificationOutbox`; `EmailDeliveryLog` não é outbox de autenticação da Phase 14.
 
 A entidade deve registrar:
 
@@ -227,7 +227,6 @@ A entidade deve registrar:
 - e-mails de envio/rastreio;
 - e-mails de cancelamento;
 - e-mails de reembolso;
-- e-mails de boas-vindas e redefinição de senha;
 - e-mails de instruções de troca/logística reversa;
 - alertas operacionais críticos enviados ao Admin.
 
@@ -360,7 +359,7 @@ Regras:
 
 | Entidade | Origem | Campos Relevantes | Observações |
 |---|---|---|---|
-| `EmailDeliveryLog` | Custom/Resend | `id`, `entity_type`, `entity_id`, `email_type`, `recipient`, `provider`, `resend_message_id`, `status`, `idempotency_key`, `retry_count`, `metadata` | Registro auditável de e-mails transacionais e alertas operacionais. Usado para idempotência, reprocessamento, diagnóstico de falhas e correlação com entidades de negócio. |
+| `EmailDeliveryLog` | Custom/Resend | `id`, `entity_type`, `entity_id`, `email_type`, `recipient`, `provider`, `resend_message_id`, `status`, `idempotency_key`, `retry_count`, `metadata` | Registro auditável de e-mails não-auth ligados à operação de pedidos e alertas operacionais. Não admite verification/reset auth; esses envios pertencem exclusivamente a `AuthNotificationOutbox`. |
 
 ### 3.7 Webhooks e Auditoria Técnica
 
@@ -1090,16 +1089,16 @@ Entidade customizada responsável por registrar o ciclo operacional de solicita�
 
 ---
 
-### 4.13 EmailDeliveryLog — E-mails Transacionais e Alertas
+### 4.13 EmailDeliveryLog — E-mails Não-Auth e Alertas Operacionais
 
-Entidade customizada responsável por registrar o ciclo de envio, falha, retry e auditoria de e-mails transacionais e alertas operacionais.
+Entidade customizada responsável por registrar o ciclo de envio, falha, retry e auditoria de e-mails não-auth ligados à operação de pedidos e alertas operacionais. Seu escopo normativo é não-auth/order-operational; o as-built atual implementa `order_confirmation`. Verification/reset auth são responsabilidade exclusiva de `AuthNotificationOutbox`.
 
 #### Finalidade
 
 - Registrar e-mails enviados pelo Resend ou provedor equivalente.
 - Garantir idempotência de e-mails por entidade e tipo.
 - Permitir reprocessamento de falhas sem duplicar mensagens já enviadas.
-- Correlacionar mensagens com `Order`, `Refund`, `ExchangeRequest`, `Customer`, `TrackingAccessToken` e `OperationalAlert` quando aplicável.
+- Correlacionar mensagens com `Order`, `Refund`, `ExchangeRequest`, `TrackingAccessToken` e `OperationalAlert` quando aplicável.
 - Auditar falhas de envio sem cancelar pedido pago, reembolso confirmado ou fluxo de troca já aprovado.
 - Evitar armazenamento de token de tracking puro, secrets, dados completos de pagamento ou corpo integral com dados sensíveis.
 
@@ -1108,9 +1107,9 @@ Entidade customizada responsável por registrar o ciclo de envio, falha, retry e
 ```json
 {
   "id": "string",
-  "entity_type": "order | customer | exchange_request | refund | operational_alert | auth | tracking | unknown",
+  "entity_type": "order | exchange_request | refund | operational_alert | tracking | unknown",
   "entity_id": "string | null",
-  "email_type": "order_confirmation | shipment_tracking | cancellation | refund | welcome | password_reset | exchange_instructions | operational_alert",
+  "email_type": "order_confirmation | shipment_tracking | cancellation | refund | exchange_instructions | operational_alert",
   "recipient": "string",
   "provider": "resend",
   "template_key": "string",
@@ -1149,8 +1148,6 @@ Entidade customizada responsável por registrar o ciclo de envio, falha, retry e
 | `shipment_tracking` | `Order` / `Fulfillment` | Quando tracking estiver disponível ou pedido for enviado. |
 | `cancellation` | `Order` | Quando cancelamento operacional for confirmado. |
 | `refund` | `Refund` | Somente após `Refund.status = succeeded` confirmado via Stripe. |
-| `welcome` | `Customer` | Após criação de conta, quando habilitado. |
-| `password_reset` | `Customer` / Auth | Para redefinição de senha com validade limitada. |
 | `exchange_instructions` | `ExchangeRequest` | Após aprovação de troca e registro de instruções suficientes. |
 | `operational_alert` | `OperationalAlert` | Para alertas críticos ao Admin. |
 
@@ -1167,7 +1164,7 @@ Entidade customizada responsável por registrar o ciclo de envio, falha, retry e
 
 #### Regras
 
-- Todo e-mail transacional Must Have deve gerar `EmailDeliveryLog` antes ou durante a tentativa de envio.
+- Todo e-mail transacional não-auth Must Have deve gerar `EmailDeliveryLog` antes ou durante a tentativa de envio. Verification/reset auth seguem exclusivamente `AuthNotificationOutbox`.
 - `idempotency_key` deve impedir duplicidade de mensagens para a mesma entidade e tipo.
 - Para `order_confirmation`, a chave recomendada é `order_id + email_type`.
 - Para `shipment_tracking`, a chave recomendada é `order_id + email_type + tracking_number` ou `fulfillment_id + email_type` quando tracking puder mudar.
@@ -1484,7 +1481,7 @@ CHECKs exigem ordem dos proof markers, `completed` somente após todos os efeito
 
 #### 4.17.7 AuthNotificationOutbox
 
-Sibling auth separado do `EmailDeliveryLog` as-built, que permanece order-only (`order_confirmation`). Não ampliar o log de pedido com polimorfismo nullable e não persistir payload/capability auth nele.
+Sibling auth separado do `EmailDeliveryLog`. Verification/reset auth pertencem exclusivamente a esta entidade. `EmailDeliveryLog` conserva escopo não-auth/order-operational e, no as-built atual, permanece restrito a `order_confirmation`; não ampliar o log de pedido com polimorfismo nullable nem persistir payload/capability auth nele.
 
 | Aspecto | Contrato lógico |
 |---|---|
@@ -1774,9 +1771,9 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 
 ```json
 {
-  "entity_type": "order | customer | exchange_request | refund | operational_alert | auth | tracking | unknown",
+  "entity_type": "order | exchange_request | refund | operational_alert | tracking | unknown",
   "entity_id": "string | null",
-  "email_type": "order_confirmation | shipment_tracking | cancellation | refund | welcome | password_reset | exchange_instructions | operational_alert",
+  "email_type": "order_confirmation | shipment_tracking | cancellation | refund | exchange_instructions | operational_alert",
   "recipient": "string",
   "provider": "resend",
   "template_key": "string",
@@ -1794,7 +1791,7 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 }
 ```
 
-`EmailDeliveryLog` deve armazenar apenas dados necessários para auditoria, idempotência e reprocessamento. O corpo integral do e-mail, links com token puro, secrets e dados completos de pagamento não devem ser persistidos nessa entidade.
+`EmailDeliveryLog` deve armazenar apenas dados necessários para auditoria, idempotência e reprocessamento de mensagens não-auth/order-operational. O corpo integral do e-mail, links com token puro, secrets e dados completos de pagamento não devem ser persistidos nessa entidade. Verification/reset auth não podem usar este registro e pertencem exclusivamente a `AuthNotificationOutbox`.
 
 
 ### 5.17 AdminActionLog
@@ -1906,7 +1903,6 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `Order` → `EmailDeliveryLog` | 1:N | Um pedido pode gerar e-mails de confirmação, envio/rastreio, cancelamento e outros eventos transacionais. |
 | `Refund` → `EmailDeliveryLog` | 1:N | Um reembolso confirmado pode gerar e-mail de reembolso ao cliente. |
 | `ExchangeRequest` → `EmailDeliveryLog` | 1:N | Uma troca aprovada pode gerar e-mail de instruções de logística reversa. |
-| `Customer` → `EmailDeliveryLog` | 1:N lógico | Conta de cliente pode gerar e-mails de boas-vindas e redefinição de senha. |
 | `TrackingAccessToken` → `EmailDeliveryLog` | 1:N lógico | E-mails de confirmação e rastreio podem referenciar o token por ID, sem persistir token puro. |
 | `OperationalAlert` → `EmailDeliveryLog` | 0:N | Alertas operacionais podem gerar e-mails para o Admin, com deduplicação por tipo/entidade/janela temporal. |
 | `EmailDeliveryLog` → Resend | N:1 lógico | Cada registro de envio pode possuir um `resend_message_id` quando o provedor retornar identificador. |
@@ -2023,7 +2019,7 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `DATA-078` | `ExchangeRequest.provider` pode ser nulo até haver logística reversa registrada. Quando houver logística reversa Correios registrada, `provider = correios` e os campos `reverse_logistics_code`, `correios_deadline` e `instructions` devem ser preenchidos quando disponíveis. |
 | `DATA-079` | `instructions_sent_at` só deve ser preenchido após envio efetivo das instruções ao cliente. |
 | `DATA-080` | `ExchangeRequest` não deve alterar automaticamente `Order.order_status`, `Order.payment_status` ou criar `Refund` sem fluxo administrativo explícito. |
-| `DATA-081` | Todo e-mail transacional obrigatório deve gerar `EmailDeliveryLog` antes ou durante a tentativa de envio. |
+| `DATA-081` | Todo e-mail transacional obrigatório não-auth deve gerar `EmailDeliveryLog` antes ou durante a tentativa de envio; verification/reset auth devem gerar exclusivamente `AuthNotificationOutbox`. |
 | `DATA-082` | `EmailDeliveryLog.idempotency_key` deve ser única para o escopo da mensagem e impedir duplicidade por entidade e tipo de e-mail. |
 | `DATA-083` | E-mail de confirmação de pedido só pode ser enviado após `Order` confirmado e não deve depender do sucesso da criação do fulfillment Gelato. |
 | `DATA-084` | E-mail de reembolso só pode ser enviado após `Refund.status = succeeded` confirmado por webhook Stripe confiável. |
@@ -2072,7 +2068,7 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `DATA-127` | Refresh capability é CSPRNG/hash-only, de uso único, com uma ativa por lineage, inactivity 7d, recovery 45s e replay que revoga a lineage. |
 | `DATA-128` | Verification e reset persistem somente hash/nonce/key version; possuem uma intent ativa por identity, generation monotônica e TTLs respectivos de 30m e 15m. |
 | `DATA-129` | Reset só pode completar após proof do provider, credential update, revogação global e consumo definitivo; proof markers separados não podem ser inferidos uns dos outros. |
-| `DATA-130` | `AuthNotificationOutbox` é sibling separado do `EmailDeliveryLog` order-only, exige `recipient_identity_id` opaco + recipient hash/domain e proíbe endereço, capability, body e provider payload plaintext. |
+| `DATA-130` | `AuthNotificationOutbox` é o sibling exclusivo de verification/reset auth, separado do `EmailDeliveryLog` não-auth/order-operational (as-built atual: `order_confirmation`); exige `recipient_identity_id` opaco + recipient hash/domain e proíbe endereço, capability, body e provider payload plaintext. |
 | `DATA-131` | Claims de outbox/reconciler usam version CAS, lease 2m, attempt e next_retry_at; Redis nunca substitui PostgreSQL como autoridade. |
 | `DATA-132` | Migration auth só pode ser criada após esta reconciliação, normalizador único e collision audit read-only; collision winner exige decisão humana e nunca é escolhido automaticamente. |
 
@@ -2148,7 +2144,7 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `ExchangeRequest` | índice em `provider` | Filtrar trocas com logística reversa registrada por provedor. |
 | `ExchangeRequest` | índice em `reverse_logistics_code` quando não nulo | Localizar troca por código de logística reversa dos Correios. |
 | `ExchangeRequest` | índice composto em `order_id, status` | Consultar histórico operacional de trocas de um pedido por estado. |
-| `EmailDeliveryLog` | índice em `entity_type, entity_id` | Consultar e-mails associados a pedidos, reembolsos, trocas, clientes ou alertas. |
+| `EmailDeliveryLog` | índice em `entity_type, entity_id` | Consultar e-mails não-auth associados a pedidos, reembolsos, trocas ou alertas. |
 | `EmailDeliveryLog` | índice em `email_type` | Filtrar mensagens por tipo transacional. |
 | `EmailDeliveryLog` | índice em `status` | Localizar e-mails pendentes, falhos, reprocessáveis ou enviados. |
 | `EmailDeliveryLog` | unique em `idempotency_key` | Impedir duplicidade de envio para o mesmo escopo lógico. |
@@ -2192,7 +2188,7 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 - A ordem vinculante para auth é DB_MODEL → normalizador/collision audit read-only → models → migration; 14-03 não autoriza DDL, model, migration ou escolha automática de collision winner.
 - Os sete estados auth têm owner `customer_auth`; integrações com Medusa Auth/Customer usam IDs lógicos e APIs/links/query graph aprovados, nunca acesso direto a tabelas alheias.
 - PostgreSQL é a autoridade de validade; Redis é somente auxiliar e não pode ressuscitar intent, lineage ou credential.
-- `EmailDeliveryLog` as-built continua restrito a `order_confirmation`; `AuthNotificationOutbox` é sibling próprio e não persiste endereço de e-mail, capability nem body.
+- `EmailDeliveryLog` tem autoridade não-auth/order-operational e seu as-built continua restrito a `order_confirmation`; verification/reset auth pertencem exclusivamente a `AuthNotificationOutbox`, que não persiste endereço de e-mail, capability nem body.
 - Login/refresh devem negar enquanto `AuthCredentialState` estiver em recovery não-`stable`; reconciler sem segredo não prova password nem fabrica completion.
 - A implementação deve priorizar entidades nativas do Medusa.
 - `PaymentAttempt` é customizada e recomendada para tornar explícita a camada pré-Order.
@@ -2247,7 +2243,7 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 - O status `canceled` deve ser usado para encerramento sem conclusão da troca; `rejected` deve ser reservado para recusa após análise administrativa.
 - A troca não deve iniciar reembolso ou reenvio automaticamente no MVP; essas ações dependem de fluxo administrativo próprio e, para reembolso, da entidade `Refund`.
 - Dados de logística reversa dos Correios no MVP são registros operacionais. A existência de `reverse_logistics_code` não implica integração automática com API dos Correios.
-- `EmailDeliveryLog` deve ser a fonte operacional para auditoria de envio de e-mails transacionais e alertas por e-mail.
+- `EmailDeliveryLog` deve ser a fonte operacional para auditoria de envio de e-mails não-auth/order-operational e alertas por e-mail; não é fonte nem outbox de verification/reset auth.
 - A criação de `EmailDeliveryLog` deve ocorrer antes ou durante a chamada ao Resend, usando `idempotency_key` para impedir mensagens duplicadas.
 - Para e-mails associados a pedido, o fluxo deve preferir `order_id + email_type` como chave de idempotência, exceto quando o tipo exigir granularidade adicional, como tracking por fulfillment ou reembolso por `refund_id`.
 - E-mail de confirmação de pedido deve ser registrado e enviado após `Order` confirmado e antes da tentativa de fulfillment Gelato.

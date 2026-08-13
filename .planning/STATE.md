@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Backend Storefront Readiness
 current_phase: 14
 current_phase_name: customer-auth-verification
-current_plan: 2
+current_plan: 3
 status: paused
-last_updated: "2026-08-13T14:18:54-03:00"
+last_updated: "2026-08-13T15:29:51-03:00"
 progress:
   total_phases: 10
   completed_phases: 1
   total_plans: 28
-  completed_plans: 9
+  completed_plans: 10
   percent: 10
-stopped_at: 14-02 HUMAN APPROVED — PASS; 14-03 NOT AUTHORIZED
+stopped_at: 14-03 HUMAN APPROVED — PASS; 14-04 NOT AUTHORIZED
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: `.planning/PROJECT.md` (updated 2026-08-06)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
 
-**Current focus:** Phase 14 — `14-02 HUMAN APPROVED — PASS`; `14-03 NOT AUTHORIZED`.
+**Current focus:** Phase 14 — `14-03 HUMAN APPROVED — PASS`; `14-04 NOT AUTHORIZED`.
 
 ## Execution Policy
 
@@ -39,7 +39,7 @@ Enforcement remains:
 - `workflow._auto_chain_active=false`
 - `parallelization=false`
 
-`14-02` completion and human approval do not authorize `14-03` or any later plan.
+`14-03` completion and human approval do not authorize `14-04` or any later plan.
 
 ## Current Gate
 
@@ -89,7 +89,13 @@ HUMAN APPROVED — PASS
 B14-02-HR-01:
 CLOSED — PASS
 
-14-03..14-21:
+14-03:
+HUMAN APPROVED — PASS
+
+B14-03-HR-01:
+CLOSED — PASS
+
+14-04..14-21:
 NOT AUTHORIZED
 
 Deploy:
@@ -163,20 +169,46 @@ EXECUTED
 
 The local schema bootstrap is test/disposable infrastructure only and does not authorize a real or remote migration.
 
+## 14-03 Accepted Evidence
+
+```text
+Transaction capability:
+Auth provider seam: RECONCILIATION_REQUIRED — ACCEPTED
+Customer workflow seam: RECONCILIATION_REQUIRED — ACCEPTED
+Combined seam: RECONCILIATION_REQUIRED — ACCEPTED
+
+DB_MODEL reconciliation:
+PASS
+
+DB_MODEL verify:
+PASS
+
+Textual consistency:
+PASS
+
+Technical evidence re-execution during human re-review:
+NOT REQUIRED — no technical files were altered
+
+git diff --check:
+PASS
+```
+
+The accepted transaction evidence is binding: login/refresh must fail closed during non-stable recovery states, and `RECONCILIATION_REQUIRED` remains the baseline for registration, reset and password change. No model, migration, DDL or collision winner was authorized.
+
 ## Current Position
 
 Phase: 14 (customer-auth-verification) — EXECUTING
-Completed/human-approved Phase 14 plans: **2/21**
-Current plan: **14-02 — HUMAN APPROVED — PASS**
-Next gate: **fresh human authorization for 14-03**
-14-03: **NOT AUTHORIZED**
+Completed/human-approved Phase 14 plans: **3/21**
+Current plan: **14-03 — HUMAN APPROVED — PASS**
+Next gate: **fresh human authorization for 14-04**
+14-04: **NOT AUTHORIZED**
 
 Milestone v1.1:
 
 - phases closed: 1/10
 - Phase 13 requirements complete: FND-01..FND-08 = 8/8
 - milestone requirements complete: 8/91
-- plans human-approved executed: 9 total (Phase 13: 7; Phase 14: 2)
+- plans human-approved executed: 10 total (Phase 13: 7; Phase 14: 3)
 - frontend: BLOCKED
 
 ## Phase 14 Authorities
@@ -216,7 +248,7 @@ The historical records are not invalidated. Where they describe earlier gates su
 
 ## Blockers / Concerns
 
-`14-02` has no open blocker. `14-03` remains blocked by the missing fresh human authorization.
+`14-03` has no open blocker. `14-04` remains blocked by the missing fresh human authorization.
 
 Historical provider limitations remain non-blocking and are not converted into authorization:
 
@@ -239,17 +271,17 @@ Known deferred artifact items at v1.0 close remain 0. Historical details remain 
 
 ## Session Continuity
 
-**Resume file:** `.planning/phases/14-customer-auth-verification/14-02-SUMMARY.md`
+**Resume file:** `.planning/phases/14-customer-auth-verification/14-03-SUMMARY.md`
 
-Last session: 2026-08-13T14:18:54-03:00
+Last session: 2026-08-13T15:29:51-03:00
 
 Stopped at:
 
 ```text
-14-02:
+14-03:
 HUMAN APPROVED — PASS
 
-14-03:
+14-04:
 NOT AUTHORIZED
 ```
 
@@ -258,7 +290,8 @@ Resume with:
 - `.planning/STATE.md`
 - `.planning/phases/14-customer-auth-verification/14-01-SUMMARY.md`
 - `.planning/phases/14-customer-auth-verification/14-02-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-02-PLAN.md`
+- `.planning/phases/14-customer-auth-verification/14-03-SUMMARY.md`
+- `.planning/phases/14-customer-auth-verification/14-03-PLAN.md`
 - `.planning/phases/14-customer-auth-verification/14-IMPLEMENTATION-PROMPT.md`
 - `.planning/phases/14-customer-auth-verification/14-SPEC.md`
 - `.planning/phases/14-customer-auth-verification/14-SDD.md`
@@ -267,6 +300,6 @@ Resume with:
 - `.planning/REQUIREMENTS.md`
 - `.planning/history/STATE-before-14-02-add005c.md` when detailed historical context is needed
 
-**Next permitted step:** await fresh human authorization. Do not execute `14-03` from the `14-02` approval.
+**Next permitted step:** await fresh human authorization. Do not execute `14-04` from the `14-03` approval.
 
-Do not automatically start 14-03, deploy, exercise real providers, execute rollback, start frontend, or move/recreate tag `v1.0`.
+Do not automatically start 14-04, deploy, exercise real providers, execute rollback, start frontend, or move/recreate tag `v1.0`.
