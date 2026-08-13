@@ -4,10 +4,10 @@
 |---|---|
 | Documento | DB_MODEL |
 | Versão | 1.21 |
-| Data | 2026-06-22 |
+| Data | 2026-08-13 |
 | Status | Revisado |
 | Base funcional | SRS v1.5 e PRD Backend v1.1 |
-| Escopo desta versão | Correção do achado 4: explicitação das constraints monetárias para `Payment` e `Refund`, incluindo valores inteiros na menor unidade monetária, não negatividade, captura limitada ao valor autorizado, reembolso positivo, moeda consistente e bloqueio transacional de reembolso acima do saldo capturado disponível. |
+| Escopo desta versão | Baseline 1.21 preservado e reconciliado documentariamente para a Phase 14: sete responsabilidades persistentes de autenticação, ownership `customer_auth`, relações lógicas com Medusa, constraints, lifecycles, TTLs, CAS/lease/retry e minimização de PII. Nenhum DDL ou migration é autorizado por esta reconciliação. |
 
 > Versionamento: major.minor sequencial. A versão 1.21 representa a vigésima primeira revisão minor da versão 1, não um número decimal.
 
@@ -17,6 +17,7 @@
 
 | Versão | Data | Alterações |
 |---|---:|---|
+| 1.21 — reconciliação Phase 14 | 2026-08-13 | Sem renumerar ou apagar o histórico 1.21, materializados os sete estados auth `RegistrationIntent`, `AuthCredentialState`, `AuthSessionLineage`, `AuthRefreshCredential`, `AuthVerificationIntent`, `AuthResetIntent` e `AuthNotificationOutbox`. Declarado o sibling auth separado do `EmailDeliveryLog` order-only as-built, com IDs Medusa apenas lógicos, hash-only/PII minimizada, CAS, lease, retry, proof markers, cardinalidades, lifecycles, TTLs e índices. Model, migration, DDL e collision winner continuam bloqueados até os gates posteriores. |
 | 1.21 | 2026-06-22 | Corrigido o achado 4: adicionadas constraints monetárias explícitas para `Payment` e `Refund`. `Payment.amount` e `Payment.captured_amount` devem ser inteiros não negativos na menor unidade monetária; `Payment.captured_amount` não pode exceder `Payment.amount`; `Refund.amount` deve ser inteiro positivo; `Refund.currency_code` deve ser igual a `Payment.currency_code`; no MVP, `Payment.currency_code` e `Refund.currency_code` devem ser `BRL`; e o valor de reembolso deve respeitar o saldo capturado disponível considerando refunds confirmados e bloqueados. Atualizadas seções 2.10, 4.8, 4.9, 5.12, 5.13, regras `DATA-106`, `DATA-117` a `DATA-122` e constraints recomendadas. |
 | 1.20 | 2026-06-21 | Corrigido o achado 3: definida a fonte de verdade financeira para reembolsos. `Refund.status = succeeded` passa a ser a fonte de verdade para valores reembolsados confirmados; `Payment.status` e `Order.payment_status` são campos derivados/denormalizados que devem ser recalculados na mesma transação lógica que confirma reembolso via webhook Stripe. Proibida alteração manual isolada desses status sem recomputação a partir de `Payment.captured_amount` e `Refund.status = succeeded`. Atualizadas as seções 2.10, 4.8, 4.9, 5.12, relações, regras `DATA-053`, `DATA-054`, `DATA-107` e adicionadas `DATA-114` a `DATA-116`. |
 | 1.19 | 2026-06-21 | Corrigido o achado 2: adicionada `WebhookEventLog.deduplication_key` como chave canônica de deduplicação. A deduplicação passa a ser garantida por `unique(provider, deduplication_key)`. Quando `external_event_id` existir e for confiável, a chave deve derivar dele; quando não existir, deve derivar de `payload_hash` normalizado ou de chave determinística equivalente validada na integração. `payload_hash` isolado passa a ser índice diagnóstico, não garantia de unicidade. Atualizadas `DATA-005`, `DATA-030`, `DATA-031`, seção 4.5, seção 5.8 e índices recomendados. |
@@ -1382,6 +1383,134 @@ Entidade customizada responsável por registrar alertas críticos e acompanhar s
 - `OperationalAlert` não substitui logs técnicos, `WebhookEventLog`, `Fulfillment` ou `EmailDeliveryLog`.
 - Alertas não devem armazenar secrets, tokens puros, dados completos de cartão ou payloads extensos sensíveis.
 
+### 4.17 Customer Auth — sete responsabilidades persistentes
+
+Esta subseção reconcilia P14-D03/P14-D04 antes de qualquer model ou migration. As sete entidades abaixo têm ownership lógico exclusivo `customer_auth`. Referências a `auth_identity_id` e `customer_id` são IDs lógicos Medusa: o módulo não acessa diretamente tabelas ou serviços internos de outro módulo, não cria foreign keys cross-module e resolve vínculos por APIs/links/query graph aprovados.
+
+PostgreSQL é a única autoridade de validade, unicidade, CAS e lifecycle. Redis pode coordenar rate limit ou wake-up, mas nunca concede validade. Todos os estados usam `id`, `schema_version`, `created_at`, `updated_at` e soft-delete/retention somente quando o futuro model aprovado o exigir.
+
+Registro canônico de TTLs relacionados: registration **24h**, verification **30m**, reset **15m**, access JWT **10m**, refresh inactivity **7d**, lost-response recovery **45s**, absolute session **30d** e outbox/reconciler lease **2m**.
+
+#### 4.17.1 RegistrationIntent
+
+| Aspecto | Contrato lógico |
+|---|---|
+| Owner / finalidade | `customer_auth`; coordenar identity + Customer, retomar falha parcial e rejeitar retry semanticamente incompatível sem overwrite. |
+| Chave e IDs | `normalized_email_hash` ativo; `auth_identity_id` e `customer_id` lógicos e opcionais até cada efeito ser provado. |
+| Cardinalidade | no máximo uma intent ativa por e-mail normalizado; uma intent referencia no máximo uma identity e um Customer; cada identity/Customer aparece em no máximo uma intent não expirada. |
+| Lifecycle | `pending_identity -> pending_customer -> completed`; `pending_* -> failed_reconcilable|expired`; retry compatível pode retomar `failed_reconcilable`; mismatch executa zero write. |
+| TTL / cleanup | expira em **24h**; marcar `expired` antes de purga operacional; intent expirada não é reutilizada. |
+| Concorrência | `version` para CAS e lock da row ativa; unique parcial em `normalized_email_hash` para `pending_identity|pending_customer|failed_reconcilable`. |
+| Segurança | apenas hash versionado do e-mail e HMAC/fingerprint sem senha; `payload_key_version` e `schema_version`; password, capability, token e e-mail plaintext são proibidos. |
+| Índices | unique parcial do hash ativo; `(status, expires_at)`; `auth_identity_id`; `customer_id`. |
+
+CHECKs exigem `expires_at > created_at`, `version >= 1`, IDs somente a partir dos estados correspondentes e `completed` apenas com `auth_identity_id`, `customer_id` e `completed_at` preenchidos.
+
+#### 4.17.2 AuthCredentialState
+
+| Aspecto | Contrato lógico |
+|---|---|
+| Owner / finalidade | `customer_auth`; estado 1:1 da identity, verificação, `credential_version` monotônica, revogação global e operação genérica de credencial. |
+| Chave e IDs | unique `auth_identity_id` lógico; `operation_id` é HMAC versionado da `Idempotency-Key`, nunca a chave pura. |
+| Operação | `operation_type = reset | password_change`; `operation_status = stable | claimed | provider_outcome_ambiguous | credential_proved | credential_updated | revocation_pending | revocation_committed | completed`. |
+| CAS / lease / retry | `version`, `credential_version` e `operation_version` monotônicos; `lease_owner`, `lease_until`; `attempt_count`; `next_retry_at`; lease de **2m**. |
+| Proof markers | `current_password_verified_at`, `provider_proved_at`, `credential_updated_at`, `revocation_committed_at`, `completed_at`, todos separados para não inferir um efeito a partir de outro. |
+| Fail-closed | qualquer recovery não-`stable`, incluindo `claimed` ou `credential_updated`, bloqueia login/refresh; somente resume compatível da mesma operação pode prosseguir. |
+| Segurança | sem password/currentPassword/newPassword, capability, fingerprint reversível, token ou e-mail plaintext; reconciler secretless não pode provar senha nem completar operação sem proof autoritativo. |
+| Índices | unique identity; unique parcial `operation_id` quando bound; `(operation_status, next_retry_at)`; `(lease_until)` para claims vencidos. |
+
+CHECKs exigem `version >= 1`, `credential_version >= 1`, `operation_version >= 0`, `attempt_count >= 0`, lease owner/until ambos nulos ou ambos preenchidos, `credential_updated_at` somente após `provider_proved_at`, `revocation_committed_at` somente após credential update e `completed_at` somente após proof + update + revogação. `credential_version` nunca diminui.
+
+#### 4.17.3 AuthSessionLineage
+
+| Aspecto | Contrato lógico |
+|---|---|
+| Owner / finalidade | `customer_auth`; sessão lógica inicial, snapshot da versão da credencial e teto absoluto que refresh não reinicia. |
+| Chave e IDs | `id`/`sid` opaco único; `auth_identity_id` e `customer_id` lógicos obrigatórios; `credential_version_snapshot`. |
+| Cardinalidade | uma identity/Customer pode possuir N lineages históricas; uma lineage possui N refresh credentials ao longo das gerações. |
+| Lifecycle | `active -> revoked|expired`; estado terminal não volta a `active`. |
+| TTL | `absolute_expires_at = original_authenticated_at +` **30d**, imutável e sem grace period. |
+| Concorrência | `version` CAS; lock na rotação, replay e revogação global; `revoked_at/revocation_reason` coerentes com status. |
+| Segurança | nenhuma credencial/token; IDs e reason codes opacos/allowlisted. |
+| Índices | unique `sid`; `(auth_identity_id, status)`; `(customer_id, status)`; `absolute_expires_at`. |
+
+CHECKs exigem deadline posterior ao nascimento e imutável, `revoked_at` quando `status=revoked`, e impedem uso quando `now >= absolute_expires_at` ou o snapshot divergir de `AuthCredentialState.credential_version`.
+
+#### 4.17.4 AuthRefreshCredential
+
+| Aspecto | Contrato lógico |
+|---|---|
+| Owner / finalidade | `customer_auth`; capability opaca single-use, rotação N→N+1, recovery de resposta perdida e replay com revogação da lineage. |
+| Chave e vínculo | unique `token_hash` SHA-256 de capability CSPRNG 32 bytes; `lineage_id`; `generation`; `replacement_id`; `request_key_hash`; `nonce`; `key_version`. |
+| Cardinalidade | uma lineage tem N gerações e no máximo uma credencial `active`; uma credencial consumida referencia no máximo uma sucessora. |
+| Lifecycle | `active -> consumed|revoked`; reuse inválido `consumed -> replayed`; replay revoga lineage e descendentes. |
+| TTLs | inactivity **7d**, sempre limitado pelo absolute **30d** da lineage; `recovery_until = consumed_at +` **45s**. |
+| Concorrência | lock/CAS na geração N; consume N + insert N+1 é transação intra-`customer_auth`; generation estritamente monotônica. |
+| Segurança | capability e `Idempotency-Key` nunca persistidas; rederivação somente em memória; hash/nonce/key version não são retornados publicamente. |
+| Índices | unique hash; unique `(lineage_id, generation)`; unique parcial `(lineage_id)` onde `status=active`; `(status, expires_at)`. |
+
+CHECKs exigem `generation >= 0`, expiração coerente, `replacement_id` somente em `consumed`, recovery somente após consumo e nenhum estado `active` além do deadline da lineage.
+
+#### 4.17.5 AuthVerificationIntent
+
+| Aspecto | Contrato lógico |
+|---|---|
+| Owner / finalidade | `customer_auth`; verification latest-wins, one-winner e hash-only que verifica, mas não autentica. |
+| Chave e IDs | `auth_identity_id` lógico + `generation`; unique `token_hash`; `nonce`; `key_version`; `schema_version`. |
+| Cardinalidade | N gerações históricas por identity; no máximo uma `pending|claimed` por identity. |
+| Lifecycle | `pending -> claimed -> confirmed`; `pending|claimed -> superseded|expired`; `dead_letter` fica reservado e nunca é causado por falha de delivery. |
+| TTL / cleanup | expira em **30m**; confirmar por CAS `hash + pending + expiry`; marcar expiry/supersede antes de purga. |
+| Concorrência | generation monotônica, lock por identity em resend e CAS/version em claim/confirm; confirm concorrente tem um vencedor. |
+| Segurança | capability somente em memória/rederivada; sem token/code/e-mail plaintext; provider delivery não participa da validade. |
+| Índices | unique hash; unique `(auth_identity_id, generation)`; unique parcial da intent ativa; `(status, expires_at)`. |
+
+CHECKs exigem `confirmed_at` somente em `confirmed`, `superseded_at` somente em `superseded` e expiry posterior à criação. Após confirmação, nenhuma intent da identity permanece utilizável.
+
+#### 4.17.6 AuthResetIntent
+
+| Aspecto | Contrato lógico |
+|---|---|
+| Owner / finalidade | `customer_auth`; reset latest-wins e sucesso composto: provider proof + credential update + revogação de todas as lineages + consumo definitivo. |
+| Chave e IDs | `auth_identity_id` lógico + generation; unique `token_hash`; unique `operation_id` HMAC; `nonce`; `key_version`; `schema_version`. |
+| Cardinalidade | N gerações históricas por identity; no máximo uma `pending|claimed|credential_updated` ativa; uma operação bound por intent. |
+| Lifecycle | `pending -> claimed -> credential_updated -> revocation_committed -> completed`; `pending -> superseded|expired`; ambiguidade -> `failed_reconcilable`, retomável somente com mesma key e newPassword reapresentada. |
+| TTL / cleanup | token expira em **15m**; intent claimed preserva evidência sanitizada até resolução operacional; marcar terminal antes de purga. |
+| CAS / lease / retry | `version` CAS, generation monotônica, `lease_owner/until` de **2m**, `attempt_count`, `next_retry_at`; lock antes de claim/consume/provider write. |
+| Proof markers | `claimed_at`, `provider_proved_at`, `credential_updated_at`, `revocation_committed_at`, `completed_at`; nenhum marker implica o seguinte. |
+| Fail-closed / segurança | `claimed|credential_updated|failed_reconcilable` bloqueia login/refresh via `AuthCredentialState`; sem reset capability, newPassword ou e-mail plaintext. |
+| Índices | unique hash; unique operation; unique `(auth_identity_id, generation)`; unique parcial da intent ativa; `(status, expires_at)`; `(status, next_retry_at)`; lease. |
+
+CHECKs exigem ordem dos proof markers, `completed` somente após todos os efeitos, `attempt_count >= 0`, lease coerente e operação incompatível com zero write.
+
+#### 4.17.7 AuthNotificationOutbox
+
+Sibling auth separado do `EmailDeliveryLog` as-built, que permanece order-only (`order_confirmation`). Não ampliar o log de pedido com polimorfismo nullable e não persistir payload/capability auth nele.
+
+| Aspecto | Contrato lógico |
+|---|---|
+| Owner / finalidade | `customer_auth`; entrega durável de `email_verification_v1|password_reset_v1`, independente do estado de negócio e sem capability persistida. |
+| Chave e vínculos | unique `idempotency_key = auth/{template}/{intent_id}/g{generation}` (máx. 256); `intent_id`, generation e `recipient_identity_id` opaco obrigatório. |
+| Recipient minimizado | somente `recipient_identity_id`, `recipient_hash`, `recipient_domain` e `key_version`; o endereço é resolvido por API/Query graph apenas em memória no envio. |
+| Cardinalidade | uma intent/generation possui no máximo uma mensagem por template/idempotency; uma identity pode possuir N mensagens históricas. |
+| Lifecycle | `recorded -> claimed -> sent`; falha recuperável volta a elegível; após a 6ª falha -> `dead_letter`; delivery não muda validade do intent. |
+| CAS / lease / retry | `version` CAS; `lease_owner/until` de **2m**; `attempt_count`, `next_retry_at`; backoff 1m/5m/30m/2h/6h/12h; batch 25. |
+| Segurança | sem coluna de e-mail, token, capability URL, body, password, provider raw payload ou metadata arbitrária; capability rederivada somente em memória. |
+| Índices | unique idempotency; unique parcial `provider_message_id` sanitizado quando preenchido; `(status, next_retry_at)`; `lease_until`; `(intent_id, generation)`. |
+
+CHECKs exigem recipient opaco/hash/domain, `attempt_count` entre 0 e 6, claim com lease completa, timestamps coerentes com status e `dead_lettered_at` apenas em `dead_letter`.
+
+#### Ordem de implementação e gate de migration
+
+```text
+DB_MODEL no diff/commit de 14-03
+-> normalizador único + collision audit read-only de 14-04
+-> zero collisions ou decisão humana explícita (nunca vencedor automático)
+-> models autorizados de 14-05/14-06
+-> migration gerada e revisada somente em 14-07
+```
+
+Esta seção não é DDL. Nenhum `model`, migration, `db:generate`, escolha de collision winner ou mudança em package/lockfile é autorizado por 14-03.
+
 ---
 
 ## 5. Metadados Obrigatórios e Espelhos Complementares
@@ -1796,6 +1925,15 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `AdminActionLog` → `OperationalAlert` | N:1 ou 0:1 | Um log administrativo pode apontar para zero ou um alerta principal. |
 | `Product` → `ProductVariant` | 1:N | Uma camiseta possui variantes de tamanho/cor. |
 | `Product` → `ProductImage` | 1:N | Uma camiseta possui galeria de imagens. |
+| Medusa Auth Identity → `RegistrationIntent` | 0:1 lógico ativo | O vínculo usa `auth_identity_id` opaco; não há acesso direto nem foreign key para tabela Auth. |
+| Medusa Customer → `RegistrationIntent` | 0:1 lógico ativo | O vínculo usa `customer_id` opaco e só existe após o efeito Customer ser comprovado. |
+| Medusa Auth Identity → `AuthCredentialState` | 1:1 lógico | Uma identity possui um estado autoritativo de verificação/versão/recovery em `customer_auth`. |
+| `AuthCredentialState` → `AuthSessionLineage` | 1:N lógico | A identity pode possuir várias lineages históricas; versão/recovery decide validade. |
+| `AuthSessionLineage` → `AuthRefreshCredential` | 1:N | Uma lineage possui gerações sucessivas e no máximo uma refresh ativa. |
+| Medusa Auth Identity → `AuthVerificationIntent` | 1:N lógico | Gerações históricas latest-wins; no máximo uma intent pending/claimed. |
+| Medusa Auth Identity → `AuthResetIntent` | 1:N lógico | Gerações históricas latest-wins; no máximo uma intent reset ativa. |
+| `AuthVerificationIntent` / `AuthResetIntent` → `AuthNotificationOutbox` | 1:N lógico | No máximo uma mensagem por template/generation/idempotency; delivery não concede validade. |
+| Medusa Auth Identity → `AuthNotificationOutbox` | 1:N lógico | `recipient_identity_id` opaco permite resolução em memória sem persistir o endereço. |
 
 > Entidades de log são append-only e normalmente apontam para zero ou uma entidade principal via referência direta ou `entity_type + entity_id`, enquanto a entidade principal pode possuir múltiplos logs.
 
@@ -1927,6 +2065,16 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `DATA-120` | `Refund.amount` deve ser inteiro positivo na menor unidade monetária. |
 | `DATA-121` | `Refund.currency_code` deve ser igual a `Payment.currency_code` do pagamento reembolsado. |
 | `DATA-122` | No MVP, `Payment.currency_code` e `Refund.currency_code` devem ser `BRL`. |
+| `DATA-123` | As sete responsabilidades auth pertencem a `customer_auth`; IDs de Auth/Customer são vínculos lógicos Medusa e não autorizam acesso direto ou foreign key cross-module. |
+| `DATA-124` | `RegistrationIntent` deve possuir unique parcial por `normalized_email_hash` ativo, TTL 24h, version CAS e zero write em retry semanticamente incompatível. |
+| `DATA-125` | `AuthCredentialState.credential_version` e versões de operação são monotônicas; recovery não-`stable`, inclusive `claimed|credential_updated`, bloqueia login/refresh. |
+| `DATA-126` | `AuthSessionLineage.absolute_expires_at` é imutável e limitado a 30d desde a autenticação original; refresh não reinicia esse prazo. |
+| `DATA-127` | Refresh capability é CSPRNG/hash-only, de uso único, com uma ativa por lineage, inactivity 7d, recovery 45s e replay que revoga a lineage. |
+| `DATA-128` | Verification e reset persistem somente hash/nonce/key version; possuem uma intent ativa por identity, generation monotônica e TTLs respectivos de 30m e 15m. |
+| `DATA-129` | Reset só pode completar após proof do provider, credential update, revogação global e consumo definitivo; proof markers separados não podem ser inferidos uns dos outros. |
+| `DATA-130` | `AuthNotificationOutbox` é sibling separado do `EmailDeliveryLog` order-only, exige `recipient_identity_id` opaco + recipient hash/domain e proíbe endereço, capability, body e provider payload plaintext. |
+| `DATA-131` | Claims de outbox/reconciler usam version CAS, lease 2m, attempt e next_retry_at; Redis nunca substitui PostgreSQL como autoridade. |
+| `DATA-132` | Migration auth só pode ser criada após esta reconciliação, normalizador único e collision audit read-only; collision winner exige decisão humana e nunca é escolhido automaticamente. |
 
 ---
 
@@ -2023,11 +2171,29 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `AdminActionLog` | índice em `metadata.correlation_id` quando persistido em JSONB | Correlacionar ação administrativa com logs, webhooks, e-mails ou alertas. |
 | `AdminActionLog` | índice composto em `admin_id, created_at` | Revisar atividade administrativa por período. |
 | `AdminActionLog` | índice composto em `action, result` | Monitorar falhas ou bloqueios por tipo de ação. |
+| `RegistrationIntent` | unique parcial em `normalized_email_hash` para estados ativos | Convergir cadastro concorrente e impedir duas intents ativas. |
+| `RegistrationIntent` | índices em `(status, expires_at)`, `auth_identity_id`, `customer_id` | Expiry/recovery e correlação lógica Medusa. |
+| `AuthCredentialState` | unique em `auth_identity_id`; unique parcial em `operation_id` | Estado 1:1 e idempotência da operação bound. |
+| `AuthCredentialState` | índices em `(operation_status, next_retry_at)` e `lease_until` | Scan/claim/retry secretless com lease. |
+| `AuthSessionLineage` | unique em `sid`; índices em `(auth_identity_id, status)`, `(customer_id, status)`, `absolute_expires_at` | Guard de validade, revogação e expiração absoluta. |
+| `AuthRefreshCredential` | unique em `token_hash` e `(lineage_id, generation)` | Hash one-time e geração monotônica. |
+| `AuthRefreshCredential` | unique parcial em `lineage_id` onde `status=active`; índice em `(status, expires_at)` | Uma refresh ativa e cleanup por validade. |
+| `AuthVerificationIntent` | unique em `token_hash` e `(auth_identity_id, generation)` | Capability hash-only e generation monotônica. |
+| `AuthVerificationIntent` | unique parcial por identity para `pending|claimed`; índice em `(status, expires_at)` | Latest-wins/one-winner e expiry. |
+| `AuthResetIntent` | unique em `token_hash`, `operation_id` e `(auth_identity_id, generation)` | Capability, operação idempotente e generation monotônica. |
+| `AuthResetIntent` | unique parcial por identity para estados ativos; índices em `(status, expires_at)`, `(status, next_retry_at)`, `lease_until` | Latest-wins, fail-closed e retry/claim. |
+| `AuthNotificationOutbox` | unique em `idempotency_key`; unique parcial em `provider_message_id` quando não nulo | Deduplicar envio lógico e retorno sanitizado do provider. |
+| `AuthNotificationOutbox` | índices em `(status, next_retry_at)`, `lease_until`, `(intent_id, generation)` | Claim CAS/lease e correlação sem capability. |
 
 ---
 
 ## 9. Observações de Implementação
 
+- A ordem vinculante para auth é DB_MODEL → normalizador/collision audit read-only → models → migration; 14-03 não autoriza DDL, model, migration ou escolha automática de collision winner.
+- Os sete estados auth têm owner `customer_auth`; integrações com Medusa Auth/Customer usam IDs lógicos e APIs/links/query graph aprovados, nunca acesso direto a tabelas alheias.
+- PostgreSQL é a autoridade de validade; Redis é somente auxiliar e não pode ressuscitar intent, lineage ou credential.
+- `EmailDeliveryLog` as-built continua restrito a `order_confirmation`; `AuthNotificationOutbox` é sibling próprio e não persiste endereço de e-mail, capability nem body.
+- Login/refresh devem negar enquanto `AuthCredentialState` estiver em recovery não-`stable`; reconciler sem segredo não prova password nem fabrica completion.
 - A implementação deve priorizar entidades nativas do Medusa.
 - `PaymentAttempt` é customizada e recomendada para tornar explícita a camada pré-Order.
 - Se o Medusa já persistir todos os dados necessários para `PaymentCollection` e `PaymentSession`, não é necessário duplicar essas entidades em tabelas customizadas; o documento ainda deve tratá-las como entidades lógicas do modelo.
