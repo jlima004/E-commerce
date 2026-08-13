@@ -1,4 +1,7 @@
 import { Client, Pool, PoolClient } from "pg"
+import { spawnSync } from "node:child_process"
+import { readFileSync, readdirSync } from "node:fs"
+import { join } from "node:path"
 import {
   CustomerAuthModuleService,
   CUSTOMER_AUTH_WRITE_FORBIDDEN,
@@ -177,13 +180,18 @@ if (!databaseUrl || !databaseName) {
       await createDisposableDatabase()
       const current = await pool.query("select current_database() as name")
       expect(current.rows[0].name).toBe(databaseName)
-      await pool.query(schemaSql)
+      const migration = spawnSync(
+        process.execPath,
+        ["../../node_modules/@medusajs/cli/cli.js", "db:migrate"],
+        { cwd: process.cwd(), env: process.env, encoding: "utf8" }
+      )
+      expect(migration.status).toBe(0)
     })
     afterAll(dropDisposableDatabase)
 
     it("enforces unique, generation, deadline and recipient constraints across 7/7 models", async () => {
-      await pool.query("insert into registration_intent(id,normalized_email_hash,status,expires_at) values ('r1','h1','pending_identity',now()+interval '1 day')")
-      await expect(pool.query("insert into registration_intent(id,normalized_email_hash,status,expires_at) values ('r2','h1','pending_identity',now()+interval '1 day')")).rejects.toMatchObject({ code: "23505" })
+      await pool.query("insert into registration_intent(id,normalized_email_hash,semantic_payload_hmac,payload_key_version,status,expires_at) values ('r1','h1','sp1',1,'pending_identity',now()+interval '1 day')")
+      await expect(pool.query("insert into registration_intent(id,normalized_email_hash,semantic_payload_hmac,payload_key_version,status,expires_at) values ('r2','h1','sp2',1,'pending_identity',now()+interval '1 day')")).rejects.toMatchObject({ code: "23505" })
       await pool.query("insert into auth_credential_state(id,auth_identity_id,customer_id) values ('c1','i1','u1')")
       await expect(pool.query("insert into auth_credential_state(id,auth_identity_id,customer_id) values ('c2','i1','u2')")).rejects.toMatchObject({ code: "23505" })
       await pool.query("insert into auth_session_lineage(id,sid,auth_identity_id,customer_id,credential_version_snapshot,original_authenticated_at,absolute_expires_at) values ('l1','sid1','i1','u1',1,now(),now()+interval '30 days')")
@@ -192,16 +200,16 @@ if (!databaseUrl || !databaseName) {
       await expect(pool.query("insert into auth_refresh_credential(id,lineage_id,token_hash,nonce,key_version,expires_at) values ('f2','l1','th2','n2',1,now()+interval '1 day')")).rejects.toMatchObject({ code: "23505" })
       await pool.query("insert into auth_verification_intent(id,auth_identity_id,token_hash,nonce,key_version,expires_at) values ('v1','i1','vh1','n1',1,now()+interval '30 minutes')")
       await expect(pool.query("insert into auth_verification_intent(id,auth_identity_id,token_hash,nonce,key_version,expires_at) values ('v2','i1','vh2','n2',1,now()+interval '30 minutes')")).rejects.toMatchObject({ code: "23505" })
-      await pool.query("insert into auth_reset_intent(id,auth_identity_id,token_hash,nonce,key_version,operation_id,expires_at) values ('x1','i2','xh1','n1',1,'op1',now()+interval '15 minutes')")
+      await pool.query("insert into auth_reset_intent(id,auth_identity_id,token_hash,nonce,key_version,expires_at) values ('x1','i2','xh1','n1',1,now()+interval '15 minutes')")
       await expect(pool.query("update auth_reset_intent set completed_at=now(),status='completed' where id='x1'")).rejects.toMatchObject({ code: "23514" })
-      await expect(pool.query("insert into auth_notification_outbox(id,intent_id,recipient_identity_id,recipient_hash,recipient_domain,idempotency_key) values ('o1','v1','','rh','example.test','auth/v1')")).rejects.toMatchObject({ code: "23514" })
-      await pool.query("insert into auth_notification_outbox(id,intent_id,recipient_identity_id,recipient_hash,recipient_domain,idempotency_key) values ('o1','v1','i1','rh','example.test','auth/v1')")
+      await expect(pool.query("insert into auth_notification_outbox(id,template,intent_type,intent_id,recipient_identity_id,recipient_hash,recipient_domain,idempotency_key,key_version,recorded_at) values ('o1','email_verification_v1','verification','v1','','rh','example.test','auth/v1',1,now())")).rejects.toMatchObject({ code: "23514" })
+      await pool.query("insert into auth_notification_outbox(id,template,intent_type,intent_id,recipient_identity_id,recipient_hash,recipient_domain,idempotency_key,key_version,recorded_at) values ('o1','email_verification_v1','verification','v1','i1','rh','example.test','auth/v1',1,now())")
     })
 
     it("allows one CAS winner under a row lock and leaves no partial state on rollback", async () => {
       const results = await Promise.all([
-        transaction(pool, (client) => service.transitionRegistrationIntent("r1", 1, "pending_customer", context(client))),
-        transaction(pool, (client) => service.transitionRegistrationIntent("r1", 1, "pending_customer", context(client))),
+        transaction(pool, (client) => service.transitionRegistrationIntent("r1", 1, "pending_customer", "i1", context(client))),
+        transaction(pool, (client) => service.transitionRegistrationIntent("r1", 1, "pending_customer", "i1", context(client))),
       ])
       expect(results.filter((result) => result.type === "updated")).toHaveLength(1)
       expect(results.filter((result) => result.type === "stale")).toHaveLength(1)
@@ -232,7 +240,7 @@ if (!databaseUrl || !databaseName) {
         await expect(
           service.transitionRefreshCredential(
             "f1",
-            1,
+            0,
             "consumed",
             [
               { column: "consumed_at", value: consumedAt },
@@ -265,6 +273,7 @@ if (!databaseUrl || !databaseName) {
             "claimed",
             "claimed_at",
             new Date(),
+            "op1",
             shared
           )
         ).resolves.toMatchObject({ type: "updated" })
@@ -286,6 +295,55 @@ if (!databaseUrl || !databaseName) {
       await expect(rejectCustomerAuthGeneratedWrite()).rejects.toThrow(
         CUSTOMER_AUTH_WRITE_FORBIDDEN
       )
+    })
+
+    it("keeps one CLI migration and snapshot aligned to the exact 7-model set", () => {
+      const migrationDirectory = join(
+        process.cwd(),
+        "src/modules/customer-auth/migrations"
+      )
+      const files = readdirSync(migrationDirectory).sort()
+      const migrations = files.filter((file) => /^Migration\d{14}\.ts$/.test(file))
+      expect(migrations).toEqual(["Migration20260813221813.ts"])
+      expect(files).toContain(".snapshot-customer-auth.json")
+
+      const migration = readFileSync(
+        join(migrationDirectory, migrations[0]),
+        "utf8"
+      )
+      const snapshot = JSON.parse(
+        readFileSync(
+          join(migrationDirectory, ".snapshot-customer-auth.json"),
+          "utf8"
+        )
+      ) as { tables: Array<{ name: string }> }
+      const expectedTables = [
+        "auth_credential_state",
+        "auth_notification_outbox",
+        "auth_refresh_credential",
+        "auth_reset_intent",
+        "auth_session_lineage",
+        "auth_verification_intent",
+        "registration_intent",
+      ]
+      expect(snapshot.tables.map((table) => table.name).sort()).toEqual(
+        expectedTables
+      )
+      expect(migration.match(/create table if not exists/g)).toHaveLength(7)
+      expect(migration.match(/drop table if exists/g)).toHaveLength(7)
+      for (const table of expectedTables) {
+        expect(migration).toContain(`"${table}"`)
+      }
+      for (const constraint of [
+        "auth_session_lineage_absolute_deadline",
+        "auth_refresh_credential_consumed_recovery",
+        "auth_verification_intent_exact_ttl",
+        "auth_reset_intent_completion_order",
+        "auth_notification_outbox_recipient_evidence",
+        "auth_notification_outbox_lease_window",
+      ]) {
+        expect(migration).toContain(constraint)
+      }
     })
   })
 }

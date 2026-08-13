@@ -102,6 +102,10 @@ const modules = [
     resolve: "./src/modules/store-resource-version",
   },
   {
+    key: "customer_auth",
+    resolve: "./src/modules/customer-auth/service",
+  },
+  {
     resolve: "./src/modules/payment-attempt",
   },
   {
