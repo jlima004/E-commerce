@@ -6,6 +6,7 @@ import {
   requireDisposableDatabaseName,
 } from "../postgres/disposable-postgres-harness"
 import {
+  CUSTOMER_AUTH_TRANSACTION_CAPABILITIES,
   classifyCustomerAuthTransactionEvidence,
   identifyCustomerAuthQueryRunner,
   identifyCustomerAuthTransactionManager,
@@ -89,7 +90,7 @@ type AuthResponse = {
 type AuthServiceLike = {
   baseRepository_: CustomerAuthTransactionalRepositoryLike
   providerIdentityService_: {
-    baseRepository_: ObservableRepositoryLike
+    __providerIdentityRepository__: ObservableRepositoryLike
   }
   register(provider: string, data: Record<string, unknown>): Promise<AuthResponse>
   updateProvider(
@@ -104,7 +105,7 @@ type AuthServiceLike = {
 
 type CustomerServiceLike = {
   customerService_: {
-    baseRepository_: ObservableRepositoryLike
+    __customerRepository__: ObservableRepositoryLike
   }
 }
 
@@ -139,7 +140,33 @@ function observeRepository(repository: ObservableRepositoryLike) {
     throw new Error("P14_AUTH_TX_MANAGER_UNOBSERVABLE")
   }
 
-  const original = repository.getActiveManager.bind(repository)
+  const ownDescriptor = Object.getOwnPropertyDescriptor(
+    repository,
+    "getActiveManager"
+  )
+  let prototype: object | null = Object.getPrototypeOf(repository)
+  let prototypeMethod:
+    | ObservableRepositoryLike["getActiveManager"]
+    | undefined
+
+  while (prototype && !prototypeMethod) {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      prototype,
+      "getActiveManager"
+    )
+    if (typeof descriptor?.value === "function") {
+      prototypeMethod = descriptor.value as ObservableRepositoryLike["getActiveManager"]
+      break
+    }
+    prototype = Object.getPrototypeOf(prototype)
+  }
+
+  if (!prototypeMethod) {
+    throw new Error("P14_AUTH_TX_MANAGER_UNOBSERVABLE")
+  }
+
+  const original = (context: Record<string, unknown> = {}) =>
+    prototypeMethod!.call(repository, context)
   const observations: ManagerObservation[] = []
 
   repository.getActiveManager = (context = {}) => {
@@ -156,7 +183,11 @@ function observeRepository(repository: ObservableRepositoryLike) {
   return {
     observations,
     restore: () => {
-      repository.getActiveManager = original
+      if (ownDescriptor) {
+        Object.defineProperty(repository, "getActiveManager", ownDescriptor)
+      } else {
+        delete (repository as Partial<ObservableRepositoryLike>).getActiveManager
+      }
     },
   }
 }
@@ -307,13 +338,16 @@ if (!requestedDatabaseName) {
         if (seam === "auth_provider" || seam === "combined") {
           effectObservers.push(
             observeRepository(
-              authService().providerIdentityService_.baseRepository_
+              authService().providerIdentityService_
+                .__providerIdentityRepository__
             )
           )
         }
         if (seam === "customer_workflow" || seam === "combined") {
           effectObservers.push(
-            observeRepository(customerService().customerService_.baseRepository_)
+            observeRepository(
+              customerService().customerService_.__customerRepository__
+            )
           )
         }
 
@@ -343,7 +377,11 @@ if (!requestedDatabaseName) {
                   entity_id: email,
                   password: newPassword,
                 })
-                expect(updated.success).toBe(true)
+                if (!updated.success) {
+                  throw new Error(
+                    `P14_AUTH_PROVIDER_UPDATE_FAILED:${updated.error ?? "unknown"}`
+                  )
+                }
               }
 
               if (seam === "customer_workflow" || seam === "combined") {
@@ -420,8 +458,6 @@ if (!requestedDatabaseName) {
       }
 
       beforeAll(setupProbeSchema)
-      afterAll(cleanupProbeSchema)
-
       it("observes real managers/query runners and classifies all three seams from commit plus rollback evidence", async () => {
         const seams: CustomerAuthSeam[] = [
           "auth_provider",
@@ -492,6 +528,9 @@ if (!requestedDatabaseName) {
           evidence.capability =
             classifyCustomerAuthTransactionEvidence(evidence)
           matrix.push(evidence)
+          expect(evidence.capability).toBe(
+            CUSTOMER_AUTH_TRANSACTION_CAPABILITIES[seam]
+          )
 
           if (medusaEffectSurvived) {
             expect(evidence.capability).toBe("RECONCILIATION_REQUIRED")
@@ -508,6 +547,7 @@ if (!requestedDatabaseName) {
         process.stdout.write(
           `P14_TX_EVIDENCE ${JSON.stringify({ databaseName, matrix })}\n`
         )
+        await cleanupProbeSchema()
       })
     },
   })
