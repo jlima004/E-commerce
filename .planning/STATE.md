@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Backend Storefront Readiness
 current_phase: 14
 current_phase_name: customer-auth-verification
-current_plan: 5
+current_plan: 6
 status: paused
-last_updated: "2026-08-13T17:30:22-03:00"
+last_updated: "2026-08-13T18:12:50-03:00"
 progress:
   total_phases: 10
   completed_phases: 1
   total_plans: 28
-  completed_plans: 12
-  percent: 10
-stopped_at: 14-05 HUMAN APPROVED — PASS; 14-06 NOT AUTHORIZED
+  completed_plans: 13
+  percent: 11
+stopped_at: 14-06 HUMAN APPROVED — PASS; 14-07 NOT AUTHORIZED
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: `.planning/PROJECT.md` (updated 2026-08-06)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
 
-**Current focus:** Phase 14 — `14-05 HUMAN APPROVED — PASS`; `14-06 NOT AUTHORIZED`.
+**Current focus:** Phase 14 — `14-06 HUMAN APPROVED — PASS`; `14-07 NOT AUTHORIZED`.
 
 ## Execution Policy
 
@@ -39,7 +39,7 @@ Enforcement remains:
 - `workflow._auto_chain_active=false`
 - `parallelization=false`
 
-`14-05` completion and human approval do not authorize `14-06` or any later plan.
+`14-06` completion and human approval do not authorize `14-07` or any later plan.
 
 ## Current Gate
 
@@ -107,7 +107,10 @@ CLOSED — PASS
 14-05:
 HUMAN APPROVED — PASS
 
-14-06..14-21:
+14-06:
+HUMAN APPROVED — PASS
+
+14-07..14-21:
 NOT AUTHORIZED
 
 Deploy:
@@ -288,23 +291,59 @@ Migration generated/applied:
 NONE
 ```
 
-The four core models are complete and human-approved for the `14-05` scope. `RegistrationIntent` keeps the canonical 24-hour creation policy at the service boundary while the approved physical CHECK remains `expires_at > created_at`; credential recovery ordering, immutable 30-day lineage deadline, hash-only refresh rotation and exact 45-second recovery are accepted. `14-06` remains gated separately; no migration, deploy, provider-real action or frontend work follows from this approval.
+The four core models are complete and human-approved for the `14-05` scope. `RegistrationIntent` keeps the canonical 24-hour creation policy at the service boundary while the approved physical CHECK remains `expires_at > created_at`; credential recovery ordering, immutable 30-day lineage deadline, hash-only refresh rotation and exact 45-second recovery are accepted. The separate `14-06` approval is recorded below; no migration, deploy, provider-real action or frontend work follows from either approval.
+
+## 14-06 Accepted Evidence
+
+```text
+Task 14-06-01:
+PASS
+
+Task 14-06-02:
+PASS
+
+Task 14-06-03:
+HUMAN VERIFY — PASS
+
+AuthVerificationIntent:
+PASS — latest-wins; token hash unique; one active per identity; TTL 30m
+
+AuthResetIntent:
+PASS — one-winner; operation_id unique; composed completion; TTL 15m
+
+AuthNotificationOutbox:
+PASS — recipient_identity_id opaque required; hash/domain evidence; no email/capability plaintext
+
+Models complete across 14-05 + 14-06:
+PASS — 7/7
+
+Focused unit:
+PASS — 12/12
+
+git diff --check:
+PASS
+
+Migration/db:generate:
+NOT EXECUTED
+```
+
+The three intent/outbox models are complete and human-approved for the `14-06` scope. Verification/reset persist only versioned hashes/nonces and opaque identity references; reset completion requires claim, provider proof, credential update and revocation commit markers. `14-07` remains gated separately; migration, db:generate, deploy and frontend work remain unauthorized.
 
 ## Current Position
 
 Phase: 14 (customer-auth-verification) — EXECUTING
-Completed/human-approved Phase 14 plans: **5/21**
-Current plan: **14-05 — HUMAN APPROVED — PASS**
-Next gate: **fresh human authorization for 14-06**
-14-05: **HUMAN APPROVED — PASS**
-14-06: **NOT AUTHORIZED**
+Completed/human-approved Phase 14 plans: **6/21**
+Current plan: **14-06 — HUMAN APPROVED — PASS**
+Next gate: **fresh human authorization for 14-07**
+14-06: **HUMAN APPROVED — PASS**
+14-07: **NOT AUTHORIZED**
 
 Milestone v1.1:
 
 - phases closed: 1/10
 - Phase 13 requirements complete: FND-01..FND-08 = 8/8
 - milestone requirements complete: 8/91
-- plans human-approved executed: 12 total (Phase 13: 7; Phase 14: 5)
+- plans human-approved executed: 13 total (Phase 13: 7; Phase 14: 6)
 - frontend: BLOCKED
 
 ## Phase 14 Authorities
@@ -344,7 +383,7 @@ The historical records are not invalidated. Where they describe earlier gates su
 
 ## Blockers / Concerns
 
-`14-03`, `14-04` and `14-05` have no open blockers. `14-06` remains blocked by the missing fresh human authorization.
+`14-03`, `14-04`, `14-05` and `14-06` have no open blockers. `14-07` remains blocked by the missing fresh human authorization.
 
 Historical provider limitations remain non-blocking and are not converted into authorization:
 
@@ -367,17 +406,17 @@ Known deferred artifact items at v1.0 close remain 0. Historical details remain 
 
 ## Session Continuity
 
-**Resume file:** `.planning/phases/14-customer-auth-verification/14-05-SUMMARY.md`
+**Resume file:** `.planning/phases/14-customer-auth-verification/14-06-SUMMARY.md`
 
-Last session: 2026-08-13T17:30:22-03:00
+Last session: 2026-08-13T18:12:50-03:00
 
 Stopped at:
 
 ```text
-14-05:
+14-06:
 HUMAN APPROVED — PASS
 
-14-06:
+14-07:
 NOT AUTHORIZED
 ```
 
@@ -389,6 +428,8 @@ Resume with:
 - `.planning/phases/14-customer-auth-verification/14-03-SUMMARY.md`
 - `.planning/phases/14-customer-auth-verification/14-04-SUMMARY.md`
 - `.planning/phases/14-customer-auth-verification/14-05-SUMMARY.md`
+- `.planning/phases/14-customer-auth-verification/14-06-SUMMARY.md`
+- `.planning/phases/14-customer-auth-verification/14-06-PLAN.md`
 - `.planning/phases/14-customer-auth-verification/14-05-PLAN.md`
 - `.planning/phases/14-customer-auth-verification/14-04-PLAN.md`
 - `.planning/phases/14-customer-auth-verification/14-03-PLAN.md`
@@ -400,6 +441,6 @@ Resume with:
 - `.planning/REQUIREMENTS.md`
 - `.planning/history/STATE-before-14-02-add005c.md` when detailed historical context is needed
 
-**Next permitted step:** await fresh human authorization for `14-06`. Do not execute `14-06` from the `14-05` approval.
+**Next permitted step:** await fresh human authorization for `14-07`. Do not execute `14-07` from the `14-06` approval.
 
-Do not automatically start 14-06, deploy, exercise real providers, execute rollback, start frontend, or move/recreate tag `v1.0`.
+Do not automatically start 14-07, run migration/db:generate, deploy, exercise real providers, execute rollback, start frontend, or move/recreate tag `v1.0`.
