@@ -5,10 +5,10 @@ milestone_name: Backend Storefront Readiness
 current_phase: 14
 current_phase_name: customer-auth-verification
 status: paused
-stopped_at: Phase 14 SPEC/SDD documentally complete — awaiting human re-review; human approval not yet granted
-last_updated: "2026-08-12T19:14:59-03:00"
+stopped_at: P14-14-01-R2 TECHNICAL CORRECTION PASS — AWAITING HUMAN RE-REVIEW
+last_updated: "2026-08-12T23:30:00-03:00"
 last_activity: 2026-08-12
-last_activity_desc: P14-SPEC-SDD-R1 DOCUMENTARY CORRECTION PASS; B14-SPEC-SDD-HR-01..03 CLOSED — PASS; Implementation Prompt not authorized
+last_activity_desc: P14-14-01-R2 closed B14-01-HR-04 with process-originated PG/Redis proof; 14-01 awaiting human re-review; 14-02 not authorized
 progress:
   total_phases: 10
   completed_phases: 1
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-06)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
-**Current focus:** Phase 14 — customer-auth-verification (SPEC/SDD DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW; NOT HUMAN-APPROVED)
+**Current focus:** Phase 14 — P14-14-01-R2 TECHNICAL CORRECTION PASS, awaiting human re-review; 14-02 NOT AUTHORIZED
 
 ## Execution Policy
 
@@ -41,7 +41,7 @@ The GSD auto chain must not continue through all phases.
 - `workflow._auto_chain_active` remains `false`.
 - `parallelization` remains `false`.
 
-**Current gate:** Phase 14 SPEC/SDD — DOCUMENTALLY COMPLETE; AWAITING HUMAN RE-REVIEW; NOT HUMAN-APPROVED
+**Current gate:** P14-14-01-R2 TECHNICAL CORRECTION PASS — AWAITING HUMAN RE-REVIEW; 14-02 NOT AUTHORIZED
 
 ```text
 Phase 12 CONTEXT approved
@@ -201,17 +201,29 @@ Phase 14 PLAN checker R4.1: 0 blockers / 0 warnings — PASS
 P14-PLAN-R4.1: DOCUMENTARY CORRECTION PASS
 Phase 14 PLAN: HUMAN APPROVED — PASS
 Phase 14 PLAN human approval: GRANTED
-Phase 14 SPEC/SDD: DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW
+Phase 14 SPEC/SDD: HUMAN APPROVED — PASS
 P14-SPEC-SDD-R1: DOCUMENTARY CORRECTION PASS
 B14-SPEC-SDD-HR-01: CLOSED — PASS
 B14-SPEC-SDD-HR-02: CLOSED — PASS
 B14-SPEC-SDD-HR-03: CLOSED — PASS
-SPEC/SDD human approval: NOT YET GRANTED
-IMPLEMENTATION PROMPT: BLOCKED / NOT AUTHORIZED
-EXECUTION: NOT AUTHORIZED
+SPEC/SDD human approval: GRANTED
+IMPLEMENTATION PROMPT: HUMAN APPROVED — PASS
+P14-14-01-R1: TECHNICAL CORRECTION PASS — AWAITING HUMAN RE-REVIEW
+P14-14-01-R2: TECHNICAL CORRECTION PASS — AWAITING HUMAN RE-REVIEW
+B14-01-HR-01: CLOSED — PASS
+B14-01-HR-02: CLOSED — PASS
+B14-01-HR-03: CLOSED — PASS
+B14-01-HR-04: CLOSED — PASS
+14-01: DOCUMENTALLY/TECHNICALLY COMPLETE — AWAITING HUMAN RE-REVIEW
+14-01 HUMAN APPROVAL: NOT YET GRANTED
+14-01 unit: PASS (18/18)
+14-01 disposable PostgreSQL verify: PASS (24/24; original PLAN command collected spec)
+14-01 Redis isolation / two-process: PASS (two Medusa PIDs 62773/62790; PG+Redis observed inside each process)
+14-02: NOT AUTHORIZED
+EXECUTION: 14-01 only; later plans blocked
 Deploy: NOT AUTHORIZED
 FRONTEND: BLOCKED
-next permitted step: revisão humana (re-review) do Phase 14 SPEC/SDD; a aprovação humana ainda não foi concedida; Implementation Prompt, EXECUTION, VERIFICATION, REVIEW, CLOSURE, frontend e deploy permanecem blocked/not authorized
+next permitted step: human re-review of 14-01 after P14-14-01-R2; do not start 14-02
 ```
 
 ### Limitações operacionais não bloqueantes no fechamento
@@ -250,12 +262,12 @@ Produção: saudável
 
 ## Current Position
 
-Phase: 14 (customer-auth-verification) — SPEC/SDD DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW
-Plan: 21 planned / 0 executed — PLAN HUMAN APPROVED; SPEC/SDD NOT HUMAN-APPROVED
-Status: Phase 14 SPEC/SDD DOCUMENTALLY COMPLETE — AWAITING HUMAN RE-REVIEW
-Current gate: Phase 14 SPEC/SDD — AWAITING HUMAN RE-REVIEW; later gates blocked
-Last activity: 2026-08-12 — P14-SPEC-SDD-R1 DOCUMENTARY CORRECTION PASS; awaiting human re-review
-Next: human re-review of Phase 14 SPEC/SDD; do not start Implementation Prompt
+Phase: 14 (customer-auth-verification) — P14-14-01-R2 TECHNICAL CORRECTION PASS, AWAITING HUMAN RE-REVIEW
+Plan: 14-01 of 21 — R2 closed B14-01-HR-04; not human-approved
+Status: 14-01 DOCUMENTALLY/TECHNICALLY COMPLETE — AWAITING HUMAN RE-REVIEW
+Current gate: human re-review of 14-01 after P14-14-01-R2; 14-02 NOT AUTHORIZED
+Last activity: 2026-08-12 — P14-14-01-R2 closed B14-01-HR-04 (unit 18/18, disposable 24/24, process-originated PG/Redis)
+Next: human re-review of 14-01; do not start 14-02
 
 Progress: [█░░░░░░░░░] 10% phases closed (1/10)
 Phase 13 requirements covered: FND-01..FND-08 = 8/8
@@ -423,26 +435,25 @@ Known deferred artifact items at v1.0 close: 0.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/14-customer-auth-verification/14-SPEC.md
+**Resume file:** .planning/phases/14-customer-auth-verification/14-01-SUMMARY.md
 
-Last session: 2026-08-12T19:14:59-03:00
+Last session: 2026-08-12T23:30:00-03:00
 
-Stopped at: Phase 14 SPEC/SDD documentally complete — awaiting human re-review; human approval not yet granted
+Stopped at: P14-14-01-R2 TECHNICAL CORRECTION PASS — AWAITING HUMAN RE-REVIEW; 14-02 not authorized
 
 Resume files:
 `.planning/STATE.md`,
+`.planning/phases/14-customer-auth-verification/14-01-SUMMARY.md`,
+`.planning/phases/14-customer-auth-verification/14-01-PLAN.md`,
+`.planning/phases/14-customer-auth-verification/14-IMPLEMENTATION-PROMPT.md`,
 `.planning/phases/14-customer-auth-verification/14-SPEC.md`,
 `.planning/phases/14-customer-auth-verification/14-SDD.md`,
-`.planning/phases/14-customer-auth-verification/14-01-PLAN.md` through `14-21-PLAN.md`,
 `.planning/phases/14-customer-auth-verification/14-VALIDATION.md`,
-`.planning/phases/14-customer-auth-verification/14-RESEARCH.md`,
-`.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CLOSURE.md`,
 `.planning/ROADMAP.md` and `.planning/REQUIREMENTS.md`
 
-Next permitted step: revisão humana (re-review) do Phase 14 SPEC/SDD. SPEC/SDD human approval NOT YET GRANTED. Implementation Prompt, EXECUTION, VERIFICATION, REVIEW, CLOSURE, frontend e deploy permanecem blocked/not authorized.
+Next permitted step: human re-review of 14-01 after P14-14-01-R2. Do not start 14-02, commit, push, PR, deploy, or frontend until a new explicit human authorization.
 
-Do not automatically advance beyond Phase 14 SPEC/SDD, start Implementation Prompt, execution, or frontend,
-edit or republish GitHub Release `v1.0`, deploy, exercise providers, execute
+Do not automatically advance beyond 14-01, start 14-02, deploy, exercise providers, execute
 rollback, or move or recreate tag `v1.0`.
 
 ## Quick Tasks Completed
