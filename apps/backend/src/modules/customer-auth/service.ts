@@ -76,6 +76,13 @@ function requireVersion(value: unknown): number {
   return Number(value)
 }
 
+function requireGeneration(value: unknown): number {
+  if (!Number.isInteger(value) || Number(value) < 0) {
+    throw new Error("CUSTOMER_AUTH_GENERATION_INVALID")
+  }
+  return Number(value)
+}
+
 async function queryRows(
   knex: TransactionalKnex,
   sql: string,
@@ -91,20 +98,29 @@ async function casUpdate(input: {
   expectedVersion: number
   assignments: ReadonlyArray<{ column: string; value: unknown }>
   predicate?: string
+  concurrencyColumn?: "version" | "generation"
+  incrementConcurrency?: boolean
   context?: CustomerAuthMutationContext
 }): Promise<CustomerAuthCasResult> {
   const knex = requireTransaction(input.context)
   const id = requireId(input.id)
-  const expected = requireVersion(input.expectedVersion)
+  const concurrencyColumn = input.concurrencyColumn ?? "version"
+  const expected =
+    concurrencyColumn === "generation"
+      ? requireGeneration(input.expectedVersion)
+      : requireVersion(input.expectedVersion)
   const current = await queryRows(
     knex,
-    `select version from ${input.table} where id = ? and deleted_at is null for update`,
+    `select ${concurrencyColumn} as concurrency_version from ${input.table} where id = ? and deleted_at is null for update`,
     [id]
   )
   if (current.length !== 1) {
     throw new Error("CUSTOMER_AUTH_ROW_NOT_FOUND")
   }
-  const actual = requireVersion(Number(current[0].version))
+  const actual =
+    concurrencyColumn === "generation"
+      ? Number(current[0].concurrency_version)
+      : requireVersion(Number(current[0].concurrency_version))
   const capability = CUSTOMER_AUTH_TRANSACTION_CAPABILITIES.combined
   if (actual !== expected) {
     return {
@@ -115,14 +131,18 @@ async function casUpdate(input: {
     }
   }
 
+  const concurrencyUpdate =
+    input.incrementConcurrency === false
+      ? []
+      : [`${concurrencyColumn} = ${concurrencyColumn} + 1`]
   const assignments = input.assignments
     .map(({ column }) => `${column} = ?`)
-    .concat(["version = version + 1", "updated_at = now()"])
+    .concat(concurrencyUpdate, ["updated_at = now()"])
     .join(", ")
   const predicate = input.predicate ? ` and (${input.predicate})` : ""
   const updated = await queryRows(
     knex,
-    `update ${input.table} set ${assignments} where id = ? and version = ? and deleted_at is null${predicate} returning version`,
+    `update ${input.table} set ${assignments} where id = ? and ${concurrencyColumn} = ? and deleted_at is null${predicate} returning ${concurrencyColumn} as concurrency_version`,
     [...input.assignments.map(({ value }) => value), id, expected]
   )
   if (updated.length !== 1) {
@@ -136,7 +156,7 @@ async function casUpdate(input: {
   return {
     type: "updated",
     previousVersion: expected,
-    version: requireVersion(Number(updated[0].version)),
+    version: Number(updated[0].concurrency_version),
     capability,
   }
 }
@@ -192,13 +212,17 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
     id: string,
     expectedVersion: number,
     status: "pending_customer" | "completed" | "expired" | "failed_reconcilable",
+    authIdentityId: string | null,
     sharedContext?: CustomerAuthMutationContext
   ) {
     return casUpdate({
       table: "registration_intent",
       id,
       expectedVersion,
-      assignments: [{ column: "status", value: status }],
+      assignments: [
+        { column: "status", value: status },
+        { column: "auth_identity_id", value: authIdentityId },
+      ],
       context: sharedContext,
     })
   }
@@ -264,6 +288,9 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
       id,
       expectedVersion,
       assignments: [{ column: "status", value: status }, ...assignments],
+      concurrencyColumn: "generation",
+      incrementConcurrency: false,
+      predicate: "status = 'active'",
       context: sharedContext,
     })
   }
@@ -294,6 +321,7 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
     status: "claimed" | "credential_updated" | "revocation_committed" | "completed" | "superseded" | "expired" | "failed_reconcilable",
     markerColumn: "claimed_at" | "credential_updated_at" | "revocation_committed_at" | "completed_at",
     marker: Date,
+    operationId: string | null,
     sharedContext?: CustomerAuthMutationContext
   ) {
     return casUpdate({
@@ -303,6 +331,7 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
       assignments: [
         { column: "status", value: status },
         { column: markerColumn, value: marker },
+        { column: "operation_id", value: operationId },
       ],
       predicate:
         status === "completed"
