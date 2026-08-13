@@ -272,3 +272,190 @@ describe("AuthResetIntent model contract", () => {
     )
   })
 })
+
+function fixtureMatchesSchema(
+  model: ParsedModel,
+  fixture: Record<string, unknown>,
+  requiredFields: string[]
+): boolean {
+  const allowedFields = new Set(fieldNames(model))
+
+  return (
+    Object.keys(fixture).every((fieldName) => allowedFields.has(fieldName)) &&
+    requiredFields.every((fieldName) => fixture[fieldName] !== undefined)
+  )
+}
+
+describe("AuthNotificationOutbox model contract", () => {
+  const requiredRecipientFields = [
+    "recipient_identity_id",
+    "recipient_hash",
+    "recipient_domain",
+  ]
+
+  it("defines closed templates, intents, delivery states and retry fields", () => {
+    const model = parseModel("auth-notification-outbox.ts")
+
+    expect(model.tableName).toBe("auth_notification_outbox")
+    expect(enumChoices(model, "template")).toEqual([
+      "email_verification_v1",
+      "password_reset_v1",
+    ])
+    expect(enumChoices(model, "intent_type")).toEqual([
+      "verification",
+      "reset",
+    ])
+    expect(enumChoices(model, "status")).toEqual([
+      "recorded",
+      "claimed",
+      "sent",
+      "failed",
+      "dead_letter",
+    ])
+    expect(enumChoices(model, "failure_reason")).toEqual([
+      "provider_transient",
+      "provider_permanent",
+      "recipient_missing",
+      "recipient_mismatch",
+    ])
+    expect(parsedField(model, "status").defaultValue).toBe("recorded")
+    expect(parsedField(model, "generation").defaultValue).toBe(0)
+    expect(parsedField(model, "version").defaultValue).toBe(1)
+    expect(parsedField(model, "attempt_count").defaultValue).toBe(0)
+    expect(fieldNames(model)).toEqual(
+      expect.arrayContaining([
+        "template",
+        "intent_type",
+        "intent_id",
+        "generation",
+        "idempotency_key",
+        "recipient_identity_id",
+        "recipient_hash",
+        "recipient_domain",
+        "key_version",
+        "lease_owner",
+        "lease_until",
+        "attempt_count",
+        "next_retry_at",
+        "provider_message_id",
+        "recorded_at",
+        "claimed_at",
+        "sent_at",
+        "failed_at",
+        "dead_lettered_at",
+        "schema_version",
+      ])
+    )
+  })
+
+  it("requires opaque recipient identity, hash and domain", () => {
+    const model = parseModel("auth-notification-outbox.ts")
+
+    for (const fieldName of requiredRecipientFields) {
+      const field = parsedField(model, fieldName)
+      expect(field.nullable).toBe(false)
+      expect(field.defaultValue).toBeUndefined()
+    }
+
+    expect(
+      fixtureMatchesSchema(
+        model,
+        {
+          intent_id: "intent_opaque",
+          generation: 1,
+          recipient_hash: "hash_only",
+          recipient_domain: "example.invalid",
+        },
+        requiredRecipientFields
+      )
+    ).toBe(false)
+  })
+
+  it("declares unique idempotency/provider IDs and due claim indexes", () => {
+    const model = parseModel("auth-notification-outbox.ts")
+
+    expect(model.indexes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "UQ_auth_notification_outbox_idempotency_key",
+          on: ["idempotency_key"],
+          unique: true,
+        }),
+        expect.objectContaining({
+          name: "UQ_auth_notification_outbox_provider_message_id",
+          on: ["provider_message_id"],
+          unique: true,
+          where: expect.stringMatching(/provider_message_id IS NOT NULL/i),
+        }),
+        expect.objectContaining({
+          name: "IDX_auth_notification_outbox_status_next_retry_at",
+          on: ["status", "next_retry_at"],
+        }),
+        expect.objectContaining({
+          name: "IDX_auth_notification_outbox_lease_until",
+          on: ["lease_until"],
+        }),
+        expect.objectContaining({
+          name: "IDX_auth_notification_outbox_intent_generation",
+          on: ["intent_id", "generation"],
+        }),
+      ])
+    )
+  })
+
+  it("enforces lease pairing, bounded attempts and state timestamps", () => {
+    const checks = renderedChecks(parseModel("auth-notification-outbox.ts"))
+
+    expect(checks.get("auth_notification_outbox_attempt_count_valid")).toMatch(
+      /attempt_count >= 0.*attempt_count <= 6/i
+    )
+    expect(checks.get("auth_notification_outbox_lease_pair")).toMatch(
+      /lease_owner IS NULL.*lease_until IS NULL.*lease_owner IS NOT NULL.*lease_until IS NOT NULL/i
+    )
+    expect(checks.get("auth_notification_outbox_state_markers")).toMatch(
+      /status.*recorded.*recorded_at.*claimed.*claimed_at.*sent.*sent_at.*failed.*failed_at.*dead_letter.*dead_lettered_at/i
+    )
+    expect(checks.get("auth_notification_outbox_idempotency_shape")).toMatch(
+      /idempotency_key LIKE 'auth\/%'.*char_length\(idempotency_key\) <= 256/i
+    )
+  })
+
+  it("rejects email, body, capability and arbitrary metadata fixtures", () => {
+    const model = parseModel("auth-notification-outbox.ts")
+    const safeFixture = {
+      recipient_identity_id: "identity_opaque",
+      recipient_hash: "hash_only",
+      recipient_domain: "example.invalid",
+      intent_id: "intent_opaque",
+      generation: 1,
+      idempotency_key:
+        "auth/email_verification_v1/intent_opaque/g1",
+    }
+
+    expectNoPlaintextCapabilityFields(model)
+    expect(fieldNames(model)).not.toEqual(
+      expect.arrayContaining([
+        "recipient_email",
+        "recipient_address",
+        "capability_url",
+        "provider_payload",
+        "request_idempotency_key",
+      ])
+    )
+
+    for (const forbiddenFixture of [
+      { ...safeFixture, recipient_email: "synthetic@example.invalid" },
+      { ...safeFixture, body: "synthetic-body" },
+      { ...safeFixture, capability: "synthetic-capability" },
+      { ...safeFixture, metadata: { arbitrary: true } },
+    ]) {
+      expect(
+        fixtureMatchesSchema(model, forbiddenFixture, requiredRecipientFields)
+      ).toBe(false)
+    }
+
+    expect(
+      fixtureMatchesSchema(model, safeFixture, requiredRecipientFields)
+    ).toBe(true)
+  })
+})
