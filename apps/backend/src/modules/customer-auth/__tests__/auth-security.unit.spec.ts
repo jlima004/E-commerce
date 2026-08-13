@@ -126,7 +126,7 @@ describe("customer auth security primitives", () => {
       expect(
         isCapabilityKeyRemovalAllowed({
           pendingCount: 0,
-          lastPendingExpiresAt: new Date("2026-08-10T00:00:00.000Z"),
+          lastPendingExpiresAt: new Date("2026-07-01T00:00:00.000Z"),
           now,
         })
       ).toBe(true)

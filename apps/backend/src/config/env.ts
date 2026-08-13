@@ -5,6 +5,10 @@ import {
   resolveRuntimeVersion,
   type RuntimeVersionSource,
 } from "./runtime-version"
+import {
+  parseCustomerAuthCapabilityKeyring,
+  type CapabilityKeyring,
+} from "../modules/customer-auth/security/capabilities"
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
@@ -74,6 +78,8 @@ export type AppEnv = {
   API_DOCS_UI_ENABLED: boolean
   API_DOCS_PUBLIC_ENABLED: boolean
   API_DOCS_INTERNAL_ENABLED: boolean
+  CUSTOMER_AUTH_ENABLED: boolean
+  CUSTOMER_AUTH_CAPABILITY_KEYRING: CapabilityKeyring | undefined
 }
 
 /** Synthetic deterministic default for development/test only (32 zero bytes, base64url). */
@@ -361,6 +367,10 @@ export function parseEnv(
     STORE_IDEMPOTENCY_KEY_PEPPER: z.string().optional(),
     ADMIN_REFUND_REQUEST_ENABLED: z.string().optional(),
     ADMIN_EXCHANGE_REQUEST_ENABLED: z.string().optional(),
+    CUSTOMER_AUTH_ENABLED: z.string().optional(),
+    CUSTOMER_AUTH_CAPABILITY_ACTIVE_KEY_VERSION: z.string().optional(),
+    CUSTOMER_AUTH_CAPABILITY_ACTIVE_KEY: z.string().optional(),
+    CUSTOMER_AUTH_CAPABILITY_PREVIOUS_KEYS: z.string().optional(),
   })
 
   const parsed = baseSchema.safeParse(normalized)
@@ -386,6 +396,16 @@ export function parseEnv(
     normalized.GELATO_DISPATCH_ENABLED,
     "GELATO_DISPATCH_ENABLED"
   )
+  const customerAuthEnabled = parseBoolean(
+    normalized.CUSTOMER_AUTH_ENABLED,
+    "CUSTOMER_AUTH_ENABLED"
+  )
+  const customerAuthCapabilityKeyring = parseCustomerAuthCapabilityKeyring({
+    enabled: customerAuthEnabled,
+    activeVersion: normalized.CUSTOMER_AUTH_CAPABILITY_ACTIVE_KEY_VERSION,
+    activeSecret: normalized.CUSTOMER_AUTH_CAPABILITY_ACTIVE_KEY,
+    previousKeys: normalized.CUSTOMER_AUTH_CAPABILITY_PREVIOUS_KEYS,
+  })
   const apiDocsDefaults = resolveApiDocsFlagDefaults(data.NODE_ENV)
 
   return {
@@ -459,6 +479,8 @@ export function parseEnv(
       "ADMIN_EXCHANGE_REQUEST_ENABLED",
       true
     ),
+    CUSTOMER_AUTH_ENABLED: customerAuthEnabled,
+    CUSTOMER_AUTH_CAPABILITY_KEYRING: customerAuthCapabilityKeyring,
     API_DOCS_ENABLED: parseBoolean(
       normalized.API_DOCS_ENABLED,
       "API_DOCS_ENABLED",
