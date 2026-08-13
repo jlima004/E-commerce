@@ -248,3 +248,180 @@ describe("AuthCredentialState model contract", () => {
     expectNoPlaintextCredentialFields(parseModel("auth-credential-state.ts"))
   })
 })
+
+describe("AuthSessionLineage model contract", () => {
+  it("defines a closed lifecycle, closed revocation reasons and credential snapshot", () => {
+    const model = parseModel("auth-session-lineage.ts")
+
+    expect(model.tableName).toBe("auth_session_lineage")
+    expect(enumChoices(model, "status")).toEqual([
+      "active",
+      "revoked",
+      "expired",
+    ])
+    expect(enumChoices(model, "revocation_reason")).toEqual([
+      "logout",
+      "refresh_replay",
+      "password_reset",
+      "password_change",
+      "security_revocation",
+    ])
+    expect(parsedField(model, "status").defaultValue).toBe("active")
+    expect(parsedField(model, "version").defaultValue).toBe(1)
+    expect(fieldNames(model)).toEqual(
+      expect.arrayContaining([
+        "sid",
+        "auth_identity_id",
+        "customer_id",
+        "credential_version_snapshot",
+        "original_authenticated_at",
+        "absolute_expires_at",
+        "revoked_at",
+        "revocation_reason",
+        "expired_at",
+      ])
+    )
+  })
+
+  it("declares unique sid and authoritative lineage lookup indexes", () => {
+    const model = parseModel("auth-session-lineage.ts")
+
+    expect(model.indexes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "UQ_auth_session_lineage_sid",
+          on: ["sid"],
+          unique: true,
+        }),
+        expect.objectContaining({
+          name: "IDX_auth_session_lineage_identity_status",
+          on: ["auth_identity_id", "status"],
+        }),
+        expect.objectContaining({
+          name: "IDX_auth_session_lineage_customer_status",
+          on: ["customer_id", "status"],
+        }),
+        expect.objectContaining({
+          name: "IDX_auth_session_lineage_absolute_expires_at",
+          on: ["absolute_expires_at"],
+        }),
+      ])
+    )
+  })
+
+  it("pins the original absolute deadline to 30d and keeps terminal markers coherent", () => {
+    const checks = renderedChecks(parseModel("auth-session-lineage.ts"))
+
+    expect(checks.get("auth_session_lineage_versions_positive")).toMatch(
+      /version >= 1.*credential_version_snapshot >= 1/i
+    )
+    expect(checks.get("auth_session_lineage_absolute_deadline")).toMatch(
+      /absolute_expires_at = original_authenticated_at \+ INTERVAL '30 days'/i
+    )
+    expect(checks.get("auth_session_lineage_revocation_state")).toMatch(
+      /status.*revoked.*revoked_at.*revocation_reason/i
+    )
+    expect(checks.get("auth_session_lineage_expiry_state")).toMatch(
+      /status.*expired.*expired_at/i
+    )
+  })
+
+  it("persists no session credential or capability plaintext", () => {
+    const model = parseModel("auth-session-lineage.ts")
+
+    expectNoPlaintextCredentialFields(model)
+    expect(fieldNames(model)).not.toEqual(
+      expect.arrayContaining(["access_token", "refresh_token", "idempotency_key"])
+    )
+  })
+})
+
+describe("AuthRefreshCredential model contract", () => {
+  it("defines hash-only single-use rotation and lost-response recovery fields", () => {
+    const model = parseModel("auth-refresh-credential.ts")
+
+    expect(model.tableName).toBe("auth_refresh_credential")
+    expect(enumChoices(model, "status")).toEqual([
+      "active",
+      "consumed",
+      "replayed",
+      "revoked",
+    ])
+    expect(parsedField(model, "status").defaultValue).toBe("active")
+    expect(parsedField(model, "generation").defaultValue).toBe(0)
+    expect(fieldNames(model)).toEqual(
+      expect.arrayContaining([
+        "lineage_id",
+        "token_hash",
+        "generation",
+        "replacement_id",
+        "request_key_hash",
+        "nonce",
+        "key_version",
+        "expires_at",
+        "consumed_at",
+        "recovery_until",
+        "replacement_used_at",
+        "replayed_at",
+        "revoked_at",
+      ])
+    )
+  })
+
+  it("declares unique hash/generation and at most one active per lineage", () => {
+    const model = parseModel("auth-refresh-credential.ts")
+
+    expect(model.indexes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "UQ_auth_refresh_credential_token_hash",
+          on: ["token_hash"],
+          unique: true,
+        }),
+        expect.objectContaining({
+          name: "UQ_auth_refresh_credential_lineage_generation",
+          on: ["lineage_id", "generation"],
+          unique: true,
+        }),
+        expect.objectContaining({
+          name: "UQ_auth_refresh_credential_active_lineage",
+          on: ["lineage_id"],
+          unique: true,
+          where: expect.stringMatching(/status = 'active'/i),
+        }),
+        expect.objectContaining({
+          name: "IDX_auth_refresh_credential_status_expires_at",
+          on: ["status", "expires_at"],
+        }),
+      ])
+    )
+  })
+
+  it("requires non-negative generation and an exact 45s consumed recovery window", () => {
+    const checks = renderedChecks(parseModel("auth-refresh-credential.ts"))
+
+    expect(checks.get("auth_refresh_credential_generation_valid")).toContain(
+      "generation >= 0"
+    )
+    expect(checks.get("auth_refresh_credential_expiry_after_creation")).toContain(
+      "expires_at > created_at"
+    )
+    expect(checks.get("auth_refresh_credential_consumed_recovery")).toMatch(
+      /consumed_at.*replacement_id.*request_key_hash.*recovery_until = consumed_at \+ INTERVAL '45 seconds'/i
+    )
+  })
+
+  it("stores hashes/nonces only and no refresh capability or request key", () => {
+    const model = parseModel("auth-refresh-credential.ts")
+
+    expectNoPlaintextCredentialFields(model)
+    expect(fieldNames(model)).not.toEqual(
+      expect.arrayContaining([
+        "refresh_token",
+        "refresh_capability",
+        "idempotency_key",
+        "request_key",
+      ])
+    )
+  })
+})
