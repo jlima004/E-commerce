@@ -241,6 +241,7 @@ export async function consumeRateLimitBuckets(
 }
 
 export async function runAuthRateLimitProtocol(input: {
+  operation: "verification-confirm" | "reset-confirm" | "refresh"
   store: AtomicRateLimitStore
   preBuckets: readonly DerivedRateLimitBucket[]
   resolve: () => Promise<{ kind: "intent" | "lineage"; opaqueId: string } | null>
@@ -250,7 +251,7 @@ export async function runAuthRateLimitProtocol(input: {
   dummyWork: () => string
   timing: () => Promise<number>
 }): Promise<{
-  status: 400 | 429
+  status: 400 | 401 | 429
   redisOperations: number
   elapsedMs: number
   resolved: boolean
@@ -270,7 +271,7 @@ export async function runAuthRateLimitProtocol(input: {
   input.dummyWork()
   const elapsedMs = await input.timing()
   return {
-    status: post.allowed ? 400 : 429,
+    status: post.allowed ? (input.operation === "refresh" ? 401 : 400) : 429,
     redisOperations: input.preBuckets.length + 1,
     elapsedMs,
     resolved: resolved !== null,

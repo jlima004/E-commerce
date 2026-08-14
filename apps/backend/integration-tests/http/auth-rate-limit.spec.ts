@@ -194,6 +194,7 @@ describe("P14-D11 HTTP/Redis rate limit gate", () => {
         const sampleIp = `198.51.${classIndex + 1}.${sample + 1}`
         const pre = buildPreLookupRateLimitKeys({ operation, keyring: KEYRING, ip: sampleIp, presentedToken: `${TOKEN}-${className}-${sample}` })
         const observation = await runAuthRateLimitProtocol({
+          operation,
           store: new RedisAtomicRateLimitStore(redis),
           preBuckets: pre,
           resolve: async () => className === "valid-invalid-password-provider" ? { kind: "intent" as const, opaqueId: `intent-${sample}` } : null,
@@ -206,8 +207,8 @@ describe("P14-D11 HTTP/Redis rate limit gate", () => {
     }
     expect(observations).toHaveLength(classes.length * 40)
     expect(new Set(observations.map((entry) => entry.redisOperations)).size).toBe(1)
-    expect(new Set(observations.map((entry) => entry.status)).size).toBe(1)
-    expect(observations.every((entry) => entry.status === 400)).toBe(true)
+    const expectedStatus = operation === "refresh" ? 401 : 400
+    expect(new Set(observations.map((entry) => entry.status))).toEqual(new Set([expectedStatus]))
     const elapsed = observations.map((entry) => entry.elapsedMs)
     expect(Math.max(...elapsed) - Math.min(...elapsed)).toBeLessThanOrEqual(50)
     expect(elapsed.sort((a, b) => a - b)[Math.floor(elapsed.length * 0.95)] - 350).toBeLessThanOrEqual(75)
@@ -217,6 +218,7 @@ describe("P14-D11 HTTP/Redis rate limit gate", () => {
     let lookups = 0
     const pre = buildPreLookupRateLimitKeys({ operation: "reset-confirm", keyring: KEYRING, ip: IP, presentedToken: TOKEN })
     await expect(runAuthRateLimitProtocol({
+      operation: "reset-confirm",
       store: { increment: async () => { throw new Error("synthetic outage") } },
       preBuckets: pre,
       resolve: async () => { lookups += 1; return null },
