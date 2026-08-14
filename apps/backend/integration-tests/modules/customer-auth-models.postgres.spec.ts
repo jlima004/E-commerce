@@ -473,7 +473,7 @@ if (!databaseUrl || !databaseName) {
       )
       const files = readdirSync(migrationDirectory).sort()
       const migrations = files.filter((file) => /^Migration\d{14}\.ts$/.test(file))
-      expect(migrations).toEqual(["Migration20260813221813.ts"])
+      expect(migrations).toEqual(["Migration20260814004448.ts"])
       expect(files).toContain(".snapshot-customer-auth.json")
 
       const migration = readFileSync(

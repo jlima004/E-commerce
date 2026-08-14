@@ -1470,14 +1470,14 @@ CHECKs exigem `confirmed_at` somente em `confirmed`, `superseded_at` somente em 
 | Owner / finalidade | `customer_auth`; reset latest-wins e sucesso composto: provider proof + credential update + revogação de todas as lineages + consumo definitivo. |
 | Chave e IDs | `auth_identity_id` lógico + generation; unique `token_hash`; unique `operation_id` HMAC; `nonce`; `key_version`; `schema_version`. |
 | Cardinalidade | N gerações históricas por identity; no máximo uma `pending|claimed|credential_updated` ativa; uma operação bound por intent. |
-| Lifecycle | `pending -> claimed -> credential_updated -> revocation_committed -> completed`; `pending -> superseded|expired`; ambiguidade -> `failed_reconcilable`, retomável somente com mesma key e newPassword reapresentada. |
+| Lifecycle | `pending -> claimed(provider_proved_at=NULL) -> claimed(provider_proved_at!=NULL) -> credential_updated -> revocation_committed -> completed`; os dois subestados `claimed` distinguem, respectivamente, provider proof ainda pendente e credential update ainda pendente, sem criar novo status; `pending -> superseded|expired`; ambiguidade -> `failed_reconcilable`, retomável somente com mesma key e newPassword reapresentada. |
 | TTL / cleanup | token expira em **15m**; intent claimed preserva evidência sanitizada até resolução operacional; marcar terminal antes de purga. |
 | CAS / lease / retry | `version` CAS, generation monotônica, `lease_owner/until` de **2m**, `attempt_count`, `next_retry_at`; lock antes de claim/consume/provider write. |
 | Proof markers | `claimed_at`, `provider_proved_at`, `credential_updated_at`, `revocation_committed_at`, `completed_at`; nenhum marker implica o seguinte. |
 | Fail-closed / segurança | `claimed|credential_updated|failed_reconcilable` bloqueia login/refresh via `AuthCredentialState`; sem reset capability, newPassword ou e-mail plaintext. |
 | Índices | unique hash; unique operation; unique `(auth_identity_id, generation)`; unique parcial da intent ativa; `(status, expires_at)`; `(status, next_retry_at)`; lease. |
 
-CHECKs exigem ordem dos proof markers, `completed` somente após todos os efeitos, `attempt_count >= 0`, lease coerente e operação incompatível com zero write.
+CHECKs exigem ordem dos proof markers; enquanto `status=claimed`, `credential_updated_at`, `revocation_committed_at` e `completed_at` permanecem nulos, admitindo `provider_proved_at` nulo ou preenchido como os dois subestados físicos; `completed` somente após todos os efeitos, `attempt_count >= 0`, lease coerente e operação incompatível com zero write.
 
 #### 4.17.7 AuthNotificationOutbox
 
