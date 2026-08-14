@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import {
   CustomerAuthModuleService,
+  CUSTOMER_AUTH_COMPOSED_LINK_REJECTED,
   CUSTOMER_AUTH_WRITE_FORBIDDEN,
   rejectCustomerAuthGeneratedWrite,
   type CustomerAuthMutationContext,
@@ -200,7 +201,7 @@ if (!databaseUrl || !databaseName) {
       await expect(pool.query("insert into auth_refresh_credential(id,lineage_id,token_hash,nonce,key_version,expires_at) values ('f2','l1','th2','n2',1,now()+interval '1 day')")).rejects.toMatchObject({ code: "23505" })
       await pool.query("insert into auth_verification_intent(id,auth_identity_id,token_hash,nonce,key_version,expires_at) values ('v1','i1','vh1','n1',1,now()+interval '30 minutes')")
       await expect(pool.query("insert into auth_verification_intent(id,auth_identity_id,token_hash,nonce,key_version,expires_at) values ('v2','i1','vh2','n2',1,now()+interval '30 minutes')")).rejects.toMatchObject({ code: "23505" })
-      await pool.query("insert into auth_reset_intent(id,auth_identity_id,token_hash,nonce,key_version,expires_at) values ('x1','i2','xh1','n1',1,now()+interval '15 minutes')")
+      await pool.query("insert into auth_reset_intent(id,auth_identity_id,token_hash,nonce,key_version,expires_at) values ('x1','i1','xh1','n1',1,now()+interval '15 minutes')")
       await expect(pool.query("update auth_reset_intent set completed_at=now(),status='completed' where id='x1'")).rejects.toMatchObject({ code: "23514" })
       await expect(pool.query("insert into auth_notification_outbox(id,template,intent_type,intent_id,recipient_identity_id,recipient_hash,recipient_domain,idempotency_key,key_version,recorded_at) values ('o1','email_verification_v1','verification','v1','','rh','example.test','auth/v1',1,now())")).rejects.toMatchObject({ code: "23514" })
       await pool.query("insert into auth_notification_outbox(id,template,intent_type,intent_id,recipient_identity_id,recipient_hash,recipient_domain,idempotency_key,key_version,recorded_at) values ('o1','email_verification_v1','verification','v1','i1','rh','example.test','auth/v1',1,now())")
@@ -255,6 +256,76 @@ if (!databaseUrl || !databaseName) {
         reset_status: "pending",
         reset_version: 1,
         operation_status: "stable",
+        credential_version: 1,
+      })
+    })
+
+    it("rejects composed resets with divergent identity or operation without partial state", async () => {
+      await pool.query(
+        "insert into auth_credential_state(id,auth_identity_id,customer_id) values ('c-cross','identity-b','customer-b')"
+      )
+      await pool.query(
+        "insert into auth_reset_intent(id,auth_identity_id,token_hash,nonce,key_version,expires_at) values ('x-cross','identity-a','xh-cross','n-cross',1,now()+interval '15 minutes')"
+      )
+
+      await expect(
+        transaction(pool, (client) =>
+          service.claimReset({
+            resetIntentId: "x-cross",
+            resetExpectedVersion: 1,
+            credentialStateId: "c-cross",
+            credentialExpectedVersion: 1,
+            operationId: "op-cross",
+            leaseOwner: "worker-cross",
+            at: new Date(),
+            context: context(client),
+          })
+        )
+      ).rejects.toThrow(CUSTOMER_AUTH_COMPOSED_LINK_REJECTED)
+
+      const identityRollback = await pool.query(
+        "select r.status as reset_status,r.operation_id as reset_operation,r.version as reset_version,c.operation_status,c.operation_id as credential_operation,c.version as credential_version from auth_reset_intent r cross join auth_credential_state c where r.id='x-cross' and c.id='c-cross'"
+      )
+      expect(identityRollback.rows[0]).toMatchObject({
+        reset_status: "pending",
+        reset_operation: null,
+        reset_version: 1,
+        operation_status: "stable",
+        credential_operation: null,
+        credential_version: 1,
+      })
+
+      await pool.query(
+        "insert into auth_credential_state(id,auth_identity_id,customer_id,operation_type,operation_id,operation_status) values ('c-op-cross','identity-op','customer-op','reset','operation-b','claimed')"
+      )
+      await pool.query(
+        "insert into auth_reset_intent(id,auth_identity_id,token_hash,nonce,key_version,status,operation_id,expires_at,claimed_at) values ('x-op-cross','identity-op','xh-op-cross','n-op-cross',1,'claimed','operation-a',now()+interval '15 minutes',now())"
+      )
+
+      await expect(
+        transaction(pool, (client) =>
+          service.proveResetProvider({
+            resetIntentId: "x-op-cross",
+            resetExpectedVersion: 1,
+            credentialStateId: "c-op-cross",
+            credentialExpectedVersion: 1,
+            at: new Date(),
+            context: context(client),
+          })
+        )
+      ).rejects.toThrow(CUSTOMER_AUTH_COMPOSED_LINK_REJECTED)
+
+      const operationRollback = await pool.query(
+        "select r.status as reset_status,r.operation_id as reset_operation,r.provider_proved_at as reset_proof,r.version as reset_version,c.operation_status,c.operation_id as credential_operation,c.provider_proved_at as credential_proof,c.version as credential_version from auth_reset_intent r cross join auth_credential_state c where r.id='x-op-cross' and c.id='c-op-cross'"
+      )
+      expect(operationRollback.rows[0]).toMatchObject({
+        reset_status: "claimed",
+        reset_operation: "operation-a",
+        reset_proof: null,
+        reset_version: 1,
+        operation_status: "claimed",
+        credential_operation: "operation-b",
+        credential_proof: null,
         credential_version: 1,
       })
     })

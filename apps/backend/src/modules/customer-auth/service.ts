@@ -1,4 +1,4 @@
-import { MedusaService, Module } from "@medusajs/framework/utils"
+import { MedusaError, MedusaService, Module } from "@medusajs/framework/utils"
 import {
   CUSTOMER_AUTH_TRANSACTION_CAPABILITIES,
   type CustomerAuthTransactionCapability,
@@ -17,6 +17,8 @@ export const CUSTOMER_AUTH_TRANSACTION_REQUIRED =
 export const CUSTOMER_AUTH_WRITE_FORBIDDEN = "CUSTOMER_AUTH_WRITE_FORBIDDEN"
 export const CUSTOMER_AUTH_COMPOSED_CAS_REJECTED =
   "CUSTOMER_AUTH_COMPOSED_CAS_REJECTED"
+export const CUSTOMER_AUTH_COMPOSED_LINK_REJECTED =
+  "CUSTOMER_AUTH_COMPOSED_LINK_REJECTED"
 
 type RawResult = { rows?: Array<Record<string, unknown>> }
 type TransactionalKnex = {
@@ -197,6 +199,86 @@ type ComposedResetInput = {
 type ClaimResetInput = ComposedResetInput & {
   operationId: string
   leaseOwner: string
+}
+
+type ComposedResetLinkInput = Pick<
+  ComposedResetInput,
+  "resetIntentId" | "credentialStateId" | "context"
+> & {
+  phase: "claim" | "active"
+  operationId?: string
+}
+
+type ComposedResetLink = {
+  authIdentityId: string
+  operationId: string
+}
+
+async function lockComposedResetLink(
+  input: ComposedResetLinkInput
+): Promise<ComposedResetLink> {
+  const knex = requireTransaction(input.context)
+  const resetIntentId = requireId(input.resetIntentId)
+  const credentialStateId = requireId(input.credentialStateId)
+  const rows = await queryRows(
+    knex,
+    `select
+       reset.auth_identity_id as reset_auth_identity_id,
+       reset.operation_id as reset_operation_id,
+       credential.auth_identity_id as credential_auth_identity_id,
+       credential.operation_id as credential_operation_id
+     from auth_reset_intent reset
+     cross join auth_credential_state credential
+     where reset.id = ? and credential.id = ?
+       and reset.deleted_at is null and credential.deleted_at is null
+     for update of reset, credential`,
+    [resetIntentId, credentialStateId]
+  )
+  if (rows.length !== 1) {
+    throw new MedusaError(
+      MedusaError.Types.NOT_FOUND,
+      "CUSTOMER_AUTH_ROW_NOT_FOUND"
+    )
+  }
+
+  const resetAuthIdentityId = requireId(rows[0].reset_auth_identity_id)
+  const credentialAuthIdentityId = requireId(
+    rows[0].credential_auth_identity_id
+  )
+  if (resetAuthIdentityId !== credentialAuthIdentityId) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      CUSTOMER_AUTH_COMPOSED_LINK_REJECTED
+    )
+  }
+
+  const resetOperationId = rows[0].reset_operation_id
+  const credentialOperationId = rows[0].credential_operation_id
+  if (input.phase === "claim") {
+    const operationId = requireId(input.operationId)
+    if (resetOperationId !== null || credentialOperationId !== null) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        CUSTOMER_AUTH_COMPOSED_LINK_REJECTED
+      )
+    }
+    return { authIdentityId: resetAuthIdentityId, operationId }
+  }
+
+  if (
+    typeof resetOperationId !== "string" ||
+    typeof credentialOperationId !== "string" ||
+    requireId(resetOperationId) !== requireId(credentialOperationId)
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      CUSTOMER_AUTH_COMPOSED_LINK_REJECTED
+    )
+  }
+  return {
+    authIdentityId: resetAuthIdentityId,
+    operationId: resetOperationId,
+  }
 }
 
 const BaseCustomerAuthModuleService = MedusaService({
@@ -640,6 +722,13 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
   }
 
   async claimReset(input: ClaimResetInput) {
+    await lockComposedResetLink({
+      resetIntentId: input.resetIntentId,
+      credentialStateId: input.credentialStateId,
+      operationId: input.operationId,
+      phase: "claim",
+      context: input.context,
+    })
     const resetIntent = requireUpdated(
       await this.claimResetIntent(
         input.resetIntentId,
@@ -664,6 +753,12 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
   }
 
   async proveResetProvider(input: ComposedResetInput) {
+    await lockComposedResetLink({
+      resetIntentId: input.resetIntentId,
+      credentialStateId: input.credentialStateId,
+      phase: "active",
+      context: input.context,
+    })
     const resetIntent = requireUpdated(
       await this.proveResetProviderIntent(
         input.resetIntentId,
@@ -684,6 +779,12 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
   }
 
   async recordResetCredentialUpdate(input: ComposedResetInput) {
+    await lockComposedResetLink({
+      resetIntentId: input.resetIntentId,
+      credentialStateId: input.credentialStateId,
+      phase: "active",
+      context: input.context,
+    })
     const resetIntent = requireUpdated(
       await this.recordResetIntentCredentialUpdate(
         input.resetIntentId,
@@ -704,6 +805,12 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
   }
 
   async commitResetRevocation(input: ComposedResetInput) {
+    await lockComposedResetLink({
+      resetIntentId: input.resetIntentId,
+      credentialStateId: input.credentialStateId,
+      phase: "active",
+      context: input.context,
+    })
     const resetIntent = requireUpdated(
       await this.commitResetIntentRevocation(
         input.resetIntentId,
@@ -724,6 +831,12 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
   }
 
   async completeReset(input: ComposedResetInput) {
+    await lockComposedResetLink({
+      resetIntentId: input.resetIntentId,
+      credentialStateId: input.credentialStateId,
+      phase: "active",
+      context: input.context,
+    })
     const resetIntent = requireUpdated(
       await this.completeResetIntent(
         input.resetIntentId,
@@ -744,6 +857,12 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
   }
 
   async failReset(input: ComposedResetInput & { nextRetryAt: Date }) {
+    await lockComposedResetLink({
+      resetIntentId: input.resetIntentId,
+      credentialStateId: input.credentialStateId,
+      phase: "active",
+      context: input.context,
+    })
     const resetIntent = requireUpdated(
       await this.failResetReconcilable(
         input.resetIntentId,
