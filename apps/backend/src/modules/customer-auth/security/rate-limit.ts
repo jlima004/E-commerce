@@ -6,6 +6,7 @@ export type AuthRateLimitOperation =
   | "signup"
   | "login"
   | "reset-request"
+  | "reset-resend"
   | "verification-request"
   | "verification-confirm"
   | "reset-confirm"
@@ -29,6 +30,10 @@ export const AUTH_RATE_LIMIT_POLICIES = {
   signup: { pre: { ip: [5, 900], email: [3, 3600] } },
   login: { pre: { "ip-email": [10, 900], ip: [30, 900] } },
   "reset-request": {
+    pre: { email: [3, 3600], ip: [10, 3600] },
+    publicFailureMode: "absorb",
+  },
+  "reset-resend": {
     pre: { email: [3, 3600], ip: [10, 3600] },
     publicFailureMode: "absorb",
   },
@@ -143,7 +148,7 @@ function deriveBucket(input: {
 }
 
 type PreLookupInput = {
-  operation: "signup" | "login" | "reset-request" | "verification-confirm" | "reset-confirm" | "refresh"
+  operation: "signup" | "login" | "reset-request" | "reset-resend" | "verification-confirm" | "reset-confirm" | "refresh"
   keyring: AuthRateLimitKeyring
   ip: string
   email?: string
@@ -233,6 +238,68 @@ export async function consumeRateLimitBuckets(
   } catch {
     throw new AuthRateLimitUnavailableError()
   }
+}
+
+export async function runAuthRateLimitProtocol(input: {
+  store: AtomicRateLimitStore
+  preBuckets: readonly DerivedRateLimitBucket[]
+  resolve: () => Promise<{ kind: "intent" | "lineage"; opaqueId: string } | null>
+  buildPostBucket: (
+    resolved: { kind: "intent" | "lineage"; opaqueId: string } | null
+  ) => DerivedRateLimitBucket
+  dummyWork: () => string
+  timing: () => Promise<number>
+}): Promise<{
+  status: 400 | 429
+  redisOperations: number
+  elapsedMs: number
+  resolved: boolean
+}> {
+  const pre = await consumeRateLimitBuckets(input.store, input.preBuckets)
+  if (!pre.allowed) {
+    return {
+      status: 429,
+      redisOperations: input.preBuckets.length,
+      elapsedMs: 0,
+      resolved: false,
+    }
+  }
+
+  const resolved = await input.resolve()
+  const post = await consumeRateLimitBuckets(input.store, [input.buildPostBucket(resolved)])
+  input.dummyWork()
+  const elapsedMs = await input.timing()
+  return {
+    status: post.allowed ? 400 : 429,
+    redisOperations: input.preBuckets.length + 1,
+    elapsedMs,
+    resolved: resolved !== null,
+  }
+}
+
+export function authRateLimitHttpDecision(input: {
+  operation: AuthRateLimitOperation
+  result?: RateLimitResult
+  error?: unknown
+}): {
+  status: 200 | 202 | 429 | 503
+  code?: "RATE_LIMITED" | "AUTH_TEMPORARILY_UNAVAILABLE"
+  retryAfterSeconds?: number
+} {
+  const absorb = input.operation === "reset-request" || input.operation === "reset-resend"
+  if (input.error) {
+    if (absorb) return { status: 202 }
+    return { status: 503, code: "AUTH_TEMPORARILY_UNAVAILABLE", retryAfterSeconds: 60 }
+  }
+  if (input.result && !input.result.allowed) {
+    if (absorb) return { status: 202 }
+    return {
+      status: 429,
+      code: "RATE_LIMITED",
+      retryAfterSeconds: input.result.blockedBy?.retryAfterSeconds,
+    }
+  }
+  return { status: absorb ? 202 : 200 }
 }
 
 export class InMemoryAtomicRateLimitStore implements AtomicRateLimitStore {

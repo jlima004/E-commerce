@@ -4,6 +4,7 @@ import Redis from "ioredis"
 import {
   AuthRateLimitUnavailableError,
   RedisAtomicRateLimitStore,
+  authRateLimitHttpDecision,
   buildAuthenticatedVerificationRequestKeys,
   buildPostLookupRateLimitKey,
   buildPreLookupRateLimitKeys,
@@ -166,6 +167,9 @@ describe("P14-D11 HTTP/Redis rate limit gate", () => {
     ["reset-confirm intent", buildPostLookupRateLimitKey({ operation: "reset-confirm", keyring: KEYRING, preDigest: "synthetic", resolved: { kind: "intent", opaqueId: "intent-synthetic" } }), 11],
     ["verification-request lineage", buildAuthenticatedVerificationRequestKeys({ keyring: KEYRING, ip: IP, authorizedLineageId: "lineage-synthetic" })[0], 4],
     ["verification-request ip", buildAuthenticatedVerificationRequestKeys({ keyring: KEYRING, ip: IP, authorizedLineageId: "lineage-synthetic" })[1], 11],
+    ["refresh ip", buildPreLookupRateLimitKeys({ operation: "refresh", keyring: KEYRING, ip: IP, presentedToken: TOKEN })[0], 61],
+    ["refresh token", buildPreLookupRateLimitKeys({ operation: "refresh", keyring: KEYRING, ip: IP, presentedToken: TOKEN })[1], 11],
+    ["refresh lineage", buildPostLookupRateLimitKey({ operation: "refresh", keyring: KEYRING, preDigest: "synthetic", resolved: { kind: "lineage", opaqueId: "lineage-refresh-synthetic" } }), 11],
   ])("enforces %s on its exact blocking hit", async (_name, bucket, blockingHit) => {
     let response: Awaited<ReturnType<typeof hit>> | undefined
     for (let index = 0; index < blockingHit; index += 1) response = await hit(workers[index % 2].port, [bucket])
@@ -178,11 +182,17 @@ describe("P14-D11 HTTP/Redis rate limit gate", () => {
     ["reset-confirm", ["missing", "malformed", "expired", "used", "superseded", "valid-invalid-password-provider"], "RESET_INVALID_OR_EXPIRED"],
     ["refresh", ["missing", "malformed", "expired", "used", "revoked", "replay"], "AUTHENTICATION_REQUIRED"],
   ] as const)("keeps the public %s failure classes equivalent", async (operation, classes, publicCode) => {
-    const observations = []
-    for (const className of classes) {
+    const observations: Array<
+      Awaited<ReturnType<typeof runAuthRateLimitProtocol>> & {
+        className: string
+        publicCode: string
+      }
+    > = []
+    for (const [classIndex, className] of classes.entries()) {
       for (let sample = 0; sample < 40; sample += 1) {
         let now = 10_000
-        const pre = buildPreLookupRateLimitKeys({ operation, keyring: KEYRING, ip: IP, presentedToken: `${TOKEN}-${className}-${sample}` })
+        const sampleIp = `198.51.${classIndex + 1}.${sample + 1}`
+        const pre = buildPreLookupRateLimitKeys({ operation, keyring: KEYRING, ip: sampleIp, presentedToken: `${TOKEN}-${className}-${sample}` })
         const observation = await runAuthRateLimitProtocol({
           store: new RedisAtomicRateLimitStore(redis),
           preBuckets: pre,
@@ -216,7 +226,36 @@ describe("P14-D11 HTTP/Redis rate limit gate", () => {
     })).rejects.toMatchObject({ code: "AUTH_TEMPORARILY_UNAVAILABLE", retryAfterSeconds: 60 })
     expect(lookups).toBe(0)
     expect(new AuthRateLimitUnavailableError().code).not.toBe("AUTH_RECOVERY_PENDING")
+    expect(authRateLimitHttpDecision({ operation: "verification-request", error: new Error("outage") })).toEqual({
+      status: 503,
+      code: "AUTH_TEMPORARILY_UNAVAILABLE",
+      retryAfterSeconds: 60,
+    })
   })
+
+  it.each(["reset-request", "reset-resend"] as const)(
+    "absorbs public %s limit and outage as indistinguishable 202",
+    (operation) => {
+      const limited = authRateLimitHttpDecision({
+        operation,
+        result: {
+          allowed: false,
+          buckets: [],
+          blockedBy: {
+            key: "opaque",
+            digest: "opaque",
+            limit: 3,
+            windowSeconds: 3600,
+            count: 4,
+            retryAfterSeconds: 60,
+          },
+        },
+      })
+      const outage = authRateLimitHttpDecision({ operation, error: new Error("outage") })
+      expect(limited).toEqual({ status: 202 })
+      expect(outage).toEqual({ status: 202 })
+    }
+  )
 
   it("keeps password input outside keys, logs, telemetry, persistence and fingerprints", () => {
     const forbiddenValue = "synthetic-password-canary"
