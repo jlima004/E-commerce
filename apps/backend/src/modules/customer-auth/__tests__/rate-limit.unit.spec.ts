@@ -107,7 +107,7 @@ describe("P14-D11 auth rate limit", () => {
       resolved: { kind: "intent", opaqueId: "intent-synthetic" },
     })
 
-    expect(new Set([verification.key, reset.key, dummy.key, rotated.key])).toHaveSize(4)
+    expect(new Set([verification.key, reset.key, dummy.key, rotated.key]).size).toBe(4)
     expect(verification.key).not.toContain("intent-synthetic")
   })
 
