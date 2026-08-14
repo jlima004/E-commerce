@@ -1,6 +1,7 @@
 import { createHash, createHmac } from "node:crypto"
 import { isIP } from "node:net"
 import type Redis from "ioredis"
+import { normalizeCustomerAuthEmail } from "./email-normalization"
 
 export type AuthRateLimitOperation =
   | "signup"
@@ -120,6 +121,12 @@ function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex")
 }
 
+function canonicalPresentedTokenMaterial(presentedToken: string | undefined): string {
+  return presentedToken === undefined
+    ? "token-presence:missing"
+    : `token-presence:present|token-digest:${sha256(presentedToken)}`
+}
+
 function deriveBucket(input: {
   keyring: AuthRateLimitKeyring
   operation: AuthRateLimitOperation
@@ -158,8 +165,10 @@ type PreLookupInput = {
 export function buildPreLookupRateLimitKeys(input: PreLookupInput): DerivedRateLimitBucket[] {
   const network = normalizeAuthRateLimitNetworkPrefix(input.ip)
   const ipDigest = sha256(network)
-  const emailDigest = input.email === undefined ? undefined : sha256(input.email)
-  const tokenDigest = input.presentedToken === undefined ? undefined : sha256(input.presentedToken)
+  const emailDigest = input.email === undefined
+    ? undefined
+    : sha256(normalizeCustomerAuthEmail(input.email))
+  const tokenMaterial = canonicalPresentedTokenMaterial(input.presentedToken)
   const policy = AUTH_RATE_LIMIT_POLICIES[input.operation].pre
   const keys: DerivedRateLimitBucket[] = []
 
@@ -168,7 +177,7 @@ export function buildPreLookupRateLimitKeys(input: PreLookupInput): DerivedRateL
     if (dimension === "ip") material = `network-digest:${ipDigest}`
     else if (dimension === "email" && emailDigest) material = `email-digest:${emailDigest}`
     else if (dimension === "ip-email" && emailDigest) material = `network-digest:${ipDigest}|email-digest:${emailDigest}`
-    else if (dimension === "ip-token" && tokenDigest) material = `network-digest:${ipDigest}|token-digest:${tokenDigest}`
+    else if (dimension === "ip-token") material = `network-digest:${ipDigest}|${tokenMaterial}`
     else throw new Error(`Missing auth rate limit input for ${dimension}`)
 
     keys.push(deriveBucket({
@@ -210,14 +219,27 @@ export function buildAuthenticatedVerificationRequestKeys(input: {
 export function buildPostLookupRateLimitKey(input: {
   operation: "verification-confirm" | "reset-confirm" | "refresh"
   keyring: AuthRateLimitKeyring
-  preDigest: string
+  ip: string
+  presentedToken?: string
   resolved: { kind: "intent" | "lineage"; opaqueId: string } | null
 }): DerivedRateLimitBucket {
   const dimension = input.operation === "refresh" ? "lineage" : "intent"
   const policy = AUTH_RATE_LIMIT_POLICIES[input.operation].post[dimension]
-  const material = input.resolved
-    ? `${dimension}-digest:${sha256(input.resolved.opaqueId)}`
-    : `dummy-digest:${sha256(input.preDigest)}`
+  let material: string
+  if (input.resolved) {
+    const opaqueDigest = `${dimension}-digest:${sha256(input.resolved.opaqueId)}`
+    material = input.operation === "refresh"
+      ? opaqueDigest
+      : [
+          `network-digest:${sha256(normalizeAuthRateLimitNetworkPrefix(input.ip))}`,
+          opaqueDigest,
+        ].join("|")
+  } else {
+    material = [
+      `dummy-network-digest:${sha256(normalizeAuthRateLimitNetworkPrefix(input.ip))}`,
+      canonicalPresentedTokenMaterial(input.presentedToken),
+    ].join("|")
+  }
   return deriveBucket({
     keyring: input.keyring,
     operation: input.operation,
@@ -225,6 +247,59 @@ export function buildPostLookupRateLimitKey(input: {
     material,
     policy,
   })
+}
+
+export type AuthRateLimitPublicOutcome =
+  | { status: 200; code?: never }
+  | { status: 400; code: "VERIFICATION_INVALID_OR_EXPIRED" | "RESET_INVALID_OR_EXPIRED" }
+  | { status: 401; code: "AUTHENTICATION_REQUIRED" }
+
+type AuthRateLimitFailureOutcome = Exclude<AuthRateLimitPublicOutcome, { status: 200 }>
+
+export type AuthRateLimitResolution =
+  | {
+      state: "unresolved"
+      subject: null
+      publicOutcome: AuthRateLimitFailureOutcome
+    }
+  | {
+      state: "resolved"
+      subject: { kind: "intent" | "lineage"; opaqueId: string }
+      publicOutcome: AuthRateLimitPublicOutcome
+    }
+
+function assertValidResolution(
+  operation: "verification-confirm" | "reset-confirm" | "refresh",
+  resolution: AuthRateLimitResolution
+): void {
+  const expectedKind = operation === "refresh" ? "lineage" : "intent"
+  const expectedFailure = operation === "verification-confirm"
+    ? { status: 400, code: "VERIFICATION_INVALID_OR_EXPIRED" }
+    : operation === "reset-confirm"
+      ? { status: 400, code: "RESET_INVALID_OR_EXPIRED" }
+      : { status: 401, code: "AUTHENTICATION_REQUIRED" }
+  const stateIsValid = resolution.state === "unresolved" || resolution.state === "resolved"
+  const subjectIsValid = resolution.state === "unresolved"
+    ? resolution.subject === null
+    : resolution.subject !== null &&
+      resolution.subject.kind === expectedKind &&
+      typeof resolution.subject.opaqueId === "string" &&
+      resolution.subject.opaqueId.length > 0
+  const outcome = resolution.publicOutcome as { status?: unknown; code?: unknown }
+  const outcomeIsSuccess = outcome.status === 200 && outcome.code === undefined
+  const outcomeIsExpectedFailure =
+    outcome.status === expectedFailure.status && outcome.code === expectedFailure.code
+  const successHasResolvedSubject =
+    !outcomeIsSuccess || (resolution.state === "resolved" && resolution.subject !== null)
+
+  if (
+    !stateIsValid ||
+    !subjectIsValid ||
+    (!outcomeIsSuccess && !outcomeIsExpectedFailure) ||
+    !successHasResolvedSubject
+  ) {
+    throw new AuthRateLimitUnavailableError()
+  }
 }
 
 export async function consumeRateLimitBuckets(
@@ -244,14 +319,16 @@ export async function runAuthRateLimitProtocol(input: {
   operation: "verification-confirm" | "reset-confirm" | "refresh"
   store: AtomicRateLimitStore
   preBuckets: readonly DerivedRateLimitBucket[]
-  resolve: () => Promise<{ kind: "intent" | "lineage"; opaqueId: string } | null>
+  resolve: () => Promise<AuthRateLimitResolution>
   buildPostBucket: (
     resolved: { kind: "intent" | "lineage"; opaqueId: string } | null
   ) => DerivedRateLimitBucket
   dummyWork: () => string
   timing: () => Promise<number>
 }): Promise<{
-  status: 400 | 401 | 429
+  status: 200 | 400 | 401 | 429
+  code?: "VERIFICATION_INVALID_OR_EXPIRED" | "RESET_INVALID_OR_EXPIRED" | "AUTHENTICATION_REQUIRED" | "RATE_LIMITED"
+  retryAfterSeconds?: number
   redisOperations: number
   elapsedMs: number
   resolved: boolean
@@ -260,21 +337,26 @@ export async function runAuthRateLimitProtocol(input: {
   if (!pre.allowed) {
     return {
       status: 429,
+      code: "RATE_LIMITED",
+      retryAfterSeconds: pre.blockedBy?.retryAfterSeconds,
       redisOperations: input.preBuckets.length,
       elapsedMs: 0,
       resolved: false,
     }
   }
 
-  const resolved = await input.resolve()
-  const post = await consumeRateLimitBuckets(input.store, [input.buildPostBucket(resolved)])
+  const resolution = await input.resolve()
+  assertValidResolution(input.operation, resolution)
+  const post = await consumeRateLimitBuckets(input.store, [input.buildPostBucket(resolution.subject)])
   input.dummyWork()
   const elapsedMs = await input.timing()
   return {
-    status: post.allowed ? (input.operation === "refresh" ? 401 : 400) : 429,
+    status: post.allowed ? resolution.publicOutcome.status : 429,
+    code: post.allowed ? resolution.publicOutcome.code : "RATE_LIMITED",
+    retryAfterSeconds: post.allowed ? undefined : post.blockedBy?.retryAfterSeconds,
     redisOperations: input.preBuckets.length + 1,
     elapsedMs,
-    resolved: resolved !== null,
+    resolved: resolution.subject !== null,
   }
 }
 
