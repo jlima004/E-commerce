@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Backend Storefront Readiness
 current_phase: 14
 current_phase_name: customer-auth-verification
-current_plan: 6
-status: paused
-last_updated: "2026-08-13T18:12:50-03:00"
+current_plan: 8
+status: ready
+last_updated: "2026-08-13T22:16:00-03:00"
 progress:
   total_phases: 10
   completed_phases: 1
   total_plans: 28
-  completed_plans: 13
+  completed_plans: 14
   percent: 11
-stopped_at: 14-06 HUMAN APPROVED — PASS; 14-07 NOT AUTHORIZED
+stopped_at: 14-07 HUMAN APPROVED — PASS; 14-08 EXECUTION AUTHORIZED — NOT STARTED
 ---
 
 # Project State
@@ -24,22 +24,22 @@ See: `.planning/PROJECT.md` (updated 2026-08-06)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
 
-**Current focus:** Phase 14 — `14-06 HUMAN APPROVED — PASS`; `14-07 NOT AUTHORIZED`.
+**Current focus:** Phase 14 — `14-07 HUMAN APPROVED — PASS`; `14-08 EXECUTION AUTHORIZED — NOT STARTED`.
 
 ## Execution Policy
 
-Execution is manual-review gated.
+Execution remains manual-review gated.
 
-No phase or plan may advance automatically. Every CONTEXT, RESEARCH, PLAN, SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW, and CLOSURE boundary requires the applicable human gate.
+No phase or plan advances automatically. Every applicable CONTEXT, RESEARCH, PLAN, SPEC/SDD, IMPLEMENTATION PROMPT, EXECUTION, VERIFICATION, REVIEW and CLOSURE boundary requires its human gate.
 
-Enforcement remains:
+Enforcement:
 
 - `mode=interactive`
 - `workflow.auto_advance=false`
 - `workflow._auto_chain_active=false`
 - `parallelization=false`
 
-`14-06` completion and human approval do not authorize `14-07` or any later plan.
+The human approval of `14-07` closes only that plan. A separate explicit human authorization has now been granted for execution of `14-08`; it does not authorize `14-09` or any later plan.
 
 ## Current Gate
 
@@ -59,50 +59,17 @@ HUMAN APPROVED — PASS
 Phase 14 IMPLEMENTATION PROMPT:
 HUMAN APPROVED — PASS
 
-P14-14-01-R1:
-TECHNICAL CORRECTION PASS
-
-P14-14-01-R2:
-HUMAN RE-REVIEW — PASS
-
-B14-01-HR-01:
-CLOSED — PASS
-
-B14-01-HR-02:
-CLOSED — PASS
-
-B14-01-HR-03:
-CLOSED — PASS
-
-B14-01-HR-04:
-CLOSED — PASS
-
-14-01 — Wave 0 Validation Harness:
+14-01:
 HUMAN APPROVED — PASS
-
-14-01 HUMAN APPROVAL:
-GRANTED
 
 14-02:
 HUMAN APPROVED — PASS
 
-B14-02-HR-01:
-CLOSED — PASS
-
 14-03:
 HUMAN APPROVED — PASS
 
-B14-03-HR-01:
-CLOSED — PASS
-
 14-04:
 HUMAN APPROVED — PASS
-
-B14-04-HR-01:
-CLOSED — PASS
-
-B14-04-HR-02:
-CLOSED — PASS
 
 14-05:
 HUMAN APPROVED — PASS
@@ -110,7 +77,14 @@ HUMAN APPROVED — PASS
 14-06:
 HUMAN APPROVED — PASS
 
-14-07..14-21:
+14-07:
+HUMAN APPROVED — PASS
+DOCUMENTALLY CLOSED
+
+14-08:
+EXECUTION AUTHORIZED — NOT STARTED
+
+14-09..14-21:
 NOT AUTHORIZED
 
 Deploy:
@@ -120,230 +94,78 @@ FRONTEND:
 BLOCKED
 ```
 
-## 14-01 Accepted Evidence
+## 14-07 Accepted Evidence
 
 ```text
-Unit:
-PASS — 18/18
-
-Disposable PostgreSQL integration:
-PASS — 24/24 using the original PLAN command
-
-Jest topology:
-PASS — normal Modules selection unchanged; disposable integration path enabled only with DB_TEMP_NAME + DATABASE_URL
-
-PostgreSQL fail-closed:
-PASS — current_database() == DB_TEMP_NAME; auth-state writes to postgres/template0/template1 forbidden
-
-Redis isolation/outage/cleanup:
-PASS
-
-Two real Medusa processes:
-PASS
-
-Process A:
-PID 62773
-PG observed inside Medusa process = 2
-Redis observed inside Medusa process = 2
-origin = medusa-process
-
-Process B:
-PID 62790
-PG observed inside Medusa process = 2
-Redis observed inside Medusa process = 2
-origin = medusa-process
-
-non-loopback targets:
-0
-
-provider real calls:
-0
-
-test-only boundary:
-7/7
-
-git diff --check:
-PASS
-```
-
-Migration evidence accepted for 14-01:
-
-```text
-migration files generated:
-NONE
-
-db:generate:
-NOT EXECUTED
-
-remote/persistent migration:
-NONE
-
-disposable local Medusa schema bootstrap:
-EXECUTED
-```
-
-The local schema bootstrap is test/disposable infrastructure only and does not authorize a real or remote migration.
-
-## 14-03 Accepted Evidence
-
-```text
-Transaction capability:
-Auth provider seam: RECONCILIATION_REQUIRED — ACCEPTED
-Customer workflow seam: RECONCILIATION_REQUIRED — ACCEPTED
-Combined seam: RECONCILIATION_REQUIRED — ACCEPTED
-
-DB_MODEL reconciliation:
-PASS
-
-DB_MODEL verify:
-PASS
-
-Textual consistency:
-PASS
-
-Technical evidence re-execution during human re-review:
-NOT REQUIRED — no technical files were altered
-
-git diff --check:
-PASS
-```
-
-The accepted transaction evidence is binding: login/refresh must fail closed during non-stable recovery states, and `RECONCILIATION_REQUIRED` remains the baseline for registration, reset and password change. No model, migration, DDL or collision winner was authorized.
-
-## 14-04 Accepted Evidence
-
-```text
-Task 14-04-01:
-PASS — Unit 16/16
-
-Task 14-04-02:
-PASS — isolated PostgreSQL/CLI scenarios
-
-B14-04-HR-01:
-CLOSED — PASS
-
-B14-04-HR-02:
-CLOSED — PASS
-
-zero-collision:
-CLI exit 0
-status PASS
-
-collision/invalid:
-CLI exit 2
-status BLOCKED
-
-Invalid identity classification:
-PASS
-
-Invalid customer classification:
-PASS
-
-Zero writes:
-PASS
-
-PII/secret output:
-PASS
-
-git diff --check:
-PASS
-```
-
-The collision gate is complete and human-approved. Its approval authorized only the separate execution later granted for `14-05`; no migration, deploy or automatic phase transition followed from the `14-04` gate.
-
-## 14-05 Accepted Evidence
-
-```text
-Task 14-05-01:
-PASS
-
-Task 14-05-02:
-PASS
-
-Task 14-05-03:
+Task 14-07-03:
 HUMAN VERIFY — PASS
 
-RegistrationIntent:
+Collision audit persisted before final generation:
 PASS
+status = PASS
+blockers = []
+collision_count = 0
+transaction = BEGIN READ ONLY
+writes = 0
+local disposable PostgreSQL only
+cleanup = PASS
 
-AuthCredentialState:
-PASS
+Final CLI migration:
+Migration20260814004448.ts
+single migration = PASS
+single snapshot = PASS
+exact-set model/snapshot/migration/DB_MODEL = 7/7
 
-AuthSessionLineage:
-PASS
+AuthResetIntent claimed substates:
+PASS — pre-proof and post-proof/pre-update, no new status
 
-AuthRefreshCredential:
-PASS
+Composed AuthResetIntent + AuthCredentialState linkage:
+PASS — same identity/operation; divergence rolls back
 
-Focused unit before and after integration:
-PASS — 16/16
-
-Post-merge build:
-PASS — 0 errors; lint warnings only
-
-Global npm test topology:
-INCONCLUSIVE — Turbo exit 0 with 0 tasks executed
-
-git diff --check:
-PASS
-
-Migration generated/applied:
-NONE
-```
-
-The four core models are complete and human-approved for the `14-05` scope. `RegistrationIntent` keeps the canonical 24-hour creation policy at the service boundary while the approved physical CHECK remains `expires_at > created_at`; credential recovery ordering, immutable 30-day lineage deadline, hash-only refresh rotation and exact 45-second recovery are accepted. The separate `14-06` approval is recorded below; no migration, deploy, provider-real action or frontend work follows from either approval.
-
-## 14-06 Accepted Evidence
-
-```text
-Task 14-06-01:
-PASS
-
-Task 14-06-02:
-PASS
-
-Task 14-06-03:
-HUMAN VERIFY — PASS
-
-AuthVerificationIntent:
-PASS — latest-wins; token hash unique; one active per identity; TTL 30m
-
-AuthResetIntent:
-PASS — one-winner; operation_id unique; composed completion; TTL 15m
-
-AuthNotificationOutbox:
-PASS — recipient_identity_id opaque required; hash/domain evidence; no email/capability plaintext
-
-Models complete across 14-05 + 14-06:
-PASS — 7/7
+Disposable PostgreSQL:
+PASS — 9/9
 
 Focused unit:
-PASS — 12/12
+PASS — 28/28
+
+Backend/Admin build:
+PASS — 0 errors
 
 git diff --check:
 PASS
 
-Migration/db:generate:
-NOT EXECUTED
+Final independent review:
+0 blockers / 0 warnings
+
+Remote branch reviewed through:
+78a1af2
+
+Remote/persistent migration:
+NONE
+Provider real calls:
+NONE
+Deploy:
+NONE
 ```
 
-The three intent/outbox models are complete and human-approved for the `14-06` scope. Verification/reset persist only versioned hashes/nonces and opaque identity references; reset completion requires claim, provider proof, credential update and revocation commit markers. `14-07` remains gated separately; migration, db:generate, deploy and frontend work remain unauthorized.
+The original migration attempt without durable chronological collision-audit evidence remains preserved in Git history and was explicitly reverted. The accepted final chain persists the audit before the regenerated migration. The later structural correction kept the collision semantics unchanged and therefore did not rerun the audit.
 
 ## Current Position
 
 Phase: 14 (customer-auth-verification) — EXECUTING
-Completed/human-approved Phase 14 plans: **6/21**
-Current plan: **14-06 — HUMAN APPROVED — PASS**
-Next gate: **fresh human authorization for 14-07**
-14-06: **HUMAN APPROVED — PASS**
-14-07: **NOT AUTHORIZED**
+Completed/human-approved Phase 14 plans: **7/21**
+Completed Phase 14 tasks: **21/63**
+Current plan: **14-08 — EXECUTION AUTHORIZED — NOT STARTED**
+Previous plan: **14-07 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**
+Next blocking checkpoint: **14-08-03 human verification**
+14-09: **NOT AUTHORIZED**
 
 Milestone v1.1:
 
 - phases closed: 1/10
 - Phase 13 requirements complete: FND-01..FND-08 = 8/8
 - milestone requirements complete: 8/91
-- plans human-approved executed: 13 total (Phase 13: 7; Phase 14: 6)
+- plans human-approved executed: 14 total (Phase 13: 7; Phase 14: 7)
 - frontend: BLOCKED
 
 ## Phase 14 Authorities
@@ -360,30 +182,44 @@ Phase 14 remains governed by:
 
 The approved Phase 14 decomposition remains 21 plans / 21 serial waves / 63 tasks. AUTH-01..AUTH-09 remain 9/9 covered; D14-01..D14-16 remain 16/16 represented; P14-D01..P14-D14 remain 14/14 represented.
 
+## 14-08 Execution Authorization
+
+Human authorization is explicitly granted to execute the already-approved `.planning/phases/14-customer-auth-verification/14-08-PLAN.md`.
+
+Authorization scope is exactly the plan-owned implementation, tests and local/disposable validation required by `14-08`, including its approved Redis/test infrastructure use. Execution must obey the plan's stop conditions and stop at the blocking checkpoint `14-08-03` for human review.
+
+This authorization does **not** authorize:
+
+- `14-09` or later plans;
+- deploy or release;
+- frontend work;
+- real provider calls beyond anything separately and explicitly authorized;
+- remote/persistent database mutations not explicitly allowed by the plan;
+- dependency installation outside an explicit later authorization;
+- automatic chain/advance after `14-08-03`.
+
 ## Hard Invariants Still in Force
 
 - Order birth remains exclusive to the trusted canonical Stripe webhook.
 - Browser/BFF/Store synchronous auth paths cannot create an Order.
 - `purchase_completed` remains durable backend truth.
 - PostgreSQL is auth/session validity authority; Redis coordination never grants validity.
-- Backend access JWT, backend refresh credential, and internal lineage/session capabilities do not cross the browser boundary.
+- Backend access JWT, backend refresh credential and internal lineage/session capabilities do not cross the browser boundary.
 - One-time verification/reset capabilities remain hash-only in backend persistence and are submitted only through the same-origin BFF boundary.
-- Auth/session/email/provider failures do not rewrite payment, Order, analytics, order-email, or Gelato truth.
+- Auth/session/email/provider failures do not rewrite payment, Order, analytics, order-email or Gelato truth.
 - Frontend remains blocked until the backend storefront-readiness milestone permits it.
 
 ## Historical State Preservation
 
-The complete pre-approval accumulated `STATE.md` from remote commit `add005c4bc67c3afe45b0926625ef0ad47010dcd` is preserved without modification at:
+The detailed accumulated pre-approval state remains preserved at:
 
 `.planning/history/STATE-before-14-02-add005c.md`
 
-That snapshot remains the authority for detailed historical v1.0/v1.1 accumulated context, old BLOCKED lineages, prior quick tasks, release metadata, and historical decisions not repeated in this current-state view.
-
-The historical records are not invalidated. Where they describe earlier gates such as `14-01 HUMAN APPROVAL: NOT YET GRANTED` or `14-02: NOT AUTHORIZED`, those entries are historical and are superseded only by the explicit current Phase 14 gate recorded above.
+That historical snapshot remains authoritative for earlier v1.0/v1.1 lineage, old BLOCKED states, quick tasks, release metadata and decisions not repeated in this current-state view. Historical entries are not erased; current explicit gates supersede their former authorization status only where stated here.
 
 ## Blockers / Concerns
 
-`14-03`, `14-04`, `14-05` and `14-06` have no open blockers. `14-07` remains blocked by the missing fresh human authorization.
+`14-01` through `14-07` have no open blockers in their approved scopes. `14-08` is authorized and not yet started. `14-09` and later plans remain gated.
 
 Historical provider limitations remain non-blocking and are not converted into authorization:
 
@@ -398,7 +234,7 @@ Pix: deferred by account eligibility
 rollback real: not executed
 ```
 
-No provider-real or production mutation was authorized or performed during `14-02`; deploy remains not authorized.
+Deploy remains not authorized.
 
 ## Deferred Items
 
@@ -406,33 +242,29 @@ Known deferred artifact items at v1.0 close remain 0. Historical details remain 
 
 ## Session Continuity
 
-**Resume file:** `.planning/phases/14-customer-auth-verification/14-06-SUMMARY.md`
+**Resume file:** `.planning/phases/14-customer-auth-verification/14-07-SUMMARY.md`
 
-Last session: 2026-08-13T18:12:50-03:00
+Last session: 2026-08-13T22:16:00-03:00
 
 Stopped at:
 
 ```text
-14-06:
-HUMAN APPROVED — PASS
-
 14-07:
+HUMAN APPROVED — PASS
+DOCUMENTALLY CLOSED
+
+14-08:
+EXECUTION AUTHORIZED — NOT STARTED
+
+14-09:
 NOT AUTHORIZED
 ```
 
 Resume with:
 
 - `.planning/STATE.md`
-- `.planning/phases/14-customer-auth-verification/14-01-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-02-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-03-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-04-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-05-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-06-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-06-PLAN.md`
-- `.planning/phases/14-customer-auth-verification/14-05-PLAN.md`
-- `.planning/phases/14-customer-auth-verification/14-04-PLAN.md`
-- `.planning/phases/14-customer-auth-verification/14-03-PLAN.md`
+- `.planning/phases/14-customer-auth-verification/14-07-SUMMARY.md`
+- `.planning/phases/14-customer-auth-verification/14-08-PLAN.md`
 - `.planning/phases/14-customer-auth-verification/14-IMPLEMENTATION-PROMPT.md`
 - `.planning/phases/14-customer-auth-verification/14-SPEC.md`
 - `.planning/phases/14-customer-auth-verification/14-SDD.md`
@@ -441,6 +273,6 @@ Resume with:
 - `.planning/REQUIREMENTS.md`
 - `.planning/history/STATE-before-14-02-add005c.md` when detailed historical context is needed
 
-**Next permitted step:** await fresh human authorization for `14-07`. Do not execute `14-07` from the `14-06` approval.
+**Next permitted step:** execute `14-08` according to the approved plan and stop at checkpoint `14-08-03` for human verification.
 
-Do not automatically start 14-07, run migration/db:generate, deploy, exercise real providers, execute rollback, start frontend, or move/recreate tag `v1.0`.
+Do not automatically start `14-09`, deploy, exercise unapproved real providers, execute production rollback, start frontend, or move/recreate tag `v1.0`.
