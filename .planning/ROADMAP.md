@@ -21,9 +21,10 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 13 está CLOSED — HUMAN APPROVED, FND-01..FND-08 COMPLETE;
 - Phase 14 CONTEXT, RESEARCH, PLAN, SPEC/SDD e Implementation Prompt estão HUMAN APPROVED — PASS;
 - execução Phase 14 permanece estritamente serial e manual-gated;
-- `14-01`..`14-07` estão HUMAN APPROVED — PASS;
-- `14-08` possui **EXECUTION AUTHORIZED — NOT STARTED**;
-- `14-09`..`14-21` permanecem **NOT AUTHORIZED**;
+- `14-01`..`14-08` estão HUMAN APPROVED — PASS;
+- `14-08` está DOCUMENTALLY CLOSED;
+- `14-09` possui **EXECUTION AUTHORIZED — NOT STARTED**;
+- `14-10`..`14-21` permanecem **NOT AUTHORIZED**;
 - deploy e frontend permanecem não autorizados/bloqueados.
 
 ## Milestones
@@ -40,7 +41,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
-| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 7/21 plans HUMAN APPROVED — PASS; 21/63 tasks complete; 14-08 EXECUTION AUTHORIZED — NOT STARTED |
+| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 8/21 plans HUMAN APPROVED — PASS; 24/63 tasks complete; 14-09 EXECUTION AUTHORIZED — NOT STARTED |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
@@ -69,13 +70,13 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 ### Execution status
 
 - 21 planos em 21 waves estritamente seriais (`14-01 → ... → 14-21`).
-- 63 tasks totais / **21 complete**.
-- **7/21 plans HUMAN APPROVED — PASS**.
+- 63 tasks totais / **24 complete**.
+- **8/21 plans HUMAN APPROVED — PASS**.
 - AUTH coverage planejada: 9/9.
 - D14 coverage planejada: 16/16.
 - P14-D coverage planejada: 14/14.
-- `14-08 EXECUTION AUTHORIZED — NOT STARTED`.
-- `14-09..14-21 NOT AUTHORIZED`.
+- `14-09 EXECUTION AUTHORIZED — NOT STARTED`.
+- `14-10..14-21 NOT AUTHORIZED`.
 - Deploy NOT AUTHORIZED.
 - Frontend BLOCKED.
 
@@ -88,8 +89,8 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 - [x] `14-05-PLAN.md` — HUMAN APPROVED — PASS
 - [x] `14-06-PLAN.md` — HUMAN APPROVED — PASS
 - [x] `14-07-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
-- [ ] `14-08-PLAN.md` — **EXECUTION AUTHORIZED — NOT STARTED**
-- [ ] `14-09-PLAN.md` — NOT AUTHORIZED
+- [x] `14-08-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+- [ ] `14-09-PLAN.md` — **EXECUTION AUTHORIZED — NOT STARTED**
 - [ ] `14-10-PLAN.md` — NOT AUTHORIZED
 - [ ] `14-11-PLAN.md` — NOT AUTHORIZED
 - [ ] `14-12-PLAN.md` — NOT AUTHORIZED
@@ -105,40 +106,53 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 
 ### 14-07 closure
 
-`14-07` materializou a persistência customer-auth com:
+`14-07` materializou a persistência customer-auth com collision audit persistido antes da geração final, migration CLI única `Migration20260814004448.ts`, exact-set 7/7, service-only CAS/`FOR UPDATE`, PostgreSQL descartável 9/9, focused unit 28/28, build PASS e checkpoint humano PASS. Nenhuma migration remota/persistente, provider real ou deploy foi executado.
 
-- collision audit PASS persistido antes da geração final;
-- migration CLI única `Migration20260814004448.ts`;
-- snapshot único;
-- exact-set model/snapshot/migration/DB_MODEL 7/7;
-- service-only CAS/`FOR UPDATE`;
-- PostgreSQL como autoridade de validade/unicidade;
-- fluxo composto `AuthResetIntent` + `AuthCredentialState` vinculado pela mesma identity/operação;
-- `claimed` com substates pre-proof e post-proof/pre-update sem novo status;
-- PostgreSQL descartável 9/9 PASS;
-- unit focado 28/28 PASS;
-- backend/Admin build PASS;
+### 14-08 closure
+
+`14-08` fechou P14-D11 com:
+
+- policy map nominal de rate limit auth;
+- HMAC domain-separated e versionado para pre/authenticated/post buckets;
+- normalização P14-D12 antes de buckets de e-mail;
+- verification/reset post real vinculado a network prefix + intent;
+- refresh post real vinculado somente à lineage;
+- Redis atomic counters compartilhados por dois processos OS;
+- thresholds fechados exatos;
+- outage fail-closed `503 AUTH_TEMPORARILY_UNAVAILABLE` + `Retry-After: 60` antes de lookup/mutação;
+- reset request/resend públicos absorvidos em 202 conforme contrato;
+- matrizes públicas completas: verification-confirm 8x40, reset-confirm 9x40, refresh 8x40 = 1000 amostras;
+- median delta 0 ms; p95 38 ms sobre floor;
+- focused unit 50/50 PASS;
+- HTTP/Redis 27/27 PASS;
+- `newPassword` ausente dos sinks auditados;
 - `git diff --check` PASS;
-- final independent review 0 blockers / 0 warnings;
-- checkpoint `14-07-03 HUMAN APPROVED — PASS`.
+- `B14-08-HR-03 CLOSED — PASS`;
+- `14-08-03 HUMAN APPROVED — PASS`.
 
-Nenhuma migration foi aplicada a banco remoto/persistente e nenhum provider real ou deploy foi executado.
+O post dummy recompõe material apenas de input pre-lookup em vez de consumir literalmente um campo `preDigest`; a revisão humana aceitou isso como desvio implementacional não bloqueante porque contagem Redis, dummy work, timing e ausência de account dependence permanecem equivalentes.
 
-### 14-08 authorization
+### 14-09 authorization
 
 **EXECUTION AUTHORIZED — NOT STARTED.**
 
-A autorização é específica para executar o plano aprovado `14-08-PLAN.md`, incluindo somente seus arquivos, testes e infraestrutura local/descartável autorizada. O plano deve obedecer integralmente seus thresholds, protocolo pre/post/dummy, stop conditions e checkpoint humano `14-08-03`.
+A autorização é específica para executar o plano aprovado `14-09-PLAN.md` e seu Auth Notification Outbox P14-D10:
 
-A autorização de `14-08`:
+- record/claim/lease/retry/dead-letter CAS;
+- relay com capability rederivada somente em memória;
+- resolução sancionada `recipient_identity_id → e-mail` com normalização e `timingSafeEqual` antes de provider;
+- missing/mismatch → dead-letter + alerta sanitizado;
+- provas cross-process e leakage usando PostgreSQL descartável;
+- checkpoint bloqueante `14-09-03`.
 
-- não autoriza `14-09`;
-- não autoriza auto-chain;
-- não autoriza deploy;
-- não autoriza frontend;
-- não autoriza provider real fora de autorização separada;
-- não autoriza banco remoto/persistente fora do que estiver explicitamente permitido;
-- exige parada em `14-08-03` para revisão humana.
+Restrições vinculantes:
+
+- **Resend real proibido**;
+- capability auth não atravessa Event Bus Redis;
+- provider failure não altera estado de negócio auth;
+- **NO DEPLOY**;
+- sem auto-chain;
+- `14-10` permanece não autorizado até novo gate humano.
 
 ## Phase 15: Guest Cart Capability & Concurrency
 
@@ -220,28 +234,31 @@ PLAN: HUMAN APPROVED — PASS
 SPEC/SDD: HUMAN APPROVED — PASS
 IMPLEMENTATION PROMPT: HUMAN APPROVED — PASS
 
-14-01..14-07:
+14-01..14-08:
 HUMAN APPROVED — PASS
 
-14-07-03:
+14-08-03:
 HUMAN VERIFY — PASS
 
-14-07:
+B14-08-HR-03:
+CLOSED — PASS
+
+14-08:
 DOCUMENTALLY CLOSED
 
 Phase 14 plans human-approved executed:
-7/21
+8/21
 
 Phase 14 tasks complete:
-21/63
+24/63
 
-14-08:
+14-09:
 EXECUTION AUTHORIZED — NOT STARTED
 
 Next blocking gate:
-14-08-03 HUMAN VERIFY
+14-09-03 HUMAN VERIFY
 
-14-09..14-21:
+14-10..14-21:
 NOT AUTHORIZED
 
 Milestone requirements complete:
@@ -255,4 +272,4 @@ BLOCKED / not started / not authorized
 ```
 
 ---
-*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-13 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01..14-07 HUMAN APPROVED — PASS; 21 plans/21 serial waves/63 tasks/21 complete; 14-07 DOCUMENTALLY CLOSED; 14-08 EXECUTION AUTHORIZED — NOT STARTED; 14-09..14-21 NOT AUTHORIZED; deploy NOT AUTHORIZED; Frontend BLOCKED; 8/91 requirements; manual-review gated · no auto-chain*
+*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-13 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01..14-08 HUMAN APPROVED — PASS; 21 plans/21 serial waves/63 tasks/24 complete; 14-08 DOCUMENTALLY CLOSED; 14-09 EXECUTION AUTHORIZED — NOT STARTED; 14-10..14-21 NOT AUTHORIZED; deploy NOT AUTHORIZED; Frontend BLOCKED; 8/91 requirements; manual-review gated · no auto-chain*
