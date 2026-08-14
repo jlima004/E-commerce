@@ -267,18 +267,6 @@ if (!databaseUrl || !databaseName) {
         ).resolves.toMatchObject({ type: "updated" })
 
         await expect(
-          service.transitionResetIntent(
-            "x1",
-            1,
-            "claimed",
-            "claimed_at",
-            new Date(),
-            "op1",
-            shared
-          )
-        ).resolves.toMatchObject({ type: "updated" })
-
-        await expect(
           service.claimNotificationOutbox(
             "o1",
             1,
@@ -288,6 +276,150 @@ if (!databaseUrl || !databaseName) {
           )
         ).resolves.toMatchObject({ type: "updated" })
       })
+    })
+
+    it("executes the complete reset and AuthCredentialState flow without a new reset status", async () => {
+      const at = new Date()
+      await transaction(pool, async (client) => {
+        const shared = context(client)
+        await expect(
+          service.claimReset({
+            resetIntentId: "x1",
+            resetExpectedVersion: 1,
+            credentialStateId: "c1",
+            credentialExpectedVersion: 1,
+            operationId: "op1",
+            leaseOwner: "worker-reset",
+            at,
+            context: shared,
+          })
+        ).resolves.toMatchObject({
+          resetIntent: { type: "updated", version: 2 },
+          credentialState: { type: "updated", version: 2 },
+        })
+        await expect(
+          service.proveResetProvider({
+            resetIntentId: "x1",
+            resetExpectedVersion: 2,
+            credentialStateId: "c1",
+            credentialExpectedVersion: 2,
+            at: new Date(at.getTime() + 1_000),
+            context: shared,
+          })
+        ).resolves.toMatchObject({
+          resetIntent: { type: "updated", version: 3 },
+          credentialState: { type: "updated", version: 3 },
+        })
+        await expect(
+          service.recordResetCredentialUpdate({
+            resetIntentId: "x1",
+            resetExpectedVersion: 3,
+            credentialStateId: "c1",
+            credentialExpectedVersion: 3,
+            at: new Date(at.getTime() + 2_000),
+            context: shared,
+          })
+        ).resolves.toMatchObject({
+          resetIntent: { type: "updated", version: 4 },
+          credentialState: { type: "updated", version: 4 },
+        })
+        await expect(
+          service.commitResetRevocation({
+            resetIntentId: "x1",
+            resetExpectedVersion: 4,
+            credentialStateId: "c1",
+            credentialExpectedVersion: 4,
+            at: new Date(at.getTime() + 3_000),
+            context: shared,
+          })
+        ).resolves.toMatchObject({
+          resetIntent: { type: "updated", version: 5 },
+          credentialState: { type: "updated", version: 5 },
+        })
+        await expect(
+          service.completeReset({
+            resetIntentId: "x1",
+            resetExpectedVersion: 5,
+            credentialStateId: "c1",
+            credentialExpectedVersion: 5,
+            at: new Date(at.getTime() + 4_000),
+            context: shared,
+          })
+        ).resolves.toMatchObject({
+          resetIntent: { type: "updated", version: 6 },
+          credentialState: { type: "updated", version: 6 },
+        })
+      })
+
+      const reset = await pool.query(
+        "select status,claimed_at,provider_proved_at,credential_updated_at,revocation_committed_at,completed_at from auth_reset_intent where id='x1'"
+      )
+      expect(reset.rows[0]).toMatchObject({ status: "completed" })
+      expect(Object.values(reset.rows[0]).every(Boolean)).toBe(true)
+
+      const credential = await pool.query(
+        "select operation_status,provider_proved_at,credential_updated_at,revocation_committed_at,completed_at,credential_version from auth_credential_state where id='c1'"
+      )
+      expect(credential.rows[0]).toMatchObject({
+        operation_status: "completed",
+        credential_version: 2,
+      })
+      expect([
+        credential.rows[0].provider_proved_at,
+        credential.rows[0].credential_updated_at,
+        credential.rows[0].revocation_committed_at,
+        credential.rows[0].completed_at,
+      ].every(Boolean)).toBe(true)
+    })
+
+    it("supports claimed provider-proof substate and rejects illegal marker combinations", async () => {
+      await pool.query(
+        "insert into auth_reset_intent(id,auth_identity_id,token_hash,nonce,key_version,status,operation_id,expires_at,claimed_at,provider_proved_at) values ('x-proof','i-proof','xh-proof','n-proof',1,'claimed','op-proof',now()+interval '15 minutes',now(),now())"
+      )
+      await expect(
+        pool.query(
+          "update auth_reset_intent set credential_updated_at=now() where id='x-proof'"
+        )
+      ).rejects.toMatchObject({ code: "23514" })
+      await expect(
+        pool.query(
+          "update auth_reset_intent set status='completed',completed_at=now() where id='x-proof'"
+        )
+      ).rejects.toMatchObject({ code: "23514" })
+    })
+
+    it("covers superseded, expired and failed_reconcilable reset terminals", async () => {
+      await pool.query(
+        "insert into auth_reset_intent(id,auth_identity_id,token_hash,nonce,key_version,expires_at) values ('x-sup','i-sup','xh-sup','n-sup',1,now()+interval '15 minutes'),('x-exp','i-exp','xh-exp','n-exp',1,now()+interval '15 minutes'),('x-fail','i-fail','xh-fail','n-fail',1,now()+interval '15 minutes')"
+      )
+      await transaction(pool, async (client) => {
+        const shared = context(client)
+        await service.supersedeResetIntent("x-sup", 1, new Date(), shared)
+        await service.expireResetIntent("x-exp", 1, new Date(), shared)
+        await service.claimResetIntent(
+          "x-fail",
+          1,
+          "op-fail",
+          "worker-fail",
+          new Date(),
+          shared
+        )
+        await service.failResetReconcilable(
+          "x-fail",
+          2,
+          new Date(),
+          new Date(Date.now() + 60_000),
+          shared
+        )
+      })
+      const terminals = await pool.query(
+        "select id,status from auth_reset_intent where id in ('x-sup','x-exp','x-fail') order by id"
+      )
+      expect(terminals.rows).toEqual([
+        { id: "x-exp", status: "expired" },
+        { id: "x-fail", status: "failed_reconcilable" },
+        { id: "x-sup", status: "superseded" },
+      ])
     })
 
     it("keeps Redis outside validity and rejects generated writes", async () => {

@@ -261,6 +261,13 @@ describe("AuthResetIntent model contract", () => {
     expect(checks.get("auth_reset_intent_lease_pair")).toMatch(
       /lease_owner IS NULL.*lease_until IS NULL.*lease_owner IS NOT NULL.*lease_until IS NOT NULL/i
     )
+    const stateMarkers = checks.get("auth_reset_intent_state_markers") ?? ""
+    expect(stateMarkers).toMatch(
+      /status.*claimed.*provider_proved_at IS NULL.*credential_updated_at IS NULL.*revocation_committed_at IS NULL.*completed_at IS NULL/i
+    )
+    expect(stateMarkers).toMatch(
+      /status.*claimed.*provider_proved_at IS NOT NULL.*credential_updated_at IS NULL.*revocation_committed_at IS NULL.*completed_at IS NULL/i
+    )
   })
 
   it("keeps token, password, email and Idempotency-Key plaintext out of persistence", () => {
