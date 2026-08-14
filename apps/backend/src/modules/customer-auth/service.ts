@@ -15,6 +15,8 @@ export const CUSTOMER_AUTH_MODULE = "customer_auth"
 export const CUSTOMER_AUTH_TRANSACTION_REQUIRED =
   "CUSTOMER_AUTH_TRANSACTION_REQUIRED"
 export const CUSTOMER_AUTH_WRITE_FORBIDDEN = "CUSTOMER_AUTH_WRITE_FORBIDDEN"
+export const CUSTOMER_AUTH_COMPOSED_CAS_REJECTED =
+  "CUSTOMER_AUTH_COMPOSED_CAS_REJECTED"
 
 type RawResult = { rows?: Array<Record<string, unknown>> }
 type TransactionalKnex = {
@@ -97,6 +99,7 @@ async function casUpdate(input: {
   id: string
   expectedVersion: number
   assignments: ReadonlyArray<{ column: string; value: unknown }>
+  increments?: ReadonlyArray<string>
   predicate?: string
   concurrencyColumn?: "version" | "generation"
   incrementConcurrency?: boolean
@@ -137,7 +140,11 @@ async function casUpdate(input: {
       : [`${concurrencyColumn} = ${concurrencyColumn} + 1`]
   const assignments = input.assignments
     .map(({ column }) => `${column} = ?`)
-    .concat(concurrencyUpdate, ["updated_at = now()"])
+    .concat(
+      (input.increments ?? []).map((column) => `${column} = ${column} + 1`),
+      concurrencyUpdate,
+      ["updated_at = now()"]
+    )
     .join(", ")
   const predicate = input.predicate ? ` and (${input.predicate})` : ""
   const updated = await queryRows(
@@ -162,6 +169,34 @@ async function casUpdate(input: {
         : requireVersion(Number(updated[0].concurrency_version)),
     capability,
   }
+}
+
+function requireUpdated(result: CustomerAuthCasResult): Extract<CustomerAuthCasResult, { type: "updated" }> {
+  if (result.type !== "updated") {
+    throw new Error(CUSTOMER_AUTH_COMPOSED_CAS_REJECTED)
+  }
+  return result
+}
+
+function requireDate(value: unknown): Date {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    throw new Error("CUSTOMER_AUTH_DATE_INVALID")
+  }
+  return value
+}
+
+type ComposedResetInput = {
+  resetIntentId: string
+  resetExpectedVersion: number
+  credentialStateId: string
+  credentialExpectedVersion: number
+  at: Date
+  context?: CustomerAuthMutationContext
+}
+
+type ClaimResetInput = ComposedResetInput & {
+  operationId: string
+  leaseOwner: string
 }
 
 const BaseCustomerAuthModuleService = MedusaService({
@@ -230,12 +265,40 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
     })
   }
 
-  transitionCredentialState(
+  claimCredentialReset(
     id: string,
     expectedVersion: number,
-    operationStatus: "claimed" | "provider_outcome_ambiguous" | "credential_proved" | "credential_updated" | "revocation_pending" | "revocation_committed" | "completed",
-    operationType: "reset" | "password_change",
     operationId: string,
+    leaseOwner: string,
+    at: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    const claimedAt = requireDate(at)
+    return casUpdate({
+      table: "auth_credential_state",
+      id,
+      expectedVersion,
+      assignments: [
+        { column: "operation_status", value: "claimed" },
+        { column: "operation_type", value: "reset" },
+        { column: "operation_id", value: requireId(operationId) },
+        { column: "lease_owner", value: requireId(leaseOwner) },
+        {
+          column: "lease_until",
+          value: new Date(claimedAt.getTime() + 2 * 60 * 1000),
+        },
+      ],
+      increments: ["operation_version", "attempt_count"],
+      predicate:
+        "operation_status = 'stable' and operation_type is null and operation_id is null and provider_proved_at is null and credential_updated_at is null and revocation_committed_at is null and completed_at is null",
+      context: sharedContext,
+    })
+  }
+
+  proveCredentialResetProvider(
+    id: string,
+    expectedVersion: number,
+    at: Date,
     sharedContext?: CustomerAuthMutationContext
   ) {
     return casUpdate({
@@ -243,11 +306,97 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
       id,
       expectedVersion,
       assignments: [
-        { column: "operation_status", value: operationStatus },
-        { column: "operation_type", value: operationType },
-        { column: "operation_id", value: requireId(operationId) },
-        { column: "operation_version", value: expectedVersion },
+        { column: "operation_status", value: "credential_proved" },
+        { column: "provider_proved_at", value: requireDate(at) },
       ],
+      predicate:
+        "operation_type = 'reset' and operation_status = 'claimed' and provider_proved_at is null and credential_updated_at is null and revocation_committed_at is null and completed_at is null",
+      context: sharedContext,
+    })
+  }
+
+  recordCredentialResetUpdate(
+    id: string,
+    expectedVersion: number,
+    at: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    return casUpdate({
+      table: "auth_credential_state",
+      id,
+      expectedVersion,
+      assignments: [
+        { column: "operation_status", value: "credential_updated" },
+        { column: "credential_updated_at", value: requireDate(at) },
+      ],
+      increments: ["credential_version"],
+      predicate:
+        "operation_type = 'reset' and operation_status = 'credential_proved' and provider_proved_at is not null and credential_updated_at is null and revocation_committed_at is null and completed_at is null",
+      context: sharedContext,
+    })
+  }
+
+  commitCredentialResetRevocation(
+    id: string,
+    expectedVersion: number,
+    at: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    return casUpdate({
+      table: "auth_credential_state",
+      id,
+      expectedVersion,
+      assignments: [
+        { column: "operation_status", value: "revocation_committed" },
+        { column: "revocation_committed_at", value: requireDate(at) },
+      ],
+      predicate:
+        "operation_type = 'reset' and operation_status = 'credential_updated' and provider_proved_at is not null and credential_updated_at is not null and revocation_committed_at is null and completed_at is null",
+      context: sharedContext,
+    })
+  }
+
+  completeCredentialReset(
+    id: string,
+    expectedVersion: number,
+    at: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    return casUpdate({
+      table: "auth_credential_state",
+      id,
+      expectedVersion,
+      assignments: [
+        { column: "operation_status", value: "completed" },
+        { column: "completed_at", value: requireDate(at) },
+        { column: "lease_owner", value: null },
+        { column: "lease_until", value: null },
+        { column: "next_retry_at", value: null },
+      ],
+      predicate:
+        "operation_type = 'reset' and operation_status = 'revocation_committed' and provider_proved_at is not null and credential_updated_at is not null and revocation_committed_at is not null and completed_at is null",
+      context: sharedContext,
+    })
+  }
+
+  failCredentialResetReconcilable(
+    id: string,
+    expectedVersion: number,
+    nextRetryAt: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    return casUpdate({
+      table: "auth_credential_state",
+      id,
+      expectedVersion,
+      assignments: [
+        { column: "operation_status", value: "provider_outcome_ambiguous" },
+        { column: "next_retry_at", value: requireDate(nextRetryAt) },
+        { column: "lease_owner", value: null },
+        { column: "lease_until", value: null },
+      ],
+      predicate:
+        "operation_type = 'reset' and operation_status in ('claimed','credential_proved','credential_updated','revocation_committed') and completed_at is null",
       context: sharedContext,
     })
   }
@@ -318,13 +467,56 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
     })
   }
 
-  transitionResetIntent(
+  claimResetIntent(
     id: string,
     expectedVersion: number,
-    status: "claimed" | "credential_updated" | "revocation_committed" | "completed" | "superseded" | "expired" | "failed_reconcilable",
-    markerColumn: "claimed_at" | "credential_updated_at" | "revocation_committed_at" | "completed_at",
-    marker: Date,
-    operationId: string | null,
+    operationId: string,
+    leaseOwner: string,
+    at: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    const claimedAt = requireDate(at)
+    return casUpdate({
+      table: "auth_reset_intent",
+      id,
+      expectedVersion,
+      assignments: [
+        { column: "status", value: "claimed" },
+        { column: "claimed_at", value: claimedAt },
+        { column: "operation_id", value: requireId(operationId) },
+        { column: "lease_owner", value: requireId(leaseOwner) },
+        {
+          column: "lease_until",
+          value: new Date(claimedAt.getTime() + 2 * 60 * 1000),
+        },
+      ],
+      increments: ["attempt_count"],
+      predicate: "status = 'pending' and operation_id is null and expires_at > now()",
+      context: sharedContext,
+    })
+  }
+
+  proveResetProviderIntent(
+    id: string,
+    expectedVersion: number,
+    at: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    return casUpdate({
+      table: "auth_reset_intent",
+      id,
+      expectedVersion,
+      assignments: [{ column: "provider_proved_at", value: requireDate(at) }],
+      predicate:
+        "status = 'claimed' and claimed_at is not null and provider_proved_at is null and credential_updated_at is null and revocation_committed_at is null and completed_at is null",
+      context: sharedContext,
+    })
+  }
+
+  recordResetIntentCredentialUpdate(
+    id: string,
+    expectedVersion: number,
+    at: Date,
     sharedContext?: CustomerAuthMutationContext
   ) {
     return casUpdate({
@@ -332,16 +524,244 @@ export class CustomerAuthModuleService extends BaseCustomerAuthModuleService {
       id,
       expectedVersion,
       assignments: [
-        { column: "status", value: status },
-        { column: markerColumn, value: marker },
-        { column: "operation_id", value: operationId },
+        { column: "status", value: "credential_updated" },
+        { column: "credential_updated_at", value: requireDate(at) },
       ],
       predicate:
-        status === "completed"
-          ? "claimed_at is not null and provider_proved_at is not null and credential_updated_at is not null and revocation_committed_at is not null"
-          : undefined,
+        "status = 'claimed' and claimed_at is not null and provider_proved_at is not null and credential_updated_at is null and revocation_committed_at is null and completed_at is null",
       context: sharedContext,
     })
+  }
+
+  commitResetIntentRevocation(
+    id: string,
+    expectedVersion: number,
+    at: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    return casUpdate({
+      table: "auth_reset_intent",
+      id,
+      expectedVersion,
+      assignments: [
+        { column: "status", value: "revocation_committed" },
+        { column: "revocation_committed_at", value: requireDate(at) },
+      ],
+      predicate:
+        "status = 'credential_updated' and claimed_at is not null and provider_proved_at is not null and credential_updated_at is not null and revocation_committed_at is null and completed_at is null",
+      context: sharedContext,
+    })
+  }
+
+  completeResetIntent(
+    id: string,
+    expectedVersion: number,
+    at: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    return casUpdate({
+      table: "auth_reset_intent",
+      id,
+      expectedVersion,
+      assignments: [
+        { column: "status", value: "completed" },
+        { column: "completed_at", value: requireDate(at) },
+        { column: "lease_owner", value: null },
+        { column: "lease_until", value: null },
+        { column: "next_retry_at", value: null },
+      ],
+      predicate:
+        "status = 'revocation_committed' and claimed_at is not null and provider_proved_at is not null and credential_updated_at is not null and revocation_committed_at is not null and completed_at is null",
+      context: sharedContext,
+    })
+  }
+
+  supersedeResetIntent(
+    id: string,
+    expectedVersion: number,
+    at: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    return casUpdate({
+      table: "auth_reset_intent",
+      id,
+      expectedVersion,
+      assignments: [
+        { column: "status", value: "superseded" },
+        { column: "superseded_at", value: requireDate(at) },
+      ],
+      predicate: "status = 'pending' and operation_id is null and claimed_at is null",
+      context: sharedContext,
+    })
+  }
+
+  expireResetIntent(
+    id: string,
+    expectedVersion: number,
+    at: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    const expiredAt = requireDate(at)
+    return casUpdate({
+      table: "auth_reset_intent",
+      id,
+      expectedVersion,
+      assignments: [
+        { column: "status", value: "expired" },
+        { column: "expired_at", value: expiredAt },
+      ],
+      predicate: "status = 'pending' and operation_id is null and claimed_at is null",
+      context: sharedContext,
+    })
+  }
+
+  failResetReconcilable(
+    id: string,
+    expectedVersion: number,
+    at: Date,
+    nextRetryAt: Date,
+    sharedContext?: CustomerAuthMutationContext
+  ) {
+    return casUpdate({
+      table: "auth_reset_intent",
+      id,
+      expectedVersion,
+      assignments: [
+        { column: "status", value: "failed_reconcilable" },
+        { column: "failed_reconcilable_at", value: requireDate(at) },
+        { column: "next_retry_at", value: requireDate(nextRetryAt) },
+        { column: "lease_owner", value: null },
+        { column: "lease_until", value: null },
+      ],
+      predicate:
+        "status in ('claimed','credential_updated','revocation_committed') and claimed_at is not null and operation_id is not null and completed_at is null",
+      context: sharedContext,
+    })
+  }
+
+  async claimReset(input: ClaimResetInput) {
+    const resetIntent = requireUpdated(
+      await this.claimResetIntent(
+        input.resetIntentId,
+        input.resetExpectedVersion,
+        input.operationId,
+        input.leaseOwner,
+        input.at,
+        input.context
+      )
+    )
+    const credentialState = requireUpdated(
+      await this.claimCredentialReset(
+        input.credentialStateId,
+        input.credentialExpectedVersion,
+        input.operationId,
+        input.leaseOwner,
+        input.at,
+        input.context
+      )
+    )
+    return { resetIntent, credentialState }
+  }
+
+  async proveResetProvider(input: ComposedResetInput) {
+    const resetIntent = requireUpdated(
+      await this.proveResetProviderIntent(
+        input.resetIntentId,
+        input.resetExpectedVersion,
+        input.at,
+        input.context
+      )
+    )
+    const credentialState = requireUpdated(
+      await this.proveCredentialResetProvider(
+        input.credentialStateId,
+        input.credentialExpectedVersion,
+        input.at,
+        input.context
+      )
+    )
+    return { resetIntent, credentialState }
+  }
+
+  async recordResetCredentialUpdate(input: ComposedResetInput) {
+    const resetIntent = requireUpdated(
+      await this.recordResetIntentCredentialUpdate(
+        input.resetIntentId,
+        input.resetExpectedVersion,
+        input.at,
+        input.context
+      )
+    )
+    const credentialState = requireUpdated(
+      await this.recordCredentialResetUpdate(
+        input.credentialStateId,
+        input.credentialExpectedVersion,
+        input.at,
+        input.context
+      )
+    )
+    return { resetIntent, credentialState }
+  }
+
+  async commitResetRevocation(input: ComposedResetInput) {
+    const resetIntent = requireUpdated(
+      await this.commitResetIntentRevocation(
+        input.resetIntentId,
+        input.resetExpectedVersion,
+        input.at,
+        input.context
+      )
+    )
+    const credentialState = requireUpdated(
+      await this.commitCredentialResetRevocation(
+        input.credentialStateId,
+        input.credentialExpectedVersion,
+        input.at,
+        input.context
+      )
+    )
+    return { resetIntent, credentialState }
+  }
+
+  async completeReset(input: ComposedResetInput) {
+    const resetIntent = requireUpdated(
+      await this.completeResetIntent(
+        input.resetIntentId,
+        input.resetExpectedVersion,
+        input.at,
+        input.context
+      )
+    )
+    const credentialState = requireUpdated(
+      await this.completeCredentialReset(
+        input.credentialStateId,
+        input.credentialExpectedVersion,
+        input.at,
+        input.context
+      )
+    )
+    return { resetIntent, credentialState }
+  }
+
+  async failReset(input: ComposedResetInput & { nextRetryAt: Date }) {
+    const resetIntent = requireUpdated(
+      await this.failResetReconcilable(
+        input.resetIntentId,
+        input.resetExpectedVersion,
+        input.at,
+        input.nextRetryAt,
+        input.context
+      )
+    )
+    const credentialState = requireUpdated(
+      await this.failCredentialResetReconcilable(
+        input.credentialStateId,
+        input.credentialExpectedVersion,
+        input.nextRetryAt,
+        input.context
+      )
+    )
+    return { resetIntent, credentialState }
   }
 
   claimNotificationOutbox(

@@ -204,6 +204,30 @@ const AuthResetIntent = model
         columns.revocation_committed_at +
         " IS NULL AND " +
         columns.completed_at +
+        " IS NULL AND " +
+        columns.superseded_at +
+        " IS NULL AND " +
+        columns.expired_at +
+        " IS NULL AND " +
+        columns.failed_reconcilable_at +
+        " IS NULL) OR (" +
+        columns.status +
+        " = 'claimed' AND " +
+        columns.claimed_at +
+        " IS NOT NULL AND " +
+        columns.provider_proved_at +
+        " IS NOT NULL AND " +
+        columns.credential_updated_at +
+        " IS NULL AND " +
+        columns.revocation_committed_at +
+        " IS NULL AND " +
+        columns.completed_at +
+        " IS NULL AND " +
+        columns.superseded_at +
+        " IS NULL AND " +
+        columns.expired_at +
+        " IS NULL AND " +
+        columns.failed_reconcilable_at +
         " IS NULL) OR (" +
         columns.status +
         " = 'credential_updated' AND " +
@@ -216,6 +240,12 @@ const AuthResetIntent = model
         columns.revocation_committed_at +
         " IS NULL AND " +
         columns.completed_at +
+        " IS NULL AND " +
+        columns.superseded_at +
+        " IS NULL AND " +
+        columns.expired_at +
+        " IS NULL AND " +
+        columns.failed_reconcilable_at +
         " IS NULL) OR (" +
         columns.status +
         " = 'revocation_committed' AND " +
@@ -228,6 +258,12 @@ const AuthResetIntent = model
         columns.revocation_committed_at +
         " IS NOT NULL AND " +
         columns.completed_at +
+        " IS NULL AND " +
+        columns.superseded_at +
+        " IS NULL AND " +
+        columns.expired_at +
+        " IS NULL AND " +
+        columns.failed_reconcilable_at +
         " IS NULL) OR (" +
         columns.status +
         " = 'completed' AND " +
@@ -240,19 +276,49 @@ const AuthResetIntent = model
         columns.revocation_committed_at +
         " IS NOT NULL AND " +
         columns.completed_at +
-        " IS NOT NULL) OR (" +
+        " IS NOT NULL AND " +
+        columns.superseded_at +
+        " IS NULL AND " +
+        columns.expired_at +
+        " IS NULL AND " +
+        columns.failed_reconcilable_at +
+        " IS NULL) OR (" +
         columns.status +
         " = 'superseded' AND " +
         columns.claimed_at +
         " IS NULL AND " +
+        columns.provider_proved_at +
+        " IS NULL AND " +
+        columns.credential_updated_at +
+        " IS NULL AND " +
+        columns.revocation_committed_at +
+        " IS NULL AND " +
+        columns.completed_at +
+        " IS NULL AND " +
         columns.superseded_at +
-        " IS NOT NULL) OR (" +
+        " IS NOT NULL AND " +
+        columns.expired_at +
+        " IS NULL AND " +
+        columns.failed_reconcilable_at +
+        " IS NULL) OR (" +
         columns.status +
         " = 'expired' AND " +
         columns.claimed_at +
         " IS NULL AND " +
+        columns.provider_proved_at +
+        " IS NULL AND " +
+        columns.credential_updated_at +
+        " IS NULL AND " +
+        columns.revocation_committed_at +
+        " IS NULL AND " +
+        columns.completed_at +
+        " IS NULL AND " +
         columns.expired_at +
-        " IS NOT NULL) OR (" +
+        " IS NOT NULL AND " +
+        columns.superseded_at +
+        " IS NULL AND " +
+        columns.failed_reconcilable_at +
+        " IS NULL) OR (" +
         columns.status +
         " = 'failed_reconcilable' AND " +
         columns.claimed_at +
@@ -260,6 +326,10 @@ const AuthResetIntent = model
         columns.failed_reconcilable_at +
         " IS NOT NULL AND " +
         columns.completed_at +
+        " IS NULL AND " +
+        columns.superseded_at +
+        " IS NULL AND " +
+        columns.expired_at +
         " IS NULL))",
     },
   ])

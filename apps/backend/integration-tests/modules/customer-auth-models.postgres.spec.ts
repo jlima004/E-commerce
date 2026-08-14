@@ -215,11 +215,48 @@ if (!databaseUrl || !databaseName) {
       expect(results.filter((result) => result.type === "stale")).toHaveLength(1)
 
       await expect(transaction(pool, async (client) => {
-        await service.transitionCredentialState("c1", 1, "claimed", "reset", "op-rollback", context(client))
+        await service.claimCredentialReset(
+          "c1",
+          1,
+          "op-rollback",
+          "worker-rollback",
+          new Date(),
+          context(client)
+        )
         throw new Error("P14_TEST_ROLLBACK")
       })).rejects.toThrow("P14_TEST_ROLLBACK")
       const state = await pool.query("select operation_status,version from auth_credential_state where id='c1'")
       expect(state.rows[0]).toMatchObject({ operation_status: "stable", version: 1 })
+
+      await pool.query(
+        "insert into auth_credential_state(id,auth_identity_id,customer_id) values ('c-rollback','i-rollback','u-rollback')"
+      )
+      await pool.query(
+        "insert into auth_reset_intent(id,auth_identity_id,token_hash,nonce,key_version,expires_at) values ('x-rollback','i-rollback','xh-rollback','n-rollback',1,now()+interval '15 minutes')"
+      )
+      await expect(
+        transaction(pool, (client) =>
+          service.claimReset({
+            resetIntentId: "x-rollback",
+            resetExpectedVersion: 1,
+            credentialStateId: "c-rollback",
+            credentialExpectedVersion: 2,
+            operationId: "op-composed-rollback",
+            leaseOwner: "worker-composed-rollback",
+            at: new Date(),
+            context: context(client),
+          })
+        )
+      ).rejects.toThrow("CUSTOMER_AUTH_COMPOSED_CAS_REJECTED")
+      const composedRollback = await pool.query(
+        "select r.status as reset_status,r.version as reset_version,c.operation_status,c.version as credential_version from auth_reset_intent r join auth_credential_state c on c.auth_identity_id=r.auth_identity_id where r.id='x-rollback'"
+      )
+      expect(composedRollback.rows[0]).toMatchObject({
+        reset_status: "pending",
+        reset_version: 1,
+        operation_status: "stable",
+        credential_version: 1,
+      })
     })
 
     it("uses transaction-required CAS transitions for the remaining five models", async () => {
