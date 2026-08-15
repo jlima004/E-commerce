@@ -35,34 +35,39 @@ key-decisions:
   - "auth_provider and customer_workflow remain RECONCILIATION_REQUIRED; recovery states resume instead of rolling back confirmed external effects."
   - "Session and verification share the custom registration transaction; provider delivery is never invoked by the coordinator."
   - "Signup/login HTTP remains DENY; this plan is domain/workflow only."
+  - "A completed RegistrationIntent is not recovery and not login; compatible completed retry throws CUSTOMER_REGISTRATION_ALREADY_COMPLETED with zero side effects."
 
 patterns-established:
   - "Claim the active RegistrationIntent by normalized email hash, then progress pending_identity → pending_customer → completed, using failed_reconcilable after unproven customer/lineage/verification seams."
   - "Incompatible semantic or password retries are zero-write and never call register."
+  - "Semantic mismatch is evaluated before completed rejection; completed + compatible payload is ALREADY_COMPLETED, never authenticate/session/verification replay."
 
 requirements-completed: []
 
 # Metrics
 duration: 50min
 completed: 2026-08-15
-status: executed-awaiting-review
+status: remediated-awaiting-human-re-review
 ---
 
 # Phase 14: Customer Auth Verification — Plan 14 Summary
 
-**The registration coordinator now recovers partial identity/Customer work, rejects incompatible retries with zero writes, and converges concurrent compatible signups to one identity, one Customer, one lineage and one verification/outbox pair — without elevating signup/login HTTP.**
+**The registration coordinator now recovers partial identity/Customer work, rejects incompatible retries with zero writes, and converges concurrent compatible signups to one identity, one Customer, one lineage and one verification/outbox pair — without elevating signup/login HTTP. A completed registration is no longer treated as successful recovery or login.**
 
 ## Final status
 
 ```text
+B14-14-HR-01:
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+
 14-14-01:
-EXECUTED — AWAITING HUMAN REVIEW
+EXECUTED — AWAITING HUMAN RE-REVIEW
 
 14-14-02:
-EXECUTED — AWAITING HUMAN REVIEW
+EXECUTED — AWAITING HUMAN RE-REVIEW
 
 14-14-03:
-BLOCKING HUMAN VERIFY — AWAITING HUMAN REVIEW
+BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
 
 14-14:
 NOT YET HUMAN APPROVED
@@ -87,6 +92,48 @@ This summary does **not** close AUTH-01/AUTH-02/AUTH-09 globally and does **not*
 
 Milestone-level requirements remain unchanged. Frontend remains BLOCKED.
 
+## B14-14-HR-01 remediation
+
+```text
+B14-14-HR-01:
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+```
+
+### Root cause
+
+The completed-intent branch treated a semantically compatible signup retry as successful recovery/authentication. After claim + semantic HMAC match, `intent.status === "completed"` still called `auth.authenticate`, recovered Customer, ensured credential state, recovered the initial lineage, re-issued an access JWT, called `verification.autoRequest`, and returned another `CustomerRegistrationResult` success. That reused signup as login/session recovery.
+
+### Correction
+
+The completed branch now rejects immediately with the existing domain code `CUSTOMER_REGISTRATION_ALREADY_COMPLETED`. Rejection happens after claim/lock and the semantic HMAC check, and before password authentication, Customer lookup, credential ensure, session recovery, or verification.
+
+Contract now:
+
+- completed + semantically different payload → `CUSTOMER_REGISTRATION_SEMANTIC_MISMATCH`
+- completed + semantically compatible payload → `CUSTOMER_REGISTRATION_ALREADY_COMPLETED`
+
+Completed registration is not recovery, not login, not JWT refresh, not verification replay, and not a credential oracle. Password is not authenticated on the completed-compatible path.
+
+### Zero-side-effect proof for completed retry
+
+After the first completion, a second compatible signup:
+
+- throws `CUSTOMER_REGISTRATION_ALREADY_COMPLETED`
+- does not call `auth.authenticate` or `auth.register`
+- does not call Customer find/create
+- does not call session issue/recover
+- does not call `verification.autoRequest` or `providerDelivery`
+- does not emit access JWT or refresh material
+- does not create or mutate lineage, verification intent, outbox, Customer, identity, or RegistrationIntent
+- leaves `registration_intent` at count 1 / completed 1 with unchanged `version` and `completed_at`
+- leaves `auth_credential_state`, `auth_session_lineage`, `auth_refresh_credential`, `auth_verification_intent`, and `auth_notification_outbox` at count 1
+- leaves the original scrypt password hash intact
+- leaves commerce canaries at 0
+
+Partial recovery for `pending_identity`, `pending_customer`, and `failed_reconcilable` is unchanged. Concurrent compatible callers still converge to one identity, one Customer, one lineage and one verification/outbox pair; late arrivals that observe `completed` now receive `CUSTOMER_REGISTRATION_ALREADY_COMPLETED` instead of a second success envelope.
+
+HTTP mapping of this domain error is out of scope for 14-14. Signup/login HTTP remains DENY.
+
 ## Files changed
 
 Created:
@@ -110,7 +157,8 @@ Not changed (authorized exclusion):
 1. `7fbbfa86386f4832fbe968a6cfae9805220bdfe8` — `test(14-14-01): add red registration coordinator coverage`
 2. `4b39a9a` — `feat(14-14): implement customer registration coordinator`
 3. `0c96d0f` — `test(14-14): prove registration recovery and concurrency on disposable PostgreSQL`
-4. this SUMMARY commit, created after the technical commits
+4. original SUMMARY commit, created after the technical commits
+5. B14-14-HR-01 remediation commit(s) on this branch — completed retry rejection + SUMMARY update
 
 No push, PR, merge, deploy or release.
 
@@ -195,7 +243,7 @@ Unit and PostgreSQL suites both proved:
 
 ## Initial lineage
 
-Lineage is issued only after Customer and credential state exist. Concurrent and retry paths produced exactly one `auth_session_lineage` row. Completed retry recovers the same lineage; it does not mint a second unverified relogin lineage.
+Lineage is issued only after Customer and credential state exist. Concurrent and retry paths produced exactly one `auth_session_lineage` row. A compatible completed retry no longer recovers or re-issues lineage; it rejects with `CUSTOMER_REGISTRATION_ALREADY_COMPLETED` and does not mint a second unverified relogin lineage.
 
 ## Verification + outbox
 
@@ -240,9 +288,9 @@ npm run test:unit -w @dtc/backend -- \
   --runTestsByPath src/modules/customer-auth/__tests__/registration.unit.spec.ts
 ```
 
-**PASS — 14/14 in 1.791s** (target <30s).
+**Historical first execution:** PASS — 14/14 in 1.791s (target <30s). Superseded by the B14-14-HR-01 rerun below.
 
-Coverage: happy path, compatible retry, semantic mismatch, password mismatch, expired intent, all five fault boundaries, concurrent convergence, provider independence, commerce isolation, semantic HMAC.
+Coverage after remediation: happy path, completed retry rejection, completed semantic mismatch, partial recovery, password mismatch, expired intent, all five fault boundaries, concurrent convergence (one success + late `ALREADY_COMPLETED`), provider independence, commerce isolation, semantic HMAC.
 
 ### Disposable PostgreSQL (14-14-02)
 
@@ -252,23 +300,44 @@ node apps/backend/scripts/run-disposable-postgres-tests.mjs -- \
   --runTestsByPath integration-tests/modules/auth-registration.postgres.spec.ts
 ```
 
-**PASS — 14/14 in 4.393s.**
+**Historical first execution:** PASS — 14/14 in 4.393s with cleanup `p12_disposable_8f2494f8f6f46238`. Superseded by the B14-14-HR-01 rerun below.
+
+### B14-14-HR-01 final validation
+
+Unit (after completed-retry rejection):
+
+```text
+npm run test:unit -w @dtc/backend -- \
+  --runTestsByPath src/modules/customer-auth/__tests__/registration.unit.spec.ts
+```
+
+**PASS — 15/15 in 3.501s** (target <30s).
+
+Disposable PostgreSQL (AsyncLocalStorage implementation; not the superseded global `scopes` array):
+
+```text
+node apps/backend/scripts/run-disposable-postgres-tests.mjs -- \
+  npm run test:integration:modules -w @dtc/backend -- \
+  --runTestsByPath integration-tests/modules/auth-registration.postgres.spec.ts
+```
+
+**PASS — 14/14 in 3.21s.**
 
 Cleanup confirmed:
 
 ```text
-[P12_DISPOSABLE_POSTGRES_CLEAN] target=p12_disposable_8f2494f8f6f46238 container=p12-pg-8f2494f8f6f46238
+[P12_DISPOSABLE_POSTGRES_CLEAN] target=p12_disposable_8ba407310f183ba4 container=p12-pg-8ba407310f183ba4
 ```
 
 ### Backend build
 
-`npm run build -w @dtc/backend` — **PASS**.
+`npm run build -w @dtc/backend` — **PASS** (final, after B14-14-HR-01).
 
 ### ESLint
 
-Direct scoped ESLint on production files: **0 errors, 0 warnings**.
+Direct scoped ESLint on `registration.ts`: **0 errors, 0 warnings**.
 
-Direct ESLint `--no-ignore` on the two test files: **0 errors**, 9 advisory `@medusajs/use-medusa-error-not-generic-error` warnings in test harnesses (same class as prior Phase 14 test suites).
+Direct ESLint `--no-ignore` on the two test files: **0 errors**, 9 advisory `@medusajs/use-medusa-error-not-generic-error` warnings in test harnesses (same class as prior Phase 14 test suites). No new real lint errors.
 
 ### Lint wrapper
 
@@ -319,19 +388,37 @@ Accepted non-blocking. No tooling or package change.
 
 - **Found during:** Task 14-14-02
 - **Issue:** Recovered completion re-issues access JWT `jti`, marks rotation `recovered`, and `autoRequestVerification` returns `outbox: null` when a pending intent already exists.
-- **Fix:** Assert one identity/Customer/lineage/intent/outbox row and matching canonical ids. Do not require byte-identical first-response envelopes.
+- **Fix at the time:** Assert one identity/Customer/lineage/intent/outbox row and matching canonical ids. Do not require byte-identical first-response envelopes.
 - **Files modified:** `auth-registration.postgres.spec.ts`
 - **Verification:** PostgreSQL suite 14/14 PASS
 - **Committed in:** `0c96d0f`
+- **Status:** HISTORICAL / SUPERSEDED by B14-14-HR-01. That assertion still treated completed retry as a successful recovery path. The current contract rejects completed retry with `CUSTOMER_REGISTRATION_ALREADY_COMPLETED` and zero writes.
+
+**3. [B14-14-HR-01] Completed signup incorrectly behaved as successful recovery/authentication**
+
+- **Found during:** Human review of 14-14
+- **Issue:** Compatible completed retry authenticated the password, recovered Customer/lineage, re-issued access JWT, and replayed verification.
+- **Fix:** Reject immediately with `CUSTOMER_REGISTRATION_ALREADY_COMPLETED` after claim + semantic check; no authenticate/Customer/session/verification calls.
+- **Files modified:** `registration.ts`, `registration.unit.spec.ts`, `auth-registration.postgres.spec.ts`, this SUMMARY
+- **Verification:** unit 15/15 PASS; disposable PostgreSQL 14/14 PASS with cleanup; build PASS; direct ESLint 0 errors; `git diff --check` PASS
+- **Workflow:** unchanged. `register-customer.ts` was not modified.
 
 ---
 
-**Total deviations:** 2 auto-fixed (correctness/test assertion).
-**Impact on plan:** No scope expansion. No schema, HTTP or provider change.
+**Total deviations:** 2 historical auto-fixed (correctness/test assertion; #2 superseded) + 1 human-review remediation (B14-14-HR-01).
+**Impact on plan:** No scope expansion. No schema, HTTP or provider change. Completed retry is now a domain rejection, not a success envelope.
 
 ## Issues encountered
 
-The first disposable PostgreSQL run hung because concurrent coordinator calls shared one `scopes` array. The runner was terminated, the container cleaned, and the ALS binding fixed before the passing rerun.
+### Historical — superseded by final PASS evidence
+
+**1. Intermediate `register-customer.ts` type error**
+
+HISTORICAL / SUPERSEDED. An intermediate build failed with a type error in `register-customer.ts`. The final implementation compiled. This remediation did not reopen that file or that error.
+
+**2. First disposable PostgreSQL run hung on a shared `scopes` array**
+
+HISTORICAL / SUPERSEDED. Concurrent coordinator calls originally shared one process-wide `scopes` array, mixing connections and deadlocking advisory-lock waiters. The runner was terminated, the container cleaned, and the binding was replaced with `AsyncLocalStorage` before the first passing PostgreSQL rerun (14/14 PASS + cleanup). This remediation kept AsyncLocalStorage and did not revert to global array/stack state. The B14-14-HR-01 PostgreSQL rerun also PASS + cleanup.
 
 `STATE.md` / `ROADMAP.md` were not updated because they were outside the authorized file set. Human review should sync those documents if desired.
 
@@ -347,11 +434,12 @@ Do not start 14-15, push, deploy, or exercise real providers from this checkpoin
 
 ## Self-Check: PASSED
 
-- Authorized technical files exist on disk.
-- Local commits `7fbbfa8`, `4b39a9a`, `0c96d0f` are present.
-- Unit acceptance: 14/14 PASS <30s.
-- Disposable PostgreSQL acceptance: 14/14 PASS with cleanup.
-- Build PASS, direct ESLint 0 errors, `git diff --check` PASS.
+- Authorized technical files exist on disk. `register-customer.ts` was not modified for this remediation.
+- Local commits `7fbbfa8`, `4b39a9a`, `0c96d0f` remain from the original execution; remediation commits follow.
+- B14-14-HR-01 unit acceptance: 15/15 PASS <30s.
+- B14-14-HR-01 disposable PostgreSQL acceptance: 14/14 PASS with cleanup on AsyncLocalStorage.
+- Build PASS, direct ESLint 0 errors, lint wrapper KNOWN TOOLING FAILURE, `git diff --check` PASS.
+- Completed retry is `CUSTOMER_REGISTRATION_ALREADY_COMPLETED` with zero authenticate/Customer/session/verification/write.
 - No 14-15 work, no HTTP elevation, no push/deploy, no real providers.
 
 ---
