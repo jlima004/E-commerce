@@ -21,10 +21,11 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 13 está CLOSED — HUMAN APPROVED, FND-01..FND-08 COMPLETE;
 - Phase 14 CONTEXT, RESEARCH, PLAN, SPEC/SDD e Implementation Prompt estão HUMAN APPROVED — PASS;
 - execução Phase 14 permanece estritamente serial e manual-gated;
-- `14-01`..`14-12` estão HUMAN APPROVED — PASS;
-- `14-07`..`14-12` estão DOCUMENTALLY CLOSED;
-- `14-13` está **AUTHORIZED FOR EXECUTION / NOT STARTED**;
-- `14-14`..`14-21` permanecem **NOT AUTHORIZED**;
+- `14-01`..`14-13` estão HUMAN APPROVED — PASS;
+- `14-07`..`14-13` estão DOCUMENTALLY CLOSED;
+- `B14-13-HR-01` está CLOSED — PASS;
+- `14-14` está **AUTHORIZED FOR EXECUTION / NOT STARTED**;
+- `14-15`..`14-21` permanecem **NOT AUTHORIZED**;
 - deploy, real Resend/real providers e frontend permanecem não autorizados/bloqueados.
 
 ## Milestones
@@ -41,7 +42,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
-| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 12/21 plans HUMAN APPROVED — PASS; 36/63 tasks complete; 14-12 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-13 AUTHORIZED FOR EXECUTION |
+| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 13/21 plans HUMAN APPROVED — PASS; 39/63 tasks complete; 14-13 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-14 AUTHORIZED FOR EXECUTION |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
@@ -61,23 +62,24 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 
 **Goal:** entregar identidade/Customer, login, reset, refresh e verificação sem contrariar a política de sessão inicial não verificada.
 
-**Depends on:** Phase 13 closed.
-**Requirements:** AUTH-01–AUTH-09.
-**Deliverables:** operações auth/Customer, política flexível, estado/token de verificação, outbox auth quando necessário, rate limits e anti-enumeração.
-**Exit criteria:** cadastro coordenado; sessão inicial compra; novo login não verificado bloqueado; reset/update revogam credenciais antigas; refresh inválido falha; tokens são hash-only/uso único/expiráveis.
-**Manual blockers/gates:** não ativar cegamente política Medusa conflitante; decisão de módulo próprio e retenção exige os gates aprovados; cada plano mantém checkpoint próprio quando definido.
+**Depends on:** Phase 13 closed.  
+**Requirements:** AUTH-01–AUTH-09.  
+**Deliverables:** operações auth/Customer, política flexível, estado/token de verificação, outbox auth quando necessário, rate limits e anti-enumeração.  
+**Exit criteria:** cadastro coordenado; sessão inicial compra; novo login não verificado bloqueado; reset/update revogam credenciais antigas; refresh inválido falha; tokens são hash-only/uso único/expiráveis.  
+**Manual blockers/gates:** cada plano mantém checkpoint próprio; nenhuma autorização avança automaticamente.
 
 ### Execution status
 
 - 21 planos em 21 waves estritamente seriais (`14-01 → ... → 14-21`).
-- 63 tasks totais / **36 complete**.
-- **12/21 plans HUMAN APPROVED — PASS**.
+- 63 tasks totais / **39 complete**.
+- **13/21 plans HUMAN APPROVED — PASS**.
 - AUTH coverage planejada: 9/9.
 - D14 coverage planejada: 16/16.
 - P14-D coverage planejada: 14/14.
-- `14-12 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
-- `14-13 AUTHORIZED FOR EXECUTION / NOT STARTED`.
-- `14-14..14-21 NOT AUTHORIZED`.
+- `14-13 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
+- `B14-13-HR-01 CLOSED — PASS`.
+- `14-14 AUTHORIZED FOR EXECUTION / NOT STARTED`.
+- `14-15..14-21 NOT AUTHORIZED`.
 - Deploy NOT AUTHORIZED.
 - Real Resend / real providers NOT AUTHORIZED.
 - Frontend BLOCKED.
@@ -96,8 +98,8 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 - [x] `14-10-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 - [x] `14-11-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 - [x] `14-12-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
-- [ ] `14-13-PLAN.md` — AUTHORIZED FOR EXECUTION / NOT STARTED
-- [ ] `14-14-PLAN.md` — NOT AUTHORIZED
+- [x] `14-13-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+- [ ] `14-14-PLAN.md` — AUTHORIZED FOR EXECUTION / NOT STARTED
 - [ ] `14-15-PLAN.md` — NOT AUTHORIZED
 - [ ] `14-16-PLAN.md` — NOT AUTHORIZED
 - [ ] `14-17-PLAN.md` — NOT AUTHORIZED
@@ -106,104 +108,71 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 - [ ] `14-20-PLAN.md` — NOT AUTHORIZED
 - [ ] `14-21-PLAN.md` — NOT AUTHORIZED
 
-### 14-07 closure
+### Accepted closure references
 
-`14-07` materializou a persistência customer-auth com collision audit persistido antes da geração final, migration CLI única `Migration20260814004448.ts`, exact-set 7/7, service-only CAS/`FOR UPDATE`, PostgreSQL descartável 9/9, focused unit 28/28, build PASS e checkpoint humano PASS. Nenhuma migration remota/persistente, provider real ou deploy foi executado.
+Detailed accepted evidence is preserved in the corresponding summaries, especially:
 
-### 14-08 closure
+- `14-07-SUMMARY.md` — persistence/collision audit/migration exact-set;
+- `14-08-SUMMARY.md` — auth rate limits/timing/Redis fail-closed;
+- `14-09-SUMMARY.md` — auth notification outbox/reconciliation;
+- `14-10-SUMMARY.md` — session/JWT/refresh rotation;
+- `14-11-SUMMARY.md` — PostgreSQL access guard/custom refresh-revoke surface;
+- `14-12-SUMMARY.md` — verification latest-wins/one-winner domain;
+- `14-13-SUMMARY.md` — exact verification Store surface and HTTP contracts.
 
-`14-08` fechou P14-D11 com policy map nominal de rate limit auth, HMAC domain-separated/versionado, normalização P14-D12, Redis atomic counters cross-process, thresholds exatos, outage fail-closed `503 AUTH_TEMPORARILY_UNAVAILABLE` + `Retry-After: 60`, matrizes públicas de 1000 amostras, median delta 0 ms, p95 38 ms sobre floor, focused unit 50/50, HTTP/Redis 27/27, negative proof de `newPassword`, `git diff --check` PASS e `14-08-03 HUMAN APPROVED — PASS`.
+### 14-13 closure
 
-### 14-09 closure
+`14-13` fechou a superfície HTTP de verification após os gates de access guard e domínio:
 
-`14-09` fechou o Auth Notification Outbox P14-D10 com outbox transacional PostgreSQL, capability auth rederivada somente em memória, recipient boundary sancionada com P14-D12 e constant-time hash check, dead-letter + canonical sanitized operational alert para recipient missing/mismatch, scope amendment do módulo operational-alert com `Migration20260814030000.ts`, retry/reconcile convergente, previous-key +24h operational retention invariant, Event Bus structural/runtime negative proof, focused unit 45/45, customer-auth unit 157/157, disposable PG 21/21, operational-alert 50/50, build/lint/diff PASS e `B14-09-HR-01..06 CLOSED — PASS`. Nenhuma chamada a provider real, deploy ou persistência remota foi executada.
-
-### 14-10 closure
-
-`14-10` fechou P14-D06/P14-D07 no domínio de session lineage/JWT/refresh antes de qualquer access guard HTTP:
-
-- PostgreSQL permanece autoridade de validade; Redis não concede sessão/refresh;
-- access JWT de 10 minutos com `sid`, `cv`, `jti`, identity/customer e deadline absoluto;
-- refresh opaco de 32 bytes base64url com somente SHA-256 persistido;
-- N single-use cria exatamente um N+1 sob concorrência;
-- same-key recovery <=45s rederiva o mesmo N+1 enquanto unused e nunca cria N+2;
-- replay divergente, fora da janela ou após uso do descendant revoga lineage/family;
-- refresh inactivity de sete dias e absolute deadline de 30 dias preservam `originalAuthenticatedAt` em todas as rotações;
-- `B14-10-HR-01` e `B14-10-HR-02` foram fechados sem editar migration/schema;
-- final session unit 9/9 PASS;
-- disposable PostgreSQL 4/4 PASS com cleanup;
-- backend build/lint/diff PASS;
-- `14-10-03 HUMAN APPROVED — PASS`;
-- `14-10 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
-
-### 14-11 closure
-
-`14-11` fechou o access guard PostgreSQL e a superfície custom refresh/revoke P14-D07:
-
-- JWT válido isoladamente nunca concede acesso; PostgreSQL valida lineage, sid, identity/customer ownership, credential version, stable state e absolute deadline;
-- DB outage/inconsistência falha fechado antes do handler;
-- Redis vazio/outage não concede validade;
-- revoke/replay/version bump/deadline são observados cross-process;
-- somente `POST /auth/token/refresh` e `POST /auth/customer/emailpass/revoke-current-lineage` estão `PHASE14_ENABLED`;
-- native refresh/session, aliases e demais operações auth permanecem `DENY`;
-- `B14-11-HR-01 CLOSED — PASS`: revoke guardado foi corrigido para idempotência HTTP real, permitindo lineage já `revoked` apenas no exato `POST /auth/customer/emailpass/revoke-current-lineage`, preservando JWT/sid/ownership/cv/stable/deadline/PostgreSQL e mantendo acesso normal revogado em 401;
-- focused HTTP disposable PostgreSQL 8/8 PASS com cleanup;
+- exatamente quatro Store operations estão `M1_ENABLED`:
+  - `POST /store/customers/me/verify`
+  - `POST /store/customers/verify/resend`
+  - `POST /store/customers/verify`
+  - `GET /store/customers/me/verify/status`
+- request/status autenticados passam pelo `customerAuthAccessGuard` PostgreSQL;
+- request usa limiter `3/lineage/h + 10/IP/h`, com HMAC-derived keys e Redis outage fail-closed;
+- resend público preserva `202 REQUEST_ACCEPTED` uniforme e timing anti-enumeração;
+- confirm público permanece no-session e não emite JWT/refresh;
+- raw Customer, native `/auth/verification/*`, aliases e unknown Customer paths continuam DENY;
+- `B14-13-HR-01 CLOSED — PASS`: runtime-acquisition failure do resend agora recebe exatamente uma aplicação do timing envelope antes do `202`, sem double timing;
+- focused HTTP final 12/12 PASS;
 - backend build PASS;
-- ESLint direto 0 erros; falha conhecida do wrapper `medusa lint` por JSON vazio foi aceita como tooling não bloqueante sem alteração de packages/tooling;
+- ESLint direto 0 erros, 7 advisory/existing warnings;
+- wrapper lint mantém falha conhecida por JSON vazio/EOF, aceita como tooling não bloqueante;
 - `git diff --check` PASS;
-- remote technical head pré-closure: `a73bb7e8d209f2780a3d49ab4c74c5310f42aa62`;
-- `14-11-03 HUMAN APPROVED — PASS`;
-- `14-11 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
-
-Nenhuma migration/schema, provider real, persistência remota ou deploy foi executado.
-
-### 14-12 closure
-
-`14-12` fechou o domínio verification P14-D08/D14-09..12 antes da elevação HTTP:
-
-- resend concorrente é latest-wins sob credential-row lock, mantendo apenas uma generation pending/claimed válida;
-- confirm concorrente produz exatamente um winner e falha uniformemente para used/superseded/expired;
-- TTL de verification é exatamente 30 minutos;
-- expiry terminal state é commitado antes da resposta uniforme invalid-or-expired;
-- intent e `AuthNotificationOutbox` são criados na mesma transação custom;
-- capability permanece hash-only na persistência e não vaza nos sinks aprovados;
-- key rotation aceita a capability criada sob a chave anterior conforme o keyring aprovado;
-- provider timeout/5xx/ambiguous altera somente delivery/outbox e não o verification state;
-- confirm não cria lineage/JWT/session/refresh credential e não produz side effect de Order/Stripe;
-- native verification event/primitives não participam;
-- os quatro Store verification paths de `14-13` permaneceram DENY durante `14-12`;
-- unit 12/12 PASS;
-- disposable PostgreSQL 9/9 PASS com cleanup;
-- backend build PASS;
-- ESLint direto 0 erros; falha conhecida do wrapper lint por parsing JSON vazio permanece tooling não bloqueante;
-- `git diff --check` PASS;
-- remote technical head pós-aprovação/push manual: `040fbbfc1d4a947f96de7314ff8f340c29a7dd49`;
-- `14-12-03 HUMAN APPROVED — PASS`;
-- `14-12 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
+- remote technical head pós-aprovação/push manual: `ff8036fb596eb937d51f229ae43b24eedce80373`;
+- `14-13-03 HUMAN APPROVED — PASS`;
+- `14-13 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
 
 Nenhuma migration/schema, dependency, provider real, persistência remota ou deploy foi executado.
 
-### 14-13 authorization
+### 14-14 authorization
 
-Por autorização humana explícita, `14-13-PLAN.md` está **AUTHORIZED FOR EXECUTION / NOT STARTED**.
+Por autorização humana explícita, `14-14-PLAN.md` está **AUTHORIZED FOR EXECUTION / NOT STARTED**.
 
-A autorização cobre:
-- `14-13-01`: implementar os quatro handlers verification previstos no plano, com `customerAuthAccessGuard` nos endpoints autenticados, limiter HMAC, envelopes/timing e focused HTTP evidence;
-- `14-13-02`: elevar exatamente quatro method/path Store somente após o HTTP PASS da task anterior, mantendo aliases, raw Customer e native auth verification em DENY;
-- criação de `14-13-SUMMARY.md` e validações locais previstas pelo plano.
+A autorização cobre somente o registration domain/workflow previsto no plano:
 
-`14-13-03` permanece **BLOCKING HUMAN VERIFY**. A execução deve parar nesse checkpoint antes de qualquer `14-14`.
+- `14-14-01`: implementar coordinator/recovery/mismatch em `registration.ts`, workflow `register-customer.ts` e unit/fault tests;
+- `14-14-02`: executar prova PostgreSQL descartável de concorrência, partial recovery, mismatch/TTL e zero Order;
+- criação de `14-14-SUMMARY.md` e validações locais previstas pelo plano.
 
-Continuam proibidos:
-- `14-14` ou planos posteriores;
-- qualquer quinto verification path, alias, raw Customer ou native auth verification route;
-- auto-chain;
-- deploy/release;
-- real Resend ou qualquer provider real;
-- DB/Redis remoto ou persistente;
-- frontend;
-- instalação de dependências;
-- migration/schema ou expansão de escopo sem autorização separada.
+`14-14-03` permanece **BLOCKING HUMAN VERIFY**. A execução deve parar nesse checkpoint antes de qualquer `14-15`.
+
+Regras vinculantes:
+
+- signup/login HTTP continuam DENY durante 14-14;
+- identity sem Customer deve retomar por 24h e concorrência deve convergir para um único Customer/result;
+- payload/password incompatível deve produzir zero write e nunca substituir senha pendente;
+- completion pode criar initial lineage/refresh e verification intent+outbox exatamente uma vez, conforme contratos aprovados;
+- provider delivery não pode bloquear completion;
+- zero Order/Payment/Stripe/Gelato side effect;
+- `14-15` ou planos posteriores não estão autorizados;
+- auto-chain proibido;
+- deploy/release não autorizado;
+- real Resend ou qualquer provider real não autorizado;
+- DB/Redis remoto ou persistente não autorizado;
+- frontend bloqueado;
+- dependency install, migration/schema ou expansão de escopo exigem autorização separada.
 
 ## Phase 15: Guest Cart Capability & Concurrency
 
@@ -285,32 +254,32 @@ PLAN: HUMAN APPROVED — PASS
 SPEC/SDD: HUMAN APPROVED — PASS
 IMPLEMENTATION PROMPT: HUMAN APPROVED — PASS
 
-14-01..14-12:
+14-01..14-13:
 HUMAN APPROVED — PASS
 
-14-07..14-12:
+14-07..14-13:
 DOCUMENTALLY CLOSED
 
-14-12-03:
-HUMAN APPROVED — PASS
+B14-13-HR-01:
+CLOSED — PASS
 
 Phase 14 plans human-approved executed:
-12/21
+13/21
 
 Phase 14 tasks complete:
-36/63
+39/63
 
-14-13:
+14-14:
 AUTHORIZED FOR EXECUTION / NOT STARTED
 
-14-13-03:
-BLOCKING HUMAN VERIFY after Tasks 14-13-01/02
+14-14-03:
+BLOCKING HUMAN VERIFY after Tasks 14-14-01/02
 
-14-14..14-21:
+14-15..14-21:
 NOT AUTHORIZED
 
 Next blocking gate:
-14-13-03 human review
+14-14-03 human review
 
 Milestone requirements complete:
 8/91
@@ -326,4 +295,4 @@ BLOCKED / not started / not authorized
 ```
 
 ---
-*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-15 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01..14-12 HUMAN APPROVED — PASS; 21 plans/21 serial waves/63 tasks/36 complete; 14-07..14-12 DOCUMENTALLY CLOSED; 14-13 AUTHORIZED FOR EXECUTION; 14-14..14-21 NOT AUTHORIZED; deploy NOT AUTHORIZED; real providers NOT AUTHORIZED; Frontend BLOCKED; 8/91 requirements; manual-review gated · no auto-chain*
+*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-15 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01..14-13 HUMAN APPROVED — PASS; 21 plans/21 serial waves/63 tasks/39 complete; 14-07..14-13 DOCUMENTALLY CLOSED; B14-13-HR-01 CLOSED — PASS; 14-14 AUTHORIZED FOR EXECUTION; 14-15..14-21 NOT AUTHORIZED; deploy NOT AUTHORIZED; real providers NOT AUTHORIZED; Frontend BLOCKED; 8/91 requirements; manual-review gated · no auto-chain*
