@@ -6,14 +6,14 @@ current_phase: 14
 current_phase_name: customer-auth-verification
 current_plan: 9
 status: ready
-last_updated: "2026-08-13T23:50:00-03:00"
+last_updated: "2026-08-14T21:05:00-03:00"
 progress:
   total_phases: 10
   completed_phases: 1
   total_plans: 28
-  completed_plans: 15
+  completed_plans: 16
   percent: 11
-stopped_at: 14-08 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-09 EXECUTION AUTHORIZED — NOT STARTED
+stopped_at: 14-09 DOCUMENTARY CLOSURE COMPLETE — 14-10 NOT AUTHORIZED
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: `.planning/PROJECT.md` (updated 2026-08-06)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
 
-**Current focus:** Phase 14 — `14-08 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`; `14-09 EXECUTION AUTHORIZED — NOT STARTED`.
+**Current focus:** Phase 14 — `14-09 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-10 NOT AUTHORIZED`.
 
 ## Execution Policy
 
@@ -39,7 +39,7 @@ Enforcement:
 - `workflow._auto_chain_active=false`
 - `parallelization=false`
 
-Human approval closes only the reviewed plan. A separate explicit human authorization is now granted for execution of `14-09`; it does not authorize `14-10` or any later plan.
+Human approval closes only the reviewed plan. Closure of `14-09` does not authorize `14-10` or any later plan.
 
 ## Current Gate
 
@@ -59,28 +59,47 @@ HUMAN APPROVED — PASS
 Phase 14 IMPLEMENTATION PROMPT:
 HUMAN APPROVED — PASS
 
-14-01..14-08:
+14-01..14-09:
 HUMAN APPROVED — PASS
 
 14-07:
 DOCUMENTALLY CLOSED
 
-14-08-03:
-HUMAN VERIFY — PASS
-
-B14-08-HR-03:
-CLOSED — PASS
-
 14-08:
 DOCUMENTALLY CLOSED
 
+14-09-03:
+HUMAN APPROVED — PASS
+
+B14-09-HR-01:
+CLOSED — PASS
+
+B14-09-HR-02:
+CLOSED — PASS
+
+B14-09-HR-03:
+CLOSED — PASS
+
+B14-09-HR-04:
+CLOSED — PASS
+
+B14-09-HR-05:
+CLOSED — PASS
+
+B14-09-HR-06:
+CLOSED — PASS
+
 14-09:
-EXECUTION AUTHORIZED — NOT STARTED
+HUMAN APPROVED — PASS
+DOCUMENTALLY CLOSED
 
 14-10..14-21:
 NOT AUTHORIZED
 
 Deploy:
+NOT AUTHORIZED
+
+REAL RESEND:
 NOT AUTHORIZED
 
 FRONTEND:
@@ -190,22 +209,79 @@ NONE
 
 Accepted implementation detail: verification/reset post real is bound to normalized network prefix + intent; refresh post real remains lineage-only. The dummy post bucket is derived only from pre-lookup material and was accepted as a non-blocking implementation deviation despite not consuming a literal `preDigest` field.
 
+## 14-09 Accepted Evidence
+
+```text
+Task 14-09-03:
+HUMAN APPROVED — PASS
+
+B14-09-HR-01:
+CLOSED — PASS
+
+B14-09-HR-02:
+CLOSED — PASS
+
+B14-09-HR-03:
+CLOSED — PASS
+
+B14-09-HR-04:
+CLOSED — PASS
+
+B14-09-HR-05:
+CLOSED — PASS
+
+B14-09-HR-06:
+CLOSED — PASS
+
+Focused auth-notification-outbox unit:
+PASS — 45/45
+
+Customer-auth full unit:
+PASS — 157/157 (6 suites)
+
+Disposable PostgreSQL auth-notification-outbox:
+PASS — 21/21
+
+Operational-alert:
+PASS — 50/50 (33 unit, 17 disposable PG)
+
+Operational-alert scope amendment migration:
+Migration20260814030000.ts (up/down validated in disposable PostgreSQL, covered in 2 suites)
+
+Backend build:
+PASS — 0 errors
+
+Lint:
+PASS — 0 errors
+
+git diff --check:
+PASS
+
+Security Invariants & Negative Proofs:
+- Event Bus dependency in auth notification relay: NONE
+- Capability in Event Bus / Redis / DB / logs: ZERO (in-memory rederivation only)
+- Plaintext recipient email in outbox table: ZERO (recipient_hash + domain only)
+- Real Resend API calls: ZERO (mock client only)
+- Remote/persistent DB or Redis: NONE
+- Deploy: NONE
+```
+
 ## Current Position
 
 Phase: 14 (customer-auth-verification) — EXECUTING
-Completed/human-approved Phase 14 plans: **8/21**
-Completed Phase 14 tasks: **24/63**
-Current plan: **14-09 — EXECUTION AUTHORIZED — NOT STARTED**
+Completed/human-approved Phase 14 plans: **9/21**
+Completed Phase 14 tasks: **27/63**
+Current plan: **14-09 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**
 Previous plan: **14-08 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**
-Next blocking checkpoint: **14-09-03 human verification**
-14-10: **NOT AUTHORIZED**
+Next plan: **14-10 — NOT AUTHORIZED / NOT STARTED**
+14-10..14-21: **NOT AUTHORIZED**
 
 Milestone v1.1:
 
 - phases closed: 1/10
 - Phase 13 requirements complete: FND-01..FND-08 = 8/8
 - milestone requirements complete: 8/91
-- plans human-approved executed: 15 total (Phase 13: 7; Phase 14: 8)
+- plans human-approved executed: 16 total (Phase 13: 7; Phase 14: 9)
 - frontend: BLOCKED
 
 ## Phase 14 Authorities
@@ -222,31 +298,35 @@ Phase 14 remains governed by:
 
 The approved Phase 14 decomposition remains 21 plans / 21 serial waves / 63 tasks. AUTH-01..AUTH-09 remain 9/9 covered; D14-01..D14-16 remain 16/16 represented; P14-D01..P14-D14 remain 14/14 represented.
 
-## 14-09 Execution Authorization
+## 14-09 Accepted Execution & Closure
 
-Human authorization is explicitly granted to execute the already-approved `.planning/phases/14-customer-auth-verification/14-09-PLAN.md`.
+Plan `14-09-PLAN.md` is fully executed, verified, and received final human approval:
 
-Authorization scope is exactly the plan-owned Auth Notification Outbox implementation, tests and local/disposable validation required by `14-09`, including unit tests and disposable PostgreSQL cross-worker/provider-leakage proofs.
+- `14-09-03: HUMAN APPROVED — PASS`
+- `14-09: HUMAN APPROVED — PASS`
+- `B14-09-HR-01..B14-09-HR-06: CLOSED — PASS`
 
-Binding restrictions from the plan remain in force:
+Execution satisfied all P14-D10 invariants:
+- capability auth is rederived strictly in memory and never crosses Redis Event Bus, database or logs;
+- recipient resolution operates via sanctioned boundary with P14-D12 normalization and constant-time hash comparison;
+- recipient missing/mismatch fails closed to dead-letter with sanitized operational alert;
+- operational-alert module was canonically extended for `auth_notification_failed` / `auth_notification_outbox` with `Migration20260814030000.ts`;
+- previous key retention (+24h after terminal state) is recorded as a binding operational invariant;
+- all suites passed (focused unit 45/45, customer-auth unit 157/157, disposable PG 21/21, op-alert 50/50, build/lint/diff check PASS);
+- no real Resend calls, no persistent DB mutations, and no deploy.
 
-- capability auth never traverses Redis Event Bus and is rederived only in memory;
-- recipient resolution must use the sanctioned identity boundary and constant-time hash comparison before send;
-- identity missing/mismatch fails closed to dead-letter + sanitized alert;
-- claim/lease/retry/dead-letter must converge cross-process;
-- **Resend real is prohibited**;
-- **NO DEPLOY**;
-- stop at blocking checkpoint `14-09-03` for human verification.
+## 14-10 Status — NOT AUTHORIZED
 
-This authorization does **not** authorize:
+Plan `14-10-PLAN.md` remains **NOT AUTHORIZED / NOT STARTED**.
 
-- `14-10` or later plans;
-- auto-chain after `14-09-03`;
-- deploy or release;
-- frontend work;
-- real provider sends;
-- remote/persistent database mutations outside the disposable validation explicitly allowed by the plan;
-- dependency installation outside a separate explicit authorization.
+The closure of `14-09` does not authorize `14-10` or any subsequent plan. Explicit human authorization is required before starting `14-10`.
+
+Binding restrictions remain in force:
+- `14-10` or later plans are not authorized;
+- auto-chain is forbidden;
+- deploy is not authorized;
+- real Resend is prohibited;
+- frontend remains blocked.
 
 ## Hard Invariants Still in Force
 
@@ -269,7 +349,7 @@ That historical snapshot remains authoritative for earlier v1.0/v1.1 lineage, ol
 
 ## Blockers / Concerns
 
-`14-01` through `14-08` have no open blockers in their approved scopes. `14-09` is authorized and not yet started. `14-10` and later plans remain gated.
+`14-01` through `14-09` have no open blockers in their approved scopes. All `B14-09-HR-01..B14-09-HR-06` are `CLOSED — PASS`. `14-10` and later plans remain gated and not authorized.
 
 Historical provider limitations remain non-blocking and are not converted into authorization:
 
@@ -292,29 +372,32 @@ Known deferred artifact items at v1.0 close remain 0. Historical details remain 
 
 ## Session Continuity
 
-**Resume file:** `.planning/phases/14-customer-auth-verification/14-08-SUMMARY.md`
+**Resume file:** `.planning/phases/14-customer-auth-verification/14-09-SUMMARY.md`
 
-Last session: 2026-08-13T23:50:00-03:00
+Last session: 2026-08-14T21:05:00-03:00
 
 Stopped at:
 
 ```text
-14-08:
+14-09:
 HUMAN APPROVED — PASS
 DOCUMENTALLY CLOSED
 
-14-09:
-EXECUTION AUTHORIZED — NOT STARTED
-
 14-10:
+NOT AUTHORIZED / NOT STARTED
+
+DEPLOY:
+NOT AUTHORIZED
+
+REAL RESEND:
 NOT AUTHORIZED
 ```
 
 Resume with:
 
 - `.planning/STATE.md`
-- `.planning/phases/14-customer-auth-verification/14-08-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-09-PLAN.md`
+- `.planning/phases/14-customer-auth-verification/14-09-SUMMARY.md`
+- `.planning/phases/14-customer-auth-verification/14-10-PLAN.md`
 - `.planning/phases/14-customer-auth-verification/14-IMPLEMENTATION-PROMPT.md`
 - `.planning/phases/14-customer-auth-verification/14-SPEC.md`
 - `.planning/phases/14-customer-auth-verification/14-SDD.md`
@@ -323,6 +406,6 @@ Resume with:
 - `.planning/REQUIREMENTS.md`
 - `.planning/history/STATE-before-14-02-add005c.md` when detailed historical context is needed
 
-**Next permitted step:** execute `14-09` according to the approved plan and stop at checkpoint `14-09-03` for human verification.
+**Next permitted step:** await explicit human authorization to start `14-10`.
 
 Do not automatically start `14-10`, deploy, exercise real providers, execute production rollback, start frontend, or move/recreate tag `v1.0`.

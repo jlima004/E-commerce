@@ -8,6 +8,7 @@ import {
   OPERATIONAL_ALERT_MODULE,
   type OperationalAlertModuleService,
 } from ".."
+import { Migration20260814030000 } from "../migrations/Migration20260814030000"
 
 jest.mock(
   "pg-god",
@@ -484,6 +485,133 @@ if (!requestedDatabaseName) {
           "gelful_list_older",
         ])
         expect(empty).toEqual({ rows: [], count: 0 })
+      })
+
+      it("creates and dedups auth_notification_failed alerts with allowlisted auth metadata", async () => {
+        const service = resolveService()
+        const outboxId = "authout_opalert_test_1"
+        const time1 = new Date("2026-08-14T10:00:00.000Z")
+        const time2 = new Date("2026-08-14T10:05:00.000Z")
+
+        const first = await service.upsertAlert({
+          type: "auth_notification_failed",
+          severity: "high",
+          entity_type: "auth_notification_outbox",
+          entity_id: outboxId,
+          message_code: "RECIPIENT_MISSING",
+          message: "Recipient identity not found",
+          error_code: "AUTH_NOTIFICATION_RECIPIENT_MISSING",
+          metadata: {
+            outbox_id: outboxId,
+            intent_id: "authver_test_01",
+            recipient_identity_id: "ident_test_01",
+            template: "email_verification_v1",
+            generation: 0,
+            attempt_count: 1,
+            failure_reason: "recipient_missing",
+            detector_code: "RECIPIENT_MISSING",
+            forbidden_auth_key: "should_be_stripped",
+          },
+          observed_at: time1,
+        })
+
+        expect(first.type).toBe("auth_notification_failed")
+        expect(first.entity_type).toBe("auth_notification_outbox")
+        expect(first.entity_id).toBe(outboxId)
+        expect(first.occurrence_count).toBe(1)
+        expect(first.metadata).toEqual({
+          outbox_id: outboxId,
+          intent_id: "authver_test_01",
+          recipient_identity_id: "ident_test_01",
+          template: "email_verification_v1",
+          generation: 0,
+          attempt_count: 1,
+          failure_reason: "recipient_missing",
+          detector_code: "RECIPIENT_MISSING",
+        })
+
+        // Repeated upsert for same logical key
+        const second = await service.upsertAlert({
+          type: "auth_notification_failed",
+          severity: "critical",
+          entity_type: "auth_notification_outbox",
+          entity_id: outboxId,
+          message_code: "RECIPIENT_MISSING",
+          message: "Recipient identity still missing",
+          error_code: "AUTH_NOTIFICATION_RECIPIENT_MISSING",
+          metadata: {
+            outbox_id: outboxId,
+            intent_id: "authver_test_01",
+            recipient_identity_id: "ident_test_01",
+            attempt_count: 2,
+            failure_reason: "recipient_missing",
+            detector_code: "RECIPIENT_MISSING",
+          },
+          observed_at: time2,
+        })
+
+        expect(second.id).toBe(first.id)
+        expect(second.occurrence_count).toBe(2)
+        expect(second.severity).toBe("critical")
+        expect(second.first_seen_at).toBe(time1.toISOString())
+        expect(second.last_seen_at).toBe(time2.toISOString())
+      })
+
+      it("supports Migration20260814030000 up and down cycles", async () => {
+        const collectSql = async (method: "up" | "down") => {
+          const statements: string[] = []
+          const migrationMethod = Migration20260814030000.prototype[
+            method
+          ] as unknown as (this: {
+            addSql: (sql: string) => void
+          }) => Promise<void>
+          await migrationMethod.call({
+            addSql: (sql: string) => statements.push(sql),
+          })
+          return statements
+        }
+
+        // Clean any auth rows before testing down
+        await dbConnection.raw(
+          "delete from operational_alert where type = 'auth_notification_failed' or entity_type = 'auth_notification_outbox'"
+        )
+
+        for (const statement of await collectSql("down")) {
+          await dbConnection.raw(statement)
+        }
+
+        // Auth values should now be rejected
+        await expect(
+          dbConnection.raw(`
+            insert into operational_alert (
+              id, type, severity, status, entity_type, entity_id,
+              message_code, message, occurrence_count,
+              first_seen_at, last_seen_at, created_at, updated_at
+            ) values (
+              'opalert_down_test', 'auth_notification_failed', 'high', 'open',
+              'auth_notification_outbox', 'authout_down',
+              'AUTH_FAIL', 'Message', 1, now(), now(), now(), now()
+            )
+          `)
+        ).rejects.toThrow()
+
+        // Reapply up
+        for (const statement of await collectSql("up")) {
+          await dbConnection.raw(statement)
+        }
+
+        // Auth values should now be accepted
+        await dbConnection.raw(`
+          insert into operational_alert (
+            id, type, severity, status, entity_type, entity_id,
+            message_code, message, occurrence_count,
+            first_seen_at, last_seen_at, created_at, updated_at
+          ) values (
+            'opalert_reup_test', 'auth_notification_failed', 'high', 'open',
+            'auth_notification_outbox', 'authout_reup',
+            'AUTH_FAIL', 'Message', 1, now(), now(), now(), now()
+          )
+        `)
       })
     },
   })

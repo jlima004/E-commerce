@@ -21,11 +21,12 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 13 está CLOSED — HUMAN APPROVED, FND-01..FND-08 COMPLETE;
 - Phase 14 CONTEXT, RESEARCH, PLAN, SPEC/SDD e Implementation Prompt estão HUMAN APPROVED — PASS;
 - execução Phase 14 permanece estritamente serial e manual-gated;
-- `14-01`..`14-08` estão HUMAN APPROVED — PASS;
+- `14-01`..`14-09` estão HUMAN APPROVED — PASS;
+- `14-07` está DOCUMENTALLY CLOSED;
 - `14-08` está DOCUMENTALLY CLOSED;
-- `14-09` possui **EXECUTION AUTHORIZED — NOT STARTED**;
+- `14-09` está DOCUMENTALLY CLOSED;
 - `14-10`..`14-21` permanecem **NOT AUTHORIZED**;
-- deploy e frontend permanecem não autorizados/bloqueados.
+- deploy, real Resend e frontend permanecem não autorizados/bloqueados.
 
 ## Milestones
 
@@ -41,7 +42,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
-| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 8/21 plans HUMAN APPROVED — PASS; 24/63 tasks complete; 14-09 EXECUTION AUTHORIZED — NOT STARTED |
+| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 9/21 plans HUMAN APPROVED — PASS; 27/63 tasks complete; 14-09 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-10 NOT AUTHORIZED |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
@@ -70,14 +71,15 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 ### Execution status
 
 - 21 planos em 21 waves estritamente seriais (`14-01 → ... → 14-21`).
-- 63 tasks totais / **24 complete**.
-- **8/21 plans HUMAN APPROVED — PASS**.
+- 63 tasks totais / **27 complete**.
+- **9/21 plans HUMAN APPROVED — PASS**.
 - AUTH coverage planejada: 9/9.
 - D14 coverage planejada: 16/16.
 - P14-D coverage planejada: 14/14.
-- `14-09 EXECUTION AUTHORIZED — NOT STARTED`.
+- `14-09 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
 - `14-10..14-21 NOT AUTHORIZED`.
 - Deploy NOT AUTHORIZED.
+- Real Resend NOT AUTHORIZED.
 - Frontend BLOCKED.
 
 ### Phase 14 plans
@@ -90,7 +92,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 - [x] `14-06-PLAN.md` — HUMAN APPROVED — PASS
 - [x] `14-07-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 - [x] `14-08-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
-- [ ] `14-09-PLAN.md` — **EXECUTION AUTHORIZED — NOT STARTED**
+- [x] `14-09-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 - [ ] `14-10-PLAN.md` — NOT AUTHORIZED
 - [ ] `14-11-PLAN.md` — NOT AUTHORIZED
 - [ ] `14-12-PLAN.md` — NOT AUTHORIZED
@@ -132,27 +134,27 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 
 O post dummy recompõe material apenas de input pre-lookup em vez de consumir literalmente um campo `preDigest`; a revisão humana aceitou isso como desvio implementacional não bloqueante porque contagem Redis, dummy work, timing e ausência de account dependence permanecem equivalentes.
 
-### 14-09 authorization
+### 14-09 closure
 
-**EXECUTION AUTHORIZED — NOT STARTED.**
+`14-09` fechou o Auth Notification Outbox P14-D10 com:
 
-A autorização é específica para executar o plano aprovado `14-09-PLAN.md` e seu Auth Notification Outbox P14-D10:
+- outbox transacional PostgreSQL com state machine CAS (`recorded` -> `claimed` -> `sent` / `failed` -> `dead_letter`) e lease de 2 minutos;
+- rederivação de capability de autenticação exclusivamente in-memory (zero capability no Event Bus, Redis, banco ou logs);
+- boundary sancionada de resolução de destinatário (`notification-recipient.ts`) com normalização canônica P14-D12 e verificação constant-time de hash (`crypto.timingSafeEqual`) antes do provider;
+- missing/mismatch de destinatário falha fechado para `dead_letter` com emissão de alerta operacional sanitizado sem PII;
+- scope amendment aprovado humanamente para o módulo `operational-alert` com adição do tipo `auth_notification_failed`, entidade `auth_notification_outbox`, allowlist estrita de metadata e migração `Migration20260814030000.ts`;
+- inserção transacional atômica com intents de autenticação (`recordNotificationOutboxInTransaction`) mantendo o baseline de `service.ts` do customer-auth;
+- reconciler periódico de leases expiradas e transição a dead-letter de intents terminais sem reabertura de capability;
+- semântica efetiva de retry: 1m / 5m / 30m / 2h / 6h -> dead_letter na 6ª falha;
+- invariant operacional vinculado de retenção de chaves anteriores (+24h após estado terminal de todos os intents/outboxes da versão);
+- mitigação contra vazamento de erro em caso de falha de criação de alerta (`OPERATIONAL_ALERT_CREATION_FAILED` estruturado);
+- provas negativas estruturais e de runtime contra dependência do Event Bus;
+- suítes completas: focused unit 45/45 PASS, customer-auth unit 157/157 PASS (6 suites), disposable PostgreSQL 21/21 PASS, operational-alert 50/50 PASS, build/lint/diff check PASS;
+- `B14-09-HR-01..B14-09-HR-06: CLOSED — PASS`;
+- `14-09-03: HUMAN APPROVED — PASS`;
+- `14-09: HUMAN APPROVED — PASS`.
 
-- record/claim/lease/retry/dead-letter CAS;
-- relay com capability rederivada somente em memória;
-- resolução sancionada `recipient_identity_id → e-mail` com normalização e `timingSafeEqual` antes de provider;
-- missing/mismatch → dead-letter + alerta sanitizado;
-- provas cross-process e leakage usando PostgreSQL descartável;
-- checkpoint bloqueante `14-09-03`.
-
-Restrições vinculantes:
-
-- **Resend real proibido**;
-- capability auth não atravessa Event Bus Redis;
-- provider failure não altera estado de negócio auth;
-- **NO DEPLOY**;
-- sem auto-chain;
-- `14-10` permanece não autorizado até novo gate humano.
+Nenhuma chamada a provider real, deploy ou persistência remota foi executada.
 
 ## Phase 15: Guest Cart Capability & Concurrency
 
@@ -234,32 +236,39 @@ PLAN: HUMAN APPROVED — PASS
 SPEC/SDD: HUMAN APPROVED — PASS
 IMPLEMENTATION PROMPT: HUMAN APPROVED — PASS
 
-14-01..14-08:
+14-01..14-09:
 HUMAN APPROVED — PASS
 
-14-08-03:
-HUMAN VERIFY — PASS
-
-B14-08-HR-03:
-CLOSED — PASS
+14-07:
+DOCUMENTALLY CLOSED
 
 14-08:
 DOCUMENTALLY CLOSED
 
-Phase 14 plans human-approved executed:
-8/21
+14-09-03:
+HUMAN APPROVED — PASS
 
-Phase 14 tasks complete:
-24/63
+B14-09-HR-01..B14-09-HR-06:
+CLOSED — PASS
 
 14-09:
-EXECUTION AUTHORIZED — NOT STARTED
+HUMAN APPROVED — PASS
+DOCUMENTALLY CLOSED
 
-Next blocking gate:
-14-09-03 HUMAN VERIFY
+Phase 14 plans human-approved executed:
+9/21
+
+Phase 14 tasks complete:
+27/63
+
+14-10:
+NOT AUTHORIZED / NOT STARTED
 
 14-10..14-21:
 NOT AUTHORIZED
+
+Next blocking gate:
+14-10 human authorization
 
 Milestone requirements complete:
 8/91
@@ -267,9 +276,12 @@ Milestone requirements complete:
 Deploy:
 NOT AUTHORIZED
 
+REAL RESEND:
+NOT AUTHORIZED
+
 Frontend Milestone 1:
 BLOCKED / not started / not authorized
 ```
 
 ---
-*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-13 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01..14-08 HUMAN APPROVED — PASS; 21 plans/21 serial waves/63 tasks/24 complete; 14-08 DOCUMENTALLY CLOSED; 14-09 EXECUTION AUTHORIZED — NOT STARTED; 14-10..14-21 NOT AUTHORIZED; deploy NOT AUTHORIZED; Frontend BLOCKED; 8/91 requirements; manual-review gated · no auto-chain*
+*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-14 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01..14-09 HUMAN APPROVED — PASS; 21 plans/21 serial waves/63 tasks/27 complete; 14-07..14-09 DOCUMENTALLY CLOSED; 14-10..14-21 NOT AUTHORIZED; deploy NOT AUTHORIZED; real Resend NOT AUTHORIZED; Frontend BLOCKED; 8/91 requirements; manual-review gated · no auto-chain*

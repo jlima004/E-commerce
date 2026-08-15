@@ -25,6 +25,13 @@ export const OPERATIONAL_ALERT_METADATA_KEYS = [
   "detector_code",
   "source_status",
   "operator_alert_code",
+  "outbox_id",
+  "intent_id",
+  "recipient_identity_id",
+  "template",
+  "generation",
+  "attempt_count",
+  "failure_reason",
 ] as const
 
 type MetadataKey = (typeof OPERATIONAL_ALERT_METADATA_KEYS)[number]
