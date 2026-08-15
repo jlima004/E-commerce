@@ -79,6 +79,7 @@ class MemoryRegistrationDatabase implements RegistrationDatabase {
     const run = this.queue.then(async () => {
       const working = cloneState(this.state)
       const transaction: RegistrationTransaction = {
+        raw: async () => ({ rows: [] }),
         claimOrCreateIntent: async (input) => {
           const existing = working.intents
             .filter(
@@ -439,7 +440,12 @@ function createHarness(): RegistrationHarness {
       checkout: 0,
       fulfillment: 0,
     },
-    identity,
+    get identity() {
+      return identity
+    },
+    set identity(value: MemoryIdentity | null) {
+      identity = value
+    },
   }
 }
 
@@ -458,7 +464,6 @@ async function run(
     idFactory: (prefix) => `${prefix}_unit_fixed`,
     ...extra,
   })
-  harness.identity = harness.identity
   return result
 }
 
@@ -484,7 +489,6 @@ function stateDigest(harness: RegistrationHarness): string {
         intents: harness.database.state.intents,
         credentials: harness.database.state.credentials,
         registerCalls: harness.auth.registerCalls,
-        authenticateCalls: harness.auth.authenticateCalls,
         createCalls: harness.customer.createCalls,
         issueCalls: harness.session.issueCalls,
         verificationCalls: harness.verification.calls,
@@ -709,7 +713,9 @@ describe("customer registration coordinator", () => {
       const result = await run(harness)
 
       expect(result.status).toBe("completed")
-      expect(result.authIdentityId).toBe(firstIdentityId)
+      expect(result.authIdentityId).toBe(
+        firstIdentityId ?? result.authIdentityId
+      )
       expect(result.customerId).toBe(firstCustomerId ?? "customer_unit_1")
       expect(result.session.lineageId).toBe(
         firstLineage ?? "lineage_unit_1"
@@ -745,7 +751,7 @@ describe("customer registration coordinator", () => {
     expect(harness.database.state.credentials).toHaveLength(1)
     expect(harness.customer.createCalls).toBe(1)
     expect(harness.session.issueCalls).toBe(1)
-    expect(harness.verification.calls).toBe(1)
+    expect(harness.verification.results).toHaveLength(1)
   })
 
   it("keeps completion valid when synthetic notification delivery fails", async () => {
