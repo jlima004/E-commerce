@@ -26,6 +26,7 @@ type MemoryLineage = {
   revoked_at: Date | null
   revocation_reason: string | null
   expired_at: Date | null
+  deleted_at: Date | null
 }
 
 type MemoryRefresh = {
@@ -44,7 +45,6 @@ type MemoryRefresh = {
   replacement_used_at: Date | null
   replayed_at: Date | null
   revoked_at: Date | null
-  version: number
   deleted_at: Date | null
 }
 
@@ -77,6 +77,7 @@ function cloneState(state: MemoryState): MemoryState {
           absolute_expires_at: new Date(row.absolute_expires_at.getTime()),
           revoked_at: cloneDate(row.revoked_at),
           expired_at: cloneDate(row.expired_at),
+          deleted_at: cloneDate(row.deleted_at),
         },
       ])
     ),
@@ -171,8 +172,8 @@ class MemoryAuthSessionDatabase implements AuthSessionDatabase {
     if (sql.startsWith("select * from auth_session_lineage")) {
       const row = state.lineages.get(String(bindings[0]))
       return {
-        rows: row && row.deleted_at === undefined ? [asLineageRow(row)] : [],
-        rowCount: row && row.deleted_at === undefined ? 1 : 0,
+        rows: row && row.deleted_at === null ? [asLineageRow(row)] : [],
+        rowCount: row && row.deleted_at === null ? 1 : 0,
       }
     }
 
@@ -202,6 +203,7 @@ class MemoryAuthSessionDatabase implements AuthSessionDatabase {
         revoked_at: null,
         revocation_reason: null,
         expired_at: null,
+        deleted_at: null,
       }
       state.lineages.set(row.id, row)
       return { rows: [], rowCount: 1 }
@@ -225,7 +227,6 @@ class MemoryAuthSessionDatabase implements AuthSessionDatabase {
         replacement_used_at: null,
         replayed_at: null,
         revoked_at: null,
-        version: 1,
         deleted_at: null,
       }
       state.refreshes.set(row.id, row)
@@ -254,7 +255,6 @@ class MemoryAuthSessionDatabase implements AuthSessionDatabase {
           row.replacement_used_at = null
           row.replayed_at = null
           row.revoked_at = now
-          row.version += 1
         }
       }
       return { rows: [], rowCount: 1 }
@@ -269,7 +269,6 @@ class MemoryAuthSessionDatabase implements AuthSessionDatabase {
         row.status = "replayed"
         row.replayed_at = new Date(bindings[0] as Date)
         row.revoked_at = null
-        row.version += 1
       }
       return { rows: [], rowCount: row ? 1 : 0 }
     }
@@ -289,7 +288,6 @@ class MemoryAuthSessionDatabase implements AuthSessionDatabase {
         row.replacement_used_at = null
         row.replayed_at = null
         row.revoked_at = new Date(bindings[0] as Date)
-        row.version += 1
       }
       return { rows: [], rowCount: row ? 1 : 0 }
     }
@@ -301,7 +299,6 @@ class MemoryAuthSessionDatabase implements AuthSessionDatabase {
       const row = state.refreshes.get(String(bindings[2]))
       if (row) {
         row.replacement_used_at = new Date(bindings[0] as Date)
-        row.version += 1
       }
       return { rows: [], rowCount: row ? 1 : 0 }
     }
@@ -322,7 +319,6 @@ class MemoryAuthSessionDatabase implements AuthSessionDatabase {
         row.request_key_hash = String(bindings[1])
         row.consumed_at = new Date(bindings[2] as Date)
         row.recovery_until = new Date(bindings[3] as Date)
-        row.version += 1
         return { rows: [{ id: row.id }], rowCount: 1 }
       }
       return { rows: [], rowCount: 0 }

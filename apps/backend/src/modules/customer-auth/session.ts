@@ -173,7 +173,6 @@ type RefreshRow = {
   replacement_used_at: Date | null
   replayed_at: Date | null
   revoked_at: Date | null
-  version: number
 }
 
 type CredentialRow = {
@@ -371,7 +370,6 @@ function parseRefresh(row: Record<string, unknown>): RefreshRow {
     replacement_used_at: nullableDateFromRow(row.replacement_used_at),
     replayed_at: nullableDateFromRow(row.replayed_at),
     revoked_at: nullableDateFromRow(row.revoked_at),
-    version: numberFromRow(row.version),
   }
 }
 
@@ -604,7 +602,6 @@ async function revokeRefreshRows(
             replacement_used_at = null,
             replayed_at = null,
             revoked_at = ?,
-            version = version + 1,
             updated_at = ?
       where lineage_id = ?
         and deleted_at is null
@@ -631,7 +628,6 @@ async function revokeRefreshRows(
           set status = 'replayed',
               replayed_at = ?,
               revoked_at = null,
-              version = version + 1,
               updated_at = ?
         where id = ?
           and lineage_id = ?
@@ -649,7 +645,6 @@ async function revokeRefreshRows(
               replacement_used_at = null,
               replayed_at = null,
               revoked_at = ?,
-              version = version + 1,
               updated_at = ?
         where id = ?
           and lineage_id = ?
@@ -866,7 +861,6 @@ export async function issueInitialAuthSession(
         replacement_used_at: null,
         replayed_at: null,
         revoked_at: null,
-        version: 1,
       },
       refreshToken,
       rotation: "initial" as const,
@@ -908,7 +902,6 @@ async function rotateInTransaction(
               recovery_until = null,
               replacement_used_at = null,
               replayed_at = null,
-              version = version + 1,
               updated_at = ?
         where id = ?
           and deleted_at is null`,
@@ -983,7 +976,6 @@ async function rotateInTransaction(
       await transaction.raw(
         `update auth_refresh_credential
             set replacement_used_at = ?,
-                version = version + 1,
                 updated_at = ?
           where id = ?
             and status = 'consumed'
@@ -999,7 +991,6 @@ async function rotateInTransaction(
               request_key_hash = ?,
               consumed_at = ?,
               recovery_until = ?,
-              version = version + 1,
               updated_at = ?
         where id = ?
           and lineage_id = ?
@@ -1071,7 +1062,6 @@ async function rotateInTransaction(
         replacement_used_at: null,
         replayed_at: null,
         revoked_at: null,
-        version: 1,
       },
       refreshToken: nextToken,
       rotation: "rotated",

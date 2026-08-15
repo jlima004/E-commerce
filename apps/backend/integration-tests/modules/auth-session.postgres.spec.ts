@@ -77,12 +77,11 @@ create table if not exists auth_refresh_credential (
   replayed_at timestamptz,
   revoked_at timestamptz,
   schema_version integer not null default 1,
-  version integer not null default 1,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
   constraint auth_session_test_generation check (
-    generation >= 0 and key_version >= 1 and version >= 1
+    generation >= 0 and key_version >= 1
   ),
   constraint auth_session_test_consumed_recovery check (
     (
