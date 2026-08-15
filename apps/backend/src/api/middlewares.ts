@@ -9,7 +9,7 @@ import {
   type MedusaResponse,
 } from "@medusajs/framework/http"
 import * as Sentry from "@sentry/node"
-import { MedusaError } from "@medusajs/utils"
+import { ContainerRegistrationKeys, MedusaError } from "@medusajs/utils"
 import type { Logger as PinoLogger } from "pino"
 import {
   sellableGateProductCreateMiddleware,
@@ -38,11 +38,17 @@ import { buildSentryCaptureContext, shouldCaptureError } from "../observability/
 import { createStoreTrackingLookupGuardMiddleware } from "../modules/tracking-access-token/lookup"
 import { storeSurfaceGuardMiddleware } from "./store-surface/guard"
 import { authSurfaceGuardMiddleware } from "./auth-surface/guard"
+import { toAuthErrorResponse } from "./auth-surface/errors"
 import {
   attachStoreErrorEnvelope,
   sanitizeStoreCorrelationId,
   toStoreErrorResponse,
 } from "./store-surface/errors"
+import {
+  authorizeCustomerAuthAccess,
+  createKnexCustomerAuthAccessDatabase,
+  type CustomerAuthAccessContext,
+} from "../modules/customer-auth/access-guard"
 
 const CORRELATION_HEADER = "x-correlation-id"
 const CORRELATION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
@@ -53,6 +59,7 @@ const TRANSACTION_NOT_STARTED = "TransactionNotStartedError"
 type RequestWithLogging = MedusaRequest & {
   correlationId?: string
   log?: PinoLogger
+  customerAuth?: CustomerAuthAccessContext
 }
 
 type AccessLogMiddlewareDeps = {
@@ -389,6 +396,54 @@ export const sentryErrorMiddleware = createSentryErrorHandler()
 export const storeTrackingLookupGuardMiddleware =
   createStoreTrackingLookupGuardMiddleware()
 
+export async function customerAuthAccessGuardMiddleware(
+  req: MedusaRequest,
+  res: MedusaResponse,
+  next: MedusaNextFunction
+): Promise<void> {
+  const request = req as RequestWithLogging
+  let decision
+
+  try {
+    const connection = req.scope.resolve(
+      ContainerRegistrationKeys.PG_CONNECTION
+    ) as {
+      raw(
+        sql: string,
+        bindings?: unknown[]
+      ): Promise<{ rows?: Array<Record<string, unknown>> }>
+    }
+    if (!connection || typeof connection.raw !== "function") {
+      throw new Error("CUSTOMER_AUTH_POSTGRES_UNAVAILABLE")
+    }
+    decision = await authorizeCustomerAuthAccess(
+      createKnexCustomerAuthAccessDatabase(connection),
+      req.headers.authorization,
+      {
+        jwtSecret: env.JWT_SECRET,
+      }
+    )
+  } catch {
+    decision = {
+      authorized: false as const,
+      statusCode: 503 as const,
+      code: "AUTH_TEMPORARILY_UNAVAILABLE" as const,
+    }
+  }
+
+  if (!decision.authorized) {
+    const normalized = toAuthErrorResponse(
+      { code: decision.code },
+      { correlationId: request.correlationId }
+    )
+    res.status(normalized.statusCode).json(normalized.body)
+    return
+  }
+
+  request.customerAuth = decision
+  next()
+}
+
 export default defineMiddlewares({
   errorHandler: sentryErrorMiddleware,
   routes: [
@@ -409,6 +464,11 @@ export default defineMiddlewares({
     {
       matcher: "/auth*",
       middlewares: [authSurfaceGuardMiddleware],
+    },
+    {
+      method: ["POST"],
+      matcher: "/auth/customer/emailpass/revoke-current-lineage",
+      middlewares: [customerAuthAccessGuardMiddleware],
     },
     {
       method: ["GET"],
