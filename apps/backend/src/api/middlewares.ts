@@ -37,7 +37,10 @@ import {
 import { buildSentryCaptureContext, shouldCaptureError } from "../observability/sentry-scrub"
 import { createStoreTrackingLookupGuardMiddleware } from "../modules/tracking-access-token/lookup"
 import { storeSurfaceGuardMiddleware } from "./store-surface/guard"
-import { authSurfaceGuardMiddleware } from "./auth-surface/guard"
+import {
+  authSurfaceGuardMiddleware,
+  normalizeAuthRequestPath,
+} from "./auth-surface/guard"
 import { toAuthErrorResponse } from "./auth-surface/errors"
 import {
   attachStoreErrorEnvelope,
@@ -109,6 +112,33 @@ function getRouteTemplate(req: MedusaRequest): string {
   }
 
   return req.originalUrl || req.url || "/unknown"
+}
+
+const CUSTOMER_AUTH_REVOKE_PATH =
+  "/auth/customer/emailpass/revoke-current-lineage"
+
+function resolveAuthRequestPath(req: MedusaRequest): string {
+  const originalUrl = typeof req.originalUrl === "string" ? req.originalUrl : ""
+  if (originalUrl === "/auth" || originalUrl.startsWith("/auth/")) {
+    return originalUrl
+  }
+
+  const baseUrl = typeof req.baseUrl === "string" ? req.baseUrl : ""
+  const path = typeof req.path === "string" ? req.path : ""
+  const joined = `${baseUrl}${path}`
+  if (joined === "/auth" || joined.startsWith("/auth/")) {
+    return joined
+  }
+
+  return typeof req.url === "string" ? req.url : joined
+}
+
+function isExactCustomerAuthRevokeRequest(req: MedusaRequest): boolean {
+  return (
+    req.method?.toUpperCase() === "POST" &&
+    normalizeAuthRequestPath(resolveAuthRequestPath(req)) ===
+      CUSTOMER_AUTH_REVOKE_PATH
+  )
 }
 
 export function resolveRequestRouteOrJob(req: MedusaRequest): string {
@@ -396,53 +426,68 @@ export const sentryErrorMiddleware = createSentryErrorHandler()
 export const storeTrackingLookupGuardMiddleware =
   createStoreTrackingLookupGuardMiddleware()
 
-export async function customerAuthAccessGuardMiddleware(
-  req: MedusaRequest,
-  res: MedusaResponse,
-  next: MedusaNextFunction
-): Promise<void> {
-  const request = req as RequestWithLogging
-  let decision
-
-  try {
-    const connection = req.scope.resolve(
-      ContainerRegistrationKeys.PG_CONNECTION
-    ) as {
-      raw(
-        sql: string,
-        bindings?: unknown[]
-      ): Promise<{ rows?: Array<Record<string, unknown>> }>
-    }
-    if (!connection || typeof connection.raw !== "function") {
-      throw new Error("CUSTOMER_AUTH_POSTGRES_UNAVAILABLE")
-    }
-    decision = await authorizeCustomerAuthAccess(
-      createKnexCustomerAuthAccessDatabase(connection),
-      req.headers.authorization,
-      {
-        jwtSecret: env.JWT_SECRET,
-      }
-    )
-  } catch {
-    decision = {
-      authorized: false as const,
-      statusCode: 503 as const,
-      code: "AUTH_TEMPORARILY_UNAVAILABLE" as const,
-    }
-  }
-
-  if (!decision.authorized) {
-    const normalized = toAuthErrorResponse(
-      { code: decision.code },
-      { correlationId: request.correlationId }
-    )
-    res.status(normalized.statusCode).json(normalized.body)
-    return
-  }
-
-  request.customerAuth = decision
-  next()
+export type CustomerAuthAccessGuardMiddlewareOptions = {
+  now?: () => Date
 }
+
+export function createCustomerAuthAccessGuardMiddleware(
+  options: CustomerAuthAccessGuardMiddlewareOptions = {}
+) {
+  return async function customerAuthAccessGuardMiddleware(
+    req: MedusaRequest,
+    res: MedusaResponse,
+    next: MedusaNextFunction
+  ): Promise<void> {
+    const request = req as RequestWithLogging
+    let decision
+
+    try {
+      const connection = req.scope.resolve(
+        ContainerRegistrationKeys.PG_CONNECTION
+      ) as {
+        raw(
+          sql: string,
+          bindings?: unknown[]
+        ): Promise<{ rows?: Array<Record<string, unknown>> }>
+      }
+      if (!connection || typeof connection.raw !== "function") {
+        throw new Error("CUSTOMER_AUTH_POSTGRES_UNAVAILABLE")
+      }
+      decision = await authorizeCustomerAuthAccess(
+        createKnexCustomerAuthAccessDatabase(connection),
+        req.headers.authorization,
+        {
+          jwtSecret: env.JWT_SECRET,
+          now: options.now?.() ?? new Date(),
+          ...(isExactCustomerAuthRevokeRequest(req)
+            ? { operation: "revoke-current-lineage" as const }
+            : {}),
+        }
+      )
+    } catch {
+      decision = {
+        authorized: false as const,
+        statusCode: 503 as const,
+        code: "AUTH_TEMPORARILY_UNAVAILABLE" as const,
+      }
+    }
+
+    if (!decision.authorized) {
+      const normalized = toAuthErrorResponse(
+        { code: decision.code },
+        { correlationId: request.correlationId }
+      )
+      res.status(normalized.statusCode).json(normalized.body)
+      return
+    }
+
+    request.customerAuth = decision
+    next()
+  }
+}
+
+export const customerAuthAccessGuardMiddleware =
+  createCustomerAuthAccessGuardMiddleware()
 
 export default defineMiddlewares({
   errorHandler: sentryErrorMiddleware,

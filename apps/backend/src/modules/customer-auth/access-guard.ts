@@ -52,6 +52,7 @@ export type CustomerAuthAccessDecision =
 export type AuthorizeCustomerAuthAccessOptions = {
   jwtSecret: string
   now?: Date
+  operation?: "revoke-current-lineage"
 }
 
 const ACCESS_LOOKUP_SQL = `
@@ -206,6 +207,10 @@ export async function authorizeCustomerAuthAccess(
     "original_authenticated_at"
   )
   const absoluteExpiresAt = dateField(row, "absolute_expires_at")
+  const lineageStatusAllowsAccess =
+    row.lineage_status === "active" ||
+    (row.lineage_status === "revoked" &&
+      options.operation === "revoke-current-lineage")
 
   if (
     !lineageId ||
@@ -216,7 +221,7 @@ export async function authorizeCustomerAuthAccess(
     credentialCustomerId !== claims.customer_id ||
     lineageCredentialVersion !== claims.cv ||
     credentialVersion !== claims.cv ||
-    row.lineage_status !== "active" ||
+    !lineageStatusAllowsAccess ||
     row.operation_status !== "stable" ||
     !originalAuthenticatedAt ||
     !absoluteExpiresAt ||

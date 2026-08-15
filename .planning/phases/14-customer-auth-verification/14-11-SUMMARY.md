@@ -54,18 +54,28 @@ status: checkpoint
 
 - **14-11-01:** EXECUTED — AWAITING HUMAN REVIEW
 - **14-11-02:** EXECUTED — AWAITING HUMAN REVIEW
-- **14-11-03:** BLOCKING HUMAN VERIFY — AWAITING HUMAN REVIEW
+- **B14-11-HR-01:** REMEDIATED — AWAITING HUMAN RE-REVIEW
+- **14-11-03:** BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
 - **14-11:** NOT YET HUMAN APPROVED
 - **14-12:** NOT AUTHORIZED
 - **Push / deploy:** NONE — NOT AUTHORIZED
 
 `requirements-completed` remains empty until the blocking human checkpoint approves the plan.
 
+## Remediation: B14-11-HR-01
+
+- The PostgreSQL access guard still requires `lineage_status = active` by default.
+- Only the exact `POST /auth/customer/emailpass/revoke-current-lineage` request is marked as the revoke operation by the middleware; that operation may pass a matching `revoked` lineage for idempotent completion.
+- JWT cryptography, `sid`/lineage binding, auth identity, customer ownership, credential version, stable operation state, absolute deadline, and PostgreSQL lookup remain mandatory in both active and idempotent-revoke decisions.
+- All other guarded operations continue to reject a revoked lineage. DB failures remain `503 AUTH_TEMPORARILY_UNAVAILABLE`; Redis is not consulted for validity.
+- The focused HTTP worker now executes the real guard → revoke `POST` chain. It no longer calls `handleRevokeCurrentLineage()` with synthetic `customerAuth`.
+- `apps/backend/src/api/auth/customer/emailpass/revoke-current-lineage/route.ts` was not changed; no manifest or auth-surface expansion was made.
+
 ## Accomplishments
 
 - Validates access JWT cryptography, then requires one matching PostgreSQL lineage/credential record with active lineage, matching identity/customer ownership, matching credential version, stable operation state, and an unexpired absolute deadline.
 - Fails closed on missing/inconsistent rows and database errors before the protected handler is reached.
-- Exposes capability-bound custom refresh with mandatory `Idempotency-Key` and exactly empty body, plus guarded idempotent current-lineage revocation returning 204.
+- Exposes capability-bound custom refresh with mandatory `Idempotency-Key` and exactly empty body, plus guarded idempotent current-lineage revocation returning 204 through the authorization chain.
 - Elevates only the two approved custom paths; native refresh/session, aliases, request/status/me/password, and all other deferred auth operations remain denied.
 - Proves process-A revocation, replay, credential-version changes, and deadline expiry are rejected by process B without Redis granting validity.
 
@@ -87,10 +97,12 @@ status: checkpoint
 
 ## Verification evidence
 
-- Focused disposable PostgreSQL HTTP suite: **PASS — 7/7 tests**, with disposable database cleanup confirmed.
+- Focused disposable PostgreSQL HTTP suite: **PASS — 8/8 tests**, with disposable database cleanup confirmed.
+- Revoke chain evidence: first valid bearer revoke `204`; repeat with the same bearer after `revoked` lineage `204`; revoked bearer on normal protected operation `401`; ownership, credential-version, stable-state, deadline, and invalid-signature cases `401` before handler; DB outage `503` before handler; cross-process revoke valid.
+- Exact-set evidence: only `POST /auth/token/refresh` and `POST /auth/customer/emailpass/revoke-current-lineage` remain `PHASE14_ENABLED`; native operations remain `DENY`.
 - Backend build: **PASS — 0 TypeScript errors**.
-- Repository lint command: **TOOLING FAILURE** — `medusa lint` exited 2 because its JSON parser received an empty ESLint stream; it emitted no file diagnostics.
-- Direct local ESLint over all six code/test files: **PASS — 0 errors**; seven warnings, including the integration test being ignored by configured patterns and Medusa advisory warnings.
+- Repository lint command: **TOOLING FAILURE** — `npm run lint -w @dtc/backend` exited 2 because its JSON parser received an empty ESLint stream; it emitted no file diagnostics. No tooling or package changes were made.
+- Direct local ESLint over the three remediation files with `--no-ignore`: **PASS — 0 errors**; two existing Medusa advisory warnings in `middlewares.ts`.
 - IDE diagnostics over all six code/test files: **PASS — no errors**.
 - `git diff --check`: **PASS**.
 - Dependencies, package files, migrations, generated OpenAPI, persistent/remote services, real providers, push, PR, merge, and deploy: **NONE**.

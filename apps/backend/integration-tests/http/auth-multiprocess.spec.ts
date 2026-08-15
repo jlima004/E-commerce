@@ -26,9 +26,6 @@ import {
   handleCustomerAuthRefresh,
 } from "../../src/api/auth/token/refresh/route"
 import {
-  handleRevokeCurrentLineage,
-} from "../../src/api/auth/customer/emailpass/revoke-current-lineage/route"
-import {
   AUTH_SURFACE_LOCAL_OPERATIONS,
   AUTH_SURFACE_NATIVE_OPERATIONS,
 } from "../../src/api/auth-surface/manifest"
@@ -41,6 +38,8 @@ const KEYRING = {
   previous: [],
 }
 const BASE = new Date("2026-01-01T00:00:00.000Z")
+const CUSTOMER_AUTH_REVOKE_PATH =
+  "/auth/customer/emailpass/revoke-current-lineage"
 
 type Worker = {
   child: ChildProcess
@@ -121,23 +120,111 @@ const WORKER_SOURCE = String.raw`
 const http = require("node:http");
 const { Pool } = require("pg");
 const {
-  authorizeCustomerAuthAccess,
-  createPostgresCustomerAuthAccessDatabase,
-} = require("./src/modules/customer-auth/access-guard");
+  createCustomerAuthAccessGuardMiddleware,
+} = require("./src/api/middlewares");
 const {
   createPostgresAuthSessionDatabase,
-  revokeAuthSessionLineage,
   rotateAuthRefresh,
 } = require("./src/modules/customer-auth/session");
+const {
+  POST: revokeCurrentLineage,
+} = require("./src/api/auth/customer/emailpass/revoke-current-lineage/route");
 
 const pool = new Pool({ connectionString: process.env.P14_DATABASE_URL });
-const database = createPostgresCustomerAuthAccessDatabase(pool);
 const sessionDatabase = createPostgresAuthSessionDatabase(pool);
+const REVOKE_PATH = "/auth/customer/emailpass/revoke-current-lineage";
 const keyring = {
   active: { version: 1, secret: "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk" },
   previous: [],
 };
 let handlerCalls = 0;
+
+function replaceBindings(sql) {
+  let index = 0;
+  return sql.replace(/\?/g, () => "$" + (++index));
+}
+
+const connection = {
+  raw(sql, bindings = []) {
+    return pool.query(replaceBindings(sql), bindings);
+  },
+  async transaction(callback) {
+    const client = await pool.connect();
+    await client.query("begin");
+    const transaction = {
+      raw(sql, bindings = []) {
+        return client.query(replaceBindings(sql), bindings);
+      },
+    };
+    try {
+      const result = await callback(transaction);
+      await client.query("commit");
+      return result;
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+};
+
+function createRequest(req, connectionForRequest) {
+  return {
+    method: req.method,
+    originalUrl: req.url,
+    url: req.url,
+    path: (req.url || "").split(/[?#]/, 1)[0],
+    baseUrl: "",
+    headers: req.headers,
+    body: undefined,
+    scope: {
+      resolve: () => connectionForRequest,
+    },
+  };
+}
+
+function createResponse(res) {
+  const response = {
+    headersSent: false,
+    statusCode: 200,
+    status(code) {
+      response.statusCode = code;
+      return response;
+    },
+    json(body) {
+      if (response.headersSent) {
+        return response;
+      }
+      response.headersSent = true;
+      res.writeHead(response.statusCode, {
+        "content-type": "application/json",
+      });
+      res.end(JSON.stringify(body));
+      return response;
+    },
+    end() {
+      if (response.headersSent) {
+        return response;
+      }
+      response.headersSent = true;
+      res.writeHead(response.statusCode);
+      res.end();
+      return response;
+    },
+  };
+  return response;
+}
+
+async function invokeGuarded(request, response, handler, now) {
+  let nextPromise = Promise.resolve();
+  const guard = createCustomerAuthAccessGuardMiddleware({ now });
+  await guard(request, response, () => {
+    handlerCalls += 1;
+    nextPromise = Promise.resolve(handler());
+  });
+  await nextPromise;
+}
 
 const server = http.createServer(async (req, res) => {
   if (req.url === "/observation") {
@@ -146,14 +233,42 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.url === "/revoke") {
-    await revokeAuthSessionLineage(sessionDatabase, {
-      lineageId: "lineage_1",
-      reason: "logout",
-      now: new Date(process.env.P14_NOW),
-    });
-    res.writeHead(204);
-    res.end();
+  const pathname = (req.url || "").split(/[?#]/, 1)[0];
+  const connectionForRequest =
+    req.headers["x-test-database-outage"] === "1"
+      ? {
+          raw: async () => {
+            throw new Error("synthetic database outage");
+          },
+        }
+      : connection;
+  const requestedNow = Array.isArray(req.headers["x-test-now"])
+    ? req.headers["x-test-now"][0]
+    : req.headers["x-test-now"];
+  const now = () =>
+    new Date(requestedNow || process.env.P14_NOW);
+
+  if (req.method === "POST" && pathname === REVOKE_PATH) {
+    const request = createRequest(req, connectionForRequest);
+    const response = createResponse(res);
+    await invokeGuarded(
+      request,
+      response,
+      () => revokeCurrentLineage(request, response),
+      now
+    );
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/protected") {
+    const request = createRequest(req, connectionForRequest);
+    const response = createResponse(res);
+    await invokeGuarded(
+      request,
+      response,
+      () => response.status(204).end(),
+      now
+    );
     return;
   }
 
@@ -189,33 +304,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const outageDatabase = {
-    query: async () => {
-      throw new Error("synthetic database outage");
-    },
-  };
-  const selectedDatabase =
-    req.headers["x-test-database-outage"] === "1" ? outageDatabase : database;
-
-  const authorization = Array.isArray(req.headers.authorization)
-    ? req.headers.authorization[0]
-    : req.headers.authorization;
-  const result = await authorizeCustomerAuthAccess(selectedDatabase, authorization, {
-    jwtSecret: process.env.P14_JWT_SECRET,
-    now: req.headers["x-test-now"]
-      ? new Date(req.headers["x-test-now"])
-      : new Date(process.env.P14_NOW),
-  });
-
-  if (!result.authorized) {
-    res.writeHead(result.statusCode, { "content-type": "application/json" });
-    res.end(JSON.stringify({ code: result.code }));
-    return;
-  }
-
-  handlerCalls += 1;
-  res.writeHead(204);
-  res.end();
+  res.writeHead(404, { "content-type": "application/json" });
+  res.end(JSON.stringify({ code: "NOT_FOUND" }));
 });
 
 server.listen(0, "127.0.0.1", () => {
@@ -270,6 +360,7 @@ async function startWorker(databaseUrl: string): Promise<Worker> {
         NODE_ENV: "test",
         P14_DATABASE_URL: databaseUrl,
         P14_JWT_SECRET: JWT_SECRET,
+        JWT_SECRET,
         P14_NOW: at(60_000).toISOString(),
         TS_NODE_PROJECT: "tsconfig.json",
       },
@@ -345,22 +436,24 @@ function call(
 function postWorker(
   worker: Worker,
   path: string,
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
+  headers: Record<string, string> = {}
 ): Promise<HttpResult> {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : ""
+    const requestHeaders: Record<string, string> = { ...headers }
+    if (payload) {
+      requestHeaders["content-type"] = "application/json"
+      requestHeaders["content-length"] = String(Buffer.byteLength(payload))
+    }
     const req = request(
       {
         host: "127.0.0.1",
         port: worker.port,
         method: "POST",
         path,
-        headers: payload
-          ? {
-              "content-type": "application/json",
-              "content-length": String(Buffer.byteLength(payload)),
-            }
-          : undefined,
+        headers:
+          Object.keys(requestHeaders).length > 0 ? requestHeaders : undefined,
       },
       (res) => {
         const chunks: Buffer[] = []
@@ -376,6 +469,17 @@ function postWorker(
     )
     req.once("error", reject)
     req.end(payload)
+  })
+}
+
+function postRevoke(
+  worker: Worker,
+  accessToken: string,
+  headers: Record<string, string> = {}
+): Promise<HttpResult> {
+  return postWorker(worker, CUSTOMER_AUTH_REVOKE_PATH, undefined, {
+    authorization: `Bearer ${accessToken}`,
+    ...headers,
   })
 }
 
@@ -588,36 +692,116 @@ describe("Phase 14 PostgreSQL-authoritative access guard", () => {
 
   it("fails closed on database outage before the handler", async () => {
     const before = await observe(workers[0])
-    const result = await call(workers[0], token(), {
+    const result = await postRevoke(workers[0], token(), {
       "x-test-database-outage": "1",
     })
     const after = await observe(workers[0])
 
-    expect(result).toEqual({
-      status: 503,
-      body: { code: "AUTH_TEMPORARILY_UNAVAILABLE" },
+    expect(result.status).toBe(503)
+    expect(result.body).toMatchObject({
+      code: "AUTH_TEMPORARILY_UNAVAILABLE",
     })
     expect(after.handlerCalls).toBe(before.handlerCalls)
   })
 
-  it("rejects revoke and version changes from process A in process B even with Redis empty or unavailable", async () => {
+  it("applies ownership, cv, stable, deadline, and JWT checks before revoke", async () => {
+    const cases: Array<{
+      mutate: () => Promise<unknown>
+      accessToken?: string
+      headers?: Record<string, string>
+    }> = [
+      {
+        mutate: () => pool.query("delete from auth_session_lineage"),
+      },
+      {
+        mutate: () =>
+          pool.query(
+            "update auth_session_lineage set auth_identity_id = 'identity_other'"
+          ),
+      },
+      {
+        mutate: () =>
+          pool.query(
+            "update auth_session_lineage set customer_id = 'customer_other'"
+          ),
+      },
+      {
+        mutate: () =>
+          pool.query(
+            "update auth_credential_state set credential_version = 2"
+          ),
+      },
+      {
+        mutate: () =>
+          pool.query(
+            "update auth_credential_state set operation_status = 'claimed'"
+          ),
+      },
+      {
+        mutate: async () => undefined,
+        headers: {
+          "x-test-now": at(30 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+      },
+      {
+        mutate: async () => undefined,
+        accessToken: token({ secret: "x".repeat(64) }),
+      },
+    ]
+
+    for (const testCase of cases) {
+      await pool.query(
+        "delete from auth_refresh_credential; delete from auth_session_lineage; delete from auth_credential_state"
+      )
+      await pool.query(
+        `insert into auth_credential_state
+           (id, auth_identity_id, customer_id, credential_version, operation_status)
+         values ('credential_1', 'identity_1', 'customer_1', 1, 'stable')`
+      )
+      await pool.query(
+        `insert into auth_session_lineage
+           (id, sid, auth_identity_id, customer_id, credential_version_snapshot,
+            status, original_authenticated_at, absolute_expires_at)
+         values ('lineage_1', 'sid_1', 'identity_1', 'customer_1', 1,
+                 'active', $1, $2)`,
+        [BASE, at(30 * 24 * 60 * 60 * 1000)]
+      )
+      await testCase.mutate()
+
+      const before = await observe(workers[0])
+      const result = await postRevoke(
+        workers[0],
+        testCase.accessToken ?? token(),
+        testCase.headers
+      )
+      const after = await observe(workers[0])
+
+      expect(result.status).toBe(401)
+      expect(after.handlerCalls).toBe(before.handlerCalls)
+    }
+  })
+
+  it("keeps revoke idempotent across processes while normal access stays denied", async () => {
     const [processA, processB] = workers
     expect(processA.child.pid).not.toBe(processB.child.pid)
-    expect((await call(processB, token())).status).toBe(204)
+    const accessToken = token()
 
     await redis.setKey("synthetic-positive-access", "allow")
     await redis.flushNamespace()
-    await pool.query("update auth_session_lineage set status = 'revoked'")
-    const revoked = await call(processB, token())
+    expect((await postRevoke(processA, accessToken)).status).toBe(204)
+    expect((await postRevoke(processB, accessToken)).status).toBe(204)
+
+    const revoked = await call(processB, accessToken)
     expect(revoked.status).toBe(401)
 
     await pool.query("update auth_session_lineage set status = 'active'")
     await pool.query("update auth_credential_state set credential_version = 2")
     redis.enableOutage()
     try {
+      const before = await observe(processB)
       const versionBumped = await call(processB, token())
       expect(versionBumped.status).toBe(401)
-      expect((await observe(processB)).handlerCalls).toBe(1)
+      expect((await observe(processB)).handlerCalls).toBe(before.handlerCalls)
     } finally {
       redis.disableOutage()
     }
@@ -705,7 +889,7 @@ describe("Phase 14 PostgreSQL-authoritative access guard", () => {
     }
   })
 
-  it("rotates through the custom refresh handler and revokes idempotently with 204", async () => {
+  it("rotates through refresh and reaches guarded revoke idempotently with 204", async () => {
     await pool.query(
       "delete from auth_refresh_credential; delete from auth_session_lineage"
     )
@@ -758,23 +942,25 @@ describe("Phase 14 PostgreSQL-authoritative access guard", () => {
       verificationState: "pending",
     })
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const revokeResponse = responseRecorder()
-      await handleRevokeCurrentLineage(
-        {
-          headers: { "content-length": "0" },
-          body: {},
-          customerAuth: { lineageId: "lineage_1" },
-        } as never,
-        revokeResponse.response as never,
-        {
-          database: sessionDatabase,
-          now: () => at(120_000),
-        }
-      )
-      expect(revokeResponse.state.statusCode).toBe(204)
-      expect(revokeResponse.state.body).toBeUndefined()
-    }
+    const beforeA = await observe(workers[0])
+    const beforeB = await observe(workers[1])
+    const firstRevoke = await postRevoke(workers[0], initial.accessToken)
+    const repeatedRevoke = await postRevoke(workers[1], initial.accessToken)
+
+    expect(firstRevoke.status).toBe(204)
+    expect(repeatedRevoke.status).toBe(204)
+    expect((await observe(workers[0])).handlerCalls).toBe(
+      beforeA.handlerCalls + 1
+    )
+    expect((await observe(workers[1])).handlerCalls).toBe(
+      beforeB.handlerCalls + 1
+    )
+
+    const beforeDeniedOperation = await observe(workers[1])
+    expect((await call(workers[1], initial.accessToken)).status).toBe(401)
+    expect((await observe(workers[1])).handlerCalls).toBe(
+      beforeDeniedOperation.handlerCalls
+    )
   })
 
   it("proves logout, replay, version bump, and deadline rejection across processes", async () => {
@@ -800,8 +986,8 @@ describe("Phase 14 PostgreSQL-authoritative access guard", () => {
             : "refresh_1",
     })
 
-    expect((await postWorker(processA, "/revoke")).status).toBe(204)
-    expect((await postWorker(processA, "/revoke")).status).toBe(204)
+    expect((await postRevoke(processA, initial.accessToken)).status).toBe(204)
+    expect((await postRevoke(processB, initial.accessToken)).status).toBe(204)
     expect((await call(processB, initial.accessToken)).status).toBe(401)
 
     await pool.query(
