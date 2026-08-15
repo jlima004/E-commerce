@@ -21,10 +21,10 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 13 está CLOSED — HUMAN APPROVED, FND-01..FND-08 COMPLETE;
 - Phase 14 CONTEXT, RESEARCH, PLAN, SPEC/SDD e Implementation Prompt estão HUMAN APPROVED — PASS;
 - execução Phase 14 permanece estritamente serial e manual-gated;
-- `14-01`..`14-11` estão HUMAN APPROVED — PASS;
-- `14-07`..`14-11` estão DOCUMENTALLY CLOSED;
-- `14-12` está **AUTHORIZED FOR EXECUTION / NOT STARTED**;
-- `14-13`..`14-21` permanecem **NOT AUTHORIZED**;
+- `14-01`..`14-12` estão HUMAN APPROVED — PASS;
+- `14-07`..`14-12` estão DOCUMENTALLY CLOSED;
+- `14-13` está **AUTHORIZED FOR EXECUTION / NOT STARTED**;
+- `14-14`..`14-21` permanecem **NOT AUTHORIZED**;
 - deploy, real Resend/real providers e frontend permanecem não autorizados/bloqueados.
 
 ## Milestones
@@ -41,7 +41,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
-| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 11/21 plans HUMAN APPROVED — PASS; 33/63 tasks complete; 14-11 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-12 AUTHORIZED FOR EXECUTION |
+| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 12/21 plans HUMAN APPROVED — PASS; 36/63 tasks complete; 14-12 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-13 AUTHORIZED FOR EXECUTION |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
@@ -70,14 +70,14 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 ### Execution status
 
 - 21 planos em 21 waves estritamente seriais (`14-01 → ... → 14-21`).
-- 63 tasks totais / **33 complete**.
-- **11/21 plans HUMAN APPROVED — PASS**.
+- 63 tasks totais / **36 complete**.
+- **12/21 plans HUMAN APPROVED — PASS**.
 - AUTH coverage planejada: 9/9.
 - D14 coverage planejada: 16/16.
 - P14-D coverage planejada: 14/14.
-- `14-11 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
-- `14-12 AUTHORIZED FOR EXECUTION / NOT STARTED`.
-- `14-13..14-21 NOT AUTHORIZED`.
+- `14-12 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
+- `14-13 AUTHORIZED FOR EXECUTION / NOT STARTED`.
+- `14-14..14-21 NOT AUTHORIZED`.
 - Deploy NOT AUTHORIZED.
 - Real Resend / real providers NOT AUTHORIZED.
 - Frontend BLOCKED.
@@ -95,8 +95,8 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 - [x] `14-09-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 - [x] `14-10-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 - [x] `14-11-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
-- [ ] `14-12-PLAN.md` — AUTHORIZED FOR EXECUTION / NOT STARTED
-- [ ] `14-13-PLAN.md` — NOT AUTHORIZED
+- [x] `14-12-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+- [ ] `14-13-PLAN.md` — AUTHORIZED FOR EXECUTION / NOT STARTED
 - [ ] `14-14-PLAN.md` — NOT AUTHORIZED
 - [ ] `14-15-PLAN.md` — NOT AUTHORIZED
 - [ ] `14-16-PLAN.md` — NOT AUTHORIZED
@@ -157,21 +157,46 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 
 Nenhuma migration/schema, provider real, persistência remota ou deploy foi executado.
 
-### 14-12 authorization
+### 14-12 closure
 
-Por autorização humana explícita, `14-12-PLAN.md` está **AUTHORIZED FOR EXECUTION / NOT STARTED**.
+`14-12` fechou o domínio verification P14-D08/D14-09..12 antes da elevação HTTP:
+
+- resend concorrente é latest-wins sob credential-row lock, mantendo apenas uma generation pending/claimed válida;
+- confirm concorrente produz exatamente um winner e falha uniformemente para used/superseded/expired;
+- TTL de verification é exatamente 30 minutos;
+- expiry terminal state é commitado antes da resposta uniforme invalid-or-expired;
+- intent e `AuthNotificationOutbox` são criados na mesma transação custom;
+- capability permanece hash-only na persistência e não vaza nos sinks aprovados;
+- key rotation aceita a capability criada sob a chave anterior conforme o keyring aprovado;
+- provider timeout/5xx/ambiguous altera somente delivery/outbox e não o verification state;
+- confirm não cria lineage/JWT/session/refresh credential e não produz side effect de Order/Stripe;
+- native verification event/primitives não participam;
+- os quatro Store verification paths de `14-13` permaneceram DENY durante `14-12`;
+- unit 12/12 PASS;
+- disposable PostgreSQL 9/9 PASS com cleanup;
+- backend build PASS;
+- ESLint direto 0 erros; falha conhecida do wrapper lint por parsing JSON vazio permanece tooling não bloqueante;
+- `git diff --check` PASS;
+- remote technical head pós-aprovação/push manual: `040fbbfc1d4a947f96de7314ff8f340c29a7dd49`;
+- `14-12-03 HUMAN APPROVED — PASS`;
+- `14-12 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
+
+Nenhuma migration/schema, dependency, provider real, persistência remota ou deploy foi executado.
+
+### 14-13 authorization
+
+Por autorização humana explícita, `14-13-PLAN.md` está **AUTHORIZED FOR EXECUTION / NOT STARTED**.
 
 A autorização cobre:
-- `14-12-01`: implementar o domínio verification latest-wins/one-winner em `verification.ts` e unit tests no escopo exato do plano;
-- `14-12-02`: executar prova local descartável PostgreSQL de concorrência/provider/leakage no arquivo de integração autorizado;
-- criação de `14-12-SUMMARY.md` e validações locais previstas pelo plano.
+- `14-13-01`: implementar os quatro handlers verification previstos no plano, com `customerAuthAccessGuard` nos endpoints autenticados, limiter HMAC, envelopes/timing e focused HTTP evidence;
+- `14-13-02`: elevar exatamente quatro method/path Store somente após o HTTP PASS da task anterior, mantendo aliases, raw Customer e native auth verification em DENY;
+- criação de `14-13-SUMMARY.md` e validações locais previstas pelo plano.
 
-`14-12-03` permanece **BLOCKING HUMAN VERIFY**. A execução deve parar nesse checkpoint antes de qualquer `14-13`.
+`14-13-03` permanece **BLOCKING HUMAN VERIFY**. A execução deve parar nesse checkpoint antes de qualquer `14-14`.
 
 Continuam proibidos:
-- `14-13` ou planos posteriores;
-- elevar endpoints de verification ou Store neste plano;
-- native verification route/event/provider metadata;
+- `14-14` ou planos posteriores;
+- qualquer quinto verification path, alias, raw Customer ou native auth verification route;
 - auto-chain;
 - deploy/release;
 - real Resend ou qualquer provider real;
@@ -260,35 +285,32 @@ PLAN: HUMAN APPROVED — PASS
 SPEC/SDD: HUMAN APPROVED — PASS
 IMPLEMENTATION PROMPT: HUMAN APPROVED — PASS
 
-14-01..14-11:
+14-01..14-12:
 HUMAN APPROVED — PASS
 
-14-07..14-11:
+14-07..14-12:
 DOCUMENTALLY CLOSED
 
-14-11-03:
+14-12-03:
 HUMAN APPROVED — PASS
 
-B14-11-HR-01:
-CLOSED — PASS
-
 Phase 14 plans human-approved executed:
-11/21
+12/21
 
 Phase 14 tasks complete:
-33/63
+36/63
 
-14-12:
+14-13:
 AUTHORIZED FOR EXECUTION / NOT STARTED
 
-14-12-03:
-BLOCKING HUMAN VERIFY after Tasks 14-12-01/02
+14-13-03:
+BLOCKING HUMAN VERIFY after Tasks 14-13-01/02
 
-14-13..14-21:
+14-14..14-21:
 NOT AUTHORIZED
 
 Next blocking gate:
-14-12-03 human review
+14-13-03 human review
 
 Milestone requirements complete:
 8/91
@@ -304,4 +326,4 @@ BLOCKED / not started / not authorized
 ```
 
 ---
-*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-15 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01..14-11 HUMAN APPROVED — PASS; 21 plans/21 serial waves/63 tasks/33 complete; 14-07..14-11 DOCUMENTALLY CLOSED; 14-12 AUTHORIZED FOR EXECUTION; 14-13..14-21 NOT AUTHORIZED; deploy NOT AUTHORIZED; real providers NOT AUTHORIZED; Frontend BLOCKED; 8/91 requirements; manual-review gated · no auto-chain*
+*Roadmap opened: 2026-08-06 · 10 phases · updated 2026-08-15 — Phase 13 HUMAN APPROVED — CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01..14-12 HUMAN APPROVED — PASS; 21 plans/21 serial waves/63 tasks/36 complete; 14-07..14-12 DOCUMENTALLY CLOSED; 14-13 AUTHORIZED FOR EXECUTION; 14-14..14-21 NOT AUTHORIZED; deploy NOT AUTHORIZED; real providers NOT AUTHORIZED; Frontend BLOCKED; 8/91 requirements; manual-review gated · no auto-chain*
