@@ -116,6 +116,12 @@ function getRouteTemplate(req: MedusaRequest): string {
 
 const CUSTOMER_AUTH_REVOKE_PATH =
   "/auth/customer/emailpass/revoke-current-lineage"
+const CUSTOMER_AUTH_VERIFICATION_CONTRACTS = new Set([
+  "POST /store/customers/me/verify",
+  "POST /store/customers/verify/resend",
+  "POST /store/customers/verify",
+  "GET /store/customers/me/verify/status",
+])
 
 function resolveAuthRequestPath(req: MedusaRequest): string {
   const originalUrl = typeof req.originalUrl === "string" ? req.originalUrl : ""
@@ -138,6 +144,34 @@ function isExactCustomerAuthRevokeRequest(req: MedusaRequest): boolean {
     req.method?.toUpperCase() === "POST" &&
     normalizeAuthRequestPath(resolveAuthRequestPath(req)) ===
       CUSTOMER_AUTH_REVOKE_PATH
+  )
+}
+
+function resolveStoreRequestPath(req: MedusaRequest): string {
+  const candidates = [
+    typeof req.originalUrl === "string" ? req.originalUrl : "",
+    `${typeof req.baseUrl === "string" ? req.baseUrl : ""}${
+      typeof req.path === "string" ? req.path : ""
+    }`,
+    typeof req.url === "string" ? req.url : "",
+    (req as MedusaRequest & { route?: { path?: string } }).route?.path ?? "",
+  ]
+
+  for (const candidate of candidates) {
+    const path = candidate.split(/[?#]/, 1)[0] ?? ""
+    if (path === "/store" || path.startsWith("/store/")) {
+      return path
+    }
+  }
+
+  return ""
+}
+
+export function isExactCustomerAuthVerificationRequest(
+  req: MedusaRequest
+): boolean {
+  return CUSTOMER_AUTH_VERIFICATION_CONTRACTS.has(
+    `${req.method?.toUpperCase() ?? "GET"} ${resolveStoreRequestPath(req)}`
   )
 }
 
@@ -288,7 +322,9 @@ export function createStoreErrorEnvelopeMiddleware() {
     res: MedusaResponse,
     next: MedusaNextFunction
   ): void {
-    attachStoreErrorEnvelope(req as RequestWithLogging, res)
+    if (!isExactCustomerAuthVerificationRequest(req)) {
+      attachStoreErrorEnvelope(req as RequestWithLogging, res)
+    }
     next()
   }
 }
@@ -349,6 +385,17 @@ export function createSentryErrorHandler(
     // Store-only public envelope. Admin/Webhooks keep Medusa delegation.
     if (isStoreApiRequest(req)) {
       if (res.headersSent) {
+        return
+      }
+
+      if (isExactCustomerAuthVerificationRequest(req)) {
+        const normalized = toAuthErrorResponse(
+          { code: "AUTH_TEMPORARILY_UNAVAILABLE" },
+          { correlationId }
+        )
+        res.setHeader(CORRELATION_HEADER, correlationId)
+        res.setHeader("Retry-After", "60")
+        res.status(normalized.statusCode).json(normalized.body)
         return
       }
 
@@ -513,6 +560,16 @@ export default defineMiddlewares({
     {
       method: ["POST"],
       matcher: "/auth/customer/emailpass/revoke-current-lineage",
+      middlewares: [customerAuthAccessGuardMiddleware],
+    },
+    {
+      method: ["POST"],
+      matcher: "/store/customers/me/verify",
+      middlewares: [customerAuthAccessGuardMiddleware],
+    },
+    {
+      method: ["GET"],
+      matcher: "/store/customers/me/verify/status",
       middlewares: [customerAuthAccessGuardMiddleware],
     },
     {
