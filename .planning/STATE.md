@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Backend Storefront Readiness
 current_phase: 14
 current_phase_name: customer-auth-verification
-current_plan: 12
+current_plan: 13
 status: ready
-last_updated: "2026-08-15T00:01:00-03:00"
+last_updated: "2026-08-15T00:53:00-03:00"
 progress:
   total_phases: 10
   completed_phases: 1
   total_plans: 28
-  completed_plans: 18
+  completed_plans: 19
   percent: 11
-stopped_at: 14-11 DOCUMENTARY CLOSURE COMPLETE — 14-12 AUTHORIZED FOR EXECUTION
+stopped_at: 14-12 DOCUMENTARY CLOSURE COMPLETE — 14-13 AUTHORIZED FOR EXECUTION
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: `.planning/PROJECT.md` (updated 2026-08-06)
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, no duplicate order, no improper fulfillment.
 
-**Current focus:** Phase 14 — `14-11 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-12 AUTHORIZED FOR EXECUTION / NOT STARTED`.
+**Current focus:** Phase 14 — `14-12 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-13 AUTHORIZED FOR EXECUTION / NOT STARTED`.
 
 ## Execution Policy
 
@@ -39,7 +39,7 @@ Enforcement:
 - `workflow._auto_chain_active=false`
 - `parallelization=false`
 
-Human approval closes only the reviewed plan. The human has explicitly authorized execution of `14-12`; that authorization does not extend to `14-13` or any later plan.
+Human approval closes only the reviewed plan. The human has explicitly authorized execution of `14-13`; that authorization does not extend to `14-14` or any later plan.
 
 ## Current Gate
 
@@ -59,27 +59,24 @@ HUMAN APPROVED — PASS
 Phase 14 IMPLEMENTATION PROMPT:
 HUMAN APPROVED — PASS
 
-14-01..14-11:
+14-01..14-12:
 HUMAN APPROVED — PASS
 
-14-07..14-11:
+14-07..14-12:
 DOCUMENTALLY CLOSED
 
-14-11-03:
+14-12-03:
 HUMAN APPROVED — PASS
-
-B14-11-HR-01:
-CLOSED — PASS
-
-14-11:
-HUMAN APPROVED — PASS
-DOCUMENTALLY CLOSED
 
 14-12:
+HUMAN APPROVED — PASS
+DOCUMENTALLY CLOSED
+
+14-13:
 AUTHORIZED FOR EXECUTION
 NOT STARTED
 
-14-13..14-21:
+14-14..14-21:
 NOT AUTHORIZED
 
 Deploy:
@@ -330,22 +327,70 @@ Migration/schema/dependency/provider/deploy changes:
 NONE
 ```
 
+## 14-12 Accepted Evidence
+
+```text
+Task 14-12-03:
+HUMAN APPROVED — PASS
+
+Focused verification unit:
+PASS — 12/12
+
+Disposable PostgreSQL verification domain:
+PASS — 9/9
+cleanup = PASS
+
+Backend build:
+PASS
+
+Direct scoped ESLint:
+PASS — 0 errors
+existing style warnings only in tests
+
+Repository lint wrapper:
+KNOWN TOOLING FAILURE — empty JSON stream/parser exit
+accepted non-blocking; no tooling/package changes
+
+git diff --check:
+PASS
+
+Accepted domain invariants:
+- resend is latest-wins under credential-row locking
+- concurrent confirm has exactly one winner
+- verification TTL is exactly 30 minutes
+- expiry terminal state commits before uniform invalid-or-expired response
+- intent + auth notification outbox are recorded transactionally
+- capability persistence is hash-only; no plaintext capability in approved sinks
+- previous-key capability remains valid under the approved keyring rotation contract
+- provider timeout/5xx/ambiguous outcome changes only outbox delivery state
+- verification confirm creates no lineage/JWT/session/refresh credential
+- zero Order/Stripe side effect
+- native verification events/primitives are not used
+- Store verification paths remain DENY until 14-13
+
+Remote technical head after human-approved manual push:
+040fbbfc1d4a947f96de7314ff8f340c29a7dd49
+
+Migration/schema/dependency/real-provider/deploy changes:
+NONE
+```
+
 ## Current Position
 
 Phase: 14 (customer-auth-verification) — EXECUTING
-Completed/human-approved Phase 14 plans: **11/21**
-Completed Phase 14 tasks: **33/63**
-Current completed plan: **14-11 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**
-Previous plan: **14-10 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**
-Next plan: **14-12 — AUTHORIZED FOR EXECUTION / NOT STARTED**
-14-13..14-21: **NOT AUTHORIZED**
+Completed/human-approved Phase 14 plans: **12/21**
+Completed Phase 14 tasks: **36/63**
+Current completed plan: **14-12 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**
+Previous plan: **14-11 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**
+Next plan: **14-13 — AUTHORIZED FOR EXECUTION / NOT STARTED**
+14-14..14-21: **NOT AUTHORIZED**
 
 Milestone v1.1:
 
 - phases closed: 1/10
 - Phase 13 requirements complete: FND-01..FND-08 = 8/8
 - milestone requirements complete: 8/91
-- plans human-approved executed: 18 total (Phase 13: 7; Phase 14: 11)
+- plans human-approved executed: 19 total (Phase 13: 7; Phase 14: 12)
 - frontend: BLOCKED
 
 ## Phase 14 Authorities
@@ -382,26 +427,35 @@ Plan `14-11-PLAN.md` is fully executed, remediated, verified, human approved, an
 
 The final implementation enforces PostgreSQL authorization on authenticated Phase 14 access, exact custom refresh/revoke exposure, cross-process revoke/replay/version/deadline behavior, DB fail-closed semantics, Redis non-authority, and operation-scoped idempotent revoke without reopening normal access for revoked lineages.
 
-## 14-12 Status — AUTHORIZED FOR EXECUTION
+## 14-12 Accepted Execution & Closure
 
-By explicit human authorization, plan `14-12-PLAN.md` is **AUTHORIZED FOR EXECUTION / NOT STARTED**.
+Plan `14-12-PLAN.md` is fully executed, verified, human approved, and documentally closed:
+
+- `14-12-01: HUMAN APPROVED — PASS`
+- `14-12-02: HUMAN APPROVED — PASS`
+- `14-12-03: HUMAN APPROVED — PASS`
+- `14-12: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`
+
+The final verification domain preserves latest-wins resend, one-winner confirmation, exact 30-minute expiry, hash-only capability persistence, transactional intent/outbox creation, key rotation, provider-state isolation and zero session/Order/Stripe side effects. Verification HTTP endpoints were not elevated during 14-12.
+
+## 14-13 Status — AUTHORIZED FOR EXECUTION
+
+By explicit human authorization, plan `14-13-PLAN.md` is **AUTHORIZED FOR EXECUTION / NOT STARTED**.
 
 Authorization scope:
-- Task `14-12-01` may implement the verification latest-wins / one-winner domain in the exact plan file scope.
-- Task `14-12-02` may execute the local disposable PostgreSQL concurrency/provider/leakage evidence required by the plan.
-- Task `14-12-03` remains a **BLOCKING HUMAN VERIFY** checkpoint; execution must stop there for human review.
+- Task `14-13-01` may implement the four approved verification HTTP handlers and focused HTTP evidence using the already-approved PostgreSQL access guard, rate limits, envelope and timing contracts.
+- Task `14-13-02` may elevate exactly the four approved Store verification method/path pairs only after the Task 14-13-01 HTTP evidence passes.
+- Task `14-13-03` remains a **BLOCKING HUMAN VERIFY** checkpoint; execution must stop there for human review.
 
 Binding restrictions:
-- `14-13` and later plans are NOT AUTHORIZED;
-- verification endpoints remain DENY in this plan;
-- Store paths remain DENY as required by the plan;
-- native verification routes/events/providers must not be used;
+- `14-14` and later plans are NOT AUTHORIZED;
+- no fifth verification path, raw Customer path, native auth verification route, alias or unrelated Store operation may be elevated;
 - auto-chain is forbidden;
 - deploy/release is NOT AUTHORIZED;
 - real Resend/provider exercise is NOT AUTHORIZED;
 - remote/persistent DB or Redis changes are NOT AUTHORIZED;
 - frontend remains blocked;
-- dependency installation, migration/schema changes, or scope expansion require separate authorization.
+- dependency installation, migration/schema changes or scope expansion require separate authorization.
 
 ## Hard Invariants Still in Force
 
@@ -424,9 +478,9 @@ That historical snapshot remains authoritative for earlier v1.0/v1.1 lineage, ol
 
 ## Blockers / Concerns
 
-`14-01` through `14-11` have no open blockers in their approved scopes. `B14-11-HR-01` is `CLOSED — PASS`.
+`14-01` through `14-12` have no open blockers in their approved scopes. `B14-11-HR-01` remains `CLOSED — PASS`.
 
-`14-12` is authorized but not yet executed. Its blocking conditions remain those in `14-12-PLAN.md`: two surviving winners/pending intents, native verification event execution, provider failure changing verification state, confirm creating lineage/JWT/session, or leakage of verification capability.
+`14-13` is authorized but not yet executed. Its blocking conditions remain those in `14-13-PLAN.md`: authenticated request/status bypassing the PostgreSQL access guard, resend/confirm becoming an oracle, incorrect limiter/outage ordering, raw/native auth routes opening, or more than the exact four approved Store paths being elevated.
 
 Historical provider limitations remain non-blocking and are not converted into authorization:
 
@@ -449,22 +503,22 @@ Known deferred artifact items at v1.0 close remain 0. Historical details remain 
 
 ## Session Continuity
 
-**Resume file:** `.planning/phases/14-customer-auth-verification/14-11-SUMMARY.md`
+**Resume file:** `.planning/phases/14-customer-auth-verification/14-12-SUMMARY.md`
 
-Last session: 2026-08-15T00:01:00-03:00
+Last session: 2026-08-15T00:53:00-03:00
 
 Stopped at:
 
 ```text
-14-11:
+14-12:
 HUMAN APPROVED — PASS
 DOCUMENTALLY CLOSED
 
-14-12:
+14-13:
 AUTHORIZED FOR EXECUTION
 NOT STARTED
 
-14-13:
+14-14:
 NOT AUTHORIZED
 
 DEPLOY:
@@ -477,8 +531,8 @@ NOT AUTHORIZED
 Resume with:
 
 - `.planning/STATE.md`
-- `.planning/phases/14-customer-auth-verification/14-11-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-12-PLAN.md`
+- `.planning/phases/14-customer-auth-verification/14-12-SUMMARY.md`
+- `.planning/phases/14-customer-auth-verification/14-13-PLAN.md`
 - `.planning/phases/14-customer-auth-verification/14-IMPLEMENTATION-PROMPT.md`
 - `.planning/phases/14-customer-auth-verification/14-SPEC.md`
 - `.planning/phases/14-customer-auth-verification/14-SDD.md`
@@ -487,6 +541,6 @@ Resume with:
 - `.planning/REQUIREMENTS.md`
 - `.planning/history/STATE-before-14-02-add005c.md` when detailed historical context is needed
 
-**Next permitted step:** execute `14-12-01` and `14-12-02` according to `14-12-PLAN.md`, then stop at `14-12-03` for blocking human review.
+**Next permitted step:** execute `14-13-01` and `14-13-02` according to `14-13-PLAN.md`, then stop at `14-13-03` for blocking human review.
 
-Do not automatically start `14-13`, elevate verification endpoints, deploy, exercise real providers, execute production rollback, start frontend, or move/recreate tag `v1.0`.
+Do not automatically start `14-14`, deploy, exercise real providers, execute production rollback, start frontend, or move/recreate tag `v1.0`.
