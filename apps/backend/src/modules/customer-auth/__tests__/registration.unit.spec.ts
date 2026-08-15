@@ -497,6 +497,21 @@ function stateDigest(harness: RegistrationHarness): string {
     .digest("hex")
 }
 
+function sideEffectCounters(harness: RegistrationHarness) {
+  return {
+    registerCalls: harness.auth.registerCalls,
+    authenticateCalls: harness.auth.authenticateCalls,
+    createCalls: harness.customer.createCalls,
+    findCalls: harness.customer.findCalls,
+    issueCalls: harness.session.issueCalls,
+    recoverCalls: harness.session.recoverCalls,
+    verificationCalls: harness.verification.calls,
+    intents: harness.database.state.intents.length,
+    credentials: harness.database.state.credentials.length,
+    sessions: harness.session.sessions.size,
+  }
+}
+
 describe("customer registration coordinator", () => {
   it("creates one identity, one Customer, one lineage, and verification/outbox artifacts", async () => {
     const harness = createHarness()
@@ -567,16 +582,56 @@ describe("customer registration coordinator", () => {
     expect(harness.database.completedIntents()).toHaveLength(1)
   })
 
-  it("returns the canonical result for a compatible completed retry", async () => {
+  it("rejects a compatible completed retry without authentication or side effects", async () => {
     const harness = createHarness()
     const first = await run(harness)
-    const second = await run(harness)
+    expect(first.status).toBe("completed")
 
-    expect(second).toEqual(first)
-    expect(harness.auth.registerCalls).toBe(1)
-    expect(harness.customer.createCalls).toBe(1)
-    expect(harness.session.issueCalls).toBe(1)
-    expect(harness.database.completedIntents()).toHaveLength(1)
+    const beforeDigest = stateDigest(harness)
+    const beforeCounters = sideEffectCounters(harness)
+    const originalIntent = harness.database.completedIntents()[0]
+    const originalPassword = harness.identity?.password
+
+    await expect(run(harness)).rejects.toMatchObject({
+      code: "CUSTOMER_REGISTRATION_ALREADY_COMPLETED",
+    })
+
+    expect(stateDigest(harness)).toBe(beforeDigest)
+    expect(sideEffectCounters(harness)).toEqual(beforeCounters)
+    expect(harness.auth.authenticateCalls).toBe(0)
+    expect(harness.identity?.password).toBe(originalPassword)
+    expect(harness.database.completedIntents()).toEqual([originalIntent])
+    expect(harness.commerce).toEqual({
+      order: 0,
+      payment: 0,
+      stripe: 0,
+      gelato: 0,
+      cart: 0,
+      checkout: 0,
+      fulfillment: 0,
+    })
+  })
+
+  it("keeps completed semantic mismatch as mismatch with zero writes", async () => {
+    const harness = createHarness()
+    await run(harness)
+    const beforeDigest = stateDigest(harness)
+    const beforeCounters = sideEffectCounters(harness)
+
+    await expect(
+      run(harness, {
+        customerData: {
+          first_name: "Alice",
+          last_name: "Changed",
+        },
+      })
+    ).rejects.toMatchObject({
+      code: "CUSTOMER_REGISTRATION_SEMANTIC_MISMATCH",
+    })
+
+    expect(stateDigest(harness)).toBe(beforeDigest)
+    expect(sideEffectCounters(harness)).toEqual(beforeCounters)
+    expect(harness.auth.authenticateCalls).toBe(0)
   })
 
   it("does zero writes on semantic mismatch and preserves the original intent", async () => {
@@ -732,23 +787,29 @@ describe("customer registration coordinator", () => {
   it("converges concurrent compatible calls to one identity, Customer, lineage, and result", async () => {
     const harness = createHarness()
 
-    const results = await Promise.all(
+    const outcomes = await Promise.allSettled(
       Array.from({ length: 4 }, () => run(harness))
     )
+    const succeeded = outcomes.flatMap((outcome) =>
+      outcome.status === "fulfilled" ? [outcome.value] : []
+    )
+    const rejected = outcomes.flatMap((outcome) =>
+      outcome.status === "rejected" ? [outcome.reason] : []
+    )
 
-    expect(results.every((result) => result.status === "completed")).toBe(true)
-    expect(new Set(results.map((result) => result.authIdentityId)).size).toBe(
-      1
-    )
-    expect(new Set(results.map((result) => result.customerId)).size).toBe(1)
-    expect(new Set(results.map((result) => result.session.lineageId)).size).toBe(
-      1
-    )
-    expect(new Set(results.map((result) => result.registrationIntentId)).size).toBe(
-      1
-    )
+    expect(succeeded).toHaveLength(1)
+    expect(succeeded[0]?.status).toBe("completed")
+    expect(rejected).toHaveLength(3)
+    expect(
+      rejected.every(
+        (error) =>
+          error?.code === "CUSTOMER_REGISTRATION_ALREADY_COMPLETED"
+      )
+    ).toBe(true)
     expect(harness.database.completedIntents()).toHaveLength(1)
     expect(harness.database.state.credentials).toHaveLength(1)
+    expect(harness.auth.registerCalls).toBe(1)
+    expect(harness.auth.authenticateCalls).toBe(0)
     expect(harness.customer.createCalls).toBe(1)
     expect(harness.session.issueCalls).toBe(1)
     expect(harness.verification.results).toHaveLength(1)

@@ -940,71 +940,12 @@ export async function coordinateCustomerRegistration(
       }
 
       if (intent.status === "completed") {
-        const authenticated = await authenticateExistingIdentity(
-          input,
-          normalizedEmail,
-          intent.id
+        return rejected(
+          new CustomerRegistrationError(
+            "CUSTOMER_REGISTRATION_ALREADY_COMPLETED",
+            intent.id
+          )
         )
-        if ("outcome" in authenticated) {
-          return authenticated.outcome
-        }
-        const customerId = intent.customer_id
-        if (!customerId || !intent.auth_identity_id) {
-          return recovery(intent.id)
-        }
-        const customer = await input.customer.find({
-          authIdentityId: intent.auth_identity_id,
-          normalizedEmail,
-          authIdentity: authenticated.identity,
-        })
-        if (!customer || customer.id !== customerId) {
-          return recovery(
-            intent.id,
-            "CUSTOMER_REGISTRATION_CUSTOMER_FAILURE"
-          )
-        }
-        const credential = await transaction.ensureCredentialState({
-          id: idFor(input.idFactory, "authcred"),
-          authIdentityId: intent.auth_identity_id,
-          customerId,
-          at: now,
-        })
-        const session = await input.session.findInitial({
-          authIdentityId: intent.auth_identity_id,
-          customerId,
-          credentialVersion: credential.credential_version,
-          keyring: request.keyring,
-          jwtSecret: request.jwtSecret,
-          now,
-        })
-        if (!session) {
-          return recovery(
-            intent.id,
-            "CUSTOMER_REGISTRATION_SESSION_FAILURE"
-          )
-        }
-        const verification = await input.verification.autoRequest({
-          authIdentityId: intent.auth_identity_id,
-          normalizedEmail,
-          keyring: request.keyring,
-          now,
-        })
-        if (verification.state === "unknown") {
-          return recovery(
-            intent.id,
-            "CUSTOMER_REGISTRATION_VERIFICATION_FAILURE"
-          )
-        }
-        return {
-          kind: "completed",
-          result: completedResult({
-            intent,
-            authIdentityId: intent.auth_identity_id,
-            customerId,
-            session,
-            verification,
-          }),
-        }
       }
 
       if (faulted(input.faultInjector, REGISTRATION_FAULT_POINTS.BEFORE_IDENTITY)) {

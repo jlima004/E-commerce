@@ -356,6 +356,10 @@ function createHarnessAdapters() {
   let registerCalls = 0
   let authenticateCalls = 0
   let createCalls = 0
+  let findCalls = 0
+  let issueCalls = 0
+  let recoverCalls = 0
+  let verificationCalls = 0
   let identitySequence = 0
   let customerSequence = 0
 
@@ -406,13 +410,18 @@ function createHarnessAdapters() {
 
   const customer: RegistrationCustomer & {
     createCalls: number
+    findCalls: number
     customers: Map<string, RegistrationCustomerRecord>
   } = {
     get createCalls() {
       return createCalls
     },
+    get findCalls() {
+      return findCalls
+    },
     customers,
     async find({ normalizedEmail, authIdentity }) {
+      findCalls += 1
       const customerId = authIdentity.app_metadata?.customer_id
       if (typeof customerId === "string" && customerId.trim() !== "") {
         return customers.get(customerId) ?? null
@@ -446,17 +455,35 @@ function createHarnessAdapters() {
   }
 
   const moduleDatabase = createSharedModuleDatabase()
-  const session: RegistrationSessionService = {
-    findInitial: (input) => recoverInitial(moduleDatabase, input),
-    issueInitial: (input) =>
-      issueInitialAuthSession(moduleDatabase, {
+  const session: RegistrationSessionService & {
+    issueCalls: number
+    recoverCalls: number
+  } = {
+    get issueCalls() {
+      return issueCalls
+    },
+    get recoverCalls() {
+      return recoverCalls
+    },
+    findInitial: (input) => {
+      recoverCalls += 1
+      return recoverInitial(moduleDatabase, input)
+    },
+    issueInitial: (input) => {
+      issueCalls += 1
+      return issueInitialAuthSession(moduleDatabase, {
         ...input,
         keyring: input.keyring as CapabilityKeyring,
-      }),
+      })
+    },
   }
 
-  const verification: RegistrationVerification = {
+  const verification: RegistrationVerification & { calls: number } = {
+    get calls() {
+      return verificationCalls
+    },
     async autoRequest(input) {
+      verificationCalls += 1
       const result = await autoRequestVerification(moduleDatabase, {
         authIdentityId: input.authIdentityId,
         recipientIdentityId: input.authIdentityId,
@@ -638,6 +665,7 @@ if (!databaseUrl || !databaseName) {
            (select count(*)::int from registration_intent where status = 'completed') as completed,
            (select count(*)::int from auth_credential_state) as credentials,
            (select count(*)::int from auth_session_lineage) as lineages,
+           (select count(*)::int from auth_refresh_credential) as refresh_credentials,
            (select count(*)::int from auth_verification_intent) as verifications,
            (select count(*)::int from auth_notification_outbox) as outboxes,
            (select coalesce(string_agg(status, ',' order by created_at, id), '') from registration_intent) as intent_statuses,
@@ -645,6 +673,36 @@ if (!databaseUrl || !databaseName) {
         `
       )
       return result.rows[0] as Record<string, string | number>
+    }
+
+    async function completionTruth() {
+      const result = await pool.query(
+        `select
+           (select count(*)::int from registration_intent) as intents,
+           (select count(*)::int from registration_intent where status = 'completed') as completed,
+           (select version from registration_intent order by created_at, id limit 1) as intent_version,
+           (select completed_at from registration_intent order by created_at, id limit 1) as completed_at,
+           (select updated_at from registration_intent order by created_at, id limit 1) as updated_at,
+           (select count(*)::int from auth_credential_state) as credentials,
+           (select count(*)::int from auth_session_lineage) as lineages,
+           (select count(*)::int from auth_refresh_credential) as refresh_credentials,
+           (select count(*)::int from auth_verification_intent) as verifications,
+           (select count(*)::int from auth_notification_outbox) as outboxes
+        `
+      )
+      return result.rows[0] as Record<string, string | number | Date>
+    }
+
+    function adapterCounters(runtime: ReturnType<typeof createRuntime>) {
+      return {
+        registerCalls: runtime.auth.registerCalls,
+        authenticateCalls: runtime.auth.authenticateCalls,
+        createCalls: runtime.customer.createCalls,
+        findCalls: runtime.customer.findCalls,
+        issueCalls: runtime.session.issueCalls,
+        recoverCalls: runtime.session.recoverCalls,
+        verificationCalls: runtime.verification.calls,
+      }
     }
 
     async function commerceCounts() {
@@ -683,16 +741,27 @@ if (!databaseUrl || !databaseName) {
       expect(barrier.acquired.filter(Boolean)).toHaveLength(1)
 
       const runtime = createRuntime()
-      const results = await Promise.all(
+      const outcomes = await Promise.allSettled(
         Array.from({ length: 3 }, () => run(runtime))
       )
+      const succeeded = outcomes.flatMap((outcome) =>
+        outcome.status === "fulfilled" ? [outcome.value] : []
+      )
+      const rejected = outcomes.flatMap((outcome) =>
+        outcome.status === "rejected" ? [outcome.reason] : []
+      )
 
-      expect(results.every((result) => result.status === "completed")).toBe(true)
-      expect(new Set(results.map((result) => result.authIdentityId)).size).toBe(1)
-      expect(new Set(results.map((result) => result.customerId)).size).toBe(1)
-      expect(new Set(results.map((result) => result.session.lineageId)).size).toBe(1)
-      expect(new Set(results.map((result) => result.registrationIntentId)).size).toBe(1)
+      expect(succeeded).toHaveLength(1)
+      expect(succeeded[0]?.status).toBe("completed")
+      expect(rejected).toHaveLength(2)
+      expect(
+        rejected.every(
+          (error) =>
+            error?.code === "CUSTOMER_REGISTRATION_ALREADY_COMPLETED"
+        )
+      ).toBe(true)
       expect(runtime.auth.registerCalls).toBe(1)
+      expect(runtime.auth.authenticateCalls).toBe(0)
       expect(runtime.customer.createCalls).toBe(1)
       expect(runtime.auth.identities.size).toBe(1)
 
@@ -908,26 +977,48 @@ if (!databaseUrl || !databaseName) {
       ).toBe(true)
     })
 
-    it("creates exactly one initial lineage and one verification/outbox pair", async () => {
+    it("rejects a compatible completed retry without authentication or writes", async () => {
       const runtime = createRuntime()
       const first = await run(runtime)
-      const second = await run(runtime)
-      expect(second.status).toBe("completed")
-      expect(second.authIdentityId).toBe(first.authIdentityId)
-      expect(second.customerId).toBe(first.customerId)
-      expect(second.registrationIntentId).toBe(first.registrationIntentId)
-      expect(second.session.lineageId).toBe(first.session.lineageId)
-      expect(second.verification.state).toBe("pending")
-      expect(second.verification.intentId).toBe(first.verification.intentId)
-
-      const counts = await snapshot()
-      expect(counts.completed).toBe(1)
-      expect(counts.lineages).toBe(1)
-      expect(counts.verifications).toBe(1)
-      expect(counts.outboxes).toBe(1)
+      expect(first.status).toBe("completed")
       expect(first.verification.state).toBe("pending")
       expect(first.verification.intentId).toBeTruthy()
       expect(first.verification.outboxId).toBeTruthy()
+
+      const beforeTruth = await completionTruth()
+      const beforeAdapters = adapterCounters(runtime)
+      const identity = [...runtime.auth.identities.values()][0]
+      const originalHash = identity!.passwordHash
+
+      await expect(run(runtime)).rejects.toMatchObject({
+        code: "CUSTOMER_REGISTRATION_ALREADY_COMPLETED",
+      })
+
+      expect(await completionTruth()).toEqual(beforeTruth)
+      expect(adapterCounters(runtime)).toEqual(beforeAdapters)
+      expect(runtime.auth.authenticateCalls).toBe(0)
+      expect(identity!.passwordHash).toBe(originalHash)
+      expect(
+        await verifyEmailpassPassword(originalHash, "correct-password")
+      ).toBe(true)
+      expect(await snapshot()).toMatchObject({
+        intents: 1,
+        completed: 1,
+        credentials: 1,
+        lineages: 1,
+        refresh_credentials: 1,
+        verifications: 1,
+        outboxes: 1,
+      })
+      expect(await commerceCounts()).toEqual({
+        order_count: 0,
+        payment_count: 0,
+        stripe_count: 0,
+        gelato_count: 0,
+        cart_count: 0,
+        checkout_count: 0,
+        fulfillment_count: 0,
+      })
     })
 
     it("keeps completion valid when synthetic provider delivery fails", async () => {
