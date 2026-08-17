@@ -543,7 +543,7 @@ if (!databaseUrl || !databaseName) {
           entry.pathTemplate === "/auth/customer/emailpass/update"
       )
       expect(
-        resetEntries.every((entry) => entry.runtimePolicy === "DENY")
+        resetEntries.every((entry) => entry.runtimePolicy === "PHASE14_ENABLED")
       ).toBe(true)
     })
   })

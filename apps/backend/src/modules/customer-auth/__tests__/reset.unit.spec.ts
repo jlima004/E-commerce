@@ -9,6 +9,7 @@ import {
   hashResetOperationId,
   reconcileSecretlessPasswordReset,
   requestPasswordReset,
+  type AuthResetDatabase,
   type AuthResetPasswordProvider,
   type AuthResetRawResult,
 } from "../reset"

@@ -1251,6 +1251,8 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       "POST /auth/customer/emailpass",
       "POST /auth/token/refresh",
       "POST /auth/customer/emailpass/revoke-current-lineage",
+      "POST /auth/customer/emailpass/reset-password",
+      "POST /auth/customer/emailpass/update",
     ])
     expect(
       decideAuthSurfaceAccess(

@@ -18,6 +18,8 @@ export const CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS = [
   "POST /store/customers/verify/resend",
   "POST /store/customers/verify",
   "GET /store/customers/me/verify/status",
+  "POST /auth/customer/emailpass/reset-password",
+  "POST /auth/customer/emailpass/update",
 ] as const
 
 export type CustomerAuthBffProtectedOperation =

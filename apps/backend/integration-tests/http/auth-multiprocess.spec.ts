@@ -841,6 +841,8 @@ describe("Phase 14 PostgreSQL-authoritative access guard", () => {
       "POST /auth/customer/emailpass",
       "POST /auth/token/refresh",
       "POST /auth/customer/emailpass/revoke-current-lineage",
+      "POST /auth/customer/emailpass/reset-password",
+      "POST /auth/customer/emailpass/update",
     ])
     expect(
       AUTH_SURFACE_NATIVE_OPERATIONS.every(
