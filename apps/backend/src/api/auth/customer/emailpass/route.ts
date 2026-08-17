@@ -268,6 +268,7 @@ export async function handleCustomerAuthLogin(
       writeAuthError(req, res, "AUTHENTICATION_REQUIRED")
       return
     }
+    await finish()
     res.status(200).json(envelope)
   } catch {
     await finish().catch(() => undefined)
