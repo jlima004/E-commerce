@@ -20,6 +20,7 @@ import { handleCustomerAuthVerificationResend } from "../../src/api/store/custom
 import { handleCustomerAuthVerificationConfirm } from "../../src/api/store/customers/verify/route"
 import {
   STORE_SURFACE_MANIFEST,
+  STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
   storeSurfaceOperationKey,
   validateStoreSurfaceManifest,
 } from "../../src/api/store-surface/manifest"
@@ -774,7 +775,7 @@ describe("Phase 14 verification HTTP contracts", () => {
     expect(confirmVerification).not.toHaveBeenCalled()
   })
 
-  it("elevates exactly four Store verification paths and keeps the deny matrix closed", () => {
+  it("elevates GET /store/customers/me plus the four Store verification paths and keeps the deny matrix closed", () => {
     expect(validateStoreSurfaceManifest()).toEqual([])
 
     const enabled = STORE_SURFACE_MANIFEST.filter(
@@ -782,13 +783,16 @@ describe("Phase 14 verification HTTP contracts", () => {
     ).map((entry) => storeSurfaceOperationKey(entry.method, entry.pathTemplate))
 
     expect(enabled).toEqual([
+      "GET /store/customers/me",
       "POST /store/customers/me/verify",
       "POST /store/customers/verify/resend",
       "POST /store/customers/verify",
       "GET /store/customers/me/verify/status",
     ])
+    expect(enabled).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
 
     for (const [method, path] of [
+      ["GET", "/store/customers/me"],
       ["POST", "/store/customers/me/verify"],
       ["POST", "/store/customers/verify/resend"],
       ["POST", "/store/customers/verify"],
@@ -799,7 +803,7 @@ describe("Phase 14 verification HTTP contracts", () => {
 
     for (const [method, path] of [
       ["POST", "/store/customers"],
-      ["GET", "/store/customers/me"],
+      ["POST", "/store/customers/me"],
       ["POST", "/store/customers/me/verify/"],
       ["POST", "/store/customers/verify/"],
       ["POST", "/store/customers/Verify"],

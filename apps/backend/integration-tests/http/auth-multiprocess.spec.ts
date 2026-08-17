@@ -807,12 +807,14 @@ describe("Phase 14 PostgreSQL-authoritative access guard", () => {
     }
   })
 
-  it("enables only the exact custom refresh and revoke auth operations", () => {
+  it("enables the exact cumulative Phase 14 auth operations including refresh and revoke", () => {
     const enabledLocal = AUTH_SURFACE_LOCAL_OPERATIONS.filter(
       (entry) => entry.runtimePolicy === "PHASE14_ENABLED"
     ).map((entry) => `${entry.method} ${entry.pathTemplate}`)
 
     expect(enabledLocal).toEqual([
+      "POST /auth/customer/emailpass/register",
+      "POST /auth/customer/emailpass",
       "POST /auth/token/refresh",
       "POST /auth/customer/emailpass/revoke-current-lineage",
     ])
