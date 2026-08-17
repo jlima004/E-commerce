@@ -1,4 +1,8 @@
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { createRequire } from "node:module"
+import {
+  ContainerRegistrationKeys,
+  parseCorsOrigins,
+} from "@medusajs/framework/utils"
 import {
   CustomerRegistrationError,
   type CustomerRegistrationResult,
@@ -42,6 +46,19 @@ import type { CapabilityKeyring } from "../../src/modules/customer-auth/security
 
 jest.setTimeout(180_000)
 
+const requireFromBackend = createRequire(
+  require.resolve("../../package.json")
+)
+const nativeAuthCors = requireFromBackend("cors") as (options: {
+  origin: unknown
+  credentials: boolean
+  preflightContinue: boolean
+}) => (
+  req: unknown,
+  res: unknown,
+  next: () => void
+) => void
+
 const BASE = new Date("2026-01-01T00:00:00.000Z")
 const KEYRING: CapabilityKeyring = {
   active: {
@@ -82,6 +99,12 @@ function responseRecorder(): {
   }
   const response = {
     headersSent: false,
+    get statusCode() {
+      return state.statusCode
+    },
+    set statusCode(code: number) {
+      state.statusCode = code
+    },
     status(code: number) {
       state.statusCode = code
       return response
@@ -89,6 +112,9 @@ function responseRecorder(): {
     setHeader(name: string, value: string) {
       state.headers[name.toLowerCase()] = String(value)
       return response
+    },
+    getHeader(name: string) {
+      return state.headers[name.toLowerCase()]
     },
     json(body: unknown) {
       state.body = body
@@ -101,6 +127,23 @@ function responseRecorder(): {
     },
   }
   return { response, state }
+}
+
+const BROWSER_DIRECT_ORIGIN = "https://browser.example.invalid"
+
+function applyNativeAuthCorsThenGuard(
+  req: Record<string, unknown>,
+  res: Record<string, unknown>,
+  next: () => void
+): void {
+  const corsFn = nativeAuthCors({
+    origin: parseCorsOrigins(env.AUTH_CORS),
+    credentials: true,
+    preflightContinue: false,
+  })
+  corsFn(req, res, () => {
+    authSurfaceGuardMiddleware(req as never, res as never, next)
+  })
 }
 
 function requestOf(input: {
@@ -798,6 +841,29 @@ describe("Phase 14 login HTTP", () => {
     expect(state.body).toMatchObject({
       code: "AUTH_TEMPORARILY_UNAVAILABLE",
     })
+    expect(JSON.stringify(state.body)).not.toContain("synthetic-access-token")
+  })
+
+  it("applies the timing envelope exactly once even when timing itself rejects", async () => {
+    const adapters = loginAdapters({ identity: null })
+    const timing = jest
+      .fn()
+      .mockRejectedValue(new Error("synthetic timing failure"))
+    const { response, state } = responseRecorder()
+
+    await handleCustomerAuthLogin(
+      requestOf({ body: loginBody() }),
+      response,
+      loginDependencies({ timing }, adapters)
+    )
+
+    expect(timing).toHaveBeenCalledTimes(1)
+    expect(adapters.auth.findIdentity).toHaveBeenCalledTimes(1)
+    expect(adapters.session.issue).not.toHaveBeenCalled()
+    expect(state.statusCode).toBe(503)
+    expect(state.body).toMatchObject({
+      code: "AUTH_TEMPORARILY_UNAVAILABLE",
+    })
     expect(JSON.stringify(state.body ?? {})).not.toContain(
       "synthetic-access-token"
     )
@@ -1147,7 +1213,7 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
     ).toBe(true)
   })
 
-  it("denies browser-direct signup and login at the existing auth surface guard before tokens", async () => {
+  it("keeps browser CORS preflight OPTIONS outside the exact auth surface", async () => {
     const paths = [
       "/auth/customer/emailpass/register",
       "/auth/customer/emailpass",
@@ -1214,7 +1280,101 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
     expect(adapters.session.issue).not.toHaveBeenCalled()
   })
 
-  it("lets authorized BFF POST use signup and login after the same auth surface guard", async () => {
+  it("records that native AUTH CORS does not stop Origin-bearing POST from executing signup and login handlers", async () => {
+    expect(parseCorsOrigins(env.AUTH_CORS)).not.toContain(BROWSER_DIRECT_ORIGIN)
+
+    const registerCustomer = jest.fn(async () => completedRegistration())
+    const adapters = loginAdapters({
+      credential: {
+        customerId: "customer-1",
+        credentialVersion: 1,
+        emailVerifiedAt: BASE,
+        operationStatus: "stable",
+      },
+    })
+
+    const signup = responseRecorder()
+    const signupRequest = {
+      method: "POST",
+      originalUrl: "/auth/customer/emailpass/register",
+      url: "/auth/customer/emailpass/register",
+      path: "/auth/customer/emailpass/register",
+      baseUrl: "",
+      ip: IP,
+      headers: {
+        origin: BROWSER_DIRECT_ORIGIN,
+        "content-type": "application/json",
+      },
+      body: signupBody(),
+      correlationId: "browser-origin-signup-correlation",
+    }
+    const signupHandler = jest.fn(async () => {
+      await handleCustomerAuthSignup(
+        signupRequest,
+        signup.response,
+        signupDependencies({ registerCustomer })
+      )
+    })
+    let signupProceeded = false
+    const signupDone = new Promise<void>((resolve, reject) => {
+      applyNativeAuthCorsThenGuard(signupRequest, signup.response, () => {
+        signupProceeded = true
+        void signupHandler().then(resolve, reject)
+      })
+    })
+    expect(signupProceeded).toBe(true)
+    await signupDone
+    expect(signupHandler).toHaveBeenCalledTimes(1)
+    expect(registerCustomer).toHaveBeenCalledTimes(1)
+    expect(signup.state.statusCode).toBe(201)
+    expect(signup.state.body).toMatchObject({
+      accessToken: "synthetic-access-token",
+      refreshToken: "synthetic-refresh-token",
+    })
+    expect(signup.state.headers["access-control-allow-origin"]).toBeUndefined()
+
+    const login = responseRecorder()
+    const loginRequest = {
+      method: "POST",
+      originalUrl: "/auth/customer/emailpass",
+      url: "/auth/customer/emailpass",
+      path: "/auth/customer/emailpass",
+      baseUrl: "",
+      ip: IP,
+      headers: {
+        origin: BROWSER_DIRECT_ORIGIN,
+        "content-type": "application/json",
+      },
+      body: loginBody(),
+      correlationId: "browser-origin-login-correlation",
+    }
+    const loginHandler = jest.fn(async () => {
+      await handleCustomerAuthLogin(
+        loginRequest,
+        login.response,
+        loginDependencies({}, adapters)
+      )
+    })
+    let loginProceeded = false
+    const loginDone = new Promise<void>((resolve, reject) => {
+      applyNativeAuthCorsThenGuard(loginRequest, login.response, () => {
+        loginProceeded = true
+        void loginHandler().then(resolve, reject)
+      })
+    })
+    expect(loginProceeded).toBe(true)
+    await loginDone
+    expect(loginHandler).toHaveBeenCalledTimes(1)
+    expect(adapters.session.issue).toHaveBeenCalledTimes(1)
+    expect(login.state.statusCode).toBe(200)
+    expect(login.state.body).toMatchObject({
+      accessToken: "synthetic-access-token",
+      refreshToken: "synthetic-refresh-token",
+    })
+    expect(login.state.headers["access-control-allow-origin"]).toBeUndefined()
+  })
+
+  it("lets Origin-less server-to-server POST use signup and login after the same auth surface guard", async () => {
     const registerCustomer = jest.fn(async () => completedRegistration())
     const adapters = loginAdapters({
       credential: {
