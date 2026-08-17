@@ -371,7 +371,9 @@ None of scope. The only extra code change inside authorized files after GREEN wa
 
 ## User setup required
 
-None — no external service configuration required. Real Resend and real providers remain unauthorized.
+No external configuration is required at this checkpoint.
+
+Production will require `CUSTOMER_AUTH_BFF_SERVICE_SECRET` (server-side only; min 32 chars; never browser, log, persistence, or response). The future Next.js BFF must hold the same credential server-side only. Real Resend and real providers remain unauthorized.
 
 ## Next phase readiness
 
@@ -876,7 +878,88 @@ Scope kept:
 - no Heroku env change
 - handlers signup/login/me/verification/refresh/revoke were not edited
 
+## Config contract cleanup (B14-15-HR-04)
+
+Human re-review of 14-15-03 closed HR-01, HR-02 and HR-03, then opened B14-15-HR-04 for config-contract cleanup. This section records that remediation only. It does **not** declare 14-15 HUMAN APPROVED.
+
+```text
+B14-15-HR-01:
+CLOSED — PASS
+
+B14-15-HR-02:
+CLOSED — PASS
+
+B14-15-HR-03:
+CLOSED — PASS
+
+B14-15-HR-04:
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+14-15-01:
+EXECUTED — AWAITING HUMAN RE-REVIEW
+
+14-15-02:
+EXECUTED — AWAITING HUMAN RE-REVIEW
+
+14-15-03:
+BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
+
+14-15:
+NOT YET HUMAN APPROVED
+
+14-16:
+NOT AUTHORIZED
+
+PUSH:
+NONE
+
+DEPLOY:
+NONE
+
+REAL PROVIDERS:
+NONE
+```
+
+**Root cause:** `.env.template` defined `CUSTOMER_AUTH_BFF_SERVICE_SECRET=` twice. The template unit test used `toMatch` and therefore accepted a duplicate assignment. `User setup required: None` understated the production/future-BFF credential contract.
+
+**Correction:**
+
+- `.env.template` now contains exactly one `CUSTOMER_AUTH_BFF_SERVICE_SECRET=` assignment, with the canonical server-side documentation (production required, min 32 chars, never browser/log/persistence/response).
+- `env.unit.spec.ts` asserts that assignment string occurs exactly once (count, not `toMatch`).
+- This SUMMARY records that no external configuration is required at this checkpoint, while production will require `CUSTOMER_AUTH_BFF_SERVICE_SECRET` and the future Next.js BFF must hold the same credential server-side only.
+
+Unchanged by design: `env.ts`, middleware, BFF guard, handlers, manifests, SDD, PLAN, STATE.md, ROADMAP.md, packages/dependencies.
+
+**Validation:**
+
+```text
+Focused env.unit.spec.ts:
+PASS — 84/84
+
+Backend build:
+PASS
+
+Direct ESLint env.unit.spec.ts:
+PASS — 0 errors, 11 known advisory Medusa warnings
+(use-medusa-error-not-generic-error)
+
+Repository lint wrapper:
+KNOWN TOOLING FAILURE — empty JSON / EOF while parsing
+accepted non-blocking; no tooling/package changes
+
+git diff --check:
+PASS
+```
+
+Scope kept:
+
+- no env.ts / middleware / BFF guard / handlers / manifests
+- no SDD / PLAN / STATE.md / ROADMAP.md
+- no package.json / lockfile
+- no push / PR / merge / deploy
+- no 14-16
+
 ---
 *Phase: 14-customer-auth-verification*
 *Plan: 14-15*
-*Status: EXECUTED — AWAITING HUMAN RE-REVIEW; HR-02 REMEDIATED*
+*Status: EXECUTED — AWAITING HUMAN RE-REVIEW; HR-04 REMEDIATED*

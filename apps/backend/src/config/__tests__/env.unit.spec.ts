@@ -844,8 +844,14 @@ describe(".env.template contract", () => {
 
   it("documents CUSTOMER_AUTH_BFF_SERVICE_SECRET as an empty placeholder only", () => {
     const template = fs.readFileSync(templatePath, "utf8")
+    const assignmentOccurrences =
+      template.split("CUSTOMER_AUTH_BFF_SERVICE_SECRET=").length - 1
+    const emptyAssignmentLines = template
+      .split(/\r?\n/)
+      .filter((line) => line === "CUSTOMER_AUTH_BFF_SERVICE_SECRET=")
 
-    expect(template).toMatch(/^CUSTOMER_AUTH_BFF_SERVICE_SECRET=$/m)
+    expect(assignmentOccurrences).toBe(1)
+    expect(emptyAssignmentLines).toHaveLength(1)
     expect(template).not.toContain(syntheticBffServiceSecret)
     expect(template).not.toContain(productionSecret)
   })
