@@ -379,7 +379,157 @@ None — no external service configuration required. Real Resend and real provid
 
 STATE.md and ROADMAP.md were **not** updated: they are outside the authorized file list, and 14-15 is not HUMAN APPROVED.
 
+## Human-review remediation
+
+Human review of 14-15-03 failed with three blockers. This section records the authorized remediation only. It does **not** declare 14-15 HUMAN APPROVED.
+
+```text
+B14-15-HR-01:
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+B14-15-HR-02:
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+B14-15-HR-03:
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+14-15-01:
+EXECUTED — AWAITING HUMAN RE-REVIEW
+
+14-15-02:
+EXECUTED — AWAITING HUMAN RE-REVIEW
+
+14-15-03:
+BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
+
+14-15:
+NOT YET HUMAN APPROVED
+
+14-16:
+NOT AUTHORIZED
+
+PUSH:
+NONE
+
+DEPLOY:
+NONE
+
+REAL PROVIDERS:
+NONE
+```
+
+### B14-15-HR-01
+
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+**Root cause:** `handleCustomerAuthLogin` applied `finish()` for `invalid_credentials`, `email_verification_required`, serializer denial and the credential-path exception catch, but the verified success path serialized the envelope and returned `200` without awaiting the approved timing envelope.
+
+**Correction:** after session issuance and envelope serialization, and only when the serializer returns an envelope, the handler now `await finish()` exactly once and then returns `200`. Serializer denial still finishes once and returns `AUTHENTICATION_REQUIRED`. No second `finish()`, no new sleep, no `Math.random`, no `timing.ts` / 14-08 policy change.
+
+**Proof** in `auth-customer.spec.ts` (`toHaveBeenCalledTimes(1)`):
+
+- missing account → timing once, `401 INVALID_CREDENTIALS`
+- wrong password → timing once, `401 INVALID_CREDENTIALS`
+- valid unverified → timing once, `403 EMAIL_VERIFICATION_REQUIRED`, `session.issue` = 0
+- valid verified → timing once, `session.issue` = 1, `200` envelope
+- BFF serializer rejection after verified login → timing once, `401 AUTHENTICATION_REQUIRED`, no tokens
+- exception after credential-path entry (`session.issue` throw) → timing once, `503 AUTH_TEMPORARILY_UNAVAILABLE`
+
+### B14-15-HR-02
+
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+**Existing boundary (no new authorization policy):** Phase 13/14 treat native CORS / publishable context as AS-BUILT and **not** authorization. The approved primitive that differentiates browser-direct from BFF/server-to-server on `/auth` is the already-mounted `authSurfaceGuardMiddleware` (`/auth*`): OPTIONS/HEAD are denied as implicit methods, so a browser JSON CORS preflight never reaches signup/login handlers. Elevation of `POST` signup/login does not elevate OPTIONS. `bffAuthorized` remains a serializer safety check, not the security authority. Middleware, CORS and publishable guards were not changed.
+
+**Browser-direct DENY proof:** `authSurfaceGuardMiddleware` is invoked for `OPTIONS` on `POST /auth/customer/emailpass/register` and `POST /auth/customer/emailpass` with `Origin` + `Access-Control-Request-Method: POST`. Result: `404 { type: "not_found", message: "Not Found" }`, `next`/handler not called, no `accessToken`/`refreshToken`, zero coordinator/provider/session/lineage calls, container not resolved.
+
+**BFF positive proof:** the same guard allows Origin-less server-to-server `POST` on those exact paths; handlers then return `201`/`200` `AuthSessionEnvelope`. Existing signup/login success tests remain the authorized-BFF envelope proofs.
+
+No new header/secret was invented.
+
+### B14-15-HR-03
+
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+**Stale assertions found:**
+
+- `auth-verification.spec.ts` still required Store `M1_ENABLED` to be exactly the four 14-13 verification paths and treated `GET /store/customers/me` as DENY.
+- `auth-multiprocess.spec.ts` still required Auth `PHASE14_ENABLED` to be only refresh + revoke.
+
+**Cumulative exact-set now asserted (no predecessor contract change):**
+
+Store `M1_ENABLED`:
+
+1. `GET /store/customers/me`
+2. `POST /store/customers/me/verify`
+3. `POST /store/customers/verify/resend`
+4. `POST /store/customers/verify`
+5. `GET /store/customers/me/verify/status`
+
+Auth `PHASE14_ENABLED`:
+
+1. `POST /auth/customer/emailpass/register`
+2. `POST /auth/customer/emailpass`
+3. `POST /auth/token/refresh`
+4. `POST /auth/customer/emailpass/revoke-current-lineage`
+
+Verification request/resend/confirm/status, rate limits, timing, no-session confirm, deny aliases, raw Customer DENY, refresh/replay/revoke, Redis coordination and PostgreSQL authority were not changed. Exact-set equality was kept; no `contains`, skip, `.only` or manifest rollback.
+
+**Regression results:**
+
+- `auth-verification.spec.ts`: PASS — 12/12
+- `auth-multiprocess.spec.ts`: PASS — 8/8 (local disposable PostgreSQL via existing Docker harness `p12_disposable_*`; Redis local-only via existing `p14-auth-redis-*` harness; cleanup `P12_DISPOSABLE_POSTGRES_CLEAN` confirmed)
+
+### Remediation validation
+
+```text
+Focused auth-customer:
+PASS — 30/30
+
+Predecessor verification:
+PASS — 12/12
+
+Predecessor multiprocess (local disposable PostgreSQL + local Redis):
+PASS — 8/8
+cleanup = PASS
+
+Combined focused regression (three suites, local disposable PostgreSQL):
+PASS — 50/50
+cleanup = PASS
+
+Backend build:
+PASS
+
+Direct ESLint route.ts:
+PASS — 0 errors, 1 known Medusa advisory warning
+(use-medusa-error-not-generic-error)
+
+Direct ESLint --no-ignore test files:
+PASS — 0 errors
+auth-customer.spec.ts = 4 known advisory Medusa warnings
+auth-verification.spec.ts = 4 known advisory Medusa warnings
+auth-multiprocess.spec.ts = 0 warnings
+
+Repository lint wrapper:
+KNOWN TOOLING FAILURE — empty JSON / EOF while parsing
+accepted non-blocking; no tooling/package changes
+
+git diff --check:
+PASS
+```
+
+Scope kept:
+
+- PostgreSQL/Redis: local disposable Docker only; no remote DB/Redis
+- no real Resend / real providers
+- no migration/schema
+- no package.json / lockfile
+- no push / PR / merge / deploy
+- no 14-16
+- no STATE.md / ROADMAP.md update
+- no login.ts / signup / me / manifests / middlewares / access-guard / rate-limit / timing / registration / session / verification changes except the authorized login handler `finish()` on verified success
+
 ---
 *Phase: 14-customer-auth-verification*
 *Plan: 14-15*
-*Status: EXECUTED — AWAITING HUMAN REVIEW*
+*Status: EXECUTED — AWAITING HUMAN RE-REVIEW*
