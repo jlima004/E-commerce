@@ -52,6 +52,11 @@ import {
   createKnexCustomerAuthAccessDatabase,
   type CustomerAuthAccessContext,
 } from "../modules/customer-auth/access-guard"
+import {
+  CUSTOMER_AUTH_BFF_AUTH_HEADER,
+  CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS,
+  authenticateBffServiceRequest,
+} from "../modules/customer-auth/bff-service-auth"
 
 const CORRELATION_HEADER = "x-correlation-id"
 const CORRELATION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
@@ -63,6 +68,7 @@ type RequestWithLogging = MedusaRequest & {
   correlationId?: string
   log?: PinoLogger
   customerAuth?: CustomerAuthAccessContext
+  customerAuthBff?: { authorized: true }
 }
 
 type AccessLogMiddlewareDeps = {
@@ -537,6 +543,83 @@ export function createCustomerAuthAccessGuardMiddleware(
 export const customerAuthAccessGuardMiddleware =
   createCustomerAuthAccessGuardMiddleware()
 
+export type CustomerAuthBffServiceGuardMiddlewareOptions = {
+  expectedSecret?: string
+}
+
+export function createCustomerAuthBffServiceGuardMiddleware(
+  options: CustomerAuthBffServiceGuardMiddlewareOptions = {}
+) {
+  return function customerAuthBffServiceGuardMiddleware(
+    req: MedusaRequest,
+    res: MedusaResponse,
+    next: MedusaNextFunction
+  ): void {
+    const request = req as RequestWithLogging
+    const decision = authenticateBffServiceRequest({
+      expectedSecret: Object.prototype.hasOwnProperty.call(
+        options,
+        "expectedSecret"
+      )
+        ? options.expectedSecret
+        : env.CUSTOMER_AUTH_BFF_SERVICE_SECRET,
+      headerValue: req.headers[CUSTOMER_AUTH_BFF_AUTH_HEADER],
+    })
+
+    if (decision.outcome === "authorized") {
+      request.customerAuthBff = { authorized: true }
+      next()
+      return
+    }
+
+    if (decision.outcome === "unavailable") {
+      const normalized = toAuthErrorResponse(
+        { code: "AUTH_TEMPORARILY_UNAVAILABLE" },
+        { correlationId: request.correlationId }
+      )
+      res.status(normalized.statusCode).json(normalized.body)
+      return
+    }
+
+    if (!res.headersSent) {
+      res.status(404).json({ type: "not_found", message: "Not Found" })
+    }
+  }
+}
+
+export const customerAuthBffServiceGuardMiddleware =
+  createCustomerAuthBffServiceGuardMiddleware()
+
+function customerAuthBffProtectedRouteEntries(): Array<{
+  method: Array<"GET" | "POST">
+  matcher: string
+  middlewares: Array<
+    | typeof customerAuthBffServiceGuardMiddleware
+    | typeof customerAuthAccessGuardMiddleware
+  >
+}> {
+  return CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS.map((operation) => {
+    const [rawMethod, path] = operation.split(" ")
+    const method = rawMethod as "GET" | "POST"
+    const requiresCustomerAccess =
+      path === "/auth/customer/emailpass/revoke-current-lineage" ||
+      path === "/store/customers/me" ||
+      path === "/store/customers/me/verify" ||
+      path === "/store/customers/me/verify/status"
+
+    return {
+      method: [method],
+      matcher: path,
+      middlewares: requiresCustomerAccess
+        ? [
+            customerAuthBffServiceGuardMiddleware,
+            customerAuthAccessGuardMiddleware,
+          ]
+        : [customerAuthBffServiceGuardMiddleware],
+    }
+  })
+}
+
 export default defineMiddlewares({
   errorHandler: sentryErrorMiddleware,
   routes: [
@@ -558,26 +641,9 @@ export default defineMiddlewares({
       matcher: "/auth*",
       middlewares: [authSurfaceGuardMiddleware],
     },
-    {
-      method: ["POST"],
-      matcher: "/auth/customer/emailpass/revoke-current-lineage",
-      middlewares: [customerAuthAccessGuardMiddleware],
-    },
-    {
-      method: ["POST"],
-      matcher: "/store/customers/me/verify",
-      middlewares: [customerAuthAccessGuardMiddleware],
-    },
-    {
-      method: ["GET"],
-      matcher: "/store/customers/me/verify/status",
-      middlewares: [customerAuthAccessGuardMiddleware],
-    },
-    {
-      method: ["GET"],
-      matcher: "/store/customers/me",
-      middlewares: [customerAuthAccessGuardMiddleware],
-    },
+    // Exact Phase 14 BFF contracts only. Surface guards stay on /auth* and
+    // /store*. BFF service auth is caller authority, not method/path policy.
+    ...customerAuthBffProtectedRouteEntries(),
     {
       method: ["GET"],
       matcher: "/store/products",
