@@ -18,7 +18,10 @@ import {
   AUTH_SURFACE_LOCAL_OPERATIONS,
   AUTH_SURFACE_NATIVE_OPERATIONS,
 } from "../../src/api/auth-surface/manifest"
-import { decideAuthSurfaceAccess } from "../../src/api/auth-surface/guard"
+import {
+  authSurfaceGuardMiddleware,
+  decideAuthSurfaceAccess,
+} from "../../src/api/auth-surface/guard"
 import {
   STORE_SURFACE_MANIFEST,
   STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
@@ -651,7 +654,7 @@ describe("Phase 14 login HTTP", () => {
     expect(dummyPasswordWork).toHaveBeenCalledTimes(1)
     expect(adapters.auth.authenticate).not.toHaveBeenCalled()
     expect(adapters.session.issue).not.toHaveBeenCalled()
-    expect(timing).toHaveBeenCalled()
+    expect(timing).toHaveBeenCalledTimes(1)
     assertOpaqueRateLimitKeys(rateLimitStore, [EMAIL, IP, PASSWORD])
   })
 
@@ -672,7 +675,7 @@ describe("Phase 14 login HTTP", () => {
     expect(adapters.auth.authenticate).toHaveBeenCalledTimes(1)
     expect(dummyPasswordWork).not.toHaveBeenCalled()
     expect(adapters.session.issue).not.toHaveBeenCalled()
-    expect(timing).toHaveBeenCalled()
+    expect(timing).toHaveBeenCalledTimes(1)
   })
 
   it("returns EMAIL_VERIFICATION_REQUIRED for unverified valid credentials without a new lineage", async () => {
@@ -684,18 +687,20 @@ describe("Phase 14 login HTTP", () => {
         operationStatus: "stable",
       },
     })
+    const timing = jest.fn(async () => 350)
     const { response, state } = responseRecorder()
 
     await handleCustomerAuthLogin(
       requestOf({ body: loginBody() }),
       response,
-      loginDependencies({}, adapters)
+      loginDependencies({ timing }, adapters)
     )
 
     expect(state.statusCode).toBe(403)
     expect(state.body).toMatchObject({
       code: "EMAIL_VERIFICATION_REQUIRED",
     })
+    expect(timing).toHaveBeenCalledTimes(1)
     expect(adapters.session.issue).not.toHaveBeenCalled()
     expect(JSON.stringify(state.body)).not.toContain("synthetic-access-token")
     expect(JSON.stringify(state.body)).not.toContain("identity-1")
@@ -710,14 +715,16 @@ describe("Phase 14 login HTTP", () => {
         operationStatus: "stable",
       },
     })
+    const timing = jest.fn(async () => 350)
     const { response, state } = responseRecorder()
 
     await handleCustomerAuthLogin(
       requestOf({ body: loginBody() }),
       response,
-      loginDependencies({}, adapters)
+      loginDependencies({ timing }, adapters)
     )
 
+    expect(timing).toHaveBeenCalledTimes(1)
     expect(adapters.session.issue).toHaveBeenCalledTimes(1)
     expect(state.statusCode).toBe(200)
     expect(state.body).toMatchObject({
@@ -733,6 +740,67 @@ describe("Phase 14 login HTTP", () => {
     })
     expect(JSON.stringify(state.body)).not.toContain("lineage-initial")
     expect(JSON.stringify(state.body)).not.toContain("identity-1")
+  })
+
+  it("does not leak tokens when BFF serialization is unauthorized after verified login", async () => {
+    const adapters = loginAdapters({
+      credential: {
+        customerId: "customer-1",
+        credentialVersion: 1,
+        emailVerifiedAt: BASE,
+        operationStatus: "stable",
+      },
+    })
+    const timing = jest.fn(async () => 350)
+    const { response, state } = responseRecorder()
+
+    await handleCustomerAuthLogin(
+      requestOf({ body: loginBody() }),
+      response,
+      loginDependencies({ timing, bffAuthorized: false }, adapters)
+    )
+
+    expect(timing).toHaveBeenCalledTimes(1)
+    expect(adapters.session.issue).toHaveBeenCalledTimes(1)
+    expect(state.statusCode).toBe(401)
+    expect(state.body).toMatchObject({ code: "AUTHENTICATION_REQUIRED" })
+    expect(JSON.stringify(state.body ?? {})).not.toContain(
+      "synthetic-access-token"
+    )
+    expect(JSON.stringify(state.body ?? {})).not.toContain(
+      "synthetic-refresh-token"
+    )
+  })
+
+  it("applies the timing envelope at most once when login fails after credential entry", async () => {
+    const adapters = loginAdapters({
+      credential: {
+        customerId: "customer-1",
+        credentialVersion: 1,
+        emailVerifiedAt: BASE,
+        operationStatus: "stable",
+      },
+    })
+    adapters.session.issue.mockRejectedValue(
+      new Error("synthetic credential-path failure")
+    )
+    const timing = jest.fn(async () => 350)
+    const { response, state } = responseRecorder()
+
+    await handleCustomerAuthLogin(
+      requestOf({ body: loginBody() }),
+      response,
+      loginDependencies({ timing }, adapters)
+    )
+
+    expect(timing).toHaveBeenCalledTimes(1)
+    expect(state.statusCode).toBe(503)
+    expect(state.body).toMatchObject({
+      code: "AUTH_TEMPORARILY_UNAVAILABLE",
+    })
+    expect(JSON.stringify(state.body ?? {})).not.toContain(
+      "synthetic-access-token"
+    )
   })
 
   it("treats identity without Customer as INVALID_CREDENTIALS, not verification required", async () => {
@@ -1015,6 +1083,8 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       ["POST", "/auth/customer/emailpass/register/"],
       ["GET", "/auth/customer/emailpass/register"],
       ["POST", "/auth/customer/unknown"],
+      ["OPTIONS", "/auth/customer/emailpass"],
+      ["OPTIONS", "/auth/customer/emailpass/register"],
     ] as const) {
       expect(decideAuthSurfaceAccess(method, path).action).toBe("deny")
     }
@@ -1075,6 +1145,165 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
         baseUrl: "",
       } as never)
     ).toBe(true)
+  })
+
+  it("denies browser-direct signup and login at the existing auth surface guard before tokens", async () => {
+    const paths = [
+      "/auth/customer/emailpass/register",
+      "/auth/customer/emailpass",
+    ] as const
+    const registerCustomer = jest.fn()
+    const adapters = loginAdapters()
+
+    for (const path of paths) {
+      const handler = jest.fn(async () => {
+        if (path.endsWith("/register")) {
+          await handleCustomerAuthSignup(
+            requestOf({ body: signupBody() }),
+            responseRecorder().response,
+            signupDependencies({ registerCustomer })
+          )
+          return
+        }
+        await handleCustomerAuthLogin(
+          requestOf({ body: loginBody() }),
+          responseRecorder().response,
+          loginDependencies({}, adapters)
+        )
+      })
+      const { response, state } = responseRecorder()
+      const request = {
+        method: "OPTIONS",
+        originalUrl: path,
+        url: path,
+        path,
+        baseUrl: "",
+        headers: {
+          origin: "https://browser.example.invalid",
+          "access-control-request-method": "POST",
+        },
+        body: path.endsWith("/register") ? signupBody() : loginBody(),
+        correlationId: "browser-direct-auth-correlation",
+        get scope() {
+          throw new Error("container must not be resolved")
+        },
+      }
+
+      authSurfaceGuardMiddleware(
+        request as never,
+        response as never,
+        handler
+      )
+
+      expect(handler).not.toHaveBeenCalled()
+      expect(state.statusCode).toBe(404)
+      expect(state.body).toEqual({ type: "not_found", message: "Not Found" })
+      expect(JSON.stringify(state.body ?? {})).not.toContain("accessToken")
+      expect(JSON.stringify(state.body ?? {})).not.toContain("refreshToken")
+      expect(JSON.stringify(state.body ?? {})).not.toContain(
+        "synthetic-access-token"
+      )
+      expect(JSON.stringify(state.body ?? {})).not.toContain(
+        "synthetic-refresh-token"
+      )
+    }
+
+    expect(registerCustomer).not.toHaveBeenCalled()
+    expect(adapters.auth.findIdentity).not.toHaveBeenCalled()
+    expect(adapters.auth.authenticate).not.toHaveBeenCalled()
+    expect(adapters.session.issue).not.toHaveBeenCalled()
+  })
+
+  it("lets authorized BFF POST use signup and login after the same auth surface guard", async () => {
+    const registerCustomer = jest.fn(async () => completedRegistration())
+    const adapters = loginAdapters({
+      credential: {
+        customerId: "customer-1",
+        credentialVersion: 1,
+        emailVerifiedAt: BASE,
+        operationStatus: "stable",
+      },
+    })
+
+    const signup = responseRecorder()
+    const signupRequest = {
+      method: "POST",
+      originalUrl: "/auth/customer/emailpass/register",
+      url: "/auth/customer/emailpass/register",
+      path: "/auth/customer/emailpass/register",
+      baseUrl: "",
+      ip: IP,
+      headers: {},
+      body: signupBody(),
+      correlationId: "bff-signup-correlation",
+    }
+    const signupHandler = jest.fn(async () => {
+      await handleCustomerAuthSignup(
+        signupRequest,
+        signup.response,
+        signupDependencies({ registerCustomer })
+      )
+    })
+    let signupProceeded = false
+    const signupDone = new Promise<void>((resolve, reject) => {
+      authSurfaceGuardMiddleware(
+        signupRequest as never,
+        signup.response as never,
+        () => {
+          signupProceeded = true
+          void signupHandler().then(resolve, reject)
+        }
+      )
+    })
+    expect(signupProceeded).toBe(true)
+    await signupDone
+    expect(signupHandler).toHaveBeenCalledTimes(1)
+    expect(registerCustomer).toHaveBeenCalledTimes(1)
+    expect(signup.state.statusCode).toBe(201)
+    expect(signup.state.body).toMatchObject({
+      accessToken: "synthetic-access-token",
+      refreshToken: "synthetic-refresh-token",
+    })
+
+    const login = responseRecorder()
+    const loginRequest = {
+      method: "POST",
+      originalUrl: "/auth/customer/emailpass",
+      url: "/auth/customer/emailpass",
+      path: "/auth/customer/emailpass",
+      baseUrl: "",
+      ip: IP,
+      headers: {},
+      body: loginBody(),
+      correlationId: "bff-login-correlation",
+    }
+    const loginHandler = jest.fn(async () => {
+      await handleCustomerAuthLogin(
+        loginRequest,
+        login.response,
+        loginDependencies({}, adapters)
+      )
+    })
+    let loginProceeded = false
+    const loginDone = new Promise<void>((resolve, reject) => {
+      authSurfaceGuardMiddleware(
+        loginRequest as never,
+        login.response as never,
+        () => {
+          loginProceeded = true
+          void loginHandler().then(resolve, reject)
+        }
+      )
+    })
+    expect(loginProceeded).toBe(true)
+    await loginDone
+    expect(loginHandler).toHaveBeenCalledTimes(1)
+    expect(adapters.session.issue).toHaveBeenCalledTimes(1)
+    expect(login.state.statusCode).toBe(200)
+    expect(login.state.body).toMatchObject({
+      accessToken: "synthetic-access-token",
+      refreshToken: "synthetic-refresh-token",
+    })
   })
 
   it("creates zero Order, Payment, Stripe, Gelato, cart, checkout and fulfillment side effects", () => {
