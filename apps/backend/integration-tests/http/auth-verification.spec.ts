@@ -24,9 +24,16 @@ import {
   storeSurfaceOperationKey,
   validateStoreSurfaceManifest,
 } from "../../src/api/store-surface/manifest"
-import { decideStoreSurfaceAccess } from "../../src/api/store-surface/guard"
+import {
+  decideStoreSurfaceAccess,
+  storeSurfaceGuardMiddleware,
+} from "../../src/api/store-surface/guard"
 import { decideAuthSurfaceAccess } from "../../src/api/auth-surface/guard"
-import { createCustomerAuthAccessGuardMiddleware } from "../../src/api/middlewares"
+import {
+  createCustomerAuthAccessGuardMiddleware,
+  createCustomerAuthBffServiceGuardMiddleware,
+} from "../../src/api/middlewares"
+import { CUSTOMER_AUTH_BFF_AUTH_HEADER } from "../../src/modules/customer-auth/bff-service-auth"
 import { env } from "../../src/config/env"
 import { issueCustomerAuthAccessToken } from "../../src/modules/customer-auth/jwt"
 import { applyAuthTimingEnvelope } from "../../src/modules/customer-auth/security/timing"
@@ -820,5 +827,217 @@ describe("Phase 14 verification HTTP contracts", () => {
     ] as const) {
       expect(decideAuthSurfaceAccess(method, path).action).toBe("deny")
     }
+  })
+})
+
+describe("Phase 14 verification BFF service boundary", () => {
+  const BFF_SERVICE_SECRET = "indicio-bff-service-secret-synthetic-32b"
+  const bffGuard = createCustomerAuthBffServiceGuardMiddleware({
+    expectedSecret: BFF_SERVICE_SECRET,
+  })
+
+  function applyStoreBff(
+    req: Record<string, unknown>,
+    res: Record<string, unknown>,
+    next: () => void
+  ): void {
+    storeSurfaceGuardMiddleware(req as never, res as never, () => {
+      bffGuard(req as never, res as never, next)
+    })
+  }
+
+  it("denies the four verification contracts without a BFF service credential before handlers", async () => {
+    const requestVerification = jest.fn()
+    const resendVerification = jest.fn()
+    const confirmVerification = jest.fn()
+    const getVerificationStatus = jest.fn()
+    const rateLimitStore = new RecordingRateLimitStore()
+
+    const contracts = [
+      {
+        method: "POST",
+        path: "/store/customers/me/verify",
+        run: async (
+          req: Record<string, unknown>,
+          res: Record<string, unknown>
+        ) =>
+          handleCustomerAuthVerificationRequest(
+            req,
+            res,
+            dependencies({ requestVerification, rateLimitStore })
+          ),
+      },
+      {
+        method: "POST",
+        path: "/store/customers/verify/resend",
+        run: async (
+          req: Record<string, unknown>,
+          res: Record<string, unknown>
+        ) =>
+          handleCustomerAuthVerificationResend(
+            req,
+            res,
+            dependencies({ resendVerification, rateLimitStore })
+          ),
+      },
+      {
+        method: "POST",
+        path: "/store/customers/verify",
+        run: async (
+          req: Record<string, unknown>,
+          res: Record<string, unknown>
+        ) =>
+          handleCustomerAuthVerificationConfirm(
+            req,
+            res,
+            dependencies({ confirmVerification, rateLimitStore })
+          ),
+      },
+      {
+        method: "GET",
+        path: "/store/customers/me/verify/status",
+        run: async (
+          req: Record<string, unknown>,
+          res: Record<string, unknown>
+        ) =>
+          handleCustomerAuthVerificationStatus(
+            req,
+            res,
+            dependencies({ getVerificationStatus })
+          ),
+      },
+    ] as const
+
+    for (const contract of contracts) {
+      const recorded = responseRecorder()
+      const handler = jest.fn(async () => {
+        await contract.run(
+          {
+            ...requestOf({ customerAuth: accessContext() }),
+            method: contract.method,
+            originalUrl: contract.path,
+            url: contract.path,
+            path: contract.path,
+          },
+          recorded.response
+        )
+      })
+      applyStoreBff(
+        {
+          method: contract.method,
+          originalUrl: contract.path,
+          url: contract.path,
+          path: contract.path,
+          headers: {},
+          correlationId: "verification-bff-deny",
+        },
+        recorded.response,
+        () => {
+          void handler()
+        }
+      )
+      expect(handler).not.toHaveBeenCalled()
+      expect(recorded.state.statusCode).toBe(404)
+      expect(recorded.state.body).toEqual({
+        type: "not_found",
+        message: "Not Found",
+      })
+      expect(JSON.stringify(recorded.state.body)).not.toContain(
+        BFF_SERVICE_SECRET
+      )
+      expect(JSON.stringify(recorded.state.body)).not.toContain(
+        "CUSTOMER_AUTH_BFF_SERVICE_SECRET"
+      )
+    }
+
+    expect(requestVerification).not.toHaveBeenCalled()
+    expect(resendVerification).not.toHaveBeenCalled()
+    expect(confirmVerification).not.toHaveBeenCalled()
+    expect(getVerificationStatus).not.toHaveBeenCalled()
+    expect(rateLimitStore.calls).toHaveLength(0)
+  })
+
+  it("runs the BFF service guard before customer access on authenticated verification", async () => {
+    const access = createCustomerAuthAccessGuardMiddleware({
+      now: () => BASE,
+    })
+    const accessSpy = jest.fn(
+      (req: never, res: never, next: () => void) => access(req, res, next)
+    )
+    const handler = jest.fn()
+    const recorded = responseRecorder()
+
+    storeSurfaceGuardMiddleware(
+      {
+        method: "POST",
+        originalUrl: "/store/customers/me/verify",
+        url: "/store/customers/me/verify",
+        path: "/store/customers/me/verify",
+        headers: {},
+      } as never,
+      recorded.response as never,
+      () => {
+        bffGuard(
+          {
+            method: "POST",
+            originalUrl: "/store/customers/me/verify",
+            url: "/store/customers/me/verify",
+            path: "/store/customers/me/verify",
+            headers: {},
+            correlationId: "verification-bff-before-access",
+          } as never,
+          recorded.response as never,
+          () => {
+            void accessSpy(
+              {
+                method: "POST",
+                originalUrl: "/store/customers/me/verify",
+                headers: {},
+              } as never,
+              recorded.response as never,
+              handler
+            )
+          }
+        )
+      }
+    )
+
+    expect(accessSpy).not.toHaveBeenCalled()
+    expect(handler).not.toHaveBeenCalled()
+    expect(recorded.state.statusCode).toBe(404)
+  })
+
+  it("preserves verification contracts after a valid BFF service credential", async () => {
+    const requestVerification = jest.fn(async () => ({
+      accepted: true as const,
+      created: true,
+      state: "pending" as const,
+      intent: null,
+      outbox: null,
+    }))
+    const recorded = responseRecorder()
+    const request = {
+      ...requestOf({ customerAuth: accessContext() }),
+      method: "POST",
+      originalUrl: "/store/customers/me/verify",
+      url: "/store/customers/me/verify",
+      path: "/store/customers/me/verify",
+      headers: {
+        [CUSTOMER_AUTH_BFF_AUTH_HEADER]: BFF_SERVICE_SECRET,
+      },
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      applyStoreBff(request, recorded.response, () => {
+        void handleCustomerAuthVerificationRequest(
+          request,
+          recorded.response,
+          dependencies({ requestVerification })
+        ).then(resolve, reject)
+      })
+    })
+
+    expect(requestVerification).toHaveBeenCalledTimes(1)
+    expect(recorded.state.statusCode).toBe(202)
   })
 })

@@ -26,6 +26,11 @@ import {
   handleCustomerAuthRefresh,
 } from "../../src/api/auth/token/refresh/route"
 import {
+  createCustomerAuthBffServiceGuardMiddleware,
+} from "../../src/api/middlewares"
+import { CUSTOMER_AUTH_BFF_AUTH_HEADER } from "../../src/modules/customer-auth/bff-service-auth"
+import { authSurfaceGuardMiddleware } from "../../src/api/auth-surface/guard"
+import {
   AUTH_SURFACE_LOCAL_OPERATIONS,
   AUTH_SURFACE_NATIVE_OPERATIONS,
 } from "../../src/api/auth-surface/manifest"
@@ -40,6 +45,7 @@ const KEYRING = {
 const BASE = new Date("2026-01-01T00:00:00.000Z")
 const CUSTOMER_AUTH_REVOKE_PATH =
   "/auth/customer/emailpass/revoke-current-lineage"
+const BFF_SERVICE_SECRET = "indicio-bff-service-secret-synthetic-32b"
 
 type Worker = {
   child: ChildProcess
@@ -121,6 +127,7 @@ const http = require("node:http");
 const { Pool } = require("pg");
 const {
   createCustomerAuthAccessGuardMiddleware,
+  createCustomerAuthBffServiceGuardMiddleware,
 } = require("./src/api/middlewares");
 const {
   createPostgresAuthSessionDatabase,
@@ -218,10 +225,24 @@ function createResponse(res) {
 
 async function invokeGuarded(request, response, handler, now) {
   let nextPromise = Promise.resolve();
-  const guard = createCustomerAuthAccessGuardMiddleware({ now });
-  await guard(request, response, () => {
-    handlerCalls += 1;
-    nextPromise = Promise.resolve(handler());
+  const bff = createCustomerAuthBffServiceGuardMiddleware({
+    expectedSecret: process.env.CUSTOMER_AUTH_BFF_SERVICE_SECRET,
+  });
+  const access = createCustomerAuthAccessGuardMiddleware({ now });
+  await new Promise((resolve, reject) => {
+    bff(request, response, () => {
+      void Promise.resolve()
+        .then(() =>
+          access(request, response, () => {
+            handlerCalls += 1;
+            nextPromise = Promise.resolve(handler());
+          })
+        )
+        .then(resolve, reject);
+    });
+    if (response.headersSent) {
+      resolve();
+    }
   });
   await nextPromise;
 }
@@ -361,6 +382,7 @@ async function startWorker(databaseUrl: string): Promise<Worker> {
         P14_DATABASE_URL: databaseUrl,
         P14_JWT_SECRET: JWT_SECRET,
         JWT_SECRET,
+        CUSTOMER_AUTH_BFF_SERVICE_SECRET: BFF_SERVICE_SECRET,
         P14_NOW: at(60_000).toISOString(),
         TS_NODE_PROJECT: "tsconfig.json",
       },
@@ -413,6 +435,7 @@ function call(
         path: "/protected",
         headers: {
           authorization: `Bearer ${accessToken}`,
+          [CUSTOMER_AUTH_BFF_AUTH_HEADER]: BFF_SERVICE_SECRET,
           ...headers,
         },
       },
@@ -479,6 +502,7 @@ function postRevoke(
 ): Promise<HttpResult> {
   return postWorker(worker, CUSTOMER_AUTH_REVOKE_PATH, undefined, {
     authorization: `Bearer ${accessToken}`,
+    [CUSTOMER_AUTH_BFF_AUTH_HEADER]: BFF_SERVICE_SECRET,
     ...headers,
   })
 }
@@ -833,6 +857,94 @@ describe("Phase 14 PostgreSQL-authoritative access guard", () => {
         ["/auth/session", "/auth/token/refresh"].includes(entry.pathTemplate)
       ).every((entry) => entry.runtimePolicy === "DENY")
     ).toBe(true)
+  })
+
+  it("denies refresh and revoke without a BFF service credential before mutation", async () => {
+    const bff = createCustomerAuthBffServiceGuardMiddleware({
+      expectedSecret: BFF_SERVICE_SECRET,
+    })
+    const refreshHandler = jest.fn()
+    const refresh = responseRecorder()
+    const refreshRequest = {
+      method: "POST",
+      originalUrl: "/auth/token/refresh",
+      url: "/auth/token/refresh",
+      path: "/auth/token/refresh",
+      headers: {
+        "x-indicio-refresh-token": "x".repeat(43),
+        "idempotency-key": "request-1",
+        "content-length": "0",
+      },
+      body: {},
+      correlationId: "refresh-bff-deny",
+    }
+
+    authSurfaceGuardMiddleware(
+      refreshRequest as never,
+      refresh.response as never,
+      () => {
+        bff(refreshRequest as never, refresh.response as never, refreshHandler)
+      }
+    )
+    expect(refreshHandler).not.toHaveBeenCalled()
+    expect(refresh.state.statusCode).toBe(404)
+    expect(refresh.state.body).toEqual({
+      type: "not_found",
+      message: "Not Found",
+    })
+    expect(JSON.stringify(refresh.state.body)).not.toContain(BFF_SERVICE_SECRET)
+
+    const [processA] = workers
+    const before = await observe(processA)
+    const deniedRevoke = await postWorker(processA, CUSTOMER_AUTH_REVOKE_PATH)
+    const after = await observe(processA)
+    expect(deniedRevoke.status).toBe(404)
+    expect(deniedRevoke.body).toEqual({
+      type: "not_found",
+      message: "Not Found",
+    })
+    expect(JSON.stringify(deniedRevoke.body)).not.toContain(BFF_SERVICE_SECRET)
+    expect(after.handlerCalls).toBe(before.handlerCalls)
+  })
+
+  it("keeps revoke behind BFF then customer access and refresh behind BFF then handler", async () => {
+    const bff = createCustomerAuthBffServiceGuardMiddleware({
+      expectedSecret: BFF_SERVICE_SECRET,
+    })
+    const refreshHandler = jest.fn()
+    const refresh = responseRecorder()
+    const refreshRequest = {
+      method: "POST",
+      originalUrl: "/auth/token/refresh",
+      url: "/auth/token/refresh",
+      path: "/auth/token/refresh",
+      headers: {
+        [CUSTOMER_AUTH_BFF_AUTH_HEADER]: BFF_SERVICE_SECRET,
+        "x-indicio-refresh-token": "x".repeat(43),
+        "idempotency-key": "request-1",
+        "content-length": "0",
+      },
+      body: {},
+      correlationId: "refresh-bff-pass",
+    }
+
+    authSurfaceGuardMiddleware(
+      refreshRequest as never,
+      refresh.response as never,
+      () => {
+        bff(refreshRequest as never, refresh.response as never, refreshHandler)
+      }
+    )
+    expect(refreshHandler).toHaveBeenCalledTimes(1)
+
+    const [processA] = workers
+    const before = await observe(processA)
+    const missingBearer = await postWorker(processA, CUSTOMER_AUTH_REVOKE_PATH, undefined, {
+      [CUSTOMER_AUTH_BFF_AUTH_HEADER]: BFF_SERVICE_SECRET,
+    })
+    const after = await observe(processA)
+    expect(missingBearer.status).toBe(401)
+    expect(after.handlerCalls).toBe(before.handlerCalls)
   })
 
   it("requires refresh capability, Idempotency-Key, and an exactly empty body", async () => {
