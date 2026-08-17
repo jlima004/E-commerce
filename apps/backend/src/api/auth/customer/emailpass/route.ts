@@ -416,10 +416,12 @@ export async function POST(
       connectTimeout: 1_000,
     })
     await redis.connect()
-    const authModule = req.scope.resolve(Modules.AUTH) as AuthModuleLike
+    const authModule = req.scope.resolve(
+      Modules.AUTH
+    ) as unknown as AuthModuleLike
     const customerModule = req.scope.resolve(
       Modules.CUSTOMER
-    ) as CustomerModuleLike
+    ) as unknown as CustomerModuleLike
     await handleCustomerAuthLogin(request, res as CustomerAuthLoginResponse, {
       keyring,
       jwtSecret: env.JWT_SECRET,

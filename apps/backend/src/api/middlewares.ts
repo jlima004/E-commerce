@@ -121,6 +121,7 @@ const CUSTOMER_AUTH_VERIFICATION_CONTRACTS = new Set([
   "POST /store/customers/verify/resend",
   "POST /store/customers/verify",
   "GET /store/customers/me/verify/status",
+  "GET /store/customers/me",
 ])
 
 function resolveAuthRequestPath(req: MedusaRequest): string {
@@ -570,6 +571,11 @@ export default defineMiddlewares({
     {
       method: ["GET"],
       matcher: "/store/customers/me/verify/status",
+      middlewares: [customerAuthAccessGuardMiddleware],
+    },
+    {
+      method: ["GET"],
+      matcher: "/store/customers/me",
       middlewares: [customerAuthAccessGuardMiddleware],
     },
     {

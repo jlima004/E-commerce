@@ -120,7 +120,7 @@ export async function GET(
     const knex = req.scope.resolve(
       ContainerRegistrationKeys.PG_CONNECTION
     ) as KnexLike
-    const customerService = req.scope.resolve(Modules.CUSTOMER) as {
+    const customerService = req.scope.resolve(Modules.CUSTOMER) as unknown as {
       retrieveCustomer(id: string): Promise<Record<string, unknown>>
     }
     if (!knex || typeof knex.raw !== "function") {

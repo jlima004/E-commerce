@@ -81,8 +81,8 @@ export const AUTH_SURFACE_NATIVE_OPERATIONS: readonly AuthSurfaceEntry[] = [
  * its owner plan after the corresponding implementation and evidence exist.
  */
 export const AUTH_SURFACE_LOCAL_OPERATIONS: readonly AuthSurfaceEntry[] = [
-  localEntry("POST", "/auth/customer/emailpass/register", "14-15", "Coordinated signup override."),
-  localEntry("POST", "/auth/customer/emailpass", "14-15", "Customer/emailpass login wrapper."),
+  localEntry("POST", "/auth/customer/emailpass/register", "14-15", "Coordinated signup override.", "PHASE14_ENABLED"),
+  localEntry("POST", "/auth/customer/emailpass", "14-15", "Customer/emailpass login wrapper.", "PHASE14_ENABLED"),
   localEntry("POST", "/auth/token/refresh", "14-11", "One-time custom refresh rotation override.", "PHASE14_ENABLED"),
   localEntry("POST", "/auth/customer/emailpass/revoke-current-lineage", "14-11", "Current-lineage revocation for the BFF.", "PHASE14_ENABLED"),
   localEntry("POST", "/auth/customer/emailpass/reset-password", "14-16", "Uniform custom reset request override."),

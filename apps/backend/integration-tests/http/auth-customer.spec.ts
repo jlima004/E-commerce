@@ -21,11 +21,16 @@ import {
 import { decideAuthSurfaceAccess } from "../../src/api/auth-surface/guard"
 import {
   STORE_SURFACE_MANIFEST,
+  STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
   storeSurfaceOperationKey,
   validateStoreSurfaceManifest,
 } from "../../src/api/store-surface/manifest"
 import { decideStoreSurfaceAccess } from "../../src/api/store-surface/guard"
-import { createCustomerAuthAccessGuardMiddleware } from "../../src/api/middlewares"
+import defaultMiddlewares, {
+  createCustomerAuthAccessGuardMiddleware,
+  customerAuthAccessGuardMiddleware,
+  isExactCustomerAuthVerificationRequest,
+} from "../../src/api/middlewares"
 import { serializeAuthSessionEnvelope } from "../../src/api/auth-surface/contracts"
 import { env } from "../../src/config/env"
 import { issueCustomerAuthAccessToken } from "../../src/modules/customer-auth/jwt"
@@ -990,6 +995,9 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       decideStoreSurfaceAccess("POST", "/store/customers").action
     ).toBe("deny")
     expect(
+      decideStoreSurfaceAccess("POST", "/store/customers/me").action
+    ).toBe("deny")
+    expect(
       AUTH_SURFACE_NATIVE_OPERATIONS.every(
         (entry) => entry.runtimePolicy === "DENY"
       )
@@ -1004,36 +1012,69 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       ["POST", "/auth/customer/emailpass/"],
       ["POST", "/Auth/customer/emailpass"],
       ["GET", "/auth/customer/emailpass"],
+      ["POST", "/auth/customer/emailpass/register/"],
+      ["GET", "/auth/customer/emailpass/register"],
+      ["POST", "/auth/customer/unknown"],
     ] as const) {
       expect(decideAuthSurfaceAccess(method, path).action).toBe("deny")
     }
+
+    for (const [method, path] of [
+      ["GET", "/store/customers/me/"],
+      ["POST", "/store/customers/Me"],
+      ["GET", "/store/customers/unknown"],
+    ] as const) {
+      expect(decideStoreSurfaceAccess(method, path).action).toBe("deny")
+    }
   })
 
-  it("leaves signup and login local overrides unpromoted until the exact-set task", () => {
-    const signup = AUTH_SURFACE_LOCAL_OPERATIONS.find(
-      (entry) => entry.pathTemplate === "/auth/customer/emailpass/register"
-    )
-    const login = AUTH_SURFACE_LOCAL_OPERATIONS.find(
-      (entry) => entry.pathTemplate === "/auth/customer/emailpass"
-    )
-    expect(signup?.runtimePolicy).toBe("DENY")
-    expect(login?.runtimePolicy).toBe("DENY")
+  it("elevates exactly signup, login and GET me", () => {
+    const enabledLocal = AUTH_SURFACE_LOCAL_OPERATIONS.filter(
+      (entry) => entry.runtimePolicy === "PHASE14_ENABLED"
+    ).map((entry) => `${entry.method} ${entry.pathTemplate}`)
+
+    expect(enabledLocal).toEqual([
+      "POST /auth/customer/emailpass/register",
+      "POST /auth/customer/emailpass",
+      "POST /auth/token/refresh",
+      "POST /auth/customer/emailpass/revoke-current-lineage",
+    ])
     expect(
       decideAuthSurfaceAccess(
         "POST",
         "/auth/customer/emailpass/register"
       ).action
-    ).toBe("deny")
+    ).toBe("allow")
     expect(
       decideAuthSurfaceAccess("POST", "/auth/customer/emailpass").action
-    ).toBe("deny")
+    ).toBe("allow")
+    expect(decideStoreSurfaceAccess("GET", "/store/customers/me").action).toBe(
+      "allow"
+    )
+    expect(validateStoreSurfaceManifest()).toEqual([])
     expect(
-      STORE_SURFACE_MANIFEST.find(
-        (entry) =>
-          storeSurfaceOperationKey(entry.method, entry.pathTemplate) ===
-          "GET /store/customers/me"
-      )?.runtime_policy
-    ).toBe("DENY")
+      STORE_SURFACE_MANIFEST.filter(
+        (entry) => entry.runtime_policy === "M1_ENABLED"
+      ).map((entry) => storeSurfaceOperationKey(entry.method, entry.pathTemplate))
+    ).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
+  })
+
+  it("binds GET /store/customers/me to the access guard and auth error envelope", () => {
+    const routes = defaultMiddlewares.routes ?? []
+    const meGuard = routes.find(
+      (route) => String(route.matcher) === "/store/customers/me"
+    )
+    expect(meGuard).toBeDefined()
+    expect(meGuard?.middlewares).toContain(customerAuthAccessGuardMiddleware)
+    expect(
+      isExactCustomerAuthVerificationRequest({
+        method: "GET",
+        originalUrl: "/store/customers/me",
+        url: "/store/customers/me",
+        path: "/store/customers/me",
+        baseUrl: "",
+      } as never)
+    ).toBe(true)
   })
 
   it("creates zero Order, Payment, Stripe, Gelato, cart, checkout and fulfillment side effects", () => {

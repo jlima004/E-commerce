@@ -281,10 +281,11 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
     pathTemplate: "/store/customers/me",
     origin: "native",
     classification: "EXTENDED",
-    runtime_policy: "DENY",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
     openapi_m1_expectation: "include_executable_m1",
     rationale:
-      "Account M1 candidate needing BFF-only DTO/error shaping — DENY until Phase 14.",
+      "Phase 14 current auth/customer state; PostgreSQL access guard and allowlisted DTO are mandatory.",
     owner_phase: "14",
     owner_domain: "auth",
   }),
@@ -794,6 +795,11 @@ export const STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS = [
   "GET /store/customers/me/verify/status",
 ] as const
 
+export const STORE_SURFACE_PHASE14_ENABLED_OPERATIONS = [
+  "GET /store/customers/me",
+  ...STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS,
+] as const
+
 export function storeSurfaceOperationKey(
   method: string,
   pathTemplate: string
@@ -918,16 +924,16 @@ export function validateStoreSurfaceManifest(
       message: `expected OUTSIDE_FRONTEND_M1=31, found ${counts.outsideFrontendM1}`,
     })
   }
-  if (counts.m1EnabledPolicy !== 4) {
+  if (counts.m1EnabledPolicy !== 5) {
     violations.push({
       code: "M1_ENABLED_POLICY",
-      message: `Phase 14 requires exactly four verification M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
+      message: `Phase 14 requires exactly five M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
     })
   }
-  if (counts.m1EnablementEnabled !== 4) {
+  if (counts.m1EnablementEnabled !== 5) {
     violations.push({
       code: "M1_ENABLEMENT_ENABLED",
-      message: `Phase 14 requires exactly four verification enablements; found ${counts.m1EnablementEnabled}`,
+      message: `Phase 14 requires exactly five enablements; found ${counts.m1EnablementEnabled}`,
     })
   }
   if (counts.deny + counts.preserveLegacy + counts.m1EnabledPolicy !== counts.total) {
@@ -1038,16 +1044,16 @@ export function validateStoreSurfaceManifest(
     .map((item) => storeSurfaceOperationKey(item.method, item.pathTemplate))
   if (
     enabledOperations.length !==
-      STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS.length ||
+      STORE_SURFACE_PHASE14_ENABLED_OPERATIONS.length ||
     enabledOperations.some(
       (operation, index) =>
-        operation !== STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS[index]
+        operation !== STORE_SURFACE_PHASE14_ENABLED_OPERATIONS[index]
     )
   ) {
     violations.push({
       code: "PHASE14_EXACT_SURFACE",
       message:
-        "M1_ENABLED must contain exactly the four Phase 14 verification operations",
+        "M1_ENABLED must contain exactly GET /store/customers/me plus the four Phase 14 verification operations",
     })
   }
 
