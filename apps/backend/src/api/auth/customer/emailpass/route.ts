@@ -171,7 +171,11 @@ export async function handleCustomerAuthLogin(
   const timing =
     dependencies.timing ??
     ((started) => applyAuthTimingEnvelope({ startedAtMs: started }))
-  const finish = () => timing(startedAtMs)
+  let finishPromise: Promise<number> | undefined
+  const finishOnce = (): Promise<number> => {
+    finishPromise ??= timing(startedAtMs)
+    return finishPromise
+  }
 
   const parsed = LoginRequestSchema.safeParse(req.body ?? {})
   if (!parsed.success) {
@@ -239,12 +243,12 @@ export async function handleCustomerAuthLogin(
     })
 
     if (outcome.kind === "invalid_credentials") {
-      await finish()
+      await finishOnce()
       writeAuthError(req, res, "INVALID_CREDENTIALS")
       return
     }
     if (outcome.kind === "email_verification_required") {
-      await finish()
+      await finishOnce()
       writeAuthError(req, res, "EMAIL_VERIFICATION_REQUIRED")
       return
     }
@@ -264,14 +268,14 @@ export async function handleCustomerAuthLogin(
       { bffAuthorized: dependencies.bffAuthorized !== false }
     )
     if (!envelope) {
-      await finish()
+      await finishOnce()
       writeAuthError(req, res, "AUTHENTICATION_REQUIRED")
       return
     }
-    await finish()
+    await finishOnce()
     res.status(200).json(envelope)
   } catch {
-    await finish().catch(() => undefined)
+    await finishOnce().catch(() => undefined)
     writeAuthError(req, res, "AUTH_TEMPORARILY_UNAVAILABLE", 60)
   }
 }
