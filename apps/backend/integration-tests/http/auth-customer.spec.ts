@@ -1,4 +1,5 @@
 import { createRequire } from "node:module"
+import path from "node:path"
 import {
   ContainerRegistrationKeys,
   parseCorsOrigins,
@@ -35,9 +36,16 @@ import {
 import { decideStoreSurfaceAccess } from "../../src/api/store-surface/guard"
 import defaultMiddlewares, {
   createCustomerAuthAccessGuardMiddleware,
+  createCustomerAuthBffServiceGuardMiddleware,
   customerAuthAccessGuardMiddleware,
+  customerAuthBffServiceGuardMiddleware,
   isExactCustomerAuthVerificationRequest,
 } from "../../src/api/middlewares"
+import {
+  CUSTOMER_AUTH_BFF_AUTH_HEADER,
+  CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS,
+} from "../../src/modules/customer-auth/bff-service-auth"
+import { storeSurfaceGuardMiddleware } from "../../src/api/store-surface/guard"
 import { serializeAuthSessionEnvelope } from "../../src/api/auth-surface/contracts"
 import { env } from "../../src/config/env"
 import { issueCustomerAuthAccessToken } from "../../src/modules/customer-auth/jwt"
@@ -58,6 +66,16 @@ const nativeAuthCors = requireFromBackend("cors") as (options: {
   res: unknown,
   next: () => void
 ) => void
+const { RoutesSorter } = require(
+  path.join(
+    process.cwd(),
+    "../../node_modules/@medusajs/framework/dist/http/routes-sorter.js"
+  )
+) as {
+  RoutesSorter: new (routes: unknown[]) => {
+    sort: () => Array<{ matcher: unknown; methods?: unknown }>
+  }
+}
 
 const BASE = new Date("2026-01-01T00:00:00.000Z")
 const KEYRING: CapabilityKeyring = {
@@ -130,6 +148,14 @@ function responseRecorder(): {
 }
 
 const BROWSER_DIRECT_ORIGIN = "https://browser.example.invalid"
+const BFF_SERVICE_SECRET = "indicio-bff-service-secret-synthetic-32b"
+const WRONG_BFF_SERVICE_SECRET = "indicio-bff-service-secret-synthetic-other"
+
+function createBffGuard(
+  expectedSecret: string | undefined = BFF_SERVICE_SECRET
+) {
+  return createCustomerAuthBffServiceGuardMiddleware({ expectedSecret })
+}
 
 function applyNativeAuthCorsThenGuard(
   req: Record<string, unknown>,
@@ -144,6 +170,57 @@ function applyNativeAuthCorsThenGuard(
   corsFn(req, res, () => {
     authSurfaceGuardMiddleware(req as never, res as never, next)
   })
+}
+
+function applyAuthCallerBoundary(
+  req: Record<string, unknown>,
+  res: Record<string, unknown>,
+  next: () => void,
+  bffOptions: { expectedSecret?: string } = {
+    expectedSecret: BFF_SERVICE_SECRET,
+  }
+): void {
+  applyNativeAuthCorsThenGuard(req, res, () => {
+    createCustomerAuthBffServiceGuardMiddleware(bffOptions)(
+      req as never,
+      res as never,
+      next
+    )
+  })
+}
+
+function applyStoreCallerBoundary(
+  req: Record<string, unknown>,
+  res: Record<string, unknown>,
+  next: () => void,
+  access?: (
+    req: never,
+    res: never,
+    next: () => void
+  ) => void | Promise<void>,
+  expectedSecret: string | undefined = BFF_SERVICE_SECRET
+): void {
+  storeSurfaceGuardMiddleware(req as never, res as never, () => {
+    createBffGuard(expectedSecret)(req as never, res as never, () => {
+      if (!access) {
+        next()
+        return
+      }
+      void access(req as never, res as never, next)
+    })
+  })
+}
+
+function assertNoBffSecretLeak(
+  value: unknown,
+  secrets: string[] = [BFF_SERVICE_SECRET, WRONG_BFF_SERVICE_SECRET]
+): void {
+  const serialized = JSON.stringify(value ?? {})
+  expect(serialized).not.toContain("CUSTOMER_AUTH_BFF_SERVICE_SECRET")
+  expect(serialized).not.toContain(CUSTOMER_AUTH_BFF_AUTH_HEADER)
+  for (const secret of secrets) {
+    expect(serialized).not.toContain(secret)
+  }
 }
 
 function requestOf(input: {
@@ -1195,13 +1272,16 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
     ).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
   })
 
-  it("binds GET /store/customers/me to the access guard and auth error envelope", () => {
+  it("binds GET /store/customers/me to the BFF service guard then the access guard", () => {
     const routes = defaultMiddlewares.routes ?? []
     const meGuard = routes.find(
       (route) => String(route.matcher) === "/store/customers/me"
     )
     expect(meGuard).toBeDefined()
-    expect(meGuard?.middlewares).toContain(customerAuthAccessGuardMiddleware)
+    expect(meGuard?.middlewares).toEqual([
+      customerAuthBffServiceGuardMiddleware,
+      customerAuthAccessGuardMiddleware,
+    ])
     expect(
       isExactCustomerAuthVerificationRequest({
         method: "GET",
@@ -1280,9 +1360,109 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
     expect(adapters.session.issue).not.toHaveBeenCalled()
   })
 
-  it("records that native AUTH CORS does not stop Origin-bearing POST from executing signup and login handlers", async () => {
+  it("denies Origin-bearing signup and login POST without the BFF service credential before any handler", async () => {
     expect(parseCorsOrigins(env.AUTH_CORS)).not.toContain(BROWSER_DIRECT_ORIGIN)
 
+    const registerCustomer = jest.fn(async () => completedRegistration())
+    const signupRateLimitStore = new RecordingRateLimitStore()
+    const adapters = loginAdapters({
+      credential: {
+        customerId: "customer-1",
+        credentialVersion: 1,
+        emailVerifiedAt: BASE,
+        operationStatus: "stable",
+      },
+    })
+    const loginRateLimitStore = new RecordingRateLimitStore()
+
+    for (const [path, headers] of [
+      [
+        "/auth/customer/emailpass/register",
+        {
+          origin: BROWSER_DIRECT_ORIGIN,
+          "content-type": "application/json",
+        },
+      ],
+      [
+        "/auth/customer/emailpass/register",
+        {
+          origin: BROWSER_DIRECT_ORIGIN,
+          "content-type": "application/json",
+          [CUSTOMER_AUTH_BFF_AUTH_HEADER]: WRONG_BFF_SERVICE_SECRET,
+        },
+      ],
+      ["/auth/customer/emailpass/register", {}],
+      [
+        "/auth/customer/emailpass",
+        {
+          origin: BROWSER_DIRECT_ORIGIN,
+          "content-type": "application/json",
+        },
+      ],
+      [
+        "/auth/customer/emailpass",
+        {
+          origin: BROWSER_DIRECT_ORIGIN,
+          "content-type": "application/json",
+          [CUSTOMER_AUTH_BFF_AUTH_HEADER]: WRONG_BFF_SERVICE_SECRET,
+        },
+      ],
+      ["/auth/customer/emailpass", {}],
+    ] as const) {
+      const recorded = responseRecorder()
+      const request = {
+        method: "POST",
+        originalUrl: path,
+        url: path,
+        path,
+        baseUrl: "",
+        ip: IP,
+        headers: { ...headers },
+        body: path.endsWith("/register") ? signupBody() : loginBody(),
+        correlationId: "browser-direct-bff-deny",
+      }
+      const handler = jest.fn(async () => {
+        if (path.endsWith("/register")) {
+          await handleCustomerAuthSignup(
+            request,
+            recorded.response,
+            signupDependencies({
+              registerCustomer,
+              rateLimitStore: signupRateLimitStore,
+            })
+          )
+          return
+        }
+        await handleCustomerAuthLogin(
+          request,
+          recorded.response,
+          loginDependencies(
+            { rateLimitStore: loginRateLimitStore },
+            adapters
+          )
+        )
+      })
+      applyAuthCallerBoundary(request, recorded.response, () => {
+        void handler()
+      })
+      expect(handler).not.toHaveBeenCalled()
+      expect(recorded.state.statusCode).toBe(404)
+      expect(recorded.state.body).toEqual({
+        type: "not_found",
+        message: "Not Found",
+      })
+      assertNoBffSecretLeak(recorded.state.body)
+    }
+
+    expect(registerCustomer).not.toHaveBeenCalled()
+    expect(signupRateLimitStore.calls).toHaveLength(0)
+    expect(adapters.auth.findIdentity).not.toHaveBeenCalled()
+    expect(adapters.auth.authenticate).not.toHaveBeenCalled()
+    expect(adapters.session.issue).not.toHaveBeenCalled()
+    expect(loginRateLimitStore.calls).toHaveLength(0)
+  })
+
+  it("lets the BFF service credential pass signup and login regardless of Origin", async () => {
     const registerCustomer = jest.fn(async () => completedRegistration())
     const adapters = loginAdapters({
       credential: {
@@ -1302,11 +1482,10 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       baseUrl: "",
       ip: IP,
       headers: {
-        origin: BROWSER_DIRECT_ORIGIN,
-        "content-type": "application/json",
+        [CUSTOMER_AUTH_BFF_AUTH_HEADER]: BFF_SERVICE_SECRET,
       },
       body: signupBody(),
-      correlationId: "browser-origin-signup-correlation",
+      correlationId: "bff-signup-correlation",
     }
     const signupHandler = jest.fn(async () => {
       await handleCustomerAuthSignup(
@@ -1317,7 +1496,7 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
     })
     let signupProceeded = false
     const signupDone = new Promise<void>((resolve, reject) => {
-      applyNativeAuthCorsThenGuard(signupRequest, signup.response, () => {
+      applyAuthCallerBoundary(signupRequest, signup.response, () => {
         signupProceeded = true
         void signupHandler().then(resolve, reject)
       })
@@ -1331,7 +1510,7 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       accessToken: "synthetic-access-token",
       refreshToken: "synthetic-refresh-token",
     })
-    expect(signup.state.headers["access-control-allow-origin"]).toBeUndefined()
+    assertNoBffSecretLeak(signup.state.body)
 
     const login = responseRecorder()
     const loginRequest = {
@@ -1343,10 +1522,10 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       ip: IP,
       headers: {
         origin: BROWSER_DIRECT_ORIGIN,
-        "content-type": "application/json",
+        [CUSTOMER_AUTH_BFF_AUTH_HEADER]: BFF_SERVICE_SECRET,
       },
       body: loginBody(),
-      correlationId: "browser-origin-login-correlation",
+      correlationId: "bff-login-correlation",
     }
     const loginHandler = jest.fn(async () => {
       await handleCustomerAuthLogin(
@@ -1357,7 +1536,7 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
     })
     let loginProceeded = false
     const loginDone = new Promise<void>((resolve, reject) => {
-      applyNativeAuthCorsThenGuard(loginRequest, login.response, () => {
+      applyAuthCallerBoundary(loginRequest, login.response, () => {
         loginProceeded = true
         void loginHandler().then(resolve, reject)
       })
@@ -1371,99 +1550,191 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       accessToken: "synthetic-access-token",
       refreshToken: "synthetic-refresh-token",
     })
-    expect(login.state.headers["access-control-allow-origin"]).toBeUndefined()
+    assertNoBffSecretLeak(login.state.body)
   })
 
-  it("lets Origin-less server-to-server POST use signup and login after the same auth surface guard", async () => {
-    const registerCustomer = jest.fn(async () => completedRegistration())
-    const adapters = loginAdapters({
-      credential: {
-        customerId: "customer-1",
-        credentialVersion: 1,
-        emailVerifiedAt: BASE,
-        operationStatus: "stable",
-      },
-    })
-
-    const signup = responseRecorder()
-    const signupRequest = {
+  it("fails closed with 503 when the BFF runtime secret is missing and does not leak configuration", () => {
+    const handler = jest.fn()
+    const recorded = responseRecorder()
+    const request = {
       method: "POST",
       originalUrl: "/auth/customer/emailpass/register",
       url: "/auth/customer/emailpass/register",
       path: "/auth/customer/emailpass/register",
-      baseUrl: "",
-      ip: IP,
-      headers: {},
-      body: signupBody(),
-      correlationId: "bff-signup-correlation",
+      headers: {
+        [CUSTOMER_AUTH_BFF_AUTH_HEADER]: BFF_SERVICE_SECRET,
+      },
+      correlationId: "bff-unavailable-correlation",
     }
-    const signupHandler = jest.fn(async () => {
-      await handleCustomerAuthSignup(
-        signupRequest,
-        signup.response,
-        signupDependencies({ registerCustomer })
-      )
-    })
-    let signupProceeded = false
-    const signupDone = new Promise<void>((resolve, reject) => {
-      authSurfaceGuardMiddleware(
-        signupRequest as never,
-        signup.response as never,
-        () => {
-          signupProceeded = true
-          void signupHandler().then(resolve, reject)
-        }
-      )
-    })
-    expect(signupProceeded).toBe(true)
-    await signupDone
-    expect(signupHandler).toHaveBeenCalledTimes(1)
-    expect(registerCustomer).toHaveBeenCalledTimes(1)
-    expect(signup.state.statusCode).toBe(201)
-    expect(signup.state.body).toMatchObject({
-      accessToken: "synthetic-access-token",
-      refreshToken: "synthetic-refresh-token",
+
+    applyAuthCallerBoundary(request, recorded.response, handler, {
+      expectedSecret: undefined,
     })
 
-    const login = responseRecorder()
-    const loginRequest = {
-      method: "POST",
-      originalUrl: "/auth/customer/emailpass",
-      url: "/auth/customer/emailpass",
-      path: "/auth/customer/emailpass",
-      baseUrl: "",
-      ip: IP,
-      headers: {},
-      body: loginBody(),
-      correlationId: "bff-login-correlation",
-    }
-    const loginHandler = jest.fn(async () => {
-      await handleCustomerAuthLogin(
-        loginRequest,
-        login.response,
-        loginDependencies({}, adapters)
-      )
+    expect(handler).not.toHaveBeenCalled()
+    expect(recorded.state.statusCode).toBe(503)
+    expect(recorded.state.body).toMatchObject({
+      code: "AUTH_TEMPORARILY_UNAVAILABLE",
     })
-    let loginProceeded = false
-    const loginDone = new Promise<void>((resolve, reject) => {
-      authSurfaceGuardMiddleware(
-        loginRequest as never,
-        login.response as never,
-        () => {
-          loginProceeded = true
-          void loginHandler().then(resolve, reject)
+    assertNoBffSecretLeak(recorded.state.body)
+  })
+
+  it("separates BFF caller authority from customer access on GET /store/customers/me", async () => {
+    const access = createCustomerAuthAccessGuardMiddleware({
+      now: () => BASE,
+    })
+    const accessWrapper = jest.fn(
+      (req: never, res: never, next: () => void) => access(req, res, next)
+    )
+    const handler = jest.fn()
+
+    const denied = responseRecorder()
+    applyStoreCallerBoundary(
+      {
+        method: "GET",
+        originalUrl: "/store/customers/me",
+        url: "/store/customers/me",
+        path: "/store/customers/me",
+        headers: {},
+        correlationId: "me-bff-deny",
+      },
+      denied.response,
+      handler,
+      accessWrapper
+    )
+    expect(accessWrapper).not.toHaveBeenCalled()
+    expect(handler).not.toHaveBeenCalled()
+    expect(denied.state.statusCode).toBe(404)
+    expect(denied.state.body).toEqual({
+      type: "not_found",
+      message: "Not Found",
+    })
+    assertNoBffSecretLeak(denied.state.body)
+
+    const rejectedBearer = responseRecorder()
+    const rejectedRequest = guardRequest(
+      {
+        raw: async () => ({ rows: [] }),
+      },
+      "not-a-jwt"
+    )
+    rejectedRequest.headers = {
+      ...(rejectedRequest.headers as Record<string, string>),
+      [CUSTOMER_AUTH_BFF_AUTH_HEADER]: BFF_SERVICE_SECRET,
+    }
+    await new Promise<void>((resolve, reject) => {
+      applyStoreCallerBoundary(
+        rejectedRequest,
+        rejectedBearer.response,
+        handler,
+        async (req, res, next) => {
+          try {
+            await accessWrapper(req, res, next)
+            resolve()
+          } catch (error) {
+            reject(error)
+          }
         }
       )
     })
-    expect(loginProceeded).toBe(true)
-    await loginDone
-    expect(loginHandler).toHaveBeenCalledTimes(1)
-    expect(adapters.session.issue).toHaveBeenCalledTimes(1)
-    expect(login.state.statusCode).toBe(200)
-    expect(login.state.body).toMatchObject({
-      accessToken: "synthetic-access-token",
-      refreshToken: "synthetic-refresh-token",
+    expect(accessWrapper).toHaveBeenCalledTimes(1)
+    expect(handler).not.toHaveBeenCalled()
+    expect(rejectedBearer.state.statusCode).toBe(401)
+    expect(rejectedBearer.state.body).toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
     })
+    assertNoBffSecretLeak(rejectedBearer.state.body)
+  })
+
+  it("mounts the BFF service guard on the exact Phase 14 set after surface guards and before access guards", () => {
+    const routes = defaultMiddlewares.routes ?? []
+    const authSurface = routes.find((route) => String(route.matcher) === "/auth*")
+    const storeSurface = routes.find(
+      (route) => String(route.matcher) === "/store*"
+    )
+    expect(authSurface?.middlewares).toEqual([authSurfaceGuardMiddleware])
+    expect(storeSurface?.middlewares).not.toContain(
+      customerAuthBffServiceGuardMiddleware
+    )
+    expect(authSurface?.middlewares).not.toContain(
+      customerAuthBffServiceGuardMiddleware
+    )
+
+    const protectedMatchers = CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS.map(
+      (operation) => operation.split(" ")[1]
+    )
+    for (const operation of CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS) {
+      const [, path] = operation.split(" ")
+      const route = routes.find(
+        (candidate) => String(candidate.matcher) === path
+      )
+      expect(route).toBeDefined()
+      expect(route?.middlewares?.[0]).toBe(customerAuthBffServiceGuardMiddleware)
+      if (
+        path === "/auth/customer/emailpass/revoke-current-lineage" ||
+        path === "/store/customers/me" ||
+        path === "/store/customers/me/verify" ||
+        path === "/store/customers/me/verify/status"
+      ) {
+        expect(route?.middlewares).toEqual([
+          customerAuthBffServiceGuardMiddleware,
+          customerAuthAccessGuardMiddleware,
+        ])
+      } else {
+        expect(route?.middlewares).toEqual([
+          customerAuthBffServiceGuardMiddleware,
+        ])
+      }
+    }
+
+    const extraBffRoutes = routes.filter(
+      (route) =>
+        route.middlewares?.includes(customerAuthBffServiceGuardMiddleware) &&
+        !(protectedMatchers as readonly string[]).includes(String(route.matcher))
+    )
+    expect(extraBffRoutes).toEqual([])
+  })
+
+  it("keeps Medusa RoutesSorter placing surface guards before exact BFF matchers", () => {
+    const sorted = new RoutesSorter([
+      {
+        matcher: "/auth/customer/emailpass/register",
+        methods: ["POST"],
+        method: "POST",
+        handler: () => undefined,
+      },
+      {
+        matcher: "/auth*",
+        handler: () => undefined,
+      },
+      {
+        matcher: "/store/customers/me",
+        methods: ["GET"],
+        method: "GET",
+        handler: () => undefined,
+      },
+      {
+        matcher: "/store*",
+        handler: () => undefined,
+      },
+      {
+        matcher: "/auth/customer/emailpass/revoke-current-lineage",
+        methods: ["POST"],
+        method: "POST",
+        handler: () => undefined,
+      },
+    ]).sort()
+
+    const matchers = sorted.map((route) => String(route.matcher))
+    expect(matchers.indexOf("/auth*")).toBeLessThan(
+      matchers.indexOf("/auth/customer/emailpass/register")
+    )
+    expect(matchers.indexOf("/auth*")).toBeLessThan(
+      matchers.indexOf("/auth/customer/emailpass/revoke-current-lineage")
+    )
+    expect(matchers.indexOf("/store*")).toBeLessThan(
+      matchers.indexOf("/store/customers/me")
+    )
   })
 
   it("creates zero Order, Payment, Stripe, Gelato, cart, checkout and fulfillment side effects", () => {
