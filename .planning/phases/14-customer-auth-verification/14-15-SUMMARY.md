@@ -713,7 +713,170 @@ Scope kept:
 - production edit limited to `apps/backend/src/api/auth/customer/emailpass/route.ts` (`finishOnce`)
 - no middlewares.ts / medusa-config / CORS / auth-surface guard / headers / env / proxy / publishable changes
 
+## BFF service boundary architecture remediation
+
+Human architecture decision accepted the HR-02 diagnosis and authorized a backend BFF service authentication boundary. This section records that remediation only. It does **not** declare 14-15 HUMAN APPROVED.
+
+```text
+B14-15-HR-01:
+CLOSED — PASS
+
+B14-15-HR-02:
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+B14-15-HR-03:
+CLOSED — PASS
+
+14-15-01:
+EXECUTED — AWAITING HUMAN RE-REVIEW
+
+14-15-02:
+EXECUTED — AWAITING HUMAN RE-REVIEW
+
+14-15-03:
+BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
+
+14-15:
+NOT YET HUMAN APPROVED
+
+14-16:
+NOT AUTHORIZED
+
+PUSH:
+NONE
+
+DEPLOY:
+NONE
+
+REAL PROVIDERS:
+NONE
+
+REMOTE DB/REDIS:
+NONE
+```
+
+**Root cause HR-02:** CORS and `authSurfaceGuardMiddleware` do not authenticate the caller. Origin-bearing POST could reach signup/login handlers and produce side effects. Hiding the JavaScript-readable response is not a deny-before-mutation boundary. The SPEC requires `Browser → Medusa directly = FORBIDDEN`.
+
+**Human decision:** introduce an explicit BFF service authentication boundary.
+
+```text
+Browser → same-origin Next.js BFF → BFF service credential → Medusa
+Browser → Medusa directly → DENY before business handler / mutation
+```
+
+The Next.js BFF remains FUTURE OWNER-PHASE. It was not implemented.
+
+**Secret / env / header:**
+
+- env: `CUSTOMER_AUTH_BFF_SERVICE_SECRET`
+- header: `x-indicio-bff-auth`
+- opaque high-entropy server-side secret
+- never sent to the browser, never returned, never persisted, never logged, never sent to Sentry/PostHog
+- independent of Customer JWT, refresh, verification/reset capability, publishable key, Redis, and PostgreSQL
+- `Authorization` remains reserved for the customer bearer JWT
+- no new npm dependency
+
+**Constant-time comparison:** `sha256(expected)` and `sha256(received)` compared with `node:crypto.timingSafeEqual`. No direct `===` on secrets.
+
+**Exact protected operation set:**
+
+- `POST /auth/customer/emailpass/register`
+- `POST /auth/customer/emailpass`
+- `POST /auth/token/refresh`
+- `POST /auth/customer/emailpass/revoke-current-lineage`
+- `GET /store/customers/me`
+- `POST /store/customers/me/verify`
+- `POST /store/customers/verify/resend`
+- `POST /store/customers/verify`
+- `GET /store/customers/me/verify/status`
+
+Reset/update remain DENY. No new route was enabled.
+
+**Middleware ordering (Medusa `RoutesSorter` + registered arrays):**
+
+```text
+Native CORS / publishable
+  → defense-in-depth only; NOT authorization
+
+AUTH:  authSurfaceGuard → BFF service guard → customer access guard when present → handler
+STORE: storeSurfaceGuard → BFF service guard → customer access guard when present → handler
+```
+
+Method-less `/auth*` and `/store*` stay in the global bucket before exact BFF matchers. The BFF guard is not mounted on `/auth*` or `/store*` indiscriminately.
+
+**Fail-closed contract:**
+
+- valid backend secret + correct header → PASS, continue
+- missing header → generic 404, no handler
+- invalid header → generic 404, no handler
+- missing/invalid runtime config → 503 `AUTH_TEMPORARILY_UNAVAILABLE`, no handler
+
+No fallback to Origin, CORS, publishable key, localhost, `NODE_ENV`, IP, User-Agent, or `bffAuthorized: true`.
+
+**Browser-direct:** Origin-bearing POST without the service header is denied before the handler. A curl without Origin and without the service secret is also denied. Zero coordinator/provider/limiter/session/verification/JWT side effects.
+
+**BFF positive path:** request with the correct service secret passes the BFF guard whether or not Origin is present. Origin is not authority. The real browser never has this secret.
+
+**CORS:** remains defense-in-depth / framework behavior only.
+
+**No secret leaks:** missing/invalid/unavailable responses contain neither the presented secret, the expected secret, the env var name, nor a digest. Middleware does not log request headers wholesale.
+
+**Validation:**
+
+```text
+BFF service auth unit:
+PASS — 10/10
+
+Focused auth-customer:
+PASS — 36/36
+
+Predecessor verification:
+PASS — 15/15
+
+Predecessor multiprocess (local disposable PostgreSQL + local Redis):
+PASS — 10/10
+cleanup = PASS
+[P12_DISPOSABLE_POSTGRES_CLEAN] confirmed
+
+Combined focused regression (three suites, local disposable PostgreSQL):
+PASS — 61/61
+cleanup = PASS
+[P12_DISPOSABLE_POSTGRES_CLEAN] confirmed
+
+Backend build:
+PASS
+
+Direct ESLint production files:
+PASS — 0 errors
+known advisory Medusa warnings only
+
+Direct ESLint --no-ignore test files:
+PASS — 0 errors
+known advisory Medusa warnings only
+
+Repository lint wrapper:
+KNOWN TOOLING FAILURE — empty JSON / EOF while parsing
+accepted non-blocking; no tooling/package changes
+
+git diff --check:
+PASS
+```
+
+Scope kept:
+
+- PostgreSQL/Redis: local disposable Docker only; leftover containers none
+- no remote DB/Redis
+- no real Resend / real providers
+- no migration/schema
+- no package.json / lockfile
+- no push / PR / merge / deploy
+- no 14-16
+- no STATE.md / ROADMAP.md update
+- no frontend / Next.js BFF implementation
+- no Heroku env change
+- handlers signup/login/me/verification/refresh/revoke were not edited
+
 ---
 *Phase: 14-customer-auth-verification*
 *Plan: 14-15*
-*Status: EXECUTED — AWAITING HUMAN RE-REVIEW; HR-02 BLOCKED*
+*Status: EXECUTED — AWAITING HUMAN RE-REVIEW; HR-02 REMEDIATED*

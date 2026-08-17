@@ -61,31 +61,42 @@ Store Surface Guard (/store* matcher)                  AS-BUILT Phase 13
    +--> PHASE14_ENABLED / elevated Store exact-set
             |
             v
-        validators / AUTH_HTTP_CONTRACT
+        BFF Service Guard  (x-indicio-bff-auth)        14-15 HR-02
             |
-            +--> public ops (signup/login/refresh/reset/verify)
-            +--> authenticated ops --> customerAuthAccessGuard (PostgreSQL)
-            |
-            v
-        customer-auth module (PostgreSQL authority)
-            |
-            +--> Medusa Auth / emailpass internal primitives (never raw HTTP)
-            +--> Customer workflow (logical IDs only)
-            +--> AuthNotificationOutbox + worker/reconciler
-            |
-            v
-        Redis limiter (coordination only; never grants validity)
+            +--> missing/invalid credential --> generic 404 deny
+            +--> runtime secret missing/invalid --> 503 fail-closed
+            +--> authorized server-to-server caller
+                    |
+                    v
+                validators / AUTH_HTTP_CONTRACT
+                    |
+                    +--> public ops (signup/login/refresh/reset/verify)
+                    +--> authenticated ops --> customerAuthAccessGuard (PostgreSQL)
+                    |
+                    v
+                customer-auth module (PostgreSQL authority)
+                    |
+                    +--> Medusa Auth / emailpass internal primitives (never raw HTTP)
+                    +--> Customer workflow (logical IDs only)
+                    +--> AuthNotificationOutbox + worker/reconciler
+                    |
+                    v
+                Redis limiter (coordination only; never grants validity)
 ```
 
 ```mermaid
 flowchart TD
-  BFF[BFF same-origin] --> CORS[Native CORS / publishable]
+  Browser[Browser] -->|FORBIDDEN fail-closed| Deny[BFF Service Guard DENY]
+  BFF[BFF same-origin FUTURE OWNER-PHASE] --> CORS[Native CORS / publishable]
   CORS --> AG[Auth Surface Guard]
   CORS --> SG[Store Surface Guard]
   AG -->|DENY / unknown| E[AuthErrorResponse]
   SG -->|DENY / unknown| SE[StoreErrorResponse]
-  AG -->|PHASE14_ENABLED| V[validators + AUTH_HTTP_CONTRACT]
-  SG -->|exact Phase 14 paths| V
+  AG -->|PHASE14_ENABLED| BFFG[BFF Service Guard]
+  SG -->|exact Phase 14 paths| BFFG
+  BFFG -->|missing or invalid| NF[generic 404]
+  BFFG -->|runtime secret missing| U[503 AUTH_TEMPORARILY_UNAVAILABLE]
+  BFFG -->|authorized| V[validators + AUTH_HTTP_CONTRACT]
   V --> G{authenticated?}
   G -->|yes| PG[customerAuthAccessGuard PostgreSQL]
   G -->|no| M[customer-auth module]
@@ -106,14 +117,33 @@ flowchart TD
 Order-birth positivo permanece exclusivamente no webhook canônico
 (`runCreateOrderFromConfirmedPaymentAttemptEntrypoint` — `AS-BUILT`).
 
-BFF-only (`PLAN-DECIDED`):
+BFF-only (`PLAN-DECIDED`, runtime corrected in 14-15 HR-02):
 browser never receives backend session JWT, backend refresh credential,
 or internal auth/session capabilities and never calls Medusa directly.
 One-time verification/reset capabilities may arrive out-of-band to the
 user/browser and are submitted only through the same-origin BFF.
-Exact browser↔BFF transport is `FUTURE OWNER-PHASE`.
-Backend success/error responses never return those one-time capabilities.
-AuthSessionEnvelope remains server-to-server.
+Exact browser↔BFF transport is `FUTURE OWNER-PHASE`. The Next.js BFF
+is not implemented in this backend.
+
+Authorities are separate and ordered:
+
+1. Native CORS / publishable context — defense-in-depth / framework
+   behavior. **NOT authorization.** Hiding a response from browser JS
+   does not prevent server-side mutation.
+2. Surface Guard — this method/path exists and is authorized on the
+   exact-set. It does not authenticate the BFF.
+3. BFF Service Guard — server-to-server caller authority via opaque
+   header `x-indicio-bff-auth` compared in constant time against
+   `CUSTOMER_AUTH_BFF_SERVICE_SECRET`. Missing/invalid credential ⇒
+   generic 404 before any business handler. Missing/invalid runtime
+   secret ⇒ 503 fail-closed. Origin, CORS, publishable key, IP and
+   `bffAuthorized` are not fallbacks.
+4. Customer Access Guard — customer JWT/lineage/credential truth,
+   only where applicable. It does not substitute BFF authentication.
+
+`Browser → Medusa directly` is forbidden and now fail-closed by the
+BFF Service Guard. Backend success/error responses never return
+one-time capabilities. AuthSessionEnvelope remains server-to-server.
 
 ---
 
@@ -133,6 +163,7 @@ Owner `customer_auth` salvo onde o PLAN aponta `api/` ou `jobs/` ou `api-docs/`.
 | session | `.../session.ts` | 14-10 |
 | jwt | `.../jwt.ts` | 14-10 |
 | access-guard | `customerAuthAccessGuard` | 14-11 |
+| bff-service-auth | `bff-service-auth.ts` + `customerAuthBffServiceGuardMiddleware` | 14-15 HR-02 |
 | verification | `.../verification.ts` | 14-12 |
 | reset | `.../reset.ts` | 14-16 |
 | password-change | `.../password-change.ts` | 14-17 |
