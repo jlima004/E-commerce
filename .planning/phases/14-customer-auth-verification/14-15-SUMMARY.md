@@ -529,7 +529,191 @@ Scope kept:
 - no STATE.md / ROADMAP.md update
 - no login.ts / signup / me / manifests / middlewares / access-guard / rate-limit / timing / registration / session / verification changes except the authorized login handler `finish()` on verified success
 
+## Second human-review remediation
+
+Human re-review of 14-15-03 failed again on HR-01 and HR-02. HR-03 remains closed. This section records the second authorized remediation only. It does **not** declare 14-15 HUMAN APPROVED.
+
+```text
+B14-15-HR-01:
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+B14-15-HR-02:
+BLOCKED — CORS DOES NOT ENFORCE NO-DIRECT-BROWSER-SIDE-EFFECT CONTRACT
+
+B14-15-HR-03:
+CLOSED — PASS
+
+14-15-01:
+EXECUTED — AWAITING HUMAN RE-REVIEW
+
+14-15-02:
+EXECUTED — AWAITING HUMAN RE-REVIEW
+
+14-15-03:
+BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
+
+14-15:
+NOT YET HUMAN APPROVED
+
+14-16:
+NOT AUTHORIZED
+
+PUSH:
+NONE
+
+DEPLOY:
+NONE
+
+REAL PROVIDERS:
+NONE
+```
+
+### B14-15-HR-01
+
+REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+**Root cause of the remaining double-call:** the first remediation awaited `finish()` on every credential path, including verified success. `finish` was `() => timing(startedAtMs)`. If that first `await finish()` rejected, control entered the existing `catch`, which executed `await finish().catch(...)`. Timing resolve therefore invoked the function once; timing reject could invoke it twice.
+
+**Correction:** the login handler now memoizes the first timing Promise per request:
+
+```text
+let finishPromise: Promise<number> | undefined
+const finishOnce = (): Promise<number> => {
+  finishPromise ??= timing(startedAtMs)
+  return finishPromise
+}
+```
+
+Every previous `finish()` call is now `finishOnce()` / `finishOnce().catch(...)`. `timing(startedAtMs)` is invoked only inside that primitive. A resolved Promise is reused; a rejected Promise is reused; a cached rejection is still one execution. No boolean-before-await window. Public error classes are unchanged: a timing rejection still surfaces as `503 AUTH_TEMPORARILY_UNAVAILABLE` after the catch swallows the cached rejection. `timing.ts`, floor, and jitter were not edited.
+
+**Proof** in `auth-customer.spec.ts` (`toHaveBeenCalledTimes(1)`):
+
+- missing account → timing once, `401 INVALID_CREDENTIALS`
+- wrong password → timing once, `401 INVALID_CREDENTIALS`
+- valid unverified → timing once, `403 EMAIL_VERIFICATION_REQUIRED`, `session.issue` = 0
+- valid verified → timing once, `session.issue` = 1, `200` envelope
+- BFF serializer rejection after verified login → timing once, `401 AUTHENTICATION_REQUIRED`, no tokens
+- exception after credential-path entry (`session.issue` throw) → timing once, `503 AUTH_TEMPORARILY_UNAVAILABLE`
+- **new:** `timing = jest.fn().mockRejectedValue(new Error("synthetic timing failure"))` on a path that reaches timing → timing once after handler error handling, `503 AUTH_TEMPORARILY_UNAVAILABLE`
+
+### B14-15-HR-02
+
+BLOCKED — CORS DOES NOT ENFORCE NO-DIRECT-BROWSER-SIDE-EFFECT CONTRACT
+
+**STOP — HUMAN ARCHITECTURE DECISION REQUIRED**
+
+No production boundary change was implemented. No new header, secret, API key, middleware, CORS, publishable, env, or proxy primitive was invented.
+
+#### Documentary definition used
+
+`14-SPEC.md` hard invariant 8 and §3:
+
+> BFF-only — browser never receives backend session JWT, backend refresh credential, or internal auth/session capabilities **and never calls Medusa directly**.
+>
+> Browser never calls Medusa directly.
+
+`14-SDD.md` §1 repeats the same sentence and labels native CORS / publishable context **AS-BUILT; not authorization**. `14-IMPLEMENTATION-PROMPT.md` §4.2 is the same topology: `Browser → same-origin BFF → Medusa` and `Browser → Medusa directly = FORBIDDEN`. Path C (token non-exposure only) is therefore **not** the approved contract. The contract requires absence of browser-direct **side effects**, not only unreadability of `AuthSessionEnvelope`.
+
+#### Real boundary found
+
+| Layer | What it actually does | Distinguishes BFF vs browser-direct POST? |
+|---|---|---|
+| Native Medusa `authCors` (`@medusajs/framework` `router.js` + `cors` with `preflightContinue: false`) | For OPTIONS, answers the preflight itself (204) and may omit `Access-Control-Allow-Origin` when Origin is outside `AUTH_CORS`. For actual POST, **always `next()`s**. Disallowed Origin only skips the ACAO header. | No. CORS is browser response-exposure, not a server-side execution gate. |
+| `authSurfaceGuardMiddleware` (`/auth*`) | Method + canonical path + exact-set policy. OPTIONS/HEAD are implicit DENY. Enabled POST signup/login are ALLOW. Origin is not read. | No. It is not a BFF identity check. |
+| Publishable key | Applied only to `/store`. `/auth` has no publishable middleware. | No. |
+| `bffAuthorized` | Hardcoded `true` in the production POST handlers; serializer safety only. | No. |
+| Same-origin Next.js BFF | `FUTURE OWNER-PHASE`. Not present in this backend. | Not implemented. |
+
+Three cases are not equivalent:
+
+1. **Request not sent by the browser** — only some preflighted JSON `fetch` calls, and only when the browser itself withholds POST after a preflight without ACAO.
+2. **Request sent but JS cannot read the response** — native AUTH CORS for a disallowed Origin: POST still executes; ACAO is absent.
+3. **Request sent and server-side mutation runs** — Origin-bearing POST of signup/login. This is the live runtime.
+
+A form/`text/plain` simple POST never preflights. A JSON POST whose preflight is answered 204 without ACAO is still not a server-side block: any non-browser client, and the Medusa CORS middleware itself, will execute the POST.
+
+#### Tests
+
+- Renamed the insufficient proof to `"keeps browser CORS preflight OPTIONS outside the exact auth surface"`. It remains deny-matrix evidence that OPTIONS is not an elevated business method. It is **not** a complete BFF-only proof. In the real Medusa stack, OPTIONS on an enabled POST route is answered by the `cors` package **before** this guard.
+- Added `"records that native AUTH CORS does not stop Origin-bearing POST from executing signup and login handlers"`: realistic browser `Origin` + `Content-Type: application/json`, chained through the installed `cors` options (`origin: parseCorsOrigins(AUTH_CORS)`, `credentials: true`, `preflightContinue: false`) and then `authSurfaceGuardMiddleware`. Result: guard allows, signup coordinator runs, login `session.issue` runs, `201`/`200` token bodies are produced, ACAO is absent.
+- Kept Origin-less server-to-server POST as the positive BFF-shaped path: same routes work without Origin.
+
+Observed side effects on browser-direct POST: handler executes; coordinator executes; session.issue executes; AuthSessionEnvelope tokens are in the body. CORS may hide that body from browser JS; it does not prevent mutation.
+
+#### Why this cannot be closed in the authorized scope
+
+Closing the SPEC contract would require a production boundary that does not exist today (middleware/CORS/config/header/publishable/proxy). Those files are outside the authorized production allowlist. Inventing a BFF secret would also violate the stop conditions.
+
+Evidence:
+
+- browser-direct POST can reach handler
+- response exposure may be denied, but server-side mutation can occur
+
+### B14-15-HR-03
+
+CLOSED — PASS
+
+Not reopened. Predecessor suites were re-run only as regression:
+
+- `auth-verification.spec.ts`: PASS — 12/12
+- `auth-multiprocess.spec.ts`: PASS — 8/8
+
+Exact-set cumulativo inalterado:
+
+- AUTH: register, login, refresh, revoke
+- STORE: GET me + four verification contracts
+
+### Second-remediation validation
+
+```text
+Focused auth-customer:
+PASS — 32/32
+
+Predecessor verification:
+PASS — 12/12
+
+Predecessor multiprocess (local disposable PostgreSQL + local Redis):
+PASS — 8/8
+cleanup = PASS
+[P12_DISPOSABLE_POSTGRES_CLEAN] confirmed
+
+Combined focused regression (three suites, local disposable PostgreSQL):
+PASS — 52/52
+cleanup = PASS
+[P12_DISPOSABLE_POSTGRES_CLEAN] confirmed
+
+Backend build:
+PASS
+
+Direct ESLint route.ts:
+PASS — 0 errors, 1 known Medusa advisory warning
+(use-medusa-error-not-generic-error)
+
+Direct ESLint --no-ignore auth-customer.spec.ts:
+PASS — 0 errors, 4 known advisory Medusa warnings
+(use-medusa-error-not-generic-error)
+
+Repository lint wrapper:
+KNOWN TOOLING FAILURE — empty JSON / EOF while parsing
+accepted non-blocking; no tooling/package changes
+
+git diff --check:
+PASS
+```
+
+Scope kept:
+
+- PostgreSQL/Redis: local disposable Docker only; no remote DB/Redis
+- no real Resend / real providers
+- no migration/schema
+- no package.json / lockfile
+- no push / PR / merge / deploy
+- no 14-16
+- no STATE.md / ROADMAP.md update
+- production edit limited to `apps/backend/src/api/auth/customer/emailpass/route.ts` (`finishOnce`)
+- no middlewares.ts / medusa-config / CORS / auth-surface guard / headers / env / proxy / publishable changes
+
 ---
 *Phase: 14-customer-auth-verification*
 *Plan: 14-15*
-*Status: EXECUTED — AWAITING HUMAN RE-REVIEW*
+*Status: EXECUTED — AWAITING HUMAN RE-REVIEW; HR-02 BLOCKED*
