@@ -40,9 +40,20 @@ import {
   STORE_SURFACE_MANIFEST,
   STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
 } from "../../src/api/store-surface/manifest"
-import { decideStoreSurfaceAccess } from "../../src/api/store-surface/guard"
+import {
+  decideStoreSurfaceAccess,
+  storeSurfaceGuardMiddleware,
+} from "../../src/api/store-surface/guard"
 import { decideAuthSurfaceAccess } from "../../src/api/auth-surface/guard"
-import { CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS } from "../../src/modules/customer-auth/bff-service-auth"
+import defaultMiddlewares, {
+  createCustomerAuthBffServiceGuardMiddleware,
+  customerAuthAccessGuardMiddleware,
+  customerAuthBffServiceGuardMiddleware,
+} from "../../src/api/middlewares"
+import {
+  CUSTOMER_AUTH_BFF_AUTH_HEADER,
+  CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS,
+} from "../../src/modules/customer-auth/bff-service-auth"
 
 jest.setTimeout(180_000)
 
@@ -1867,14 +1878,14 @@ describe("password-change HTTP public matrix", () => {
   })
 })
 
-describe("password-change store surface remains DENY", () => {
-  it("keeps POST /store/customers/me/password outside the enabled Store exact-set", async () => {
+describe("password-change store surface is enabled after reconciler proof", () => {
+  it("elevates POST /store/customers/me/password in the Store and BFF exact-sets", async () => {
     expect(
       decideStoreSurfaceAccess("POST", PASSWORD_PATH).action
-    ).toBe("deny")
-    expect(
-      STORE_SURFACE_PHASE14_ENABLED_OPERATIONS
-    ).not.toContain("POST /store/customers/me/password")
+    ).toBe("allow")
+    expect(STORE_SURFACE_PHASE14_ENABLED_OPERATIONS).toContain(
+      "POST /store/customers/me/password"
+    )
     expect(
       STORE_SURFACE_MANIFEST.some(
         (entry) =>
@@ -1882,8 +1893,8 @@ describe("password-change store surface remains DENY", () => {
           entry.pathTemplate === PASSWORD_PATH &&
           entry.runtime_policy === "M1_ENABLED"
       )
-    ).toBe(false)
-    expect(CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS).not.toContain(
+    ).toBe(true)
+    expect(CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS).toContain(
       "POST /store/customers/me/password"
     )
     expect(
@@ -1923,5 +1934,119 @@ describe("password-change store surface remains DENY", () => {
     expect(originatingA).not.toContain(IDEMPOTENCY_KEY)
     expect(AUTH_PASSWORD_CHANGE_LEASE_MS).toBe(120_000)
     expect(typeof handleCustomerAuthPasswordChange).toBe("function")
+  })
+
+  it("denies POST /store/customers/me/password without a BFF service credential before the handler", () => {
+    const bffGuard = createCustomerAuthBffServiceGuardMiddleware({
+      expectedSecret: "indicio-bff-service-secret-synthetic-32b",
+    })
+    const handler = jest.fn()
+    const missing = responseRecorder()
+    const invalid = responseRecorder()
+
+    const apply = (
+      recorded: ReturnType<typeof responseRecorder>,
+      headers: Record<string, string>
+    ) => {
+      storeSurfaceGuardMiddleware(
+        {
+          method: "POST",
+          originalUrl: PASSWORD_PATH,
+          url: PASSWORD_PATH,
+          path: PASSWORD_PATH,
+          headers,
+        } as never,
+        recorded.response as never,
+        () => {
+          bffGuard(
+            {
+              method: "POST",
+              originalUrl: PASSWORD_PATH,
+              url: PASSWORD_PATH,
+              path: PASSWORD_PATH,
+              headers,
+              correlationId: "password-bff-deny",
+            } as never,
+            recorded.response as never,
+            handler
+          )
+        }
+      )
+    }
+
+    apply(missing, {})
+    apply(invalid, {
+      [CUSTOMER_AUTH_BFF_AUTH_HEADER]: "indicio-bff-service-secret-synthetic-other",
+    })
+
+    expect(handler).not.toHaveBeenCalled()
+    expect(missing.state.statusCode).toBe(404)
+    expect(invalid.state.statusCode).toBe(404)
+    expect(missing.state.body).toEqual({
+      type: "not_found",
+      message: "Not Found",
+    })
+    expect(invalid.state.body).toEqual({
+      type: "not_found",
+      message: "Not Found",
+    })
+  })
+
+  it("lets a valid BFF service credential reach the password-change handler guards", () => {
+    const bffGuard = createCustomerAuthBffServiceGuardMiddleware({
+      expectedSecret: "indicio-bff-service-secret-synthetic-32b",
+    })
+    const handler = jest.fn()
+    const recorded = responseRecorder()
+    const headers = {
+      [CUSTOMER_AUTH_BFF_AUTH_HEADER]: "indicio-bff-service-secret-synthetic-32b",
+    }
+
+    storeSurfaceGuardMiddleware(
+      {
+        method: "POST",
+        originalUrl: PASSWORD_PATH,
+        url: PASSWORD_PATH,
+        path: PASSWORD_PATH,
+        headers,
+      } as never,
+      recorded.response as never,
+      () => {
+        bffGuard(
+          {
+            method: "POST",
+            originalUrl: PASSWORD_PATH,
+            url: PASSWORD_PATH,
+            path: PASSWORD_PATH,
+            headers,
+            correlationId: "password-bff-allow",
+          } as never,
+          recorded.response as never,
+          handler
+        )
+      }
+    )
+
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it("mounts the password path as BFF-only after the Store surface guard", () => {
+    const routes = defaultMiddlewares.routes ?? []
+    const storeSurface = routes.find(
+      (route) => String(route.matcher) === "/store*"
+    )
+    const passwordRoute = routes.find(
+      (route) => String(route.matcher) === PASSWORD_PATH
+    )
+    expect(storeSurface?.middlewares).toEqual(
+      expect.arrayContaining([storeSurfaceGuardMiddleware])
+    )
+    expect(passwordRoute).toBeDefined()
+    expect(passwordRoute?.middlewares).toEqual([
+      customerAuthBffServiceGuardMiddleware,
+    ])
+    expect(passwordRoute?.middlewares).not.toContain(
+      customerAuthAccessGuardMiddleware
+    )
   })
 })

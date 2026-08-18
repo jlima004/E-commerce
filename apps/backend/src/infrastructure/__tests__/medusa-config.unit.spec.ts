@@ -151,6 +151,13 @@ describe("medusa-config final Redis wiring", () => {
       )
       expect(JSON.stringify(redisModules)).not.toContain("event-bus-local")
       expect(JSON.stringify(redisModules)).not.toContain("inmemory")
+      expect(config.projectConfig.workerMode).toBe(workerMode)
+      expect(
+        (config.projectConfig.http as { authMethodsPerActor?: unknown })
+          .authMethodsPerActor
+      ).toEqual({
+        customer: ["emailpass"],
+      })
     }
   )
 

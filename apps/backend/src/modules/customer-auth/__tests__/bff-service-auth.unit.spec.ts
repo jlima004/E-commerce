@@ -45,12 +45,8 @@ describe("BFF service authentication boundary", () => {
       "GET /store/customers/me/verify/status",
       "POST /auth/customer/emailpass/reset-password",
       "POST /auth/customer/emailpass/update",
+      "POST /store/customers/me/password",
     ])
-    expect(CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS).not.toEqual(
-      expect.arrayContaining([
-        "POST /store/customers/me/password",
-      ])
-    )
   })
 
   it("authorizes a valid configured secret and matching header", () => {

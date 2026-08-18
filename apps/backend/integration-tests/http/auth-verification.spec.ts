@@ -795,6 +795,7 @@ describe("Phase 14 verification HTTP contracts", () => {
       "POST /store/customers/verify/resend",
       "POST /store/customers/verify",
       "GET /store/customers/me/verify/status",
+      "POST /store/customers/me/password",
     ])
     expect(enabled).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
 
@@ -804,6 +805,7 @@ describe("Phase 14 verification HTTP contracts", () => {
       ["POST", "/store/customers/verify/resend"],
       ["POST", "/store/customers/verify"],
       ["GET", "/store/customers/me/verify/status"],
+      ["POST", "/store/customers/me/password"],
     ] as const) {
       expect(decideStoreSurfaceAccess(method, path).action).toBe("allow")
     }
