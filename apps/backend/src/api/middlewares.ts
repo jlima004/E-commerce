@@ -606,6 +606,8 @@ function customerAuthBffProtectedRouteEntries(): Array<{
       path === "/store/customers/me" ||
       path === "/store/customers/me/verify" ||
       path === "/store/customers/me/verify/status"
+    // POST /store/customers/me/password stays BFF-only: the handler owns
+    // stable-or-resume access and must not inherit the stable-only access guard.
 
     return {
       method: [method],

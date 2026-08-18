@@ -54,6 +54,9 @@ const projectConfig = {
     authCors: env.AUTH_CORS,
     jwtSecret: env.JWT_SECRET,
     cookieSecret: env.COOKIE_SECRET,
+    authMethodsPerActor: {
+      customer: ["emailpass"],
+    },
   },
 }
 

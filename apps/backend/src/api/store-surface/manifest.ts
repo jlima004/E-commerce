@@ -81,8 +81,8 @@ function entry(
 }
 
 /**
- * Closed 62-operation inventory. Order follows RESEARCH §5 row numbers,
- * followed by the four Phase 14 verification contracts.
+ * Closed 63-operation inventory. Order follows RESEARCH §5 row numbers,
+ * followed by the Phase 14 verification contracts and password change.
  */
 export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
   entry({
@@ -786,6 +786,19 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
     owner_phase: "14",
     owner_domain: "auth",
   }),
+  entry({
+    method: "POST",
+    pathTemplate: "/store/customers/me/password",
+    origin: "local",
+    classification: "EXTENDED",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
+    openapi_m1_expectation: "include_executable_m1",
+    rationale:
+      "Phase 14 authenticated password change behind the BFF service guard and stable-or-resume handler.",
+    owner_phase: "14",
+    owner_domain: "auth",
+  }),
 ] as const satisfies readonly StoreSurfaceEntry[]
 
 export const STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS = [
@@ -798,6 +811,7 @@ export const STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS = [
 export const STORE_SURFACE_PHASE14_ENABLED_OPERATIONS = [
   "GET /store/customers/me",
   ...STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS,
+  "POST /store/customers/me/password",
 ] as const
 
 export function storeSurfaceOperationKey(
@@ -894,10 +908,10 @@ export function validateStoreSurfaceManifest(
   const violations: StoreSurfaceManifestViolation[] = []
   const counts = summarizeStoreSurfaceManifest(entries)
 
-  if (counts.total !== 62) {
+  if (counts.total !== 63) {
     violations.push({
       code: "COUNT_TOTAL",
-      message: `expected 62 entries, found ${counts.total}`,
+      message: `expected 63 entries, found ${counts.total}`,
     })
   }
   if (counts.authorized !== 0) {
@@ -906,10 +920,10 @@ export function validateStoreSurfaceManifest(
       message: `expected AUTHORIZED=0, found ${counts.authorized}`,
     })
   }
-  if (counts.extended !== 14) {
+  if (counts.extended !== 15) {
     violations.push({
       code: "COUNT_EXTENDED",
-      message: `expected EXTENDED=14, found ${counts.extended}`,
+      message: `expected EXTENDED=15, found ${counts.extended}`,
     })
   }
   if (counts.blocked !== 17) {
@@ -924,16 +938,16 @@ export function validateStoreSurfaceManifest(
       message: `expected OUTSIDE_FRONTEND_M1=31, found ${counts.outsideFrontendM1}`,
     })
   }
-  if (counts.m1EnabledPolicy !== 5) {
+  if (counts.m1EnabledPolicy !== 6) {
     violations.push({
       code: "M1_ENABLED_POLICY",
-      message: `Phase 14 requires exactly five M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
+      message: `Phase 14 requires exactly six M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
     })
   }
-  if (counts.m1EnablementEnabled !== 5) {
+  if (counts.m1EnablementEnabled !== 6) {
     violations.push({
       code: "M1_ENABLEMENT_ENABLED",
-      message: `Phase 14 requires exactly five enablements; found ${counts.m1EnablementEnabled}`,
+      message: `Phase 14 requires exactly six enablements; found ${counts.m1EnablementEnabled}`,
     })
   }
   if (counts.deny + counts.preserveLegacy + counts.m1EnabledPolicy !== counts.total) {
@@ -1053,7 +1067,7 @@ export function validateStoreSurfaceManifest(
     violations.push({
       code: "PHASE14_EXACT_SURFACE",
       message:
-        "M1_ENABLED must contain exactly GET /store/customers/me plus the four Phase 14 verification operations",
+        "M1_ENABLED must contain exactly GET /store/customers/me, the four Phase 14 verification operations, and POST /store/customers/me/password",
     })
   }
 
