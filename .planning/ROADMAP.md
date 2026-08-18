@@ -21,11 +21,11 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 13 está CLOSED — HUMAN APPROVED, FND-01..FND-08 COMPLETE
 - Phase 14 CONTEXT, RESEARCH, PLAN, SPEC/SDD e Implementation Prompt estão HUMAN APPROVED — PASS
 - execução Phase 14 permanece estritamente serial e manual-gated
-- `14-01..14-16` estão HUMAN APPROVED — PASS
-- `14-07..14-16` estão DOCUMENTALLY CLOSED
-- `B14-13-HR-01`, `B14-14-HR-01`, `B14-15-HR-01..04` e `B14-16-HR-01..03` estão CLOSED — PASS
-- `14-17` está **AUTHORIZED FOR EXECUTION / NOT STARTED**
-- `14-18..14-21` permanecem **NOT AUTHORIZED**
+- `14-01..14-17` estão HUMAN APPROVED — PASS
+- `14-07..14-17` estão DOCUMENTALLY CLOSED
+- `B14-13-HR-01`, `B14-14-HR-01`, `B14-15-HR-01..04`, `B14-16-HR-01..03` e `B14-17-HR-01` estão CLOSED — PASS
+- `14-18` está **AUTHORIZED FOR EXECUTION / NOT STARTED**
+- `14-19..14-21` permanecem **NOT AUTHORIZED**
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
 ## Milestones
@@ -42,7 +42,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
-| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 16/21 plans HUMAN APPROVED — PASS; 48/63 tasks complete; 14-16 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-17 AUTHORIZED FOR EXECUTION |
+| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 17/21 plans HUMAN APPROVED — PASS; 51/63 tasks complete; 14-17 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-18 AUTHORIZED FOR EXECUTION |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
@@ -71,15 +71,15 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 ### Execution status
 
 - 21 planos em 21 waves estritamente seriais (`14-01 → ... → 14-21`).
-- 63 tasks totais / **48 complete**.
-- **16/21 plans HUMAN APPROVED — PASS**.
+- 63 tasks totais / **51 complete**.
+- **17/21 plans HUMAN APPROVED — PASS**.
 - AUTH coverage planejada: 9/9.
 - D14 coverage planejada: 16/16.
 - P14-D coverage planejada: 14/14.
-- `14-16 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
-- `B14-16-HR-01..03 CLOSED — PASS`.
-- `14-17 AUTHORIZED FOR EXECUTION / NOT STARTED`.
-- `14-18..14-21 NOT AUTHORIZED`.
+- `14-17 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
+- `B14-17-HR-01 CLOSED — PASS`.
+- `14-18 AUTHORIZED FOR EXECUTION / NOT STARTED`.
+- `14-19..14-21 NOT AUTHORIZED`.
 - Deploy NOT AUTHORIZED.
 - Real Resend / real providers NOT AUTHORIZED.
 - Remote DB/Redis changes NOT AUTHORIZED.
@@ -103,8 +103,8 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 - [x] `14-14-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 - [x] `14-15-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 - [x] `14-16-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
-- [ ] `14-17-PLAN.md` — AUTHORIZED FOR EXECUTION / NOT STARTED
-- [ ] `14-18-PLAN.md` — NOT AUTHORIZED
+- [x] `14-17-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+- [ ] `14-18-PLAN.md` — AUTHORIZED FOR EXECUTION / NOT STARTED
 - [ ] `14-19-PLAN.md` — NOT AUTHORIZED
 - [ ] `14-20-PLAN.md` — NOT AUTHORIZED
 - [ ] `14-21-PLAN.md` — NOT AUTHORIZED
@@ -123,37 +123,19 @@ Detailed accepted evidence is preserved in the corresponding summaries:
 - `14-14-SUMMARY.md` — registration coordinator/recovery/concurrency/completed-terminal contract
 - `14-15-SUMMARY.md` — signup/login/me surface, exactly-once timing remediation, BFF service authentication boundary, predecessor exact-set regressions and config-contract cleanup
 - `14-16-SUMMARY.md` — composed password reset, fresh/recovery provider-proof split, exclusive PostgreSQL recovery lease, exactly-once request timing and guarded reset surface
+- `14-17-SUMMARY.md` — current-password proof, originating-lineage-bound resume-only, global credential invalidation and controlled password-change handler
 
 ### 14-15 closure
 
-`14-15` publicou signup/login/current-state sem abrir raw Customer/Auth e estabeleceu o BFF service authentication boundary explícito. Browser-direct Phase 14 calls são negados antes de business handler; CORS/publishable permanecem defense-in-depth, não authorization. `CUSTOMER_AUTH_BFF_SERVICE_SECRET` + `x-indicio-bff-auth` formam a caller credential server-side. O login finaliza timing at-most-once e os predecessor exact-sets permanecem estritos.
+`14-15` publicou signup/login/current-state sem abrir raw Customer/Auth e estabeleceu o BFF service authentication boundary explícito. Browser-direct Phase 14 calls são negados antes de business handler; CORS/publishable permanecem defense-in-depth, not authorization. `CUSTOMER_AUTH_BFF_SERVICE_SECRET` + `x-indicio-bff-auth` formam a caller credential server-side. O login finaliza timing at-most-once e os predecessor exact-sets permanecem estritos.
 
 Human-pushed technical head antes da closure 14-15: `10d7022cfd79781f52676d496454d9b4962f6072`.
 
 ### 14-16 closure
 
-`14-16` materializou e fechou o password reset composto sem enfraquecer o BFF boundary ou abrir password-change 14-17.
+`14-16` materializou e fechou o password reset composto sem enfraquecer o BFF boundary.
 
-Accepted reset invariants:
-
-- request anti-enumerável com envelope uniforme `202 REQUEST_ACCEPTED` para known/unknown/limited/Redis-outage/provider-delivery failure;
-- capability hash-only e TTL exato de 15 minutos;
-- `newPassword` somente em memória;
-- confirm usa o protocolo 14-08 pre/post/dummy antes de lookup/claim/provider/write;
-- fresh reset é obrigatoriamente `update → verify`;
-- ambiguous same-key recovery é `verify → optional one update → verify`;
-- different key não assume recovery;
-- provider ambiguity não cria proof autoritativa e mantém login/refresh/access fail-closed;
-- success exige provider proof + credential-version bump + global revoke + reset intent completed/consumed;
-- reset nunca emite sessão e nunca verifica e-mail;
-- secretless reconciler não pode verificar/atualizar password nem completar sem proof;
-- recovery lease é exclusiva no PostgreSQL, com eligibility `lease claimable AND retry due` e CAS por versão/status;
-- fresh lease bloqueia outro worker e reclaim só ocorre em `lease_until <= now`;
-- reset-request timing é exactly-once mesmo quando a Promise de timing rejeita;
-- reset request/update estão no exact-set BFF e native reset/update permanecem DENY;
-- zero Order/Payment/Stripe/Gelato/cart/checkout/fulfillment side effects.
-
-Human-review blockers fechados:
+Accepted reset invariants incluem anti-enumeration uniforme, capability hash-only/TTL 15m, 14-08 pre/post/dummy antes de trabalho protegido, fresh `update → verify`, ambiguous same-key `verify → optional update → verify`, global revoke, no-session, unverified-stays-unverified, reconciler secretless e lease PostgreSQL exclusiva.
 
 ```text
 B14-16-HR-01: CLOSED — PASS
@@ -161,51 +143,77 @@ B14-16-HR-02: CLOSED — PASS
 B14-16-HR-03: CLOSED — PASS
 ```
 
+Human-pushed execution/remediation head before documentary closure: `c2c0ef43121d5f2d884951dffd5257e6aebf6ec5`.
+
+### 14-17 closure
+
+`14-17` materializou password change sem publicar a rota antes do runtime gate.
+
+Accepted invariants:
+
+- stable access + current-password proof antes do claim;
+- wrong-current = zero-write;
+- fresh new password = `update → verify`;
+- ambiguous permanece fail-closed;
+- recovery exige same `Idempotency-Key`, originating lineage/SID e `newPassword` reapresentada;
+- operation id usa HMAC domain v2 com binding criptográfico ao originador;
+- sibling lineage da mesma identity/customer não pode assumir recovery;
+- post-revoke, somente o JWT/lineage originador pode usar resume-only para sua própria operação;
+- `204` somente após provider proof + credential-version bump + global lineage/refresh revoke;
+- no substitute session e verification state preservado;
+- Store password path ainda DENY no fechamento 14-17;
+- zero Order/Payment/Stripe/Gelato/cart/checkout/fulfillment side effects.
+
+Human-review blocker fechado:
+
+```text
+B14-17-HR-01: CLOSED — PASS
+```
+
 Final evidence:
 
 ```text
-reset unit: PASS — 13/13
-reset PostgreSQL: PASS — 6/6 + cleanup, incluindo two-worker lease proof
-reset HTTP: PASS — 19/19
+password-change focused: PASS — 24/24
+password-change full: PASS — 30/30
 auth-customer: PASS — 36/36
 auth-verification: PASS — 15/15
-auth-multiprocess: PASS — 10/10
+auth-reset: PASS — 19/19
+auth-multiprocess: PASS — 10/10 + cleanup
 BFF unit: PASS — 10/10
-combined focused HTTP: PASS — 70/70
+combined focused Phase 14 HTTP: PASS — 100/100
 build: PASS
 ESLint direto: 0 errors
 git diff --check: PASS
-local Redis: HEALTHY
-remote infra: NONE
+remote infra/providers: NONE
 lint wrapper: KNOWN TOOLING FAILURE — empty JSON / EOF
 ```
 
-Human-pushed execution/remediation head before documentary closure: `c2c0ef43121d5f2d884951dffd5257e6aebf6ec5`.
+Human-pushed execution/remediation head before documentary closure: `46d90ba4514e5e40ae0bf47aaae91b1df77689d3`.
 
 No migration/schema/dependency, provider real, remote persistence, deploy ou frontend work foi autorizado por esta closure.
 
-### 14-17 authorization
+### 14-18 authorization
 
-By explicit human authorization, `14-17-PLAN.md` is **AUTHORIZED FOR EXECUTION / NOT STARTED**.
+By explicit human authorization, `14-18-PLAN.md` is **AUTHORIZED FOR EXECUTION / NOT STARTED**.
 
-The plan remains intentionally pre-publication:
+The plan closes credential-operation reconciliation and the final Phase-14 runtime exact-set:
 
-- `14-17-01`: implement password-change domain with stable access + current-password proof before claim, same-key ambiguous resume and global revoke;
-- `14-17-02`: implement/prove the strict Store handler while `POST /store/customers/me/password` remains DENY in the external Store manifest;
-- `14-17-03`: **BLOCKING HUMAN VERIFY**; execution stops there.
+- `14-18-01`: implement generic secretless reset/password-change reconciler, reset delegation, worker-only job and disposable-PostgreSQL claim/lease/CAS/backoff/reclaim evidence;
+- `14-18-02`: only after the PostgreSQL PASS, elevate exactly `POST /store/customers/me/password` and close final Store/Auth manifests, middleware and config defenses;
+- `14-18-03`: **BLOCKING HUMAN VERIFY**; execution stops there.
 
 Binding restrictions:
 
-- wrong current password is zero-write;
-- after claim, ordinary access/login/refresh remains fail-closed;
-- ambiguous resume is limited to the same identity/customer/operation key and same `Idempotency-Key` with `newPassword` re-presented;
-- resume-only authorization cannot open another handler;
-- 204 requires provider proof, credential-version bump and global lineage revoke;
-- no substitute session;
-- secretless code cannot prove/update/complete password change;
-- Store password path remains externally DENY throughout 14-17;
-- reconciler/job/runtime publication remains for a later explicitly authorized plan, notably 14-18;
-- `14-18..14-21` remain NOT AUTHORIZED;
+- reconciler never calls provider update/verify, invents proof or completes an ambiguous operation without request-side secret proof;
+- reset delegation preserves reset-specific prohibitions;
+- batch 25, lease 2m, operation-version CAS and approved backoff remain PostgreSQL-authoritative;
+- two workers must converge to one claimant; reclaim only after expiry;
+- job does not execute scanner work outside worker mode;
+- password path elevation is forbidden before the required disposable-PostgreSQL PASS;
+- password change is the only new runtime elevation in 14-18;
+- raw customers, native session/callback/MFA/verification/refresh/reset and aliases remain DENY;
+- API Docs/JSON generated contracts remain untouched;
+- `14-19..14-21` remain NOT AUTHORIZED;
 - auto-chain forbidden; deploy/release, real providers, remote infrastructure and frontend remain unauthorized.
 
 ## Phase 15: Guest Cart Capability & Concurrency
@@ -287,23 +295,24 @@ PLAN: HUMAN APPROVED — PASS
 SPEC/SDD: HUMAN APPROVED — PASS
 IMPLEMENTATION PROMPT: HUMAN APPROVED — PASS
 
-14-01..14-16: HUMAN APPROVED — PASS
-14-07..14-16: DOCUMENTALLY CLOSED
+14-01..14-17: HUMAN APPROVED — PASS
+14-07..14-17: DOCUMENTALLY CLOSED
 
-Phase 14 plans human-approved executed: 16/21
-Phase 14 tasks complete: 48/63
+Phase 14 plans human-approved executed: 17/21
+Phase 14 tasks complete: 51/63
 
 B14-15-HR-01..HR-04: CLOSED — PASS
 B14-16-HR-01..HR-03: CLOSED — PASS
+B14-17-HR-01: CLOSED — PASS
 
-14-17: AUTHORIZED FOR EXECUTION / NOT STARTED
-14-17-01: AUTHORIZED
-14-17-02: AUTHORIZED after prerequisite 14-17-01 evidence
-14-17-03: BLOCKING HUMAN VERIFY
+14-18: AUTHORIZED FOR EXECUTION / NOT STARTED
+14-18-01: AUTHORIZED
+14-18-02: AUTHORIZED only after prerequisite 14-18-01 disposable-PostgreSQL PASS
+14-18-03: BLOCKING HUMAN VERIFY
 
-14-18..14-21: NOT AUTHORIZED
+14-19..14-21: NOT AUTHORIZED
 
-Next blocking gate: 14-17-03 human review
+Next blocking gate: 14-18-03 human review
 Milestone requirements complete: 8/91
 Deploy: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
@@ -312,4 +321,4 @@ Frontend Milestone 1: BLOCKED / not started / not authorized
 ```
 
 ---
-*Roadmap updated: 2026-08-17 — Phase 13 CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01..14-16 HUMAN APPROVED — PASS; 16/21 plans / 48/63 tasks; 14-07..14-16 DOCUMENTALLY CLOSED; B14-16-HR-01..03 CLOSED — PASS; 14-17 AUTHORIZED FOR EXECUTION; 14-18..14-21 NOT AUTHORIZED; deploy/providers/remote infra NOT AUTHORIZED; Frontend BLOCKED; 8/91 requirements; manual-review gated; no auto-chain*
+*Roadmap updated: 2026-08-17 — Phase 13 CLOSED; Phase 14 prerequisites HUMAN APPROVED — PASS; 14-01..14-17 HUMAN APPROVED — PASS; 17/21 plans / 51/63 tasks; 14-07..14-17 DOCUMENTALLY CLOSED; B14-17-HR-01 CLOSED — PASS; 14-18 AUTHORIZED FOR EXECUTION; 14-19..14-21 NOT AUTHORIZED; deploy/providers/remote infra NOT AUTHORIZED; Frontend BLOCKED; 8/91 requirements; manual-review gated; no auto-chain*
