@@ -61,6 +61,8 @@ const OTHER_IDENTITY_ID = "identity_password_change_other"
 const OTHER_CUSTOMER_ID = "customer_password_change_other"
 const SID = "sid_password_change_1"
 const LINEAGE_ID = "lineage_password_change_1"
+const SID_B = "sid_password_change_b"
+const LINEAGE_B = "lineage_password_change_b"
 const CURRENT_PASSWORD = "current-password-12"
 const NEW_PASSWORD = AUTH_CANARIES.password
 const IDEMPOTENCY_KEY = "password-change-http-idempotency-1"
@@ -1088,6 +1090,263 @@ describe("password-change resume faults", () => {
     expect(database.state.credential?.credential_version).toBe(1)
   })
 
+  it("binds resume-only to the originating lineage and denies a sibling lineage of the same identity", async () => {
+    const database = new MemoryPasswordChangeDatabase()
+    database.seedCredential()
+    database.seedLineage()
+    database.seedLineage({ id: LINEAGE_B, sid: SID_B })
+    const provider = new RecordingProvider({
+      authIdentityId: AUTH_IDENTITY_ID,
+      password: CURRENT_PASSWORD,
+    })
+    provider.nextUpdate = "timeout"
+    await changePassword(database, changeInput(provider))
+    expect(database.state.credential?.operation_status).not.toBe("stable")
+
+    const tokenA = issueAccessToken()
+    const tokenB = issueAccessToken({ sid: SID_B })
+
+    const sameLineageSameKey = await authorizePasswordChangeResumeOnly(
+      database,
+      `Bearer ${tokenA}`,
+      {
+        jwtSecret: JWT_SECRET,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        keyring: KEYRING,
+        now: BASE,
+      }
+    )
+    expect(sameLineageSameKey.authorized).toBe(true)
+    if (sameLineageSameKey.authorized) {
+      expect(sameLineageSameKey.sid).toBe(SID)
+      expect(sameLineageSameKey.lineageId).toBe(LINEAGE_ID)
+      expect(sameLineageSameKey.authIdentityId).toBe(AUTH_IDENTITY_ID)
+      expect(sameLineageSameKey.customerId).toBe(CUSTOMER_ID)
+    }
+
+    const siblingLineageSameKey = await authorizePasswordChangeResumeOnly(
+      database,
+      `Bearer ${tokenB}`,
+      {
+        jwtSecret: JWT_SECRET,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        keyring: KEYRING,
+        now: BASE,
+      }
+    )
+    expect(siblingLineageSameKey.authorized).toBe(false)
+
+    const originatingDifferentKey = await authorizePasswordChangeResumeOnly(
+      database,
+      `Bearer ${tokenA}`,
+      {
+        jwtSecret: JWT_SECRET,
+        idempotencyKey: OTHER_IDEMPOTENCY_KEY,
+        keyring: KEYRING,
+        now: BASE,
+      }
+    )
+    expect(originatingDifferentKey.authorized).toBe(false)
+
+    const siblingDifferentKey = await authorizePasswordChangeResumeOnly(
+      database,
+      `Bearer ${tokenB}`,
+      {
+        jwtSecret: JWT_SECRET,
+        idempotencyKey: OTHER_IDEMPOTENCY_KEY,
+        keyring: KEYRING,
+        now: BASE,
+      }
+    )
+    expect(siblingDifferentKey.authorized).toBe(false)
+
+    const otherIdentity = await authorizePasswordChangeResumeOnly(
+      database,
+      `Bearer ${issueAccessToken({
+        identityId: OTHER_IDENTITY_ID,
+        customerId: OTHER_CUSTOMER_ID,
+        sid: "sid-other",
+      })}`,
+      {
+        jwtSecret: JWT_SECRET,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        keyring: KEYRING,
+        now: BASE,
+      }
+    )
+    expect(otherIdentity.authorized).toBe(false)
+
+    const ordinaryA = await authorizeCustomerAuthAccess(
+      database,
+      `Bearer ${tokenA}`,
+      { jwtSecret: JWT_SECRET, now: BASE }
+    )
+    expect(ordinaryA.authorized).toBe(false)
+    const ordinaryB = await authorizeCustomerAuthAccess(
+      database,
+      `Bearer ${tokenB}`,
+      { jwtSecret: JWT_SECRET, now: BASE }
+    )
+    expect(ordinaryB.authorized).toBe(false)
+  })
+
+  it("after revoke fault, only the originating JWT same-key resume-only can finish", async () => {
+    const database = new MemoryPasswordChangeDatabase()
+    database.seedCredential()
+    database.seedLineage()
+    database.seedLineage({ id: LINEAGE_B, sid: SID_B })
+    const provider = new RecordingProvider({
+      authIdentityId: AUTH_IDENTITY_ID,
+      password: CURRENT_PASSWORD,
+    })
+
+    const result = await changePassword(
+      database,
+      changeInput(provider, {
+        hooks: {
+          async onStep(step) {
+            if (step === "after_revoke_before_response") {
+              throw new Error("fault before response")
+            }
+          },
+        },
+      })
+    )
+    expect(result).toEqual({ outcome: "recovery_pending" })
+    expect(
+      database.state.lineages.every((lineage) => lineage.status === "revoked")
+    ).toBe(true)
+
+    const tokenA = issueAccessToken()
+    const tokenB = issueAccessToken({ sid: SID_B })
+
+    const ordinaryA = await authorizeCustomerAuthAccess(
+      database,
+      `Bearer ${tokenA}`,
+      { jwtSecret: JWT_SECRET, now: BASE }
+    )
+    expect(ordinaryA.authorized).toBe(false)
+
+    const originatingResume = await authorizePasswordChangeResumeOnly(
+      database,
+      `Bearer ${tokenA}`,
+      {
+        jwtSecret: JWT_SECRET,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        keyring: KEYRING,
+        now: BASE,
+      }
+    )
+    expect(originatingResume.authorized).toBe(true)
+
+    const siblingResume = await authorizePasswordChangeResumeOnly(
+      database,
+      `Bearer ${tokenB}`,
+      {
+        jwtSecret: JWT_SECRET,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        keyring: KEYRING,
+        now: BASE,
+      }
+    )
+    expect(siblingResume.authorized).toBe(false)
+
+    const me = responseRecorder()
+    await handleCustomerAuthCurrentCustomer(
+      requestOf({ authorization: `Bearer ${tokenA}` }),
+      me.response,
+      {
+        resolveCustomer: async () => {
+          throw new Error("me must not be authorized")
+        },
+        resolveVerificationState: async () => "pending",
+      }
+    )
+    expect(me.state.statusCode).toBe(401)
+
+    const verification = responseRecorder()
+    await handleCustomerAuthVerificationRequest(
+      requestOf({ authorization: `Bearer ${tokenA}`, body: {} }),
+      verification.response,
+      {
+        database: {
+          async transaction() {
+            throw new Error("verification must not run")
+          },
+        },
+        resolveEmailByIdentityId: async () => {
+          throw new Error("verification must not run")
+        },
+        resolveIdentityByEmail: async () => null,
+      }
+    )
+    expect(verification.state.statusCode).toBe(401)
+
+    const refresh = responseRecorder()
+    await handleCustomerAuthRefresh(
+      {
+        body: {},
+        headers: { "x-indicio-refresh-token": "refresh-token-not-used" },
+        correlationId: "refresh-isolation-after-revoke",
+      } as never,
+      refresh.response as never,
+      {
+        database: {
+          async transaction() {
+            throw new Error("refresh must not run")
+          },
+        },
+        keyring: KEYRING,
+        jwtSecret: JWT_SECRET,
+        rateLimitStore: new InMemoryAtomicRateLimitStore(),
+        timing: async () => 0,
+        resolveCustomer: async () => {
+          throw new Error("refresh must not run")
+        },
+      }
+    )
+    expect([400, 401, 503]).toContain(refresh.state.statusCode)
+    expect(refresh.state.statusCode).not.toBe(200)
+
+    const revoke = responseRecorder()
+    await handleRevokeCurrentLineage(
+      requestOf({ authorization: `Bearer ${tokenA}`, body: {} }) as never,
+      revoke.response as never,
+      {
+        database: {
+          async transaction() {
+            throw new Error("revoke must not use resume-only")
+          },
+        },
+      }
+    )
+    expect(revoke.state.statusCode).toBe(401)
+
+    provider.passwordByIdentity.set(AUTH_IDENTITY_ID, NEW_PASSWORD)
+    const retry = responseRecorder()
+    await handleCustomerAuthPasswordChange(
+      requestOf({
+        authorization: `Bearer ${tokenA}`,
+        idempotencyKey: IDEMPOTENCY_KEY,
+      }),
+      retry.response,
+      handlerDependencies(database, provider)
+    )
+    expect(retry.state.statusCode).toBe(204)
+
+    const siblingAfter = await authorizePasswordChangeResumeOnly(
+      database,
+      `Bearer ${tokenB}`,
+      {
+        jwtSecret: JWT_SECRET,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        keyring: KEYRING,
+        now: BASE,
+      }
+    )
+    expect(siblingAfter.authorized).toBe(false)
+  })
+
   it("resume-only authorizes the same operation and key and denies other handlers", async () => {
     const database = new MemoryPasswordChangeDatabase()
     database.seedCredential()
@@ -1348,6 +1607,45 @@ describe("password-change HTTP resume isolation", () => {
     )
     expect(retry.state.statusCode).toBe(204)
     expect(retry.state.body).toBeUndefined()
+  })
+
+  it("denies a sibling lineage of the same identity from resuming with the same Idempotency-Key", async () => {
+    const database = new MemoryPasswordChangeDatabase()
+    database.seedCredential()
+    database.seedLineage()
+    database.seedLineage({ id: LINEAGE_B, sid: SID_B })
+    const provider = new RecordingProvider({
+      authIdentityId: AUTH_IDENTITY_ID,
+      password: CURRENT_PASSWORD,
+    })
+    const tokenA = issueAccessToken()
+    const tokenB = issueAccessToken({ sid: SID_B })
+    provider.nextUpdate = "timeout"
+    const first = responseRecorder()
+    await handleCustomerAuthPasswordChange(
+      requestOf({
+        authorization: `Bearer ${tokenA}`,
+        idempotencyKey: IDEMPOTENCY_KEY,
+      }),
+      first.response,
+      handlerDependencies(database, provider)
+    )
+    expect(first.state.statusCode).toBe(503)
+    expect(first.state.body).toMatchObject({ code: "AUTH_RECOVERY_PENDING" })
+
+    const sibling = responseRecorder()
+    await handleCustomerAuthPasswordChange(
+      requestOf({
+        authorization: `Bearer ${tokenB}`,
+        idempotencyKey: IDEMPOTENCY_KEY,
+      }),
+      sibling.response,
+      handlerDependencies(database, provider)
+    )
+    expect(sibling.state.statusCode).toBe(401)
+    expect(sibling.state.body).toMatchObject({ code: "AUTHENTICATION_REQUIRED" })
+    expect(database.state.credential?.operation_status).not.toBe("stable")
+    expect(database.state.sessionsIssued).toBe(0)
   })
 })
 
