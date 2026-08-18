@@ -1,12 +1,14 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { isReleaseMigrationMode } from "../infrastructure/release-migration-mode"
+import type { AuthResetDatabase } from "../modules/customer-auth/reset"
 import {
-  reconcileSecretlessPasswordReset,
-  type AuthResetDatabase,
-} from "../modules/customer-auth/reset"
+  AUTH_CREDENTIAL_OPERATION_RECONCILE_BATCH_SIZE,
+  runAuthCredentialOperationReconcile,
+} from "./auth-credential-operation-reconcile"
 
-export const AUTH_RESET_RECONCILE_BATCH_SIZE = 25
+export const AUTH_RESET_RECONCILE_BATCH_SIZE =
+  AUTH_CREDENTIAL_OPERATION_RECONCILE_BATCH_SIZE
 export const AUTH_RESET_RECONCILE_TIMEOUT_MS = 25_000
 
 type SanitizedJobLogger = {
@@ -103,46 +105,24 @@ function resolveKnex(container: MedusaContainer): KnexLike {
 export async function runAuthResetReconcile(
   deps: AuthResetReconcileDeps
 ): Promise<AuthResetReconcileJobResult> {
-  const isWorker = deps.isWorker ?? (() => isWorkerMode())
-  const isReleaseMigration =
-    deps.isReleaseMigration ?? (() => isReleaseMigrationMode())
-
-  if (!isWorker()) {
-    return {
-      processed: 0,
-      leased: 0,
-      revoked: 0,
-      alerted: 0,
-      skipped: 0,
-      noop_reason: "not_worker",
-    }
-  }
-
-  if (isReleaseMigration()) {
-    return {
-      processed: 0,
-      leased: 0,
-      revoked: 0,
-      alerted: 0,
-      skipped: 0,
-      noop_reason: "release_migration",
-    }
-  }
-
-  if (!deps.database) {
-    throw new Error("AUTH_RESET_RECONCILE_DATABASE_REQUIRED")
-  }
-
-  const result = await reconcileSecretlessPasswordReset(deps.database, {
-    now: deps.now?.(),
+  const result = await runAuthCredentialOperationReconcile({
+    database: deps.database,
+    logger: deps.logger,
+    now: deps.now,
     leaseOwner: deps.leaseOwner,
     batchSize: deps.batchSize ?? AUTH_RESET_RECONCILE_BATCH_SIZE,
-    logger: deps.logger,
+    operationTypes: ["reset"],
+    isWorker: deps.isWorker,
+    isReleaseMigration: deps.isReleaseMigration,
   })
 
   return {
-    ...result,
-    noop_reason: null,
+    processed: result.processed,
+    leased: result.leased,
+    revoked: result.revoked,
+    alerted: result.alerted,
+    skipped: result.skipped,
+    noop_reason: result.noop_reason,
   }
 }
 
