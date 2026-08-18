@@ -242,10 +242,7 @@ describe("OpenAPI foundation generation", () => {
     expect(committedStore).toContain("/health/live")
     expect(JSON.parse(committedStore).paths["/auth/session"]).toBeUndefined()
     expect(builtStore?.bytes).toBeDefined()
-    expect(Object.keys(JSON.parse(committedStore).paths).sort()).toEqual([
-      "/health/live",
-      "/health/ready",
-    ])
+    expect(builtStore?.bytes).toBe(committedStore)
   })
 
   it("uses an explicit operation description and otherwise falls back to summary", () => {
