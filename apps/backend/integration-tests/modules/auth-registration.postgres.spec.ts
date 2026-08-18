@@ -720,13 +720,13 @@ if (!databaseUrl || !databaseName) {
       return result.rows[0]
     }
 
-    it("keeps signup and login HTTP surfaces DENY", () => {
+    it("keeps signup and login enabled while raw Customer remains DENY", () => {
       expect(
         decideAuthSurfaceAccess("POST", "/auth/customer/emailpass/register")
-      ).toMatchObject({ action: "deny" })
+      ).toMatchObject({ action: "allow" })
       expect(
         decideAuthSurfaceAccess("POST", "/auth/customer/emailpass")
-      ).toMatchObject({ action: "deny" })
+      ).toMatchObject({ action: "allow" })
       expect(
         decideStoreSurfaceAccess("POST", "/store/customers")
       ).toMatchObject({ action: "deny" })

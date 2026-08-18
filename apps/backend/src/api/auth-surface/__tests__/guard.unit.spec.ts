@@ -59,19 +59,50 @@ describe("Phase 14 auth surface guard", () => {
     ).toEqual(localExpected)
   })
 
-  it("mantem as 24 entradas em DENY neste plano", () => {
+  it("records the final 24-entry surface: 18 native DENY and 6 local PHASE14_ENABLED", () => {
     expect(AUTH_SURFACE_MANIFEST).toHaveLength(24)
     expect(AUTH_SURFACE_MANIFEST.filter((entry) => entry.origin === "native")).toHaveLength(18)
     expect(AUTH_SURFACE_MANIFEST.filter((entry) => entry.origin === "local")).toHaveLength(6)
-    expect(AUTH_SURFACE_MANIFEST.every((entry) => entry.runtimePolicy === "DENY")).toBe(true)
+    expect(
+      AUTH_SURFACE_NATIVE_OPERATIONS.every((entry) => entry.runtimePolicy === "DENY")
+    ).toBe(true)
+    expect(
+      AUTH_SURFACE_LOCAL_OPERATIONS.every(
+        (entry) => entry.runtimePolicy === "PHASE14_ENABLED"
+      )
+    ).toBe(true)
 
-    for (const entry of AUTH_SURFACE_MANIFEST) {
-      const concrete = entry.pathTemplate
-        .replace("{actor_type}", "customer")
-        .replace("{auth_provider}", "emailpass")
-        .replace("{id}", "synthetic-id")
-      expect(decideAuthSurfaceAccess(entry.method, concrete).action).toBe("deny")
+    for (const entry of AUTH_SURFACE_LOCAL_OPERATIONS) {
+      expect(decideAuthSurfaceAccess(entry.method, entry.pathTemplate)).toEqual({
+        action: "allow",
+        entry,
+      })
     }
+  })
+
+  it("allows the custom refresh override on the full manifest while the native primitive stays DENY", () => {
+    const nativeRefresh = AUTH_SURFACE_NATIVE_OPERATIONS.find(
+      (entry) =>
+        entry.method === "POST" && entry.pathTemplate === "/auth/token/refresh"
+    )
+    const localRefresh = AUTH_SURFACE_LOCAL_OPERATIONS.find(
+      (entry) =>
+        entry.method === "POST" && entry.pathTemplate === "/auth/token/refresh"
+    )
+
+    expect(nativeRefresh?.runtimePolicy).toBe("DENY")
+    expect(localRefresh?.runtimePolicy).toBe("PHASE14_ENABLED")
+    expect(
+      decideAuthSurfaceAccess(
+        "POST",
+        "/auth/token/refresh",
+        AUTH_SURFACE_NATIVE_OPERATIONS
+      ).action
+    ).toBe("deny")
+    expect(decideAuthSurfaceAccess("POST", "/auth/token/refresh")).toEqual({
+      action: "allow",
+      entry: localRefresh,
+    })
   })
 
   it("rejeita percent encoding, slash/case aliases, HEAD e OPTIONS", () => {
@@ -92,18 +123,40 @@ describe("Phase 14 auth surface guard", () => {
     expect(decideAuthSurfaceAccess("OPTIONS", "/auth/customer/emailpass").action).toBe("deny")
   })
 
-  it("nega session, callback, MFA, verification e refresh nativos", () => {
+  it("keeps native primitives DENY on the native-only inventory", () => {
+    for (const entry of AUTH_SURFACE_NATIVE_OPERATIONS) {
+      const concrete = entry.pathTemplate
+        .replace("{actor_type}", "customer")
+        .replace("{auth_provider}", "emailpass")
+        .replace("{id}", "synthetic-id")
+      expect(
+        decideAuthSurfaceAccess(
+          entry.method,
+          concrete,
+          AUTH_SURFACE_NATIVE_OPERATIONS
+        ).action
+      ).toBe("deny")
+    }
+  })
+
+  it("nega session, callback, MFA, verification nativa e operacoes nao autorizadas no manifest completo", () => {
     const denied = [
       ["POST", "/auth/session"],
       ["DELETE", "/auth/session"],
       ["GET", "/auth/customer/emailpass/callback"],
+      ["POST", "/auth/customer/emailpass/callback"],
       ["POST", "/auth/mfa/challenges/synthetic-id/verify"],
+      ["GET", "/auth/mfa/factors"],
+      ["POST", "/auth/mfa/factors"],
+      ["DELETE", "/auth/mfa/factors/synthetic-id"],
+      ["POST", "/auth/mfa/factors/synthetic-id/verify"],
+      ["POST", "/auth/mfa/recovery-codes"],
       ["POST", "/auth/verification/request"],
       ["POST", "/auth/verification/confirm"],
-      ["POST", "/auth/token/refresh"],
       ["POST", "/auth/user/emailpass"],
       ["POST", "/auth/customer/github"],
-    ]
+      ["POST", "/auth/not-a-route"],
+    ] as const
 
     for (const [method, path] of denied) {
       expect(decideAuthSurfaceAccess(method, path).action).toBe("deny")
@@ -130,6 +183,10 @@ describe("Phase 14 auth surface guard", () => {
       decideAuthSurfaceAccess("POST", "/auth/admin/emailpass", [nativeEnabled])
         .action
     ).toBe("deny")
+    expect(
+      decideAuthSurfaceAccess("POST", "/auth/customer/emailpass", [nativeEnabled])
+        .action
+    ).toBe("deny")
   })
 
   it("curto-circuita 404 antes de next ou container", () => {
@@ -139,9 +196,9 @@ describe("Phase 14 auth surface guard", () => {
     const json = jest.fn().mockReturnThis()
     const req = {
       method: "POST",
-      originalUrl: "/auth/customer/emailpass",
+      originalUrl: "/auth/session",
       baseUrl: "/auth",
-      path: "/customer/emailpass",
+      path: "/session",
       headers: {},
       get scope() {
         throw new Error("container must not be resolved")
