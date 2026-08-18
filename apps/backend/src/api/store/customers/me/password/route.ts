@@ -338,6 +338,7 @@ export async function handleCustomerAuthPasswordChange(
     let authIdentityId: string
     let customerId: string
     let lineageId: string
+    let sid: string
 
     if (stable.authorized) {
       if (!idempotencyKey) {
@@ -348,6 +349,7 @@ export async function handleCustomerAuthPasswordChange(
       authIdentityId = stable.authIdentityId
       customerId = stable.customerId
       lineageId = stable.lineageId
+      sid = stable.sid
     } else {
       const resume = await authorizePasswordChangeResumeOnly(
         dependencies.queryDatabase,
@@ -367,6 +369,7 @@ export async function handleCustomerAuthPasswordChange(
       authIdentityId = resume.authIdentityId
       customerId = resume.customerId
       lineageId = resume.lineageId
+      sid = resume.sid
     }
 
     const buckets = buildAuthenticatedPasswordChangeKeys({
@@ -391,6 +394,8 @@ export async function handleCustomerAuthPasswordChange(
       currentPassword: parsed.data.currentPassword,
       newPassword: parsed.data.newPassword,
       idempotencyKey: idempotencyKey!,
+      originatingLineageId: lineageId,
+      originatingSid: sid,
       keyring: dependencies.keyring,
       provider: dependencies.provider,
       mode,

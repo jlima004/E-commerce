@@ -663,6 +663,8 @@ function changeInput(
     currentPassword: CURRENT_PASSWORD,
     newPassword: NEW_PASSWORD,
     idempotencyKey: IDEMPOTENCY_KEY,
+    originatingLineageId: LINEAGE_ID,
+    originatingSid: SID,
     keyring: KEYRING,
     provider,
     mode: "fresh",
@@ -1887,10 +1889,38 @@ describe("password-change store surface remains DENY", () => {
     expect(
       decideAuthSurfaceAccess("POST", PASSWORD_PATH).action
     ).toBe("deny")
-    expect(hashPasswordChangeOperationId({
+    const originatingA = hashPasswordChangeOperationId({
       keyring: KEYRING,
       idempotencyKey: IDEMPOTENCY_KEY,
-    })).toHaveLength(64)
+      originatingLineageId: LINEAGE_ID,
+      originatingSid: SID,
+    })
+    const originatingB = hashPasswordChangeOperationId({
+      keyring: KEYRING,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      originatingLineageId: LINEAGE_B,
+      originatingSid: SID_B,
+    })
+    const differentKey = hashPasswordChangeOperationId({
+      keyring: KEYRING,
+      idempotencyKey: OTHER_IDEMPOTENCY_KEY,
+      originatingLineageId: LINEAGE_ID,
+      originatingSid: SID,
+    })
+    expect(originatingA).toHaveLength(64)
+    expect(originatingA).toBe(
+      hashPasswordChangeOperationId({
+        keyring: KEYRING,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        originatingLineageId: LINEAGE_ID,
+        originatingSid: SID,
+      })
+    )
+    expect(originatingA).not.toBe(originatingB)
+    expect(originatingA).not.toBe(differentKey)
+    expect(originatingA).not.toContain(SID)
+    expect(originatingA).not.toContain(LINEAGE_ID)
+    expect(originatingA).not.toContain(IDEMPOTENCY_KEY)
     expect(AUTH_PASSWORD_CHANGE_LEASE_MS).toBe(120_000)
     expect(typeof handleCustomerAuthPasswordChange).toBe("function")
   })

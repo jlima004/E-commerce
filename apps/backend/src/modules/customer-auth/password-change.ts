@@ -82,6 +82,8 @@ export type PasswordChangeInput = {
   currentPassword: string
   newPassword: string
   idempotencyKey: string
+  originatingLineageId: string
+  originatingSid: string
   keyring: CapabilityKeyring
   provider: PasswordChangePasswordProvider
   mode: "fresh" | "resume"
@@ -395,8 +397,12 @@ function extractBearerToken(authorization: unknown): string | null {
 export function hashPasswordChangeOperationId(input: {
   keyring: CapabilityKeyring
   idempotencyKey: string
+  originatingLineageId: string
+  originatingSid: string
 }): string {
   const idempotencyKey = assertIdempotencyKey(input.idempotencyKey)
+  const originatingLineageId = requireIdentifier(input.originatingLineageId)
+  const originatingSid = requireIdentifier(input.originatingSid)
   const keyVersion = input.keyring.active.version
   const derivedKey = Buffer.from(
     hkdfSync(
@@ -404,7 +410,7 @@ export function hashPasswordChangeOperationId(input: {
       Buffer.from(input.keyring.active.secret, "utf8"),
       Buffer.alloc(0),
       Buffer.from(
-        `customer-auth-password-change-operation-key:${keyVersion}`,
+        `customer-auth-password-change-operation-key:v2:${keyVersion}`,
         "utf8"
       ),
       32
@@ -412,7 +418,7 @@ export function hashPasswordChangeOperationId(input: {
   )
   return createHmac("sha256", derivedKey)
     .update(
-      `customer-auth-password-change-operation|v1|key-version:${keyVersion}|idempotency:${idempotencyKey}`,
+      `customer-auth-password-change-operation|v2|key-version:${keyVersion}|idempotency:${idempotencyKey}|originating-lineage:${originatingLineageId}|originating-sid:${originatingSid}`,
       "utf8"
     )
     .digest("hex")
@@ -760,18 +766,10 @@ export async function authorizePasswordChangeResumeOnly(
     return { authorized: false }
   }
 
-  let operationId: string
-  try {
-    operationId = hashPasswordChangeOperationId({
-      keyring: options.keyring,
-      idempotencyKey,
-    })
-  } catch {
-    return { authorized: false }
-  }
-
   let rows: Array<Record<string, unknown>>
   try {
+    // Revoked lineages remain readable here for originating-operation
+    // binding only. This lookup must not reauthorize ordinary access.
     const result = await database.query(RESUME_LOOKUP_SQL, [claims.sid])
     rows = result.rows ?? []
   } catch {
@@ -793,6 +791,7 @@ export async function authorizePasswordChangeResumeOnly(
 
   if (
     !lineageId ||
+    !sid ||
     sid !== claims.sid ||
     lineageIdentityId !== claims.auth_identity_id ||
     credentialIdentityId !== claims.auth_identity_id ||
@@ -800,7 +799,6 @@ export async function authorizePasswordChangeResumeOnly(
     credentialCustomerId !== claims.customer_id ||
     row.operation_type !== "password_change" ||
     !operationIdRow ||
-    !sameDigest(operationIdRow, operationId) ||
     !row.current_password_verified_at ||
     !IN_FLIGHT_STATUSES.has(String(row.operation_status)) ||
     (options.expectedAuthIdentityId &&
@@ -808,6 +806,22 @@ export async function authorizePasswordChangeResumeOnly(
     (options.expectedCustomerId &&
       options.expectedCustomerId !== claims.customer_id)
   ) {
+    return { authorized: false }
+  }
+
+  let operationId: string
+  try {
+    operationId = hashPasswordChangeOperationId({
+      keyring: options.keyring,
+      idempotencyKey,
+      originatingLineageId: lineageId,
+      originatingSid: sid,
+    })
+  } catch {
+    return { authorized: false }
+  }
+
+  if (!sameDigest(operationIdRow, operationId)) {
     return { authorized: false }
   }
 
@@ -830,9 +844,13 @@ export async function changePassword(
   const customerId = requireIdentifier(input.customerId)
   const currentPassword = assertPassword(input.currentPassword)
   const newPassword = assertPassword(input.newPassword)
+  const originatingLineageId = requireIdentifier(input.originatingLineageId)
+  const originatingSid = requireIdentifier(input.originatingSid)
   const operationId = hashPasswordChangeOperationId({
     keyring: input.keyring,
     idempotencyKey: input.idempotencyKey,
+    originatingLineageId,
+    originatingSid,
   })
   const now = requireDate(input.now ?? new Date())
   const leaseOwner = requireIdentifier(
