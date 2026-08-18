@@ -231,13 +231,19 @@ describe("medusa-config final Redis wiring", () => {
       "./src/modules/tracking-access-token",
       "./src/modules/store-idempotency",
       "./src/modules/store-resource-version",
+      "./src/modules/customer-auth/service",
       "./src/modules/payment-attempt",
       "./src/modules/refund-request",
       "./src/modules/exchange-request",
     ]
 
+    const customerAuth = config.modules.filter(
+      (module) => module.resolve === "./src/modules/customer-auth/service"
+    )
+
     expect(storeIdempotency).toHaveLength(1)
     expect(storeResourceVersion).toHaveLength(1)
+    expect(customerAuth).toHaveLength(1)
     expect(redisModules).toHaveLength(4)
     expect(
       config.modules
@@ -250,5 +256,13 @@ describe("medusa-config final Redis wiring", () => {
     expect(serialized).not.toContain("event-bus-local")
     expect(serialized.match(/store-idempotency/g)?.length ?? 0).toBe(1)
     expect(serialized.match(/store-resource-version/g)?.length ?? 0).toBe(1)
+    expect(serialized.match(/customer-auth\/service/g)?.length ?? 0).toBe(1)
+    expect(config.projectConfig.workerMode).toBe("server")
+    expect(
+      (config.projectConfig.http as { authMethodsPerActor?: unknown })
+        .authMethodsPerActor
+    ).toEqual({
+      customer: ["emailpass"],
+    })
   })
 })
