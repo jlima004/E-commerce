@@ -3,7 +3,7 @@ phase: 14-customer-auth-verification
 plan: 17
 subsystem: auth
 tags: [password-change, current-password-proof, resume-only, credential-version, global-revoke]
-status: executed-awaiting-human-review
+status: remediated-awaiting-human-re-review
 completed: 2026-08-17
 requirements: [AUTH-03, AUTH-05, AUTH-09]
 requirements-completed: []
@@ -20,16 +20,18 @@ affects: [14-18, customer-auth, store-surface]
 
 # Phase 14: Customer Auth Verification — Plan 17 Summary
 
-`14-17` is **EXECUTED — AWAITING HUMAN REVIEW**. It is **not** HUMAN APPROVED.
+`14-17` is **EXECUTED — AWAITING HUMAN RE-REVIEW**. It is **not** HUMAN APPROVED.
 
-Password change now requires a stable customer session and current-password provider proof before the operation claim. Ambiguous provider outcomes stay fail-closed and can resume only with the same `Idempotency-Key` and a re-presented `newPassword`. Success returns `204` only after provider proof, a monotonic credential-version bump and global lineage/refresh revoke, without minting a substitute session. `POST /store/customers/me/password` remains DENY on the external Store surface.
+Password change now requires a stable customer session and current-password provider proof before the operation claim. Ambiguous provider outcomes stay fail-closed and can resume only with the same `Idempotency-Key`, the originating lineage/SID and a re-presented `newPassword`. Success returns `204` only after provider proof, a monotonic credential-version bump and global lineage/refresh revoke, without minting a substitute session. `POST /store/customers/me/password` remains DENY on the external Store surface.
 
 ## Final governance status
 
 ```text
-14-17-01: EXECUTED — AWAITING HUMAN REVIEW
-14-17-02: EXECUTED — AWAITING HUMAN REVIEW
-14-17-03: BLOCKING HUMAN VERIFY — AWAITING HUMAN REVIEW
+B14-17-HR-01: REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+14-17-01: EXECUTED — AWAITING HUMAN RE-REVIEW
+14-17-02: EXECUTED — AWAITING HUMAN RE-REVIEW
+14-17-03: BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
 14-17: NOT YET HUMAN APPROVED
 
 14-18: NOT AUTHORIZED
@@ -47,13 +49,60 @@ AUTH-03 / AUTH-05 / AUTH-09 are **not globally closed** by this plan. Later Phas
 1. **Task 14-17-01 RED:** `5751073` — `test(14-17): add password-change fault and resume proofs`
 2. **Task 14-17-01 GREEN:** `1fa27ab` — `feat(14-17): implement guarded password-change domain`
 3. **Task 14-17-02:** `d2a2064` — `feat(14-17): add controlled password-change handler`
-4. **Execution summary:** this commit — `docs(14-17): record execution evidence`
+4. **Execution summary:** `1b013d4` — `docs(14-17): record execution evidence`
+
+Human-review remediation:
+
+5. `16d3fa5` — `test(14-17): prove originating-lineage resume binding`
+6. `19b9513` — `fix(14-17): bind password-change operation to originating lineage`
+7. **Remediation summary:** this commit — `docs(14-17): record human-review remediation`
+
+## Human-review remediation
+
+```text
+B14-17-HR-01: REMEDIATED — AWAITING HUMAN RE-REVIEW
+```
+
+Cause: `operation_id` was derived from HMAC(`Idempotency-Key`) only. Two lineages of the same identity/customer could present the same key and satisfy resume-only.
+
+Fix: bind the password-change operation id cryptographically to the originating lineage/SID, reusing the existing `operation_id` field. No schema/migration and no additional plaintext lineage/SID persistence.
+
+```text
+HMAC(
+  domain=customer-auth-password-change-operation|v2,
+  Idempotency-Key,
+  originating-lineage,
+  originating-sid
+)
+```
+
+The same derivation is used on fresh claim and on resume-only. Resume-only:
+
+1. validates the presented JWT cryptographically;
+2. locates the lineage for that JWT `sid`, including a revoked lineage for this binding only;
+3. validates identity/customer/operation type/status;
+4. recomputes the operation id from the presented key and the looked-up originating lineage/SID;
+5. compares constant-time with the persisted `operation_id`.
+
+Proved:
+
+- JWT-A + same `Idempotency-Key` resume: PASS
+- JWT-B, same identity/customer, different SID, same key: DENY
+- JWT-A + different key: DENY
+- JWT-B + different key: DENY
+- different identity/customer: DENY
+- after `after_revoke_before_response` fault: ordinary JWT-A access DENY; JWT-A same-key resume-only still identifies and can finish this operation; JWT-B remains DENY; me/verification/refresh/revoke stay fail-closed
+- Store password surface remains DENY
+- zero runtime publication
+- no substitute session; access-guard was not relaxed
+
+This does not reauthorize a revoked lineage for any other handler.
 
 ## Files created/modified
 
 Created:
 
-- `apps/backend/src/modules/customer-auth/password-change.ts` — current-password proof, HMAC operation binding, fresh `update→verify`, same-key `verify→optional update→verify`, version CAS, global revoke, resume-only guard
+- `apps/backend/src/modules/customer-auth/password-change.ts` — current-password proof, HMAC operation binding to originating lineage/SID, fresh `update→verify`, same-key `verify→optional update→verify`, version CAS, global revoke, resume-only guard
 - `apps/backend/src/api/store/customers/me/password/route.ts` — strict controlled handler; not published in the Store manifest
 - `apps/backend/integration-tests/http/auth-password-change.spec.ts` — domain/fault/resume and HTTP public-matrix proofs
 - `.planning/phases/14-customer-auth-verification/14-17-SUMMARY.md` — this evidence record
@@ -88,7 +137,7 @@ Wrong current password:
 
 Only after a positive current-password proof:
 
-- bind `operation_id` by HMAC(`Idempotency-Key`)
+- bind `operation_id` by HMAC(`Idempotency-Key` + originating lineage/SID)
 - record `current_password_verified_at`
 - bind version-before as the current `credential_version` (target = before + 1 via CAS increment)
 - transition `AuthCredentialState` to `operation_type=password_change`, `operation_status=claimed`
@@ -133,13 +182,16 @@ No secretless routine can verify/update a password, infer a provider result, inv
 After claim the original token is blocked by non-stable state. Only this handler has a resume-only path, requiring all of:
 
 - original JWT cryptographically valid
+- same originating lineage/SID
 - same identity
 - same customer
 - same operation
 - same operation key hash
 - same `Idempotency-Key`
 
-Resume-only cannot authorize `GET /store/customers/me`, verification, refresh, revoke, another password-change operation, or any other handler. A different `Idempotency-Key` is denied and cannot assume the existing operation.
+Identity/customer alone are not the origin binding. A sibling lineage of the same identity with the same `Idempotency-Key` is denied. Resume-only cannot authorize `GET /store/customers/me`, verification, refresh, revoke, another password-change operation, or any other handler. A different `Idempotency-Key` is denied and cannot assume the existing operation.
+
+After global revoke, ordinary access of the original JWT remains denied. Resume-only may look up that revoked lineage strictly to recompute and match the originating operation id; it does not reauthorize the lineage for any other handler.
 
 ### Same-key retry
 
@@ -200,17 +252,17 @@ The handler was tested by invoking the controlled boundary directly. Manifests, 
 ## Evidence
 
 ```text
-Focused HTTP domain|fault|resume:               PASS — 19/19 (8 HTTP matrix tests skipped by name filter)
-auth-password-change.spec.ts:                    PASS — 27/27
+Focused HTTP resume|lineage|fault:               PASS — 24/24 (6 HTTP matrix/store tests skipped by name filter)
+auth-password-change.spec.ts:                    PASS — 30/30
 auth-customer.spec.ts:                           PASS — 36/36
 auth-verification.spec.ts:                       PASS — 15/15
 auth-reset.spec.ts:                              PASS — 19/19
 auth-multiprocess.spec.ts (disposable PG):       PASS — 10/10 + container cleanup
 BFF service auth unit:                           PASS — 10/10
-combined focused Phase 14 HTTP:                  PASS — 97/97
-  (customer 36 + verification 15 + reset 19 + password-change 27)
+combined focused Phase 14 HTTP:                  PASS — 100/100
+  (customer 36 + verification 15 + reset 19 + password-change 30)
 Backend build:                                   PASS
-Direct ESLint on touched production files:       PASS — 0 errors
+Direct ESLint on touched files:                  PASS — 0 errors
 git diff --check:                                PASS
 Docker disposable PostgreSQL:                    CLEAN
 Remote infrastructure:                           NONE
@@ -231,7 +283,7 @@ Known Medusa ESLint warnings on generic `Error` in the controlled handler were n
 
 None - plan executed exactly as written.
 
-Local helper `buildAuthenticatedPasswordChangeKeys` lives in the authorized handler file so `rate-limit.ts` did not need an export/amendment. Resume-only authorization lives in `password-change.ts` so `access-guard.ts` was not edited.
+Local helper `buildAuthenticatedPasswordChangeKeys` lives in the authorized handler file so `rate-limit.ts` did not need an export/amendment. Resume-only authorization lives in `password-change.ts` so `access-guard.ts` was not edited. Originating lineage/SID is passed from the handler into the domain and folded into the existing `operation_id` HMAC; no new persistence field was added.
 
 ## Issues Encountered
 
@@ -250,8 +302,10 @@ None - no external service configuration required.
 Human review should confirm:
 
 - current-password proof before claim and wrong-current zero-write
-- same-key resume-only with re-presented `newPassword`
+- originating-lineage cryptographic binding of `operation_id`
+- JWT-A same-key resume-only; JWT-B same identity/customer same-key DENY
 - different-key denial
+- post-revoke original JWT resume-only still works; ordinary access remains DENY
 - resume-only cannot open me/verification/refresh/revoke
 - `204` only after proof + version bump + global revoke
 - no substitute session; verification state preserved
@@ -260,11 +314,12 @@ Human review should confirm:
 ## Self-Check: PASSED
 
 - Key files exist on disk
-- Commits `5751073`, `1fa27ab`, `d2a2064` are present
+- Commits `5751073`, `1fa27ab`, `d2a2064`, `1b013d4`, `16d3fa5`, `19b9513` are present
 - Focused and full `auth-password-change.spec.ts` acceptance passed
-- Predecessor HTTP and BFF unit regressions passed
+- Predecessor HTTP, multiprocess disposable PG and BFF unit regressions passed
 - Build, direct ESLint (0 errors) and `git diff --check` passed
 - STATE.md and ROADMAP.md were not updated
+- HUMAN APPROVED was not declared
 - 14-18 was not started
 
 ---
