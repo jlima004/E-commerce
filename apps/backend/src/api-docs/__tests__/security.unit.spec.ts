@@ -1,9 +1,11 @@
+import { AUTH_HTTP_CONTRACT } from "../../api/auth-surface/contracts"
 import { buildContracts } from "../generation/build-documents"
 import { createFoundationRegistry } from "../registry"
 import {
   ADMIN_NATIVE_SECURITY,
   ADMIN_USER_SECURITY,
   GELATO_WEBHOOK_SECRET_SECURITY,
+  STORE_AUTH_SECURITY_BY_REQUIREMENT,
   STORE_OPTIONAL_CUSTOMER,
   STORE_PUBLISHABLE_ONLY,
   STORE_REQUIRED_CUSTOMER,
@@ -107,7 +109,7 @@ describe("OpenAPI Store security contract and surface isolation", () => {
   })
 
   it("registers populated and isolated Store, Admin, and Webhooks surfaces", () => {
-    expect(storeOperations).toHaveLength(9)
+    expect(storeOperations).toHaveLength(21)
     expect(registry.getOperations("admin")).toHaveLength(9)
     expect(registry.getOperations("webhooks")).toHaveLength(2)
 
@@ -146,11 +148,28 @@ describe("OpenAPI Store security contract and surface isolation", () => {
     }
   })
 
-  it("requires publishable API key on Store business routes", () => {
-    const business = storeOperations.filter(
-      (operation) => !operation.path.startsWith("/health/")
+  it("applies Store auth security from AUTH_HTTP_CONTRACT, not a blanket publishable rule", () => {
+    const documentedAuthKeys = new Set(
+      AUTH_HTTP_CONTRACT.map((entry) => `${entry.method} ${entry.path}`)
     )
-    for (const operation of business) {
+
+    for (const entry of AUTH_HTTP_CONTRACT) {
+      const operation = storeOperations.find(
+        (candidate) =>
+          candidate.method === entry.method && candidate.path === entry.path
+      )
+      expect(operation).toBeDefined()
+      expect(operation?.security).toEqual(
+        STORE_AUTH_SECURITY_BY_REQUIREMENT[entry.auth]
+      )
+    }
+
+    const remainingBusiness = storeOperations.filter(
+      (operation) =>
+        !operation.path.startsWith("/health/") &&
+        !documentedAuthKeys.has(`${operation.method} ${operation.path}`)
+    )
+    for (const operation of remainingBusiness) {
       expect(
         operation.security.some((requirement) =>
           Object.prototype.hasOwnProperty.call(requirement, "publishableApiKey")

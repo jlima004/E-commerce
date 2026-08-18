@@ -4,7 +4,10 @@ import type {
   SourceClassification,
 } from "../contracts"
 import type { ContractRegistryBundle } from "../registry"
-import { operationKey } from "../generation/validate"
+import {
+  isStoreDocumentationAuthOperation,
+  operationKey,
+} from "../generation/validate"
 import { ROUTE_EXCLUSIONS, validateRouteExclusions } from "./exclusions"
 import { discoverRoutes, type DiscoveredRoute } from "./discover-routes"
 import { NATIVE_EXTENSIONS } from "./native-routes"
@@ -18,7 +21,19 @@ import {
   type StoreSurfaceHttpMethod,
 } from "../../api/store-surface/manifest"
 
+export {
+  isStoreDocumentationAuthOperation,
+  STORE_DOCUMENTATION_AUTH_OPERATIONS,
+} from "../generation/validate"
+
 export type CoverageScope = ContractSurface | "foundation" | "global"
+
+/** Installed Store runtime inventory (scan source after native/local dedupe). */
+export const STORE_RUNTIME_EXACT_SET = {
+  native: 51,
+  local: 12,
+  total: 63,
+} as const
 
 type InstalledStoreOperation = {
   method: StoreSurfaceHttpMethod
@@ -51,6 +66,11 @@ const DOCUMENT_HTTP_METHODS = new Set([
   "head",
 ])
 
+/**
+ * Collects document operations under a path prefix. `/auth` documentation
+ * ownership is Store-document scoped but is NOT a Store-runtime prefix:
+ * callers that pass `"/store/"` must continue to see only `/store/` keys.
+ */
 function documentOperationKeys(
   document: OpenApiDocument,
   pathPrefix: string
@@ -101,7 +121,7 @@ export function verifyStoreSurfaceExactSets(
   const missingFromManifest = runtimeKeys.filter((key) => !manifestSet.has(key))
   const missingFromRuntime = manifestKeys.filter((key) => !runtimeSet.has(key))
   if (
-    runtimeKeys.length !== 58 ||
+    runtimeKeys.length !== STORE_RUNTIME_EXACT_SET.total ||
     missingFromManifest.length > 0 ||
     missingFromRuntime.length > 0
   ) {
@@ -114,9 +134,12 @@ export function verifyStoreSurfaceExactSets(
 
   const native = installed.filter((operation) => operation.source === "native").length
   const local = installed.filter((operation) => operation.source === "local").length
-  if (native !== 51 || local !== 7) {
+  if (
+    native !== STORE_RUNTIME_EXACT_SET.native ||
+    local !== STORE_RUNTIME_EXACT_SET.local
+  ) {
     throw new Error(
-      `Store runtime origin drift: expected native=51/local=7, found ${native}/${local}`
+      `Store runtime origin drift: expected native=${STORE_RUNTIME_EXACT_SET.native}/local=${STORE_RUNTIME_EXACT_SET.local}, found ${native}/${local}`
     )
   }
 
@@ -190,9 +213,22 @@ export function isOpenApiDocumentationRoute(route: DiscoveredRoute): boolean {
   )
 }
 
-function routeBelongsToSurface(route: DiscoveredRoute, surface: ContractSurface) {
+function isStoreDocumentationOwnedRoute(
+  route: Pick<DiscoveredRoute, "method" | "path">
+): boolean {
+  return (
+    route.path.startsWith("/store/") ||
+    route.path.startsWith("/health/") ||
+    isStoreDocumentationAuthOperation(route.method, route.path)
+  )
+}
+
+export function routeBelongsToSurface(
+  route: DiscoveredRoute,
+  surface: ContractSurface
+) {
   if (surface === "store") {
-    return route.path.startsWith("/store/") || route.path.startsWith("/health/")
+    return isStoreDocumentationOwnedRoute(route)
   }
   if (surface === "admin") {
     return route.path.startsWith("/admin/")
@@ -206,8 +242,8 @@ function operationIdentity(
   return `${operation.surface} ${operationKey(operation)}`
 }
 
-function routeSurface(route: DiscoveredRoute): ContractSurface {
-  if (route.path.startsWith("/store/") || route.path.startsWith("/health/")) {
+export function routeSurface(route: DiscoveredRoute): ContractSurface {
+  if (isStoreDocumentationOwnedRoute(route)) {
     return "store"
   }
   if (route.path.startsWith("/admin/")) {

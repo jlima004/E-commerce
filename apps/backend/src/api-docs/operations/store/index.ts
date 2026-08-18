@@ -1,5 +1,6 @@
 import { registerStoreSharedComponents } from "../../components"
 import type { ContractRegistryBundle } from "../../registry"
+import { registerStoreAuthOperations } from "./auth"
 import { registerStoreCartOperations } from "./carts"
 import { registerStoreCatalogOperations } from "./catalog"
 import { registerStoreCustomerOperations } from "./customers"
@@ -16,6 +17,7 @@ export function registerStoreContract(
   registerStoreHealthOperations(registry)
   registerStoreCatalogOperations(registry)
   registerStoreCartOperations(registry)
+  registerStoreAuthOperations(registry)
   registerStoreCustomerOperations(registry)
   registerStorePaymentAttemptOperations(registry)
   registerStoreTrackingOperations(registry)

@@ -15,6 +15,58 @@ export const STORE_REQUIRED_CUSTOMER = [
   { publishableApiKey: [], customerSession: [] },
 ] as const
 
+export const STORE_AUTH_PUBLIC_BFF = STORE_PUBLISHABLE_ONLY
+
+export const STORE_AUTH_ACCESS_BEARER = [
+  { publishableApiKey: [], customerBearer: [] },
+] as const
+
+export const STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE =
+  "Same-origin Next.js BFF to Medusa using the publishable store key only. The browser is not an authorized Medusa client and never calls this contract directly. No customer session or access bearer is presented or minted."
+
+export const STORE_AUTH_SECURITY_BY_REQUIREMENT = {
+  public_bff: STORE_AUTH_PUBLIC_BFF,
+  public_bff_no_session: STORE_AUTH_PUBLIC_BFF,
+  access_bearer: STORE_AUTH_ACCESS_BEARER,
+  refresh_header_and_idempotency_key: STORE_AUTH_PUBLIC_BFF,
+  capability_and_idempotency_key: STORE_AUTH_PUBLIC_BFF,
+  access_bearer_and_idempotency_key: STORE_AUTH_ACCESS_BEARER,
+} as const
+
+export const STORE_AUTH_HEADERS_BY_REQUIREMENT = {
+  public_bff: [] as const,
+  public_bff_no_session: [] as const,
+  access_bearer: [] as const,
+  refresh_header_and_idempotency_key: [
+    "x-indicio-refresh-token",
+    "Idempotency-Key",
+  ] as const,
+  capability_and_idempotency_key: ["Idempotency-Key"] as const,
+  access_bearer_and_idempotency_key: ["Idempotency-Key"] as const,
+} as const
+
+export const STORE_AUTH_REFRESH_HEADER_PARAMETER = {
+  name: "x-indicio-refresh-token",
+  in: "header" as const,
+  required: true,
+  schema: {
+    type: "string",
+    minLength: 1,
+  },
+  description:
+    "Opaque refresh capability presented only on the same-origin Next.js BFF to Medusa hop. It is not a user/browser credential, never a Swagger Try-It-Out field, and not authorization for direct browser access to Medusa. Examples are omitted. Swagger remains non-interactive.",
+  "x-bff-only": true,
+  "x-not-browser-credential": true,
+} as const
+
+export const STORE_AUTH_REFRESH_HEADER_REF = {
+  $ref: "#/components/parameters/XIndicioRefreshToken",
+} as const
+
+export const STORE_AUTH_IDEMPOTENCY_KEY_REF = {
+  $ref: "#/components/parameters/IdempotencyKey",
+} as const
+
 export function registerStoreSecuritySchemes(
   registry: ContractRegistryBundle
 ): void {
@@ -41,6 +93,13 @@ export function registerStoreSecuritySchemes(
     description:
       "Optional or required Medusa customer session assembled by the same-origin BFF for server-to-server use. It is not a browser credential for direct Medusa access; guest and confirmation capabilities likewise remain server-side.",
   })
+
+  registry.registerComponent(
+    "store",
+    "parameters",
+    "XIndicioRefreshToken",
+    STORE_AUTH_REFRESH_HEADER_PARAMETER
+  )
 }
 
 export const ADMIN_NATIVE_SECURITY = [

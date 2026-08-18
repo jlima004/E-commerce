@@ -1,9 +1,38 @@
 import { CLIENT_MONEY_BODY_FIELDS } from "../../api/store/carts/payment-attempts/validators"
+import { AUTH_HTTP_CONTRACT } from "../../api/auth-surface/contracts"
 import { verifyCoverage } from "../coverage/verify-coverage"
+import { STORE_DOCUMENTATION_AUTH_OPERATIONS } from "../coverage/verify-coverage"
 import { ROUTE_EXCLUSIONS } from "../coverage/exclusions"
 import { buildContracts } from "../generation/build-documents"
 import { STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS } from "../operations/store/schemas"
 import { createFoundationRegistry } from "../registry"
+
+const LEGACY_STORE_DOCUMENTATION_KEYS = [
+  "GET /health/live",
+  "GET /health/ready",
+  "GET /store/carts/active",
+  "GET /store/products",
+  "GET /store/products/{id}",
+  "POST /store/carts/active",
+  "POST /store/carts/{id}/payment-attempts/card",
+  "POST /store/carts/{id}/payment-attempts/pix",
+  "POST /store/tracking/lookup",
+] as const
+
+const PHASE14_STORE_DOCUMENTATION_KEYS = AUTH_HTTP_CONTRACT.map(
+  (entry) => `${entry.method} ${entry.path}`
+)
+
+const STORE_DOCUMENTATION_OPERATION_KEYS = [
+  ...LEGACY_STORE_DOCUMENTATION_KEYS,
+  ...PHASE14_STORE_DOCUMENTATION_KEYS,
+].sort()
+
+const STORE_DOCUMENT_PATHS = [
+  "/health/live",
+  "/health/ready",
+  ...AUTH_HTTP_CONTRACT.map((entry) => entry.path),
+].sort()
 
 describe("OpenAPI Store contract wave", () => {
   const registry = createFoundationRegistry()
@@ -13,22 +42,15 @@ describe("OpenAPI Store contract wave", () => {
 
   it("covers every included Store route and both native catalog extensions", () => {
     expect(() => verifyCoverage("store", registry)).not.toThrow()
-    expect(storeOperations).toHaveLength(9)
+    expect(storeOperations).toHaveLength(21)
     expect(
       storeOperations.map((operation) => `${operation.method} ${operation.path}`).sort()
-    ).toEqual(
-      [
-        "GET /health/live",
-        "GET /health/ready",
-        "GET /store/carts/active",
-        "GET /store/products",
-        "GET /store/products/{id}",
-        "POST /store/carts/active",
-        "POST /store/carts/{id}/payment-attempts/card",
-        "POST /store/carts/{id}/payment-attempts/pix",
-        "POST /store/tracking/lookup",
-      ].sort()
-    )
+    ).toEqual(STORE_DOCUMENTATION_OPERATION_KEYS)
+    expect(
+      storeOperations.filter((operation) => operation.path.startsWith("/auth/"))
+        .map((operation) => `${operation.method} ${operation.path}`)
+        .sort()
+    ).toEqual([...STORE_DOCUMENTATION_AUTH_OPERATIONS].sort())
     expect(
       storeOperations.some(
         (operation) =>
@@ -36,10 +58,9 @@ describe("OpenAPI Store contract wave", () => {
           operation.path === "/store/customers/me/cart/attach"
       )
     ).toBe(false)
-    expect(Object.keys(store?.document.paths ?? {}).sort()).toEqual([
-      "/health/live",
-      "/health/ready",
-    ])
+    expect(Object.keys(store?.document.paths ?? {}).sort()).toEqual(
+      STORE_DOCUMENT_PATHS
+    )
     expect(storeOperations.some((operation) => operation.path.startsWith("/store/")))
       .toBe(true)
   })

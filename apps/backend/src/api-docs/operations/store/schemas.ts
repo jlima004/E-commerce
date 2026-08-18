@@ -1,4 +1,9 @@
+import { AUTH_HTTP_CONTRACT } from "../../../api/auth-surface/contracts"
 import { CLIENT_MONEY_BODY_FIELDS } from "../../../api/store/carts/payment-attempts/validators"
+import {
+  STORE_AUTH_HEADERS_BY_REQUIREMENT,
+  STORE_AUTH_SECURITY_BY_REQUIREMENT,
+} from "../../components/security-schemes"
 import { STORE_X_CORRELATION_ID_RESPONSE_HEADERS } from "../../components/headers"
 import type {
   ComponentTypeOf,
@@ -105,6 +110,350 @@ export function storeJsonResponse(statusDescription: string, schemaName: string)
     description: statusDescription,
     headers: STORE_X_CORRELATION_ID_RESPONSE_HEADERS,
     ...jsonSchemaRef(schemaName),
+  }
+}
+
+const omittedCredential = {
+  type: "string",
+  minLength: 12,
+  maxLength: 128,
+  description:
+    "Credential bytes, 12 to 128 characters, without silent trim. OpenAPI examples are omitted.",
+} satisfies ComponentTypeOf<"schemas">
+
+const omittedCapability = {
+  type: "string",
+  minLength: 43,
+  maxLength: 512,
+  pattern: "^[A-Za-z0-9_-]+$",
+  description:
+    "One-time capability, 43 to 512 characters. Never echoed. OpenAPI examples are omitted.",
+} satisfies ComponentTypeOf<"schemas">
+
+const omittedEmail = {
+  type: "string",
+  format: "email",
+  minLength: 3,
+  maxLength: 320,
+  description:
+    "Caller-supplied address bytes. Canonicalization is owned by the runtime normalizer. OpenAPI examples are omitted.",
+} satisfies ComponentTypeOf<"schemas">
+
+const verificationStateSchema = {
+  type: "string",
+  enum: ["pending", "verified"],
+} satisfies ComponentTypeOf<"schemas">
+
+export const STORE_AUTH_REQUEST_FIELDS = {
+  none: [] as const,
+  empty: [] as const,
+  signup: ["email", "password", "firstName", "lastName"] as const,
+  login: ["email", "password"] as const,
+  email: ["email"] as const,
+  verification_token: ["token"] as const,
+  reset_confirm: ["token", "newPassword"] as const,
+  password_change: ["currentPassword", "newPassword"] as const,
+} as const
+
+export const STORE_AUTH_SUCCESS_FIELDS = {
+  auth_session: [
+    "accessToken",
+    "accessExpiresAt",
+    "refreshToken",
+    "refreshExpiresAt",
+    "originalAuthenticatedAt",
+    "absoluteExpiresAt",
+    "customer",
+    "verificationState",
+  ] as const,
+  empty: [] as const,
+  request_accepted: ["code"] as const,
+  verification_result: ["code", "state"] as const,
+  verification_status: ["state"] as const,
+  password_reset_result: ["code"] as const,
+  current_auth_customer: ["customer", "auth"] as const,
+} as const
+
+export const STORE_AUTH_REQUEST_SCHEMA_NAMES = {
+  none: null,
+  empty: "StoreAuthEmptyRequest",
+  signup: "StoreAuthSignupRequest",
+  login: "StoreAuthLoginRequest",
+  email: "StoreAuthEmailRequest",
+  verification_token: "StoreAuthVerificationConfirmRequest",
+  reset_confirm: "StoreAuthResetConfirmRequest",
+  password_change: "StoreAuthPasswordChangeRequest",
+} as const
+
+export const STORE_AUTH_SUCCESS_SCHEMA_NAMES = {
+  auth_session: "StoreAuthSessionEnvelope",
+  empty: null,
+  request_accepted: "StoreAuthRequestAccepted",
+  verification_result: "StoreAuthVerificationResult",
+  verification_status: "StoreAuthVerificationStatus",
+  password_reset_result: "StoreAuthPasswordResetResult",
+  current_auth_customer: "StoreAuthCurrentCustomer",
+} as const
+
+const AUTH_PUBLIC_ERROR_CODES = [
+  ...new Set(
+    AUTH_HTTP_CONTRACT.flatMap((entry) =>
+      entry.failures.map((failure) => failure[1])
+    )
+  ),
+].sort()
+
+export const STORE_AUTH_SCHEMAS = {
+  StoreAuthCustomer: {
+    type: "object",
+    additionalProperties: false,
+    required: ["id", "email", "firstName", "lastName"],
+    description:
+      "Minimized public customer. Internal identifiers and credentials are omitted.",
+    properties: {
+      id: { type: "string" },
+      email: {
+        type: "string",
+        description:
+          "Minimized public customer address. OpenAPI examples are omitted.",
+      },
+      firstName: { type: "string" },
+      lastName: { type: "string" },
+    },
+  },
+  StoreAuthEmptyRequest: {
+    type: "object",
+    additionalProperties: false,
+    properties: {},
+    description: "Exactly empty JSON object. Extra fields are rejected.",
+  },
+  StoreAuthSignupRequest: {
+    type: "object",
+    additionalProperties: false,
+    required: ["email", "password", "firstName", "lastName"],
+    properties: {
+      email: omittedEmail,
+      password: omittedCredential,
+      firstName: { type: "string", minLength: 1, maxLength: 128 },
+      lastName: { type: "string", minLength: 1, maxLength: 128 },
+    },
+  },
+  StoreAuthLoginRequest: {
+    type: "object",
+    additionalProperties: false,
+    required: ["email", "password"],
+    properties: {
+      email: omittedEmail,
+      password: omittedCredential,
+    },
+  },
+  StoreAuthEmailRequest: {
+    type: "object",
+    additionalProperties: false,
+    required: ["email"],
+    properties: {
+      email: omittedEmail,
+    },
+  },
+  StoreAuthVerificationConfirmRequest: {
+    type: "object",
+    additionalProperties: false,
+    required: ["token"],
+    properties: {
+      token: omittedCapability,
+    },
+  },
+  StoreAuthResetConfirmRequest: {
+    type: "object",
+    additionalProperties: false,
+    required: ["token", "newPassword"],
+    properties: {
+      token: omittedCapability,
+      newPassword: omittedCredential,
+    },
+  },
+  StoreAuthPasswordChangeRequest: {
+    type: "object",
+    additionalProperties: false,
+    required: ["currentPassword", "newPassword"],
+    properties: {
+      currentPassword: omittedCredential,
+      newPassword: omittedCredential,
+    },
+  },
+  StoreAuthSessionEnvelope: {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "accessToken",
+      "accessExpiresAt",
+      "refreshToken",
+      "refreshExpiresAt",
+      "originalAuthenticatedAt",
+      "absoluteExpiresAt",
+      "customer",
+      "verificationState",
+    ],
+    description:
+      "Server-to-server BFF-to-Medusa session envelope. The browser never receives this envelope; it is not the future same-origin BFF browser session contract. Token examples are omitted.",
+    properties: {
+      accessToken: {
+        type: "string",
+        description:
+          "Access material for the BFF-to-Medusa hop. OpenAPI examples are omitted.",
+      },
+      accessExpiresAt: { type: "string", format: "date-time" },
+      refreshToken: {
+        type: "string",
+        description:
+          "Refresh material for the BFF-to-Medusa hop. OpenAPI examples are omitted.",
+      },
+      refreshExpiresAt: { type: "string", format: "date-time" },
+      originalAuthenticatedAt: { type: "string", format: "date-time" },
+      absoluteExpiresAt: { type: "string", format: "date-time" },
+      customer: {
+        $ref: "#/components/schemas/StoreAuthCustomer",
+      },
+      verificationState: verificationStateSchema,
+    },
+  },
+  StoreAuthRequestAccepted: {
+    type: "object",
+    additionalProperties: false,
+    required: ["code"],
+    properties: {
+      code: {
+        type: "string",
+        const: "REQUEST_ACCEPTED",
+      },
+    },
+  },
+  StoreAuthVerificationResult: {
+    type: "object",
+    additionalProperties: false,
+    required: ["code", "state"],
+    properties: {
+      code: {
+        type: "string",
+        const: "EMAIL_VERIFIED",
+      },
+      state: {
+        type: "string",
+        const: "verified",
+      },
+    },
+  },
+  StoreAuthVerificationStatus: {
+    type: "object",
+    additionalProperties: false,
+    required: ["state"],
+    properties: {
+      state: verificationStateSchema,
+    },
+  },
+  StoreAuthPasswordResetResult: {
+    type: "object",
+    additionalProperties: false,
+    required: ["code"],
+    properties: {
+      code: {
+        type: "string",
+        const: "PASSWORD_RESET_COMPLETED",
+      },
+    },
+  },
+  StoreAuthCurrentCustomer: {
+    type: "object",
+    additionalProperties: false,
+    required: ["customer", "auth"],
+    description:
+      "Minimized public customer and auth state. Internal identifiers and credentials are omitted.",
+    properties: {
+      customer: {
+        $ref: "#/components/schemas/StoreAuthCustomer",
+      },
+      auth: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "verificationState",
+          "originalAuthenticatedAt",
+          "absoluteExpiresAt",
+        ],
+        properties: {
+          verificationState: verificationStateSchema,
+          originalAuthenticatedAt: { type: "string", format: "date-time" },
+          absoluteExpiresAt: { type: "string", format: "date-time" },
+        },
+      },
+    },
+  },
+  StoreAuthErrorResponse: {
+    type: "object",
+    additionalProperties: false,
+    required: ["code", "message", "retryable", "correlationId"],
+    description:
+      "Closed public auth error. Clients must branch on code, not message.",
+    properties: {
+      code: {
+        type: "string",
+        enum: AUTH_PUBLIC_ERROR_CODES,
+        description: "Stable machine-readable public auth error code.",
+      },
+      message: {
+        type: "string",
+        description:
+          "Fixed presentation message; clients must branch on code, not message.",
+      },
+      retryable: {
+        type: "boolean",
+      },
+      correlationId: {
+        type: "string",
+        pattern: "^[A-Za-z0-9._-]{1,128}$",
+        description:
+          "Server-sanitized correlation identifier. OpenAPI examples are omitted.",
+      },
+    },
+  },
+} as const satisfies Record<string, ComponentTypeOf<"schemas">>
+
+type AuthHttpOperation = (typeof AUTH_HTTP_CONTRACT)[number]["operation"]
+
+export const STORE_AUTH_SCHEMA_CONTRACT = Object.fromEntries(
+  AUTH_HTTP_CONTRACT.map((entry) => [
+    entry.operation,
+    {
+      method: entry.method,
+      path: entry.path,
+      auth: entry.auth,
+      request: entry.request,
+      success: entry.success,
+      failures: entry.failures,
+      sensitive: entry.sensitive,
+      requestSchemaName: STORE_AUTH_REQUEST_SCHEMA_NAMES[entry.request],
+      successSchemaName: STORE_AUTH_SUCCESS_SCHEMA_NAMES[entry.success.body],
+      errorSchemaName: "StoreAuthErrorResponse" as const,
+      headerNames: STORE_AUTH_HEADERS_BY_REQUIREMENT[entry.auth],
+      security: STORE_AUTH_SECURITY_BY_REQUIREMENT[entry.auth],
+    },
+  ])
+) as {
+  [Operation in AuthHttpOperation]: {
+    method: (typeof AUTH_HTTP_CONTRACT)[number]["method"]
+    path: (typeof AUTH_HTTP_CONTRACT)[number]["path"]
+    auth: (typeof AUTH_HTTP_CONTRACT)[number]["auth"]
+    request: (typeof AUTH_HTTP_CONTRACT)[number]["request"]
+    success: (typeof AUTH_HTTP_CONTRACT)[number]["success"]
+    failures: (typeof AUTH_HTTP_CONTRACT)[number]["failures"]
+    sensitive: (typeof AUTH_HTTP_CONTRACT)[number]["sensitive"]
+    requestSchemaName:
+      (typeof STORE_AUTH_REQUEST_SCHEMA_NAMES)[keyof typeof STORE_AUTH_REQUEST_SCHEMA_NAMES]
+    successSchemaName:
+      (typeof STORE_AUTH_SUCCESS_SCHEMA_NAMES)[keyof typeof STORE_AUTH_SUCCESS_SCHEMA_NAMES]
+    errorSchemaName: "StoreAuthErrorResponse"
+    headerNames: (typeof STORE_AUTH_HEADERS_BY_REQUIREMENT)[keyof typeof STORE_AUTH_HEADERS_BY_REQUIREMENT]
+    security: (typeof STORE_AUTH_SECURITY_BY_REQUIREMENT)[keyof typeof STORE_AUTH_SECURITY_BY_REQUIREMENT]
   }
 }
 
@@ -714,4 +1063,8 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
       },
     },
   })
+
+  for (const [name, schema] of Object.entries(STORE_AUTH_SCHEMAS)) {
+    registry.registerComponent("store", "schemas", name, schema)
+  }
 }
