@@ -4,6 +4,7 @@ import {
   assertAuthSinksHaveNoCanaries,
 } from "../../../../integration-tests/helpers/auth-leakage"
 import {
+  AUTH_RESET_LEASE_MS,
   AUTH_RESET_TTL_MS,
   confirmPasswordReset,
   hashResetOperationId,
@@ -244,7 +245,10 @@ class MemoryResetDatabase implements AuthResetDatabase {
       return rawRows(intent ? [cloneValue(intent) as MemoryRow] : [])
     }
 
-    if (sql.includes("status in ('claimed', 'credential_updated', 'revocation_committed', 'failed_reconcilable')")) {
+    if (
+      sql.startsWith("select * from auth_reset_intent") &&
+      sql.includes("status in ('claimed', 'credential_updated', 'revocation_committed', 'failed_reconcilable')")
+    ) {
       const now = new Date(String(bindings[0]))
       return rawRows(
         state.intents
@@ -260,12 +264,9 @@ class MemoryResetDatabase implements AuthResetDatabase {
             }
             const leaseUntil = rowDate(intent, "lease_until")
             const nextRetry = rowDate(intent, "next_retry_at")
-            return (
-              !leaseUntil ||
-              leaseUntil.getTime() <= now.getTime() ||
-              !nextRetry ||
-              nextRetry.getTime() <= now.getTime()
-            )
+            const leaseClaimable = !leaseUntil || leaseUntil.getTime() <= now.getTime()
+            const retryDue = !nextRetry || nextRetry.getTime() <= now.getTime()
+            return leaseClaimable && retryDue
           })
           .map((intent) => cloneValue(intent) as MemoryRow)
       )
@@ -537,8 +538,29 @@ class MemoryResetDatabase implements AuthResetDatabase {
       sql.startsWith("update auth_reset_intent set lease_owner = ?") &&
       sql.includes("attempt_count = attempt_count + 1")
     ) {
-      const [leaseOwner, leaseUntilAt, updatedAt, id] = bindings
-      const intent = state.intents.find((candidate) => candidate.id === id)
+      const [
+        leaseOwner,
+        leaseUntilAt,
+        updatedAt,
+        id,
+        expectedVersion,
+        expectedStatus,
+        claimableNow,
+      ] = bindings
+      const now = new Date(String(claimableNow))
+      const intent = state.intents.find((candidate) => {
+        if (
+          candidate.id !== id ||
+          candidate.completed_at ||
+          candidate.deleted_at ||
+          Number(candidate.version) !== Number(expectedVersion) ||
+          candidate.status !== expectedStatus
+        ) {
+          return false
+        }
+        const currentLease = rowDate(candidate, "lease_until")
+        return !currentLease || currentLease.getTime() <= now.getTime()
+      })
       if (!intent) {
         return rawRows([])
       }
@@ -689,9 +711,28 @@ class MemoryResetDatabase implements AuthResetDatabase {
       sql.startsWith("update auth_credential_state set lease_owner = ?") &&
       sql.includes("attempt_count = attempt_count + 1")
     ) {
-      const [leaseOwner, leaseUntilAt, updatedAt, id] = bindings
+      const [
+        leaseOwner,
+        leaseUntilAt,
+        updatedAt,
+        id,
+        expectedVersion,
+        expectedStatus,
+        claimableNow,
+      ] = bindings
+      const now = new Date(String(claimableNow))
       const credential = state.credential
-      if (!credential || credential.id !== id) {
+      const currentLease = credential ? rowDate(credential, "lease_until") : null
+      if (
+        !credential ||
+        credential.id !== id ||
+        credential.completed_at ||
+        credential.deleted_at ||
+        credential.operation_type !== "reset" ||
+        Number(credential.version) !== Number(expectedVersion) ||
+        credential.operation_status !== expectedStatus ||
+        (currentLease && currentLease.getTime() > now.getTime())
+      ) {
         return rawRows([])
       }
       credential.lease_owner = leaseOwner
@@ -734,6 +775,7 @@ class RecordingProvider implements AuthResetPasswordProvider {
   passwordByIdentity = new Map<string, string>()
   updateCalls = 0
   verifyCalls = 0
+  calls: Array<"update" | "verify"> = []
   nextUpdate: "updated" | "timeout" | "ambiguous" = "updated"
   verifyImpl: ((password: string) => boolean) | null = null
 
@@ -747,6 +789,7 @@ class RecordingProvider implements AuthResetPasswordProvider {
     authIdentityId: string
     password: string
   }): Promise<"updated" | "timeout" | "ambiguous"> {
+    this.calls.push("update")
     this.updateCalls += 1
     if (this.nextUpdate !== "updated") {
       const outcome = this.nextUpdate
@@ -761,6 +804,7 @@ class RecordingProvider implements AuthResetPasswordProvider {
     authIdentityId: string
     password: string
   }): Promise<boolean> {
+    this.calls.push("verify")
     this.verifyCalls += 1
     if (this.verifyImpl) {
       return this.verifyImpl(input.password)
@@ -902,7 +946,8 @@ describe("customer auth reset domain (P14-D13..15)", () => {
 
     expect(result).toMatchObject({ outcome: "completed" })
     expect(provider.updateCalls).toBe(1)
-    expect(provider.verifyCalls).toBeGreaterThanOrEqual(2)
+    expect(provider.verifyCalls).toBeGreaterThanOrEqual(1)
+    expect(provider.calls.slice(0, 2)).toEqual(["update", "verify"])
     expect(database.latestIntent()?.status).toBe("completed")
     expect(database.state.credential?.operation_status).toBe("stable")
     expect(database.state.credential?.credential_version).toBe(2)
@@ -1089,6 +1134,66 @@ describe("customer auth reset domain (P14-D13..15)", () => {
     expect(database.latestIntent()?.status).not.toBe("completed")
   })
 
+  it("lets only one reconciler own a fresh recovery lease", async () => {
+    const database = new MemoryResetDatabase()
+    database.seedCredential()
+    await requestPasswordReset(database, requestInput())
+    const capability = capabilityFor(database.latestIntent()!)
+    const provider = new RecordingProvider()
+    provider.nextUpdate = "timeout"
+    await confirmPasswordReset(database, confirmInput(capability, provider))
+
+    const acquireNow = new Date(BASE.getTime() + 2 * 60 * 1000)
+    const beforeAttempt = Number(database.latestIntent()?.attempt_count)
+    const [first, second] = await Promise.all([
+      reconcileSecretlessPasswordReset(database, {
+        now: acquireNow,
+        leaseOwner: "authlease_unit_worker_a",
+      }),
+      reconcileSecretlessPasswordReset(database, {
+        now: acquireNow,
+        leaseOwner: "authlease_unit_worker_b",
+      }),
+    ])
+
+    expect(first.leased + second.leased).toBe(1)
+    const winner = database.latestIntent()!
+    const winnerOwner = winner.lease_owner
+    const winnerAttempt = Number(winner.attempt_count)
+    const winnerLeaseUntil = rowDate(winner, "lease_until")!
+    expect(["authlease_unit_worker_a", "authlease_unit_worker_b"]).toContain(
+      winnerOwner
+    )
+    expect(winnerAttempt).toBe(beforeAttempt + 1)
+    expect(winner.status).toBe("failed_reconcilable")
+    expect(winner.completed_at).toBeNull()
+    expect(winner.provider_proved_at).toBeNull()
+    expect(provider.updateCalls).toBe(1)
+    expect(provider.verifyCalls).toBe(0)
+
+    const blockedNow = new Date(winnerLeaseUntil.getTime() - 1)
+    const blocked = await reconcileSecretlessPasswordReset(database, {
+      now: blockedNow,
+      leaseOwner: "authlease_unit_worker_c",
+    })
+    expect(blocked.leased).toBe(0)
+    expect(database.latestIntent()?.lease_owner).toBe(winnerOwner)
+    expect(Number(database.latestIntent()?.attempt_count)).toBe(winnerAttempt)
+
+    const expired = await reconcileSecretlessPasswordReset(database, {
+      now: winnerLeaseUntil,
+      leaseOwner: "authlease_unit_worker_d",
+    })
+    expect(expired.leased).toBe(1)
+    expect(database.latestIntent()?.lease_owner).toBe("authlease_unit_worker_d")
+    expect(
+      rowDate(database.latestIntent()!, "lease_until")!.getTime()
+    ).toBe(winnerLeaseUntil.getTime() + AUTH_RESET_LEASE_MS)
+    expect(database.latestIntent()?.status).not.toBe("completed")
+    expect(provider.updateCalls).toBe(1)
+    expect(provider.verifyCalls).toBe(0)
+  })
+
   it("resumes only the same Idempotency-Key after re-presenting newPassword", async () => {
     const database = new MemoryResetDatabase()
     database.seedCredential()
@@ -1107,10 +1212,21 @@ describe("customer auth reset domain (P14-D13..15)", () => {
     ).rejects.toMatchObject({ code: "AUTH_RESET_INVALID_OR_EXPIRED" })
 
     provider.passwordByIdentity.clear()
+    const beforeRetry = {
+      updateCalls: provider.updateCalls,
+      verifyCalls: provider.verifyCalls,
+      calls: [...provider.calls],
+    }
     const completed = await confirmPasswordReset(
       database,
       confirmInput(capability, provider)
     )
+    expect(completed).toMatchObject({ outcome: "completed" })
+    expect(provider.calls.slice(beforeRetry.calls.length, beforeRetry.calls.length + 1)).toEqual([
+      "verify",
+    ])
+    expect(provider.updateCalls).toBe(beforeRetry.updateCalls + 1)
+    expect(provider.verifyCalls).toBeGreaterThan(beforeRetry.verifyCalls)
     expect(completed).toMatchObject({ outcome: "completed" })
     expect(database.latestIntent()?.status).toBe("completed")
     expect(database.state.credential?.operation_status).toBe("stable")
@@ -1129,12 +1245,48 @@ describe("customer auth reset domain (P14-D13..15)", () => {
     await confirmPasswordReset(database, confirmInput(capability, provider))
     provider.passwordByIdentity.set(AUTH_IDENTITY_ID, NEW_PASSWORD)
     const beforeUpdates = provider.updateCalls
+    const beforeCalls = [...provider.calls]
     const completed = await confirmPasswordReset(
       database,
       confirmInput(capability, provider)
     )
     expect(completed.outcome).toBe("completed")
+    expect(provider.calls.slice(beforeCalls.length)).toEqual(["verify"])
     expect(provider.updateCalls).toBe(beforeUpdates)
+    expect(provider.verifyCalls).toBeGreaterThanOrEqual(1)
+  })
+
+  it("fresh reset still updates then verifies even when the provider already accepts newPassword", async () => {
+    const database = new MemoryResetDatabase()
+    database.seedCredential()
+    database.seedLineage()
+    await requestPasswordReset(database, requestInput())
+    const intent = database.latestIntent()!
+    const capability = capabilityFor(intent)
+    const provider = new RecordingProvider({
+      authIdentityId: AUTH_IDENTITY_ID,
+      password: NEW_PASSWORD,
+    })
+
+    const result = await confirmPasswordReset(
+      database,
+      confirmInput(capability, provider)
+    )
+
+    expect(result.outcome).toBe("completed")
+    expect(provider.updateCalls).toBe(1)
+    expect(provider.verifyCalls).toBeGreaterThanOrEqual(1)
+    expect(provider.calls.indexOf("update")).toBe(0)
+    expect(provider.calls.indexOf("verify")).toBeGreaterThan(
+      provider.calls.indexOf("update")
+    )
+    expect(provider.calls.slice(0, 2)).toEqual(["update", "verify"])
+    expect(database.latestIntent()?.status).toBe("completed")
+    expect(database.latestIntent()?.provider_proved_at).not.toBeNull()
+    expect(database.state.credential?.credential_version).toBe(2)
+    expect(database.state.lineages.every((row) => row.status === "revoked")).toBe(
+      true
+    )
   })
 
   it("does not persist password fingerprints or capability plaintext", async () => {

@@ -170,6 +170,13 @@ export class AuthResetError extends Error {
   }
 }
 
+class AuthResetLeaseLostError extends Error {
+  constructor() {
+    super("AUTH_RESET_LEASE_LOST")
+    this.name = "AuthResetLeaseLostError"
+  }
+}
+
 export type AuthResetReconcileInput = {
   now?: Date
   leaseOwner?: string
@@ -462,6 +469,88 @@ export function hashResetOperationId(input: {
 
 function leaseUntil(now: Date): Date {
   return new Date(now.getTime() + AUTH_RESET_LEASE_MS)
+}
+
+function isLeaseClaimable(leaseUntilAt: Date | null, now: Date): boolean {
+  return leaseUntilAt === null || leaseUntilAt.getTime() <= now.getTime()
+}
+
+function isRetryDue(nextRetryAt: Date | null, now: Date): boolean {
+  return nextRetryAt === null || nextRetryAt.getTime() <= now.getTime()
+}
+
+async function tryAcquireIntentLease(
+  transaction: AuthResetTransaction,
+  intent: AuthResetIntentRecord,
+  leaseOwner: string,
+  now: Date
+): Promise<AuthResetIntentRecord | null> {
+  const result = await transaction.raw(
+    `update auth_reset_intent
+        set lease_owner = ?,
+            lease_until = ?,
+            attempt_count = attempt_count + 1,
+            version = version + 1,
+            updated_at = ?
+      where id = ?
+        and version = ?
+        and status = ?
+        and status in ('claimed', 'credential_updated', 'revocation_committed', 'failed_reconcilable')
+        and completed_at is null
+        and deleted_at is null
+        and (lease_until is null or lease_until <= ?)
+      returning *`,
+    [
+      leaseOwner,
+      leaseUntil(now),
+      now,
+      intent.id,
+      intent.version,
+      intent.status,
+      now,
+    ]
+  )
+  const row = rowsOf(result)[0]
+  return row ? parseIntent(row) : null
+}
+
+async function tryAcquireCredentialLease(
+  transaction: AuthResetTransaction,
+  credential: AuthResetCredentialRecord,
+  leaseOwner: string,
+  now: Date
+): Promise<AuthResetCredentialRecord | null> {
+  const result = await transaction.raw(
+    `update auth_credential_state
+        set lease_owner = ?,
+            lease_until = ?,
+            attempt_count = attempt_count + 1,
+            version = version + 1,
+            updated_at = ?
+      where id = ?
+        and version = ?
+        and operation_type = 'reset'
+        and operation_status = ?
+        and operation_status in ('claimed', 'credential_proved', 'credential_updated', 'revocation_committed', 'provider_outcome_ambiguous')
+        and completed_at is null
+        and deleted_at is null
+        and (lease_until is null or lease_until <= ?)
+      returning id, auth_identity_id, customer_id, credential_version, email_verified_at,
+                operation_type, operation_id, operation_status, operation_version, version,
+                lease_owner, lease_until, attempt_count, next_retry_at,
+                provider_proved_at, credential_updated_at, revocation_committed_at, completed_at`,
+    [
+      leaseOwner,
+      leaseUntil(now),
+      now,
+      credential.id,
+      credential.version,
+      credential.operation_status,
+      now,
+    ]
+  )
+  const row = rowsOf(result)[0]
+  return row ? parseCredential(row) : null
 }
 
 async function readCredentialForUpdate(
@@ -1207,21 +1296,36 @@ async function markFailedReconcilable(
   )
 }
 
-async function provePresentedPassword(
+async function proveFreshPassword(
   provider: AuthResetPasswordProvider,
   authIdentityId: string,
-  password: string,
-  allowUpdate: boolean
+  password: string
 ): Promise<"proved" | "ambiguous"> {
-  const verified = await provider.verifyPassword({
+  const updated = await provider.updatePassword({
     authIdentityId,
     password,
   })
-  if (verified) {
-    return "proved"
+  if (updated !== "updated") {
+    return "ambiguous"
   }
-  if (!allowUpdate) {
-    return invalidOrExpired()
+  const proved = await provider.verifyPassword({
+    authIdentityId,
+    password,
+  })
+  return proved ? "proved" : "ambiguous"
+}
+
+async function proveRecoveryPassword(
+  provider: AuthResetPasswordProvider,
+  authIdentityId: string,
+  password: string
+): Promise<"proved" | "ambiguous"> {
+  const alreadyMatches = await provider.verifyPassword({
+    authIdentityId,
+    password,
+  })
+  if (alreadyMatches) {
+    return "proved"
   }
   const updated = await provider.updatePassword({
     authIdentityId,
@@ -1351,15 +1455,20 @@ export async function confirmPasswordReset(
     }
   }
 
-  const allowUpdate = !intent.credential_updated_at && !credential.credential_updated_at
   let proof: "proved" | "ambiguous"
   try {
-    proof = await provePresentedPassword(
-      input.provider,
-      intent.auth_identity_id,
-      newPassword,
-      allowUpdate
-    )
+    proof =
+      phase === "fresh_claim"
+        ? await proveFreshPassword(
+            input.provider,
+            intent.auth_identity_id,
+            newPassword
+          )
+        : await proveRecoveryPassword(
+            input.provider,
+            intent.auth_identity_id,
+            newPassword
+          )
   } catch {
     proof = "ambiguous"
   }
@@ -1483,12 +1592,8 @@ export async function reconcileSecretlessPasswordReset(
         where status in ('claimed', 'credential_updated', 'revocation_committed', 'failed_reconcilable')
           and completed_at is null
           and deleted_at is null
-          and (
-            lease_until is null
-            or lease_until <= ?
-            or next_retry_at is null
-            or next_retry_at <= ?
-          )
+          and (lease_until is null or lease_until <= ?)
+          and (next_retry_at is null or next_retry_at <= ?)
         order by coalesce(next_retry_at, created_at) asc, id asc
         limit ?`,
       [now, now, batchSize]
@@ -1512,36 +1617,47 @@ export async function reconcileSecretlessPasswordReset(
           return "skipped" as const
         }
 
-        await transaction.raw(
-          `update auth_reset_intent
-              set lease_owner = ?,
-                  lease_until = ?,
-                  attempt_count = attempt_count + 1,
-                  version = version + 1,
-                  updated_at = ?
-            where id = ?
-              and completed_at is null
-              and deleted_at is null`,
-          [leaseOwner, leaseUntil(now), now, intent.id]
-        )
-        await transaction.raw(
-          `update auth_credential_state
-              set lease_owner = ?,
-                  lease_until = ?,
-                  attempt_count = attempt_count + 1,
-                  version = version + 1,
-                  updated_at = ?
-            where id = ?
-              and operation_type = 'reset'
-              and completed_at is null
-              and deleted_at is null`,
-          [leaseOwner, leaseUntil(now), now, credential.id]
-        )
+        if (
+          !isLeaseClaimable(intent.lease_until, now) ||
+          !isRetryDue(intent.next_retry_at, now)
+        ) {
+          return "lost" as const
+        }
+        if (!isLeaseClaimable(credential.lease_until, now)) {
+          return "lost" as const
+        }
 
-        if (intent.credential_updated_at && credential.credential_updated_at) {
+        const leasedIntent = await tryAcquireIntentLease(
+          transaction,
+          intent,
+          leaseOwner,
+          now
+        )
+        if (!leasedIntent) {
+          return "lost" as const
+        }
+        const leasedCredential = await tryAcquireCredentialLease(
+          transaction,
+          credential,
+          leaseOwner,
+          now
+        )
+        if (!leasedCredential) {
+          throw new AuthResetLeaseLostError()
+        }
+
+        if (
+          leasedIntent.credential_updated_at &&
+          leasedCredential.credential_updated_at
+        ) {
           await revokeAllLineages(transaction, intent.auth_identity_id, now)
-          if (!intent.revocation_committed_at) {
-            await persistRevocationCommitted(transaction, intent, credential, now)
+          if (!leasedIntent.revocation_committed_at) {
+            await persistRevocationCommitted(
+              transaction,
+              leasedIntent,
+              leasedCredential,
+              now
+            )
           }
           return "revoked" as const
         }
@@ -1549,7 +1665,7 @@ export async function reconcileSecretlessPasswordReset(
         return "leased" as const
       })
 
-      if (step === "skipped") {
+      if (step === "skipped" || step === "lost") {
         result.skipped += 1
         continue
       }
