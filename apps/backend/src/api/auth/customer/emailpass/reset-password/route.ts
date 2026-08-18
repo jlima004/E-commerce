@@ -241,6 +241,13 @@ export async function handleCustomerAuthResetRequest(
   dependencies: CustomerAuthResetRequestDependencies
 ): Promise<void> {
   const startedAtMs = Date.now()
+  const timing = dependencies.timing ?? defaultAuthTiming
+  let finishPromise: Promise<number | void> | undefined
+  const finishOnce = (): Promise<number | void> => {
+    finishPromise ??= timing(startedAtMs)
+    return finishPromise
+  }
+
   const rawBody = getRequestBody(req)
   const body =
     typeof rawBody === "object" && rawBody !== null
@@ -254,7 +261,7 @@ export async function handleCustomerAuthResetRequest(
       : rawBody
   const parsed = EmailRequestSchema.safeParse(body)
   if (!parsed.success) {
-    await finishTiming(dependencies.timing, startedAtMs)
+    await finishOnce()
     writeAuthError(req, res, "INVALID_REQUEST")
     return
   }
@@ -263,7 +270,7 @@ export async function handleCustomerAuthResetRequest(
   try {
     normalizedEmail = normalizeCustomerAuthEmail(parsed.data.email)
   } catch {
-    await finishTiming(dependencies.timing, startedAtMs)
+    await finishOnce()
     writeAuthError(req, res, "INVALID_REQUEST")
     return
   }
@@ -281,7 +288,7 @@ export async function handleCustomerAuthResetRequest(
       preBuckets
     )
     if (!pre.allowed) {
-      await finishTiming(dependencies.timing, startedAtMs)
+      await finishOnce()
       writeAccepted(res)
       return
     }
@@ -300,10 +307,10 @@ export async function handleCustomerAuthResetRequest(
       })
     }
 
-    await finishTiming(dependencies.timing, startedAtMs)
+    await finishOnce()
     writeAccepted(res)
   } catch (error) {
-    await finishTiming(dependencies.timing, startedAtMs).catch(() => undefined)
+    await finishOnce().catch(() => undefined)
     if (error instanceof AuthRateLimitUnavailableError) {
       writeAccepted(res)
       return

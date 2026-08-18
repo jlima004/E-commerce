@@ -339,6 +339,41 @@ describe("Phase 14 reset HTTP request contract", () => {
     expect(timing).toHaveBeenCalledTimes(outcomes.length)
   })
 
+  it("applies the timing envelope exactly once even when timing itself rejects", async () => {
+    const cases = [
+      {
+        name: "known",
+        dependencies: (timing: jest.Mock) => requestDependencies({ timing }),
+      },
+      {
+        name: "provider failure",
+        dependencies: (timing: jest.Mock) =>
+          requestDependencies({
+            timing,
+            requestPasswordReset: async () => {
+              throw new Error("synthetic provider delivery failure")
+            },
+          }),
+      },
+    ] as const
+
+    for (const entry of cases) {
+      const timing = jest
+        .fn()
+        .mockRejectedValue(new Error("synthetic timing failure"))
+      const { response, state } = responseRecorder()
+      await handleCustomerAuthResetRequest(
+        requestOf({ body: { email: EMAIL } }),
+        response,
+        entry.dependencies(timing)
+      )
+      expect(timing).toHaveBeenCalledTimes(1)
+      expect(state.statusCode).toBe(202)
+      expect(state.body).toEqual({ code: "REQUEST_ACCEPTED" })
+      expect(state.headers).not.toHaveProperty("retry-after")
+    }
+  })
+
   it("creates an intent only for an eligible known identity", async () => {
     const requestPasswordReset = jest.fn(async () => ({
       accepted: true as const,
