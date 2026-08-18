@@ -13,11 +13,22 @@ import {
   requireDisposableDatabaseName,
 } from "../postgres/disposable-postgres-harness"
 import { AUTH_HTTP_CONTRACT } from "../../src/api/auth-surface/contracts"
-import { decideAuthSurfaceAccess } from "../../src/api/auth-surface/guard"
 import { handleCustomerAuthSignup } from "../../src/api/auth/customer/emailpass/register/route"
+import { handleCustomerAuthLogin } from "../../src/api/auth/customer/emailpass/route"
 import { handleRevokeCurrentLineage } from "../../src/api/auth/customer/emailpass/revoke-current-lineage/route"
+import { handleCustomerAuthResetRequest } from "../../src/api/auth/customer/emailpass/reset-password/route"
+import { handleCustomerAuthResetConfirm } from "../../src/api/auth/customer/emailpass/update/route"
+import { handleCustomerAuthRefresh } from "../../src/api/auth/token/refresh/route"
 import { createStripeWebhookPostHandler } from "../../src/api/hooks/stripe/route"
-import { decideStoreSurfaceAccess } from "../../src/api/store-surface/guard"
+import { handleCustomerAuthCurrentCustomer } from "../../src/api/store/customers/me/route"
+import { handleCustomerAuthPasswordChange } from "../../src/api/store/customers/me/password/route"
+import {
+  handleCustomerAuthVerificationConfirm,
+  handleCustomerAuthVerificationRequest,
+  handleCustomerAuthVerificationResend,
+  handleCustomerAuthVerificationStatus,
+} from "../../src/api/store/customers/me/verify/route"
+import { issueCustomerAuthAccessToken } from "../../src/modules/customer-auth/jwt"
 import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
 import type { PaymentAttemptRecord } from "../../src/modules/payment-attempt/types"
 import { WEBHOOKS_MODULE } from "../../src/modules/webhooks"
@@ -286,6 +297,106 @@ if (!requestedDatabaseName) {
     }
   }
 
+  const AUTH_ORDER_EMAIL = "auth-order@example.invalid"
+  const AUTH_ORDER_PASSWORD = "correct-password-12"
+  const AUTH_ABSOLUTE_EXPIRES_AT = new Date(
+    BASE.getTime() + 30 * 24 * 60 * 60 * 1000
+  )
+  const AUTH_ORDER_CUSTOMER = {
+    id: "customer-auth-order",
+    email: AUTH_ORDER_EMAIL,
+    firstName: "Ada",
+    lastName: "Lovelace",
+  }
+  const noopTiming = async () => 0
+  const fakeTxnDb = {
+    transaction: async <T>(
+      callback: (transaction: {
+        raw: () => Promise<{ rows: never[] }>
+      }) => Promise<T>
+    ) => callback({ raw: async () => ({ rows: [] }) }),
+  }
+  const unusedLoginAdapters = {
+    auth: {
+      findIdentity: async () => {
+        throw new Error("login auth adapter must not be used")
+      },
+      authenticate: async () => {
+        throw new Error("login auth adapter must not be used")
+      },
+    },
+    customer: {
+      find: async () => {
+        throw new Error("login customer adapter must not be used")
+      },
+    },
+    credential: {
+      load: async () => {
+        throw new Error("login credential adapter must not be used")
+      },
+    },
+    session: {
+      issue: async () => {
+        throw new Error("login session adapter must not be used")
+      },
+    },
+  }
+  const silentPasswordProvider = {
+    updatePassword: async () => "updated" as const,
+    verifyPassword: async () => true,
+  }
+
+  function authorizedCustomerAuth() {
+    return {
+      authorized: true as const,
+      customerId: "customer-auth-order",
+      authIdentityId: "identity-auth-order",
+      lineageId: "lineage-auth-order",
+      sid: "sid-auth-order",
+      credentialVersion: 1,
+      originalAuthenticatedAt: BASE,
+      absoluteExpiresAt: AUTH_ABSOLUTE_EXPIRES_AT,
+    }
+  }
+
+  function verificationDependencies() {
+    return {
+      database: fakeTxnDb,
+      keyring: KEYRING,
+      rateLimitStore: new InMemoryAtomicRateLimitStore(),
+      now: () => BASE,
+      timing: noopTiming,
+      resolveEmailByIdentityId: async () => AUTH_ORDER_EMAIL,
+      resolveIdentityByEmail: async () => ({
+        authIdentityId: "identity-auth-order",
+        recipientIdentityId: "identity-auth-order",
+        normalizedEmail: AUTH_ORDER_EMAIL,
+      }),
+      requestVerification: async () => ({
+        accepted: true as const,
+        created: true,
+        state: "pending" as const,
+        intent: null,
+        outbox: null,
+      }),
+      resendVerification: async () => ({
+        accepted: true as const,
+        created: true,
+        state: "pending" as const,
+        intent: null,
+        outbox: null,
+      }),
+      resolveVerificationIntentId: async () => "intent-zo-verify",
+      confirmVerification: async () => ({
+        success: true as const,
+        state: "verified" as const,
+        intentId: "intent-zo-verify",
+        generation: 1,
+      }),
+      getVerificationStatus: async () => ({ state: "pending" as const }),
+    }
+  }
+
   medusaIntegrationTestRunner({
     dbName: databaseName,
     env: disposableEnvironment,
@@ -550,40 +661,341 @@ if (!requestedDatabaseName) {
         expect(AUTH_HTTP_CONTRACT).toHaveLength(12)
         expect(await countOrders()).toBe(0)
 
-        for (const entry of AUTH_HTTP_CONTRACT) {
-          const before = await countOrders()
-          const decision = entry.path.startsWith("/auth/")
-            ? decideAuthSurfaceAccess(entry.method, entry.path)
-            : decideStoreSurfaceAccess(entry.method, entry.path)
-          expect(decision.action).toBe("allow")
-          expect(await countOrders()).toBe(before)
-        }
-
-        const signupRes = response()
-        await handleCustomerAuthSignup(
-          {
-            body: {
-              email: "auth-order@example.invalid",
-              password: "correct-password-12",
-              firstName: "Ada",
-              lastName: "Lovelace",
-            },
-            headers: {},
-            ip: "203.0.113.10",
-            correlationId: "signup-auth-order",
-          },
-          signupRes,
-          {
-            keyring: KEYRING,
-            jwtSecret: JWT_SECRET,
-            rateLimitStore: new InMemoryAtomicRateLimitStore(),
-            now: () => BASE,
-            registerCustomer: async () => completedRegistration(),
-            bffAuthorized: true,
+        await withSessionPool(async (database) => {
+          const seedRefreshableSession = async (suffix: string) => {
+            let sequence = 0
+            await database.transaction(async (transaction) => {
+              await transaction.raw(
+                `insert into auth_credential_state
+                   (id, auth_identity_id, customer_id, credential_version, operation_status)
+                 values (?, ?, ?, 1, 'stable')`,
+                [
+                  `credential_${suffix}`,
+                  `identity_${suffix}`,
+                  `customer_${suffix}`,
+                ]
+              )
+            })
+            return issueInitialAuthSession(database, {
+              authIdentityId: `identity_${suffix}`,
+              customerId: `customer_${suffix}`,
+              credentialVersion: 1,
+              keyring: KEYRING,
+              jwtSecret: JWT_SECRET,
+              now: BASE,
+              originalAuthenticatedAt: BASE,
+              idFactory: (prefix) => `${prefix}_${suffix}_${++sequence}`,
+            })
           }
-        )
-        expect(signupRes.statusCode).toBe(201)
-        expect(await countOrders()).toBe(0)
+
+          type AuthOperation = (typeof AUTH_HTTP_CONTRACT)[number]["operation"]
+          const invoke: Record<
+            AuthOperation,
+            (res: ReturnType<typeof response>) => Promise<void>
+          > = {
+            signup: async (res) => {
+              await handleCustomerAuthSignup(
+                {
+                  body: {
+                    email: AUTH_ORDER_EMAIL,
+                    password: AUTH_ORDER_PASSWORD,
+                    firstName: "Ada",
+                    lastName: "Lovelace",
+                  },
+                  headers: {},
+                  ip: "203.0.113.10",
+                  correlationId: "signup-auth-order",
+                },
+                res,
+                {
+                  keyring: KEYRING,
+                  jwtSecret: JWT_SECRET,
+                  rateLimitStore: new InMemoryAtomicRateLimitStore(),
+                  now: () => BASE,
+                  registerCustomer: async () => completedRegistration(),
+                  bffAuthorized: true,
+                }
+              )
+            },
+            login: async (res) => {
+              await handleCustomerAuthLogin(
+                {
+                  body: {
+                    email: AUTH_ORDER_EMAIL,
+                    password: AUTH_ORDER_PASSWORD,
+                  },
+                  headers: {},
+                  ip: "203.0.113.10",
+                  correlationId: "login-auth-order",
+                },
+                res,
+                {
+                  keyring: KEYRING,
+                  jwtSecret: JWT_SECRET,
+                  rateLimitStore: new InMemoryAtomicRateLimitStore(),
+                  now: () => BASE,
+                  timing: noopTiming,
+                  dummyPasswordWork: async () => undefined,
+                  bffAuthorized: true,
+                  login: async () => ({
+                    kind: "authenticated",
+                    session: sessionEnvelope(),
+                    customer: AUTH_ORDER_CUSTOMER,
+                    verificationState: "verified",
+                  }),
+                  ...unusedLoginAdapters,
+                }
+              )
+            },
+            refresh: async (res) => {
+              const issued = await seedRefreshableSession("zo_refresh")
+              await handleCustomerAuthRefresh(
+                {
+                  headers: {
+                    "x-indicio-refresh-token": issued.refreshToken,
+                    "idempotency-key": "zo-refresh-1",
+                    "content-length": "0",
+                  },
+                  body: {},
+                  ip: "203.0.113.10",
+                  correlationId: "refresh-auth-order",
+                } as never,
+                res,
+                {
+                  database,
+                  keyring: KEYRING,
+                  jwtSecret: JWT_SECRET,
+                  rateLimitStore: new InMemoryAtomicRateLimitStore(),
+                  now: () => BASE,
+                  timing: noopTiming,
+                  resolveCustomer: async () => ({
+                    id: issued.customerId,
+                    email: AUTH_ORDER_EMAIL,
+                    firstName: "Ada",
+                    lastName: "Lovelace",
+                    verificationState: "pending",
+                  }),
+                }
+              )
+            },
+            revoke_current_lineage: async (res) => {
+              let sequence = 0
+              const issued = await issueInitialAuthSession(database, {
+                authIdentityId: "identity_zo_revoke",
+                customerId: "customer_zo_revoke",
+                credentialVersion: 1,
+                keyring: KEYRING,
+                jwtSecret: JWT_SECRET,
+                now: BASE,
+                originalAuthenticatedAt: BASE,
+                idFactory: (prefix) => `${prefix}_zo_revoke_${++sequence}`,
+              })
+              await handleRevokeCurrentLineage(
+                {
+                  headers: { "content-length": "0" },
+                  body: {},
+                  customerAuth: { lineageId: issued.lineageId },
+                  correlationId: "revoke-zero-order",
+                } as never,
+                res,
+                { database, now: () => BASE }
+              )
+            },
+            verification_request: async (res) => {
+              await handleCustomerAuthVerificationRequest(
+                {
+                  headers: { "content-length": "0" },
+                  body: {},
+                  ip: "203.0.113.10",
+                  customerAuth: authorizedCustomerAuth(),
+                  correlationId: "verification-request-auth-order",
+                },
+                res,
+                verificationDependencies()
+              )
+            },
+            verification_resend: async (res) => {
+              await handleCustomerAuthVerificationResend(
+                {
+                  body: { email: AUTH_ORDER_EMAIL },
+                  headers: {},
+                  ip: "203.0.113.10",
+                  correlationId: "verification-resend-auth-order",
+                },
+                res,
+                verificationDependencies()
+              )
+            },
+            verification_confirm: async (res) => {
+              await handleCustomerAuthVerificationConfirm(
+                {
+                  body: { token: "v".repeat(43) },
+                  headers: {},
+                  ip: "203.0.113.10",
+                  correlationId: "verification-confirm-auth-order",
+                },
+                res,
+                verificationDependencies()
+              )
+            },
+            verification_status: async (res) => {
+              await handleCustomerAuthVerificationStatus(
+                {
+                  headers: {},
+                  customerAuth: authorizedCustomerAuth(),
+                  correlationId: "verification-status-auth-order",
+                },
+                res,
+                verificationDependencies()
+              )
+            },
+            reset_request: async (res) => {
+              await handleCustomerAuthResetRequest(
+                {
+                  body: { email: AUTH_ORDER_EMAIL },
+                  headers: {},
+                  ip: "203.0.113.10",
+                  correlationId: "reset-request-auth-order",
+                },
+                res,
+                {
+                  database: fakeTxnDb,
+                  keyring: KEYRING,
+                  rateLimitStore: new InMemoryAtomicRateLimitStore(),
+                  now: () => BASE,
+                  timing: noopTiming,
+                  resolveIdentityByEmail: async () => ({
+                    authIdentityId: "identity-auth-order",
+                    recipientIdentityId: "identity-auth-order",
+                    normalizedEmail: AUTH_ORDER_EMAIL,
+                  }),
+                  requestPasswordReset: async () => ({
+                    accepted: true,
+                    created: true,
+                    intent: null,
+                    outbox: null,
+                  }),
+                }
+              )
+            },
+            reset_confirm: async (res) => {
+              await handleCustomerAuthResetConfirm(
+                {
+                  body: {
+                    token: "r".repeat(43),
+                    newPassword: AUTH_ORDER_PASSWORD,
+                  },
+                  headers: { "idempotency-key": "zo-reset-confirm-1" },
+                  ip: "203.0.113.10",
+                  correlationId: "reset-confirm-auth-order",
+                },
+                res,
+                {
+                  database: fakeTxnDb,
+                  keyring: KEYRING,
+                  rateLimitStore: new InMemoryAtomicRateLimitStore(),
+                  provider: silentPasswordProvider,
+                  now: () => BASE,
+                  timing: noopTiming,
+                  dummyWork: () => "dummy-digest",
+                  resolveResetIntentId: async () => "intent-zo-reset",
+                  confirmPasswordReset: async () => ({
+                    outcome: "completed",
+                    intentId: "intent-zo-reset",
+                    generation: 1,
+                    credentialVersion: 2,
+                  }),
+                }
+              )
+            },
+            password_change: async (res) => {
+              const accessToken = issueCustomerAuthAccessToken({
+                secret: JWT_SECRET,
+                authIdentityId: "identity-auth-order",
+                customerId: "customer-auth-order",
+                sid: "sid-auth-order",
+                credentialVersion: 1,
+                originalAuthenticatedAt: BASE,
+                absoluteExpiresAt: AUTH_ABSOLUTE_EXPIRES_AT,
+                now: BASE,
+              }).token
+              await handleCustomerAuthPasswordChange(
+                {
+                  body: {
+                    currentPassword: AUTH_ORDER_PASSWORD,
+                    newPassword: "changed-password-12",
+                  },
+                  headers: {
+                    authorization: `Bearer ${accessToken}`,
+                    "idempotency-key": "zo-password-change-1",
+                  },
+                  correlationId: "password-change-auth-order",
+                },
+                res,
+                {
+                  accessDatabase: {
+                    query: async () => ({
+                      rows: [
+                        {
+                          lineage_id: "lineage-auth-order",
+                          sid: "sid-auth-order",
+                          lineage_auth_identity_id: "identity-auth-order",
+                          lineage_customer_id: "customer-auth-order",
+                          credential_version_snapshot: 1,
+                          lineage_status: "active",
+                          credential_auth_identity_id: "identity-auth-order",
+                          credential_customer_id: "customer-auth-order",
+                          credential_version: 1,
+                          operation_status: "stable",
+                          original_authenticated_at: BASE,
+                          absolute_expires_at: AUTH_ABSOLUTE_EXPIRES_AT,
+                        },
+                      ],
+                    }),
+                  },
+                  queryDatabase: { query: async () => ({ rows: [] }) },
+                  database: fakeTxnDb,
+                  keyring: KEYRING,
+                  jwtSecret: JWT_SECRET,
+                  rateLimitStore: new InMemoryAtomicRateLimitStore(),
+                  provider: silentPasswordProvider,
+                  now: () => BASE,
+                  changePassword: async () => ({
+                    outcome: "completed",
+                    credentialVersion: 2,
+                  }),
+                }
+              )
+            },
+            current_auth_customer: async (res) => {
+              await handleCustomerAuthCurrentCustomer(
+                {
+                  headers: {},
+                  customerAuth: authorizedCustomerAuth(),
+                  correlationId: "me-auth-order",
+                },
+                res,
+                {
+                  resolveCustomer: async () => AUTH_ORDER_CUSTOMER,
+                  resolveVerificationState: async () => "pending",
+                }
+              )
+            },
+          }
+
+          expect(Object.keys(invoke).sort()).toEqual(
+            [...AUTH_HTTP_CONTRACT].map((entry) => entry.operation).sort()
+          )
+
+          for (const entry of AUTH_HTTP_CONTRACT) {
+            const before = await countOrders()
+            const res = response()
+            await invoke[entry.operation](res)
+            expect(res.statusCode).toBe(entry.success.status)
+            expect(await countOrders()).toBe(before)
+            expect(await countOrders()).toBe(0)
+          }
+        })
       })
 
       it("preserves cart and checkout after session expiry and revoke with zero Orders", async () => {
