@@ -41,6 +41,7 @@ key-files:
     - apps/backend/integration-tests/http/auth-password-change.spec.ts
     - apps/backend/integration-tests/http/auth-verification.spec.ts
     - apps/backend/src/infrastructure/__tests__/medusa-config.unit.spec.ts
+    - apps/backend/src/modules/customer-auth/password-change.ts
 
 key-decisions:
   - "Generic reconciler covers reset and password_change; reset keeps its domain function via operationTypes: ['reset']."
@@ -49,18 +50,23 @@ key-decisions:
   - "POST /store/customers/me/password is BFF-only; the handler owns stable-or-resume and must not inherit the stable-only access guard."
   - "authMethodsPerActor.customer = ['emailpass'] is defense-in-depth; surface guard + BFF remain authorities."
   - "API Docs, schema/migrations, STATE.md and ROADMAP.md were not modified."
+  - "Human-review remediação B14-18-HR-01: password-change version bump persists revocation_pending, not credential_updated."
+  - "Human-review remediação B14-18-HR-02: medusa-config unit exact-set includes ./src/modules/customer-auth/service once."
 ---
 
 # Phase 14: Customer Auth Verification — Plan 18 Summary
 
 Secretless PostgreSQL-authoritative credential-operation reconciliation with one-winner lease/CAS, reset primitive delegation, worker-only job, and final Phase 14 runtime elevation of only `POST /store/customers/me/password` behind the BFF service guard.
 
-## Governance status — AWAITING HUMAN REVIEW
+## Governance status — AWAITING HUMAN RE-REVIEW
 
 ```text
-14-18-01: EXECUTED — AWAITING HUMAN REVIEW
-14-18-02: EXECUTED — AWAITING HUMAN REVIEW
-14-18-03: BLOCKING HUMAN VERIFY — AWAITING HUMAN REVIEW
+B14-18-HR-01: REMEDIATED — AWAITING HUMAN RE-REVIEW
+B14-18-HR-02: REMEDIATED — AWAITING HUMAN RE-REVIEW
+
+14-18-01: EXECUTED — AWAITING HUMAN RE-REVIEW
+14-18-02: EXECUTED — AWAITING HUMAN RE-REVIEW
+14-18-03: BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
 14-18: NOT YET HUMAN APPROVED
 
 14-19..14-21: NOT AUTHORIZED
@@ -100,10 +106,13 @@ Modified:
 - `apps/backend/src/modules/customer-auth/bff-service-auth.ts` — password path enters the BFF protected exact-set
 - predecessor exact-set tests listed above
 
+Modified during human-review remediação:
+
+- `apps/backend/src/modules/customer-auth/password-change.ts` — version bump persists `revocation_pending`
+
 Unchanged on purpose:
 
 - `apps/backend/src/api/auth-surface/manifest.ts` — Auth enabled-set already complete after 14-16
-- `apps/backend/src/modules/customer-auth/password-change.ts`
 - `apps/backend/src/modules/customer-auth/reset.ts`
 - `apps/backend/src/modules/customer-auth/service.ts`
 - OpenAPI / API Docs / generated JSON / Zod docs kit
@@ -363,11 +372,129 @@ Focused PostgreSQL initially selected an elevation test whose name contained `se
 
 None — no external service configuration required.
 
+## Human-review remediation
+
+```text
+B14-18-HR-01: REMEDIATED — AWAITING HUMAN RE-REVIEW
+B14-18-HR-02: REMEDIATED — AWAITING HUMAN RE-REVIEW
+```
+
+This section does **not** declare HUMAN APPROVED. STATE.md and ROADMAP.md were not updated. `14-19` was not started.
+
+### B14-18-HR-01 — post-bump crash state is now reconciler-due
+
+Cause: the 14-17 request path persisted version bump as `operation_status = credential_updated`. That status is outside the closed 14-18 due-set (`claimed | provider_outcome_ambiguous | credential_proved | revocation_pending`). A crash after bump and before global revoke left lineages active and the operation non-stable indefinitely.
+
+Authorized state-machine alignment (no due-set expansion, no schema/migration):
+
+```text
+credential_proved → revocation_pending → revocation_committed
+```
+
+The version-bump primitive now preserves provider proof, writes `credential_updated_at`, increments `credential_version` exactly once, and transitions to `revocation_pending`. Preconditions remain fail-closed (password_change, credential_proved, current-password and provider proof present, update/revoke/completion markers absent). Double bump remains impossible.
+
+Crash path now:
+
+```text
+credential_proved
+→ version bump
+→ revocation_pending
+→ PROCESS CRASH
+→ worker finds revocation_pending (due-set unchanged)
+→ claim/lease/CAS after lease expiry
+→ idempotent global revoke
+→ revocation_committed
+→ completed_at stays null / not stable
+→ same-key request remains the only completion authority
+```
+
+Request recovery:
+
+- `revocation_pending` with both proof markers skips provider verify/update and does not bump `credential_version` again; it only revokes and can complete.
+- `revocation_committed` (worker already progressed) skips provider and bump; same-key request finalizes to `stable` and remains the only success path.
+- no substitute session/JWT/refresh is minted.
+
+PostgreSQL evidence used the real request state machine (`before_global_revoke` crash), not a seeded `credential_proved + credential_updated_at` row as the principal crash proof. After process restart with a new database adapter, `runAuthCredentialOperationReconcile()` acquired a lease/CAS, called zero provider, did not increment `credential_version` again, revoked all lineages and refresh credentials, persisted `revocation_committed`, left `completed_at` null, did not stabilize, and created no JWT/session/refresh.
+
+Convergence: request produced `revocation_pending` → worker produced `revocation_committed` → same-key originating-lineage request completed to `stable` per the approved marker-clearing contract, with no second provider update/verify, no second credential-version bump, and no substitute session.
+
+The `before_global_revoke` fault now leaves precisely `revocation_pending`, `credential_version = old + 1`, `credential_updated_at != null`, lineages/refresh still active. Secretless due-set was not widened to `credential_updated`. Reconciler source was not modified.
+
+### B14-18-HR-02 — medusa-config unit exact-set
+
+Cause: `medusa-config.ts` already registers `{ key: "customer_auth", resolve: "./src/modules/customer-auth/service" }`, but `expectedLocalModules` omitted that resolve path and then demanded exact equality.
+
+Correction: added exactly `"./src/modules/customer-auth/service"` in the factual `medusa-config.ts` order (after `store-resource-version`, before `payment-attempt`). Exact-set character preserved (no `arrayContaining`, no cardinality relax). `medusa-config.ts` was not changed.
+
+Proof: customer-auth resolve appears exactly once; Redis modules remain four; `workerMode` remains env-factual; `authMethodsPerActor` remains `{ customer: ["emailpass"] }`; repeated config load remains deterministic. Focused unit PASS — 8/8.
+
+### Stale Phase 13 / 14-02 inventory tests (not edited)
+
+Identified, not rewritten (outside authorized remediação files):
+
+| File | Stale assertion |
+|---|---|
+| `apps/backend/src/api/store-surface/__tests__/manifest.unit.spec.ts` | Phase 13 FND-01: `m1EnabledPolicy === 0`, all `m1_enablement` disabled, no `M1_ENABLED`, `DENY+PRESERVE_LEGACY = 58` |
+| `apps/backend/src/api/store-surface/__tests__/guard.unit.spec.ts` | `counts.m1EnabledPolicy === 0`; EXTENDED/OUTSIDE_FRONTEND_M1 must not be `M1_ENABLED` |
+| `apps/backend/src/api/auth-surface/__tests__/guard.unit.spec.ts` | 14-02 snapshot: `"mantem as 24 entradas em DENY neste plano"` |
+| `apps/backend/integration-tests/http/store-surface-lockdown.spec.ts` | `"keeps classification distribution and zero M1_ENABLED at enforcement time"` |
+
+These are **not** part of the current 14-18 gate:
+
+- 14-VALIDATION focused HTTP ledger does not include `store-surface-lockdown.spec.ts`.
+- Combined Phase 14 HTTP authority is `auth-reset` + `auth-customer` + `auth-verification` + `auth-password-change` (105/105 after this remediação).
+- Official unit commands remain `--runTestsByPath` (customer-auth / medusa-config / BFF), not an unfiltered `npm run test:unit`.
+- CI `api-docs.yml` also uses path-filtered unit.
+
+Cumulative exact-set authority remains the Store/Auth/BFF manifests plus the predecessor suites listed in Validation results. No skip/hide was applied.
+
+### Remediation validation
+
+```text
+Focused PostgreSQL (revocation_pending|post-bump|crash|restart|reconcile|completion):
+  PASS — 19/19 + cleanup
+  (describe name contains "reconcile", so the filter also selected the existing 14-18 matrix;
+   the two new post-bump tests passed inside that run)
+
+Full auth-password-change-reconcile.postgres.spec.ts:
+  PASS — 19/19 + cleanup
+
+Focused password-change HTTP (version|revoke|fault|resume|recovery):
+  PASS — 25/25 (10 skipped by name filter)
+
+auth-password-change.spec.ts:                    PASS — 35/35
+reset.unit.spec.ts:                              PASS — 13/13
+auth-reset.postgres.spec.ts:                     PASS — 6/6 + cleanup
+auth-reset.spec.ts:                              PASS — 19/19
+auth-customer.spec.ts:                           PASS — 36/36
+auth-verification.spec.ts:                       PASS — 15/15
+auth-multiprocess.spec.ts (disposable PG):       PASS — 10/10 + cleanup
+BFF service auth unit:                           PASS — 10/10
+medusa-config.unit.spec.ts:                      PASS — 8/8
+combined focused Phase 14 HTTP:                  PASS — 105/105
+Backend build:                                   PASS
+Direct ESLint on password-change.ts:             PASS — 0 errors
+Direct ESLint on unit/integration specs:         ignored by ESLint config (warnings only)
+git diff --check:                                PASS
+Docker disposable PostgreSQL:                    CLEAN
+Remote infrastructure:                           NONE
+Real providers:                                  NONE
+```
+
+Repository lint wrapper:
+
+```text
+KNOWN TOOLING FAILURE — empty ESLint JSON / EOF while parsing
+```
+
+No tooling change was made to mask it.
+
 ## Next
 
-`14-18-03` is **BLOCKING HUMAN VERIFY**. Do not start `14-19` (API Docs) without explicit human PASS. Do not push, deploy, or use real providers / remote DB / Redis.
+`14-18-03` is **BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW**. Do not start `14-19` (API Docs) without explicit human PASS. Do not push, deploy, or use real providers / remote DB / Redis.
 
 ---
 *Phase: 14-customer-auth-verification*
 *Completed: 2026-08-17*
-*Status: AWAITING HUMAN REVIEW — not HUMAN APPROVED*
+*Remediated: 2026-08-18*
+*Status: AWAITING HUMAN RE-REVIEW — not HUMAN APPROVED*
