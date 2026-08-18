@@ -13,10 +13,12 @@ import {
 import { AUTH_SURFACE_MANIFEST } from "../../src/api/auth-surface/manifest"
 import { isCustomerAuthRecoveryFailClosed } from "../../src/infrastructure/customer-auth-transaction-compatibility"
 import {
+  AUTH_RESET_LEASE_MS,
   AUTH_RESET_TTL_MS,
   confirmPasswordReset,
   createPostgresAuthResetDatabase,
   hashResetOperationId,
+  reconcileSecretlessPasswordReset,
   requestPasswordReset,
   type AuthResetDatabase,
   type AuthResetIntentRecord,
@@ -476,6 +478,111 @@ if (!databaseUrl || !databaseName) {
         now: new Date(BASE.getTime() + 2_000),
       })
       expect(completed.outcome).toBe("completed")
+    })
+
+    it("lets exactly one reconciler acquire a fresh recovery lease under concurrent workers", async () => {
+      await seedLineages(pool)
+      await requestPasswordReset(database, requestInput())
+      const intent = await readLatestIntent(pool)
+      const capability = capabilityFor(intent)
+      const provider = new RecordingProvider()
+      provider.nextUpdate = "timeout"
+      await confirmPasswordReset(database, {
+        capability,
+        newPassword: NEW_PASSWORD,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        keyring: KEYRING,
+        provider,
+        now: new Date(BASE.getTime() + 1_000),
+      })
+
+      const before = await readLatestIntent(pool)
+      const beforeCredential = await pool.query(
+        `select lease_owner, lease_until, attempt_count, version,
+                credential_version, provider_proved_at, completed_at,
+                operation_status
+           from auth_credential_state
+          where auth_identity_id = $1`,
+        [AUTH_IDENTITY_ID]
+      )
+      const acquireNow = new Date(BASE.getTime() + 3 * 60 * 1000)
+      const workerA = createPostgresAuthResetDatabase(pool)
+      const workerB = createPostgresAuthResetDatabase(pool)
+      const [first, second] = await Promise.all([
+        reconcileSecretlessPasswordReset(workerA, {
+          now: acquireNow,
+          leaseOwner: "authlease_pg_worker_a",
+        }),
+        reconcileSecretlessPasswordReset(workerB, {
+          now: acquireNow,
+          leaseOwner: "authlease_pg_worker_b",
+        }),
+      ])
+
+      const afterRace = await readLatestIntent(pool)
+      const afterCredential = await pool.query(
+        `select lease_owner, lease_until, attempt_count, version,
+                credential_version, provider_proved_at, completed_at,
+                operation_status
+           from auth_credential_state
+          where auth_identity_id = $1`,
+        [AUTH_IDENTITY_ID]
+      )
+      expect(first.leased + second.leased).toBe(1)
+      expect(["authlease_pg_worker_a", "authlease_pg_worker_b"]).toContain(
+        afterRace.lease_owner
+      )
+      expect(afterRace.lease_owner).toBe(afterCredential.rows[0].lease_owner)
+      expect(Number(afterRace.attempt_count)).toBe(Number(before.attempt_count) + 1)
+      expect(Number(afterCredential.rows[0].attempt_count)).toBe(
+        Number(beforeCredential.rows[0].attempt_count) + 1
+      )
+      expect(afterRace.status).toBe("failed_reconcilable")
+      expect(afterRace.completed_at).toBeNull()
+      expect(afterRace.provider_proved_at).toBeNull()
+      expect(afterCredential.rows[0].completed_at).toBeNull()
+      expect(afterCredential.rows[0].provider_proved_at).toBeNull()
+      expect(afterCredential.rows[0].credential_version).toBe(1)
+      expect(afterCredential.rows[0].operation_status).toBe(
+        "provider_outcome_ambiguous"
+      )
+      expect(provider.updateCalls).toBe(1)
+      expect(provider.verifyCalls).toBe(0)
+
+      const blockedNow = new Date(
+        new Date(afterRace.lease_until as Date).getTime() - 1
+      )
+      const stillHeld = await reconcileSecretlessPasswordReset(database, {
+        now: blockedNow,
+        leaseOwner: "authlease_pg_worker_c",
+      })
+      const afterBlocked = await readLatestIntent(pool)
+      expect(stillHeld.leased).toBe(0)
+      expect(afterBlocked.lease_owner).toBe(afterRace.lease_owner)
+      expect(new Date(afterBlocked.lease_until as Date).getTime()).toBe(
+        new Date(afterRace.lease_until as Date).getTime()
+      )
+      expect(Number(afterBlocked.attempt_count)).toBe(
+        Number(afterRace.attempt_count)
+      )
+
+      const leaseUntilAt = new Date(afterRace.lease_until as Date)
+      const reclaimed = await reconcileSecretlessPasswordReset(database, {
+        now: leaseUntilAt,
+        leaseOwner: "authlease_pg_worker_d",
+      })
+      const afterReclaim = await readLatestIntent(pool)
+      expect(reclaimed.leased).toBe(1)
+      expect(afterReclaim.lease_owner).toBe("authlease_pg_worker_d")
+      expect(new Date(afterReclaim.lease_until as Date).getTime()).toBe(
+        leaseUntilAt.getTime() + AUTH_RESET_LEASE_MS
+      )
+      expect(afterReclaim.status).not.toBe("completed")
+      expect(afterReclaim.provider_proved_at).toBeNull()
+      expect(provider.updateCalls).toBe(1)
+      expect(provider.verifyCalls).toBe(0)
+      expect(JSON.stringify(afterReclaim)).not.toContain(NEW_PASSWORD)
+      expect(JSON.stringify(afterReclaim)).not.toContain(capability)
     })
 
     it("lets one concurrent claim win under row locks", async () => {
