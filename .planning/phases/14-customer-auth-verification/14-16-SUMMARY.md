@@ -3,7 +3,7 @@ phase: 14-customer-auth-verification
 plan: 16
 subsystem: auth
 tags: [password-reset, latest-wins, idempotency, bff-service-guard, rate-limit, timing, anti-enumeration]
-status: complete-awaiting-human-review
+status: complete
 completed: 2026-08-17
 requirements: [AUTH-04, AUTH-05, AUTH-09]
 requirements-completed: []
@@ -12,258 +12,101 @@ requires:
   - phase: 14-customer-auth-verification
     provides: 14-08 reset-confirm limiter/timing, 14-03 recovery fields, 14-15 BFF service guard exact-set
 provides:
-  - Composed password reset with latest-wins request, in-memory newPassword proof, fail-closed ambiguous recovery
-  - Secretless reconciler that cannot complete password update
+  - Composed password reset with latest-wins request, in-memory newPassword proof and fail-closed ambiguous recovery
+  - Exclusive PostgreSQL recovery lease with secretless reconciler that cannot complete password update
   - Guarded BFF→Medusa reset request/confirm HTTP contracts
+  - Exactly-once reset-request timing finalization
+
 affects: [14-17, customer-auth, auth-surface]
 ---
 
 # Phase 14: Customer Auth Verification — Plan 16 Summary
 
-`14-16` is **EXECUTED — AWAITING HUMAN RE-REVIEW**. It is **not** human-approved.
+`14-16` is **HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**.
 
-Authorization ended at `14-16-03`. `14-17` was not started.
+This closure supersedes the awaiting-re-review status recorded at the human-pushed execution/remediation head `c2c0ef43121d5f2d884951dffd5257e6aebf6ec5`. Detailed execution and remediation history remains preserved in Git history through that commit.
 
-## Governance status
+## Final governance status
 
 ```text
-B14-16-HR-01: REMEDIATED — AWAITING HUMAN RE-REVIEW
-B14-16-HR-02: REMEDIATED — AWAITING HUMAN RE-REVIEW
-B14-16-HR-03: REMEDIATED — AWAITING HUMAN RE-REVIEW
+B14-16-HR-01: CLOSED — PASS
+B14-16-HR-02: CLOSED — PASS
+B14-16-HR-03: CLOSED — PASS
 
-14-16-01: EXECUTED — AWAITING HUMAN RE-REVIEW
-14-16-02: EXECUTED — AWAITING HUMAN RE-REVIEW
-14-16-03: BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
-14-16: NOT YET HUMAN APPROVED
+14-16-01: HUMAN APPROVED — PASS
+14-16-02: HUMAN APPROVED — PASS
+14-16-03: HUMAN APPROVED — PASS
+14-16: HUMAN APPROVED — PASS
+DOCUMENTALLY CLOSED
 
-14-17: NOT AUTHORIZED
-PUSH: NONE
-DEPLOY: NONE
-REAL PROVIDERS: NONE
-REMOTE DB/REDIS: NONE
+14-17: AUTHORIZED FOR EXECUTION / NOT STARTED
+14-18..14-21: NOT AUTHORIZED
+
+DEPLOY: NOT AUTHORIZED
+REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
+REMOTE DB / REDIS: NOT AUTHORIZED
+FRONTEND: BLOCKED
 ```
 
-AUTH-04 / AUTH-05 / AUTH-09 remain **not globally closed**. Later Phase 14 plans remain required.
+AUTH-04 / AUTH-05 / AUTH-09 are **not globally closed** by this plan. Later Phase 14 plans remain required.
 
-## Task commits
+## Accepted reset contracts
 
-1. **Task 14-16-01** — `5a742b3` — `feat(14-16): implement composed password reset recovery`
-2. **Task 14-16-02** — `6c6510f` — `feat(14-16): expose guarded reset request and confirm contracts`
-3. **Task 14-16-03** — `220b38d` — `docs(14-16): record execution evidence`
-
-Human-review remediation (local only, no push):
-
-4. **B14-16-HR-01** — `ff76cfc` — `fix(14-16): separate fresh and recovery password proof`
-5. **B14-16-HR-02** — `a4935ce` — `fix(14-16): make reset recovery lease exclusive`
-6. **B14-16-HR-03** — `9e3bb69` — `fix(14-16): make reset request timing exactly once`
-7. **docs** — this file — `docs(14-16): record human-review remediation`
-
-Local only. No push, PR, merge or deploy.
-
-## Files created/modified
-
-Created:
-
-- `apps/backend/src/modules/customer-auth/reset.ts` — request/confirm/retry domain, hash-only capability, composed complete
-- `apps/backend/src/jobs/auth-reset-reconcile.ts` — secretless lease/revoke/alert job
-- `apps/backend/src/modules/customer-auth/__tests__/reset.unit.spec.ts` — unit proofs
-- `apps/backend/integration-tests/modules/auth-reset.postgres.spec.ts` — disposable PostgreSQL proofs
-- `apps/backend/src/api/auth/customer/emailpass/reset-password/route.ts` — public reset request override
-- `apps/backend/src/api/auth/customer/emailpass/update/route.ts` — composed reset confirm override
-- `apps/backend/integration-tests/http/auth-reset.spec.ts` — HTTP, timing, BFF boundary proofs
-- `.planning/phases/14-customer-auth-verification/14-16-SUMMARY.md` — this evidence
-
-Modified:
-
-- `apps/backend/src/api/auth-surface/manifest.ts` — elevate the two custom reset locals to `PHASE14_ENABLED`
-- `apps/backend/src/modules/customer-auth/bff-service-auth.ts` — add only those two paths to the BFF exact-set
-- `apps/backend/src/modules/customer-auth/__tests__/bff-service-auth.unit.spec.ts` — exact-set proof
-- `apps/backend/integration-tests/http/auth-customer.spec.ts` — cumulative enabled-local exact-set
-- `apps/backend/integration-tests/http/auth-multiprocess.spec.ts` — cumulative enabled-local exact-set
-- `apps/backend/integration-tests/modules/auth-reset.postgres.spec.ts` — custom reset entries are `PHASE14_ENABLED` after elevation
-
-Not modified (existing contracts already sufficient):
-
-- `apps/backend/src/modules/customer-auth/access-guard.ts` — login/refresh/access already fail-closed unless `operation_status === "stable"`
-- `apps/backend/src/modules/customer-auth/security/timing.ts` — thresholds unchanged
-- `apps/backend/src/api/middlewares.ts` — BFF matchers still derived from the exact-set; reset paths get BFF-only (no customer access guard)
-
-## State machine
-
-Intent statuses: `pending` → `claimed` → `credential_updated` → `revocation_committed` → `completed`, with `superseded` / `expired` / `failed_reconcilable` exits.
-
-Credential operation fields stay on `AuthCredentialState` (no eighth table). After a composed complete, credential returns to `stable` with operation markers cleared so login/refresh/access can proceed; the intent remains `completed`.
-
-## Latest-wins
-
-- TTL 15 minutes; one active pending/claimed intent per identity.
-- A new eligible request supersedes a pending generation and creates N+1.
-- In-flight (`claimed|credential_updated|revocation_committed|failed_reconcilable`) blocks a new request while still returning the uniform public accept envelope.
-- Capability is hash-only. No password, password fingerprint or plaintext capability is persisted.
-
-## Provider proof
-
-After `updateProvider`, the same in-memory `newPassword` is verified read-only. Only that positive verification is `provider_password_proof`. Success is emitted only after:
-
-1. credential password proof
-2. `credential_version` increment (monotonic)
-3. revoke of **all** lineages
-4. token consumed
-5. intent `completed`
-
-## Ambiguous path
-
-Provider timeout/ambiguous does **not** set `credential_updated_at`. Identity stays fail-closed (`provider_outcome_ambiguous` / `failed_reconcilable`). HTTP maps that correlated same-key state to `503 AUTH_RECOVERY_PENDING` (no `Retry-After: 60`).
-
-`AUTH_RECOVERY_PENDING` is never used for Redis outage, invalid/unknown token, missing intent or malformed input.
-
-## Secretless reconciler limits
-
-MAY: claim/renew lease, complete non-secret DB transitions, repeat revoke if `credential_updated_at` is already set, emit a sanitized alert.
-
-MUST NOT: password verify/update, infer provider result, mark password persisted / `credential_updated` / `completed`, consume token.
-
-## Same-key retry
-
-Only the same `Idempotency-Key` plus re-presented `newPassword` may resume. Retry verifies first; a match is proof. A mismatch may perform one update for that retry, then must verify. Another timeout remains recovery pending. A different Idempotency-Key is `RESET_INVALID_OR_EXPIRED` and cannot assume the operation.
-
-## HTTP contracts
+### Reset request
 
 `POST /auth/customer/emailpass/reset-password`
 
-- Body `{email}`
-- Known / unknown / limited / Redis outage / provider-delivery failure → uniform `202 {code:"REQUEST_ACCEPTED"}` with no distinguishable `Retry-After`
-- Schema invalid → `400 INVALID_REQUEST`
-- Only an eligible identity creates intent/outbox
-- No session, no email verification, no account-existence leak
+- Body `{email}`.
+- Known, unknown, limited, Redis outage and provider-delivery failure preserve the uniform public `202 {code:"REQUEST_ACCEPTED"}` envelope without distinguishable `Retry-After`.
+- Invalid schema remains `400 INVALID_REQUEST`.
+- Only an eligible identity creates an intent/outbox.
+- Reset request never creates a session and never changes email-verification state.
+
+### Reset confirm
 
 `POST /auth/customer/emailpass/update`
 
-- Body `{token,newPassword}` + `Idempotency-Key`
-- Before any lookup/claim/token/provider/write: 14-08 `reset-confirm` pre buckets `30/IP/15m` + `10/(IP,presented token)/15m`
-- Legitimate intent → post `10/(IP,reset-intent)/15m`
-- Malformed/missing/unknown → dummy post derived from the pre-digest
-- Public matrix: `200 PASSWORD_RESET_COMPLETED` / `400 RESET_INVALID_OR_EXPIRED` / `429 RATE_LIMITED` / `503 AUTH_TEMPORARILY_UNAVAILABLE` + `Retry-After: 60` / `503 AUTH_RECOVERY_PENDING`
+- Body `{token,newPassword}` plus `Idempotency-Key`.
+- The approved 14-08 `reset-confirm` protocol runs before protected work: `30/IP/15m + 10/(IP,presented token)/15m`, then `10/(IP,reset-intent)/15m` only after a legitimate intent; invalid/missing/unknown capability uses the dummy post path.
+- Public matrix remains `200 PASSWORD_RESET_COMPLETED`, `400 RESET_INVALID_OR_EXPIRED`, `429 RATE_LIMITED`, `503 AUTH_TEMPORARILY_UNAVAILABLE` + `Retry-After: 60`, or correlated `503 AUTH_RECOVERY_PENDING`.
+- `AUTH_RECOVERY_PENDING` is reserved for the legitimate same-key ambiguous operation and is not used for malformed/unknown capability or Redis outage.
 
-## BFF exact-set
+## Accepted domain invariants
 
-Authorized 14-15 amendment applied only to add:
+- Reset intent is latest-wins with exact 15-minute TTL and hash-only capability persistence.
+- A new eligible request supersedes an unclaimed pending generation; an in-flight recovery blocks a replacement while public request response remains uniform.
+- `newPassword` remains request-memory only; no password fingerprint or plaintext capability is persisted.
+- PostgreSQL remains auth/recovery validity authority.
+- Unverified identities remain unverified after reset.
+- Reset never issues a replacement session/JWT/refresh credential.
+- Success requires provider proof, monotonic `credential_version` increment, global lineage/refresh revocation and consumed/completed reset intent before returning success.
+- Different `Idempotency-Key` cannot assume an in-flight operation.
 
-- `POST /auth/customer/emailpass/reset-password`
-- `POST /auth/customer/emailpass/update`
+## Provider-proof protocol
 
-Header `x-indicio-bff-auth` / env `CUSTOMER_AUTH_BFF_SERVICE_SECRET` unchanged. Missing/invalid credential → generic `404` before limiter, lookup, claim, provider or mutation. Correct secret starts the reset protocol.
-
-Preserved enabled locals: register, login, refresh, revoke, plus Store verification/me. Native reset/update/session/callback/MFA remain `DENY`. No 14-17 password-change path was opened.
-
-## Limiter / timing matrix
-
-Unchanged `timing.ts`: floor 350 ms + CSPRNG jitter 0..50 ms. HTTP 40-sample public matrix: median delta ≤ 50 ms, p95 delta ≤ 75 ms. Equivalent classes share Redis increment count (pre 2 buckets + post 1), one dummy HMAC, one timing envelope and one HTTP response.
-
-## Password sink-negative
-
-`newPassword` is request-memory only. Proofs cover DB rows, logs, Redis keys/digests, errors, HTTP bodies and fixtures. No password fingerprint is stored.
-
-## Invariants preserved
-
-- Reset unverified stays unverified (`email_verified_at` untouched)
-- Reset never creates a session / JWT / refresh
-- Reset never verifies email
-- Old lineages are revoked before completed success
-- PostgreSQL remains validity authority
-- Zero Order / Payment / Stripe / Gelato / cart / checkout / fulfillment side effects
-- Zero real Resend / real emailpass mutation in this execution (HTTP provider is injected; PG tests use a recording provider)
-
-## Validation
+Human review closed `B14-16-HR-01` by separating fresh execution from ambiguous recovery:
 
 ```text
-reset.unit.spec.ts:                              PASS — 11/11
-auth-reset.postgres.spec.ts (disposable PG):     PASS — 5/5 + container cleanup
-auth-reset.spec.ts:                              PASS — 18/18
-auth-customer.spec.ts:                           PASS — 36/36
-auth-verification.spec.ts:                       PASS — 15/15
-auth-multiprocess.spec.ts (disposable PG):       PASS — 10/10
-BFF service auth unit:                           PASS — 10/10
-Backend build:                                   PASS
-Direct ESLint on touched source:                 PASS — 0 errors
-git diff --check:                                PASS
-Docker disposable PostgreSQL:                    CLEAN
-Remote infrastructure:                           NONE
+fresh claim:
+updatePassword(newPassword)
+→ verifyPassword(the same in-memory newPassword)
+→ provider proof
+
+same-key recovery:
+verifyPassword(re-presented newPassword)
+→ if match: provider proof without repeating update
+→ if mismatch: exactly one updatePassword
+→ mandatory verifyPassword
+→ provider proof only on match
 ```
 
-Known Medusa ESLint warnings on the new routes (generic `Error` instead of `MedusaError`; Zod import source on confirm) match the existing login/register/verify handlers. They were not treated as errors.
+The fresh path still performs an update even if the provider already accepts `newPassword`. A timeout/ambiguous provider result records no `credential_updated_at` proof and remains fail-closed/reconcilable.
 
-Repository lint wrapper:
+## Exclusive recovery lease
 
-```text
-KNOWN TOOLING FAILURE — empty ESLint JSON / EOF while parsing
-```
+Human review closed `B14-16-HR-02` by making reconciler ownership exclusive in PostgreSQL.
 
-No package/tooling change was made to mask it.
-
-Local `ecommerce-redis` was already running and was left healthy. Disposable `p12-pg-*` containers from this plan were removed after each run.
-
-## Deviations from plan
-
-1. **BFF exact-set files** — PLAN 14-16 was written before 14-15 remediation. Execution used the user-authorized amendment to add only the two 14-16 paths to `bff-service-auth.ts` plus predecessor exact-set tests. Algorithm/header/secret/policy were not changed. No 14-17 route was added.
-2. **`access-guard.ts` not edited** — existing `operation_status === "stable"` fail-closed already covers login/refresh/authenticated access during non-stable credential recovery.
-3. **Credential returns to `stable` after composed complete** — required by the already-approved access/login/refresh predicate; intent stays `completed`.
-4. **Missing `AuthResetDatabase` type import in the unit spec** — build-only TypeScript hole; added so `medusa build` compiles the spec that lives under `src/`.
-
-No extra migration, schema, dependency, remote provider or 14-17 password-change work.
-
-## Human verify (14-16-03)
-
-Present for review:
-
-- 14-08 pre/post/dummy protocol on confirm
-- Public matrix 200 / 400 / 429 / two distinct 503s
-- Pre/post-call states, every timeout fail-closed
-- Secretless reconciler limits
-- Same-key re-presented password proof
-- Composed completed predicate (proof + consume + global revoke)
-- No-session and unverified-stays-unverified
-- BFF deny-before-handler on the two new paths
-
-Do **not** start 14-17 until this plan is human-approved.
-
-## Next
-
-Blocked on human review of 14-16. `STATE.md` and `ROADMAP.md` were not updated.
-
-## Human-review remediation
-
-Human review of the first 14-16 execution opened three blockers. This slice remediates only those blockers. It does not redesign reset, change public HTTP contracts, change the BFF boundary, change manifests, or add migration/schema/dependency.
-
-```text
-B14-16-HR-01: REMEDIATED — AWAITING HUMAN RE-REVIEW
-B14-16-HR-02: REMEDIATED — AWAITING HUMAN RE-REVIEW
-B14-16-HR-03: REMEDIATED — AWAITING HUMAN RE-REVIEW
-```
-
-### B14-16-HR-01 — fresh update→verify vs recovery verify→update→verify
-
-**Cause:** `provePresentedPassword` used one helper for both fresh claim and same-key resume. Fresh reset could `verifyPassword(newPassword)` first and, if the provider already accepted that value, skip `updatePassword` entirely. That skip is allowed only on an ambiguous recovery retry.
-
-**Fresh claim protocol now:** `proveFreshPassword` always `updatePassword(newPassword)` first. Timeout/ambiguous returns `recovery_pending` without recording provider proof. A definitive update is followed by `verifyPassword` of the same in-memory `newPassword`. Only a positive verify becomes `provider_password_proof`, then bump/revoke/consume/completion.
-
-**Recovery / same-key retry protocol now:** `proveRecoveryPassword` always `verifyPassword` first. A match supplies the missing proof and does not repeat update. A mismatch permits exactly one `updatePassword` on that retry, then a mandatory verify. Timeout/ambiguous stays `recovery_pending`.
-
-The two helpers are named and called by `phase === "fresh_claim"` vs resume. No opaque boolean remains on the proof order.
-
-**Test:** unit case where the provider already accepts `NEW_PASSWORD` before fresh reset. Proof:
-
-- `updateCalls === 1`
-- `verifyCalls >= 1`
-- call order `update → verify` before `provider_proved_at`, `credential_version` increment, lineage revoke, or `completed`
-
-Preserved: recovery same-key with password already applied → `verify` match, `updateCalls === 0` on that retry, completion allowed. Fresh path cannot complete with `updateCalls === 0`.
-
-### B14-16-HR-02 — exclusive reconciler lease / one winner
-
-**Cause:** eligibility used an OR across lease and retry groups, so `next_retry_at IS NULL` (or due) could select a row that still had a future `lease_until`. Acquisition then updated by id/`completed_at` only. After `FOR UPDATE` serialization, the second worker could still overwrite a lease just acquired.
-
-**Eligibility now requires independently:**
+Candidate eligibility requires both:
 
 ```text
 (lease_until IS NULL OR lease_until <= now)
@@ -271,40 +114,66 @@ AND
 (next_retry_at IS NULL OR next_retry_at <= now)
 ```
 
-**Acquisition is CAS/predicada** on existing columns (no schema change): expected `id`, `version`, `status` / `operation_status`, `completed_at IS NULL`, and lease still claimable at UPDATE time. The UPDATE increments `version`, sets `lease_owner` / `lease_until`, and `RETURNING` the row. Zero rows = LOST; the second worker does not overwrite. Credential uses the same claimable-lease predicate so a fresh credential lease cannot be taken over. If intent CAS wins and credential CAS loses, the transaction rolls back via `AuthResetLeaseLostError`. PostgreSQL remains the authority; no Redis lock.
+Lease acquisition uses existing-row CAS predicates on `id`, `version`, expected status/operation status, `completed_at IS NULL` and a still-claimable lease. Intent and credential leases must both succeed in one transaction; loss of the second acquisition rolls back the first.
 
-**PostgreSQL two-worker proof** in `auth-reset.postgres.spec.ts` (disposable real PostgreSQL, not the in-memory harness):
+Accepted disposable-PostgreSQL concurrency proof demonstrates:
 
-- exactly one winner / lease acquisition
-- second worker does not overwrite `lease_owner` or renew `lease_until`
-- second execution does not increment ownership/attempt
-- fresh lease is not reclaimable; immediately before 2 minutes still blocked
-- at `lease_until` boundary (`<= now`) a new worker may reclaim
-- neither worker verifies password, updates provider, completes without proof, or consumes capability
+- exactly one winner when two reconcilers race for the same recovery;
+- the loser cannot overwrite `lease_owner`, extend the winner's lease or increment ownership/attempt counters;
+- a fresh lease remains blocked through `lease_until - 1 ms`;
+- reclaim is allowed at the contract boundary `lease_until <= now`;
+- no secretless reconciler verifies/updates a password or completes a recovery without provider proof.
 
-The unit harness predicates/CAS were updated to match. No migration/schema was required.
+No Redis distributed lock, migration or schema change was introduced.
 
-### B14-16-HR-03 — reset request timing exactly-once
+## Secretless reconciler limits
 
-**Cause:** `handleCustomerAuthResetRequest` called `finishTiming()` in the `try` and again in the `catch`. If the first timing Promise rejected, catch invoked timing a second time.
+The reconciler MAY claim/renew an eligible lease, complete non-secret DB transitions, repeat global revoke once `credential_updated_at` is already authoritative, and emit a sanitized operational warning.
 
-**Fix:** memoize the Promise per request (`finishPromise ??= timing(startedAtMs)` / `finishOnce()`), matching the 14-15 login property. First call executes timing; later calls reuse the same Promise. Resolve or reject still counts as one execution. Catch does not start a new timing. `timing.ts`, floor 350 ms, and CSPRNG were not changed.
+It MUST NOT verify/update passwords, infer a provider result, manufacture provider proof, mark an unproved password update completed, consume the reset operation as completed, or restore ordinary access without the approved proof path.
 
-**Test:** `timing = jest.fn().mockRejectedValue(new Error("synthetic timing failure"))` on known/accepted and provider-failure catch paths. After error handling, `expect(timing).toHaveBeenCalledTimes(1)`. Uniform 202 proofs remain. Synthetic timing rejection cannot produce a second call.
+## Exactly-once reset-request timing
 
-### Remediation validation
+Human review closed `B14-16-HR-03` by memoizing the timing Promise per request. A resolved or rejected timing primitive is invoked once; catch handling reuses the same Promise instead of starting a second timing envelope.
+
+The approved floor/jitter implementation in `timing.ts` was not changed: 350 ms floor with CSPRNG jitter 0..50 ms.
+
+## BFF service boundary
+
+The 14-15 architecture carry-forward remains binding. Both newly enabled reset contracts are protected by the exact BFF service operation set:
+
+- `POST /auth/customer/emailpass/reset-password`
+- `POST /auth/customer/emailpass/update`
+
+Missing/invalid `x-indicio-bff-auth` is denied generically before limiter, lookup, claim, provider or mutation. Native reset/update remain DENY; no password-change route from 14-17 was published by this plan.
+
+CORS/publishable remain defense-in-depth only and are not caller authorization.
+
+## Human-review blockers closed
+
+```text
+B14-16-HR-01: CLOSED — PASS
+  fresh update→verify is distinct from recovery verify→update→verify
+
+B14-16-HR-02: CLOSED — PASS
+  recovery lease is exclusive with AND eligibility + PostgreSQL CAS
+
+B14-16-HR-03: CLOSED — PASS
+  reset-request timing primitive is structurally invoked exactly once
+```
+
+## Final accepted evidence
 
 ```text
 reset.unit.spec.ts:                              PASS — 13/13
-auth-reset.postgres.spec.ts (disposable PG):     PASS — 6/6 + container cleanup
+auth-reset.postgres.spec.ts (disposable PG):     PASS — 6/6 + cleanup
   including concurrent exclusive-lease proof
 auth-reset.spec.ts:                              PASS — 19/19
 auth-customer.spec.ts:                           PASS — 36/36
 auth-verification.spec.ts:                       PASS — 15/15
 auth-multiprocess.spec.ts (disposable PG):       PASS — 10/10
 BFF service auth unit:                           PASS — 10/10
-combined focused Phase 14 HTTP
-  (customer + verification + reset):             PASS — 70/70
+combined focused Phase 14 HTTP:                  PASS — 70/70
 Backend build:                                   PASS
 Direct ESLint on touched source:                 PASS — 0 errors
 git diff --check:                                PASS
@@ -313,20 +182,63 @@ Local ecommerce-redis:                           HEALTHY
 Remote infrastructure:                           NONE
 ```
 
-Known Medusa ESLint warnings on `reset-password/route.ts` (generic `Error` instead of `MedusaError`) match the existing login/register/verify handlers. They were not treated as errors. `reset.ts` introduced no new generic-`Error` warning.
-
-Repository lint wrapper:
+Repository lint wrapper remains the previously classified tooling issue:
 
 ```text
 KNOWN TOOLING FAILURE — empty ESLint JSON / EOF while parsing
 ```
 
-No package/tooling change was made to mask it.
+No package/tooling modification was made to mask it.
 
-Production files touched in this remediation: `reset.ts`, `reset-password/route.ts`. `auth-reset-reconcile.ts` was not modified; exclusive lease lives in the domain CAS. Tests: `reset.unit.spec.ts`, `auth-reset.postgres.spec.ts`, `auth-reset.spec.ts`.
+## Scope / deviations accepted
 
-No public HTTP matrix, BFF contract, manifest, access-guard, `timing.ts`, schema, migration, or 14-17 work.
+1. The original 14-16 plan predated the BFF service-boundary remediation in 14-15. The explicitly authorized scope amendment added only the two reset contracts to the BFF protected exact-set and predecessor exact-set tests; the BFF algorithm/header/secret policy was not redesigned.
+2. `access-guard.ts` did not require an edit because the existing `operation_status === "stable"` rule already fails login/refresh/authenticated access closed during non-stable recovery.
+3. After composed completion the credential returns to `stable` with operation markers cleared; the reset intent remains `completed` and old lineages are revoked.
+4. Human-review lease remediation stayed inside existing reset-domain persistence fields; no migration/schema/dependency was needed.
+5. No real provider, remote persistence, deploy, frontend or 14-17 password-change implementation occurred in 14-16.
 
-`STATE.md` and `ROADMAP.md` were not updated. This plan is **not** declared HUMAN APPROVED.
+## Commits before documentary closure
 
-Do **not** start 14-17 until this remediation is human-approved.
+Initial execution:
+
+1. `5a742b3` — `feat(14-16): implement composed password reset recovery`
+2. `6c6510f` — `feat(14-16): expose guarded reset request and confirm contracts`
+3. `220b38d` — `docs(14-16): record execution evidence`
+
+Human-review remediation:
+
+4. `ff76cfc` — `fix(14-16): separate fresh and recovery password proof`
+5. `a4935ce` — `fix(14-16): make reset recovery lease exclusive`
+6. `9e3bb69` — `fix(14-16): make reset request timing exactly once`
+7. `c2c0ef4` — `docs(14-16): record human-review remediation`
+
+Human-pushed execution/remediation head before this documentary closure:
+
+`c2c0ef43121d5f2d884951dffd5257e6aebf6ec5`
+
+## 14-17 authorization
+
+By explicit human authorization, `14-17-PLAN.md` is **AUTHORIZED FOR EXECUTION / NOT STARTED**.
+
+The authorization is limited to the approved plan:
+
+- `14-17-01`: implement password-change domain with stable access + current-password proof before claim, same-key ambiguous resume and global lineage revoke;
+- `14-17-02`: implement/prove the strict Store handler while the external password path remains DENY;
+- `14-17-03`: **BLOCKING HUMAN VERIFY**; execution must stop there.
+
+Binding restrictions:
+
+- password change remains unpublished in the external Store manifest during 14-17;
+- wrong current password is zero-write;
+- ordinary access remains fail-closed after operation claim;
+- ambiguous recovery can resume only through the same operation/key with `newPassword` re-presented;
+- 204 cannot precede provider proof + credential-version bump + global lineage revoke;
+- no substitute session may be minted;
+- secretless code cannot complete password change;
+- 14-18 and later are not authorized;
+- deploy, real providers, remote infrastructure and frontend remain unauthorized.
+
+## Next
+
+`14-16` is documentally closed. The next permitted step is execution of `14-17-01` according to `14-17-PLAN.md`, proceeding serially through `14-17-02` only after prerequisite evidence and then stopping at `14-17-03` for blocking human review.
