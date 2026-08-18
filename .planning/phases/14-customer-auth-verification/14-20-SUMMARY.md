@@ -21,6 +21,7 @@ key-files:
     - .planning/phases/14-customer-auth-verification/14-20-SUMMARY.md
   modified:
     - apps/backend/src/api-docs/generated/store.openapi.json
+    - apps/backend/src/api-docs/__tests__/generation.unit.spec.ts
 ---
 
 # Phase 14: Customer Auth Verification — Plan 20 Summary
@@ -31,10 +32,11 @@ key-files:
 
 ```text
 14-19: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
-14-20: EXECUTED — AWAITING HUMAN REVIEW / NOT YET HUMAN APPROVED
-14-20-01: EXECUTED — AWAITING HUMAN REVIEW
-14-20-02: EXECUTED — AWAITING HUMAN REVIEW
-14-20-03: BLOCKING HUMAN VERIFY — AWAITING HUMAN REVIEW
+14-20-01: EXECUTED — PASS
+14-20-02: EXECUTED — PASS
+B14-20-HR-01: REMEDIATED — AWAITING HUMAN RE-REVIEW
+14-20-03: BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
+14-20: NOT YET HUMAN APPROVED
 14-21: NOT AUTHORIZED / NOT STARTED
 DEPLOY / PR / MERGE / PUSH: NOT AUTHORIZED
 REAL PROVIDERS / REMOTE DB / REDIS: NOT AUTHORIZED
@@ -58,6 +60,10 @@ Mandatory sequential subagents (`parallelization=false`). Orchestrator: Grok 4.6
 | 3 | [B — Artifact / determinism review](96c1ac6b-5106-4678-9f87-953462902420) | Review Store diff, 12/12 operations, BFF AND, examples, Admin/Webhooks | Composer 2.5 | READ-ONLY after writer | PASS |
 | 4 | Orchestrator | Repeat writer + auth-contract / walker / Swagger / lint (`14-20-02`) | — | no runtime edits | PASS |
 | 5 | [C — Adversarial final review](dc5aa35d-1805-447f-8ac8-a94723024ab6) | Hunt extra files, nondeterminism, sensitive examples, security/Swagger/14-21 drift | Grok 4.6 | READ-ONLY | **14-20 ARTIFACT REVIEW — PASS** |
+| 6 | [A — Contract / test intent review](efbdfd33-9859-4d29-b0db-844c47d99ab2) | Confirm Store SHA, 14 paths, `buildContracts()` byte-equal, stale 2-path assertion is the only divergence | Grok 4.6 | READ-ONLY before B14-20-HR-01 edit | PASS |
+| 7 | Orchestrator | Replace stale committed-path snapshot with `builtStore.bytes === committedStore` | — | `generation.unit.spec.ts` only | PASS |
+| 8 | [B — Remediation review](a856b5ea-8af1-4f64-86aa-d42b1a692bb8) | Confirm no leftover 2-path snapshot, no new 14-path freeze, byte equality, `/auth/session` deny | Composer 2.5 | READ-ONLY after implementation | **B14-20-HR-01 REMEDIATION REVIEW — PASS** |
+| 9 | [C — Adversarial final review](89e2839d-6589-472d-aa92-6a6b9cd88208) | Hunt leftover 2-path freeze, new 14-path freeze, hash drift, registry/runtime, 14-21, `openapi:check` | Grok 4.6 | READ-ONLY | **B14-20-HR-01: REMEDIATION REVIEW — PASS** |
 
 No parallel subagent dispatch.
 
@@ -168,20 +174,61 @@ Unchanged: registry TypeScript, `auth.ts`, schemas, security-schemes, coverage, 
 
 ## Human-gate disclosure — leftover generation snapshot
 
-`generation.unit.spec.ts` (`keeps Store correlation semantics isolated from stable Admin and generated artifacts`) still asserts committed Store `paths` equal `["/health/live","/health/ready"]`. That freeze was added in 14-19 while the writer had not run.
+`generation.unit.spec.ts` (`keeps Store correlation semantics isolated from stable Admin and generated artifacts`) still asserted committed Store `paths` equal `["/health/live","/health/ready"]` after the 14-20 writer. That freeze was added in 14-19 while the writer had not run.
 
-After this writer the committed artifact correctly contains the 12 Phase 14 paths. Subagent C classified this as **(a)** leftover 14-19 assertion, **not** 14-20 CONTRACT DRIFT. The writer did not require a registry/runtime change; in-memory `buildContracts()` already expected the 14 paths.
+Human review opened **B14-20-HR-01**. The leftover snapshot was remediated in this same plan (see below). 14-20 originally did **not** edit `generation.unit.spec.ts`; the authorized amendment later allowed that test file plus this SUMMARY.
 
-CI implication (disclose, do not auto-fix in 14-20): `.github/workflows/api-docs.yml` runs the full `generation.unit.spec.ts`. A later push of this artifact will fail that job until lines 245–248 are updated. `14-21-PLAN.md` `files_modified` does not currently list that spec. Ownership of the snapshot update is a human-gate item.
+## Human-review remediation — B14-20-HR-01
 
-14-20 did **not** edit `generation.unit.spec.ts`.
+Root cause:
+`generation.unit.spec.ts` still froze the pre-writer committed Store paths to
+health-only, while the approved writer artifact now contains the 12 Phase 14
+operations plus health.
+
+Correction:
+- removed stale health-only snapshot;
+- did NOT replace it with a hardcoded 14-path snapshot;
+- committed Store bytes are now proven exactly equal to buildContracts() Store
+  bytes;
+- `/auth/session` deny proof preserved;
+- Admin/Webhooks equality preserved;
+- registry/runtime unchanged;
+- Store artifact unchanged.
+
+Results:
+
+```text
+generation.unit.spec.ts full PASS — 163/163
+auth-contract.unit.spec.ts PASS — 24/24
+openapi:lint PASS
+writer repeat byte-equal
+Store SHA unchanged: 4e1693221a8b7ffe2f601b4e694cf1f15f42cec1d473b831a07a91894ad81dc7 (82624 bytes)
+Admin SHA unchanged: 6ea59bf72f62eff5cea87fdccabe44042fb41cdc25e7a6291448ae7844df6b0a (98767 bytes)
+Webhooks SHA unchanged: 47e923846ac650b31e78851ed5134297c7c7b653e828803a5fa10f5dadd01be4 (21736 bytes)
+openapi:check NOT EXECUTED
+14-21 NOT STARTED
+STATE.md / ROADMAP.md UNCHANGED
+```
+
+Status:
+
+```text
+B14-20-HR-01: REMEDIATED — AWAITING HUMAN RE-REVIEW
+14-20-01: EXECUTED — PASS
+14-20-02: EXECUTED — PASS
+14-20-03: BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
+14-20: NOT YET HUMAN APPROVED
+14-21: NOT AUTHORIZED
+```
 
 ## Local commits
 
 1. `3c87f8924642e7cb70e13109d890ec5fd00c33bd` — `docs(api-docs): generate Phase 14 Store OpenAPI artifact`
-2. `docs(14-20): record Store artifact evidence` — this SUMMARY file
+2. `7177415` — `docs(14-20): record Store artifact evidence` — original SUMMARY
+3. `3606179f0c34f7923fa3d81ffd63c1dbca7bfc00` — `test(14-20): align generation snapshot with writer artifact`
+4. `docs(14-20): record generation snapshot remediation` — this SUMMARY update
 
-No push. Branch is ahead of origin locally after these commits.
+No push of this remediation. Branch is ahead of origin locally after these commits.
 
 ## Validation checklist (pre-human-gate)
 
@@ -203,21 +250,25 @@ No push. Branch is ahead of origin locally after these commits.
 | 14 | no runtime/dependency/env changes | PASS |
 | 15 | `openapi:check` | NOT EXECUTED |
 | 16 | 14-21 | NOT STARTED |
+| 17 | B14-20-HR-01 generation snapshot | REMEDIATED — AWAITING HUMAN RE-REVIEW |
 
 ## Final status
 
 ```text
-14-20-01: EXECUTED — AWAITING HUMAN REVIEW
-14-20-02: EXECUTED — AWAITING HUMAN REVIEW
-14-20-03: BLOCKING HUMAN VERIFY — AWAITING HUMAN REVIEW
+B14-20-HR-01: REMEDIATED — AWAITING HUMAN RE-REVIEW
+14-20-01: EXECUTED — PASS
+14-20-02: EXECUTED — PASS
+14-20-03: BLOCKING HUMAN VERIFY — AWAITING HUMAN RE-REVIEW
 14-20: NOT YET HUMAN APPROVED
 14-21: NOT AUTHORIZED
 STORE OPENAPI: GENERATED BY WRITER
-STORE ARTIFACT: DETERMINISTIC
+STORE ARTIFACT: DETERMINISTIC / UNCHANGED BY REMEDIATION
 ADMIN OPENAPI: BYTE UNCHANGED
 WEBHOOKS OPENAPI: BYTE UNCHANGED
+BUILT STORE == COMMITTED STORE: PASS
 OPENAPI:CHECK: NOT EXECUTED
 RUNTIME: UNCHANGED
+STATE / ROADMAP: UNCHANGED
 PUSH: NONE
 DEPLOY: NONE
 REAL PROVIDERS: NONE
