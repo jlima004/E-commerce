@@ -21,6 +21,11 @@ import {
 } from "../../src/modules/customer-auth/security/capabilities"
 import { runAuthResetReconcile } from "../../src/jobs/auth-reset-reconcile"
 import {
+  AUTH_PASSWORD_CHANGE_LEASE_MS,
+  changePassword,
+  createPostgresPasswordChangeDatabase,
+} from "../../src/modules/customer-auth/password-change"
+import {
   AUTH_CREDENTIAL_OPERATION_ALERT_REASON_CODES,
   AUTH_CREDENTIAL_OPERATION_BACKOFF_SCHEDULE_MS,
   AUTH_CREDENTIAL_OPERATION_DUE_STATUSES,
@@ -76,6 +81,8 @@ const MEDUSA_CONFIG_SOURCE = fs.readFileSync(
   "utf8"
 )
 const BFF_SERVICE_SECRET = "indicio-bff-service-secret-synthetic-32b"
+const CURRENT_PASSWORD = "current-password-12"
+const NEW_PASSWORD = AUTH_CANARIES.password
 
 const KEYRING: CapabilityKeyring = {
   active: { version: 1, secret: "k".repeat(64) },
@@ -315,6 +322,60 @@ async function seedLineages(
       `${prefix}_lineage_b`,
     ]
   )
+}
+
+async function seedStablePasswordChange(
+  pool: Pool,
+  input: {
+    id: string
+    authIdentityId: string
+    customerId: string
+    prefix: string
+  }
+): Promise<void> {
+  await pool.query(
+    `insert into auth_credential_state (
+        id, auth_identity_id, customer_id, credential_version,
+        operation_status, version, created_at, updated_at
+      ) values ($1, $2, $3, 1, 'stable', 1, $4, $4)`,
+    [input.id, input.authIdentityId, input.customerId, BASE]
+  )
+  await seedLineages(pool, input.authIdentityId, input.customerId, input.prefix)
+}
+
+async function crashPasswordChangeAfterVersionBump(
+  pool: Pool,
+  input: {
+    authIdentityId: string
+    customerId: string
+    originatingLineageId: string
+    originatingSid: string
+    idempotencyKey: string
+    provider: RecordingProvider
+  }
+) {
+  const database = createPostgresPasswordChangeDatabase(pool)
+  input.provider.passwordByIdentity.set(input.authIdentityId, CURRENT_PASSWORD)
+  return changePassword(database, {
+    authIdentityId: input.authIdentityId,
+    customerId: input.customerId,
+    currentPassword: CURRENT_PASSWORD,
+    newPassword: NEW_PASSWORD,
+    idempotencyKey: input.idempotencyKey,
+    originatingLineageId: input.originatingLineageId,
+    originatingSid: input.originatingSid,
+    keyring: KEYRING,
+    provider: input.provider,
+    mode: "fresh",
+    now: BASE,
+    hooks: {
+      async onStep(step) {
+        if (step === "before_global_revoke") {
+          throw new Error("process crash after version bump")
+        }
+      },
+    },
+  })
 }
 
 async function readCredential(pool: Pool, id: string) {
@@ -599,6 +660,220 @@ if (!databaseUrl || !databaseName) {
       expect(row.revocation_committed_at).toBeNull()
       expect(row.completed_at).toBeNull()
       expect(row.operation_status).toBe("credential_proved")
+    })
+
+    it("recovers a real post-bump revocation_pending crash after process restart without provider or completion", async () => {
+      const authIdentityId = "identity_post_bump_crash"
+      const customerId = "customer_post_bump_crash"
+      await seedStablePasswordChange(pool, {
+        id: "cred_post_bump_crash",
+        authIdentityId,
+        customerId,
+        prefix: "post_bump_crash",
+      })
+      const provider = new RecordingProvider()
+      const crashed = await crashPasswordChangeAfterVersionBump(pool, {
+        authIdentityId,
+        customerId,
+        originatingLineageId: "post_bump_crash_lineage_a",
+        originatingSid: "sid_post_bump_crash",
+        idempotencyKey: "password-change-post-bump-crash",
+        provider,
+      })
+      const afterCrash = await readCredential(pool, "cred_post_bump_crash")
+      const lineagesAfterCrash = await pool.query(
+        `select status from auth_session_lineage where auth_identity_id = $1`,
+        [authIdentityId]
+      )
+      const refreshAfterCrash = await pool.query(
+        `select status from auth_refresh_credential
+          where lineage_id in (
+            select id from auth_session_lineage where auth_identity_id = $1
+          )`,
+        [authIdentityId]
+      )
+      expect(crashed).toEqual({ outcome: "recovery_pending" })
+      expect(afterCrash.operation_type).toBe("password_change")
+      expect(afterCrash.operation_status).toBe("revocation_pending")
+      expect(afterCrash.provider_proved_at).not.toBeNull()
+      expect(afterCrash.credential_updated_at).not.toBeNull()
+      expect(Number(afterCrash.credential_version)).toBe(2)
+      expect(afterCrash.revocation_committed_at).toBeNull()
+      expect(afterCrash.completed_at).toBeNull()
+      expect(
+        lineagesAfterCrash.rows.every((row) => row.status === "active")
+      ).toBe(true)
+      expect(
+        refreshAfterCrash.rows.every((row) => row.status === "active")
+      ).toBe(true)
+      expect(AUTH_CREDENTIAL_OPERATION_DUE_STATUSES).toContain(
+        "revocation_pending"
+      )
+      expect(AUTH_CREDENTIAL_OPERATION_DUE_STATUSES).not.toContain(
+        "credential_updated"
+      )
+      expect([...AUTH_CREDENTIAL_OPERATION_DUE_STATUSES]).toEqual([
+        "claimed",
+        "provider_outcome_ambiguous",
+        "credential_proved",
+        "revocation_pending",
+      ])
+
+      const providerUpdateCalls = provider.updateCalls
+      const providerVerifyCalls = provider.verifyCalls
+      const lineageCount = lineagesAfterCrash.rows.length
+      const refreshCount = refreshAfterCrash.rows.length
+      const restartNow = new Date(afterCrash.lease_until)
+      expect(restartNow.getTime()).toBe(
+        BASE.getTime() + AUTH_PASSWORD_CHANGE_LEASE_MS
+      )
+
+      const restartedWorker = createPostgresCredentialOperationDatabase(pool)
+      const result = await runAuthCredentialOperationReconcile({
+        database: restartedWorker,
+        isWorker: () => true,
+        now: () => restartNow,
+        leaseOwner: "authlease_post_bump_restart",
+        operationTypes: ["password_change"],
+      })
+      const afterRestart = await readCredential(pool, "cred_post_bump_crash")
+      const lineagesAfterRestart = await pool.query(
+        `select status, revocation_reason from auth_session_lineage where auth_identity_id = $1`,
+        [authIdentityId]
+      )
+      const refreshAfterRestart = await pool.query(
+        `select status from auth_refresh_credential
+          where lineage_id in (
+            select id from auth_session_lineage where auth_identity_id = $1
+          )`,
+        [authIdentityId]
+      )
+      const jwtLike = await pool.query(
+        `select count(*)::int as count from auth_refresh_credential
+          where lineage_id in (
+            select id from auth_session_lineage where auth_identity_id = $1
+          )
+            and status = 'active'`,
+        [authIdentityId]
+      )
+
+      expect(result.leased).toBe(1)
+      expect(result.revoked).toBe(1)
+      expect(afterRestart.lease_owner).toBe("authlease_post_bump_restart")
+      expect(provider.updateCalls).toBe(providerUpdateCalls)
+      expect(provider.verifyCalls).toBe(providerVerifyCalls)
+      expect(Number(afterRestart.credential_version)).toBe(2)
+      expect(
+        lineagesAfterRestart.rows.every((row) => row.status === "revoked")
+      ).toBe(true)
+      expect(
+        lineagesAfterRestart.rows.every(
+          (row) => row.revocation_reason === "password_change"
+        )
+      ).toBe(true)
+      expect(
+        refreshAfterRestart.rows.every((row) => row.status === "revoked")
+      ).toBe(true)
+      expect(lineagesAfterRestart.rows).toHaveLength(lineageCount)
+      expect(refreshAfterRestart.rows).toHaveLength(refreshCount)
+      expect(afterRestart.operation_status).toBe("revocation_committed")
+      expect(afterRestart.revocation_committed_at).not.toBeNull()
+      expect(afterRestart.completed_at).toBeNull()
+      expect(afterRestart.operation_status).not.toBe("stable")
+      expect(afterRestart.operation_status).not.toBe("completed")
+      expect(jwtLike.rows[0].count).toBe(0)
+    })
+
+    it("converges request revocation_pending with worker revocation_committed then same-key request completion", async () => {
+      const authIdentityId = "identity_post_bump_converge"
+      const customerId = "customer_post_bump_converge"
+      const originatingLineageId = "post_bump_converge_lineage_a"
+      const originatingSid = "sid_post_bump_converge"
+      const idempotencyKey = "password-change-post-bump-converge"
+      await seedStablePasswordChange(pool, {
+        id: "cred_post_bump_converge",
+        authIdentityId,
+        customerId,
+        prefix: "post_bump_converge",
+      })
+      const provider = new RecordingProvider()
+      const crashed = await crashPasswordChangeAfterVersionBump(pool, {
+        authIdentityId,
+        customerId,
+        originatingLineageId,
+        originatingSid,
+        idempotencyKey,
+        provider,
+      })
+      const afterCrash = await readCredential(pool, "cred_post_bump_converge")
+      expect(crashed).toEqual({ outcome: "recovery_pending" })
+      expect(afterCrash.operation_status).toBe("revocation_pending")
+      expect(Number(afterCrash.credential_version)).toBe(2)
+
+      const providerUpdateCalls = provider.updateCalls
+      const providerVerifyCalls = provider.verifyCalls
+      const restartNow = new Date(afterCrash.lease_until)
+      const worker = createPostgresCredentialOperationDatabase(pool)
+      const workerResult = await runAuthCredentialOperationReconcile({
+        database: worker,
+        isWorker: () => true,
+        now: () => restartNow,
+        leaseOwner: "authlease_post_bump_converge",
+        operationTypes: ["password_change"],
+      })
+      const afterWorker = await readCredential(pool, "cred_post_bump_converge")
+      expect(workerResult.leased).toBe(1)
+      expect(afterWorker.operation_status).toBe("revocation_committed")
+      expect(afterWorker.revocation_committed_at).not.toBeNull()
+      expect(afterWorker.completed_at).toBeNull()
+      expect(Number(afterWorker.credential_version)).toBe(2)
+      expect(provider.updateCalls).toBe(providerUpdateCalls)
+      expect(provider.verifyCalls).toBe(providerVerifyCalls)
+
+      const requestDatabase = createPostgresPasswordChangeDatabase(pool)
+      const completed = await changePassword(requestDatabase, {
+        authIdentityId,
+        customerId,
+        currentPassword: CURRENT_PASSWORD,
+        newPassword: NEW_PASSWORD,
+        idempotencyKey,
+        originatingLineageId,
+        originatingSid,
+        keyring: KEYRING,
+        provider,
+        mode: "resume",
+        now: restartNow,
+      })
+      const afterRequest = await readCredential(pool, "cred_post_bump_converge")
+      const lineages = await pool.query(
+        `select status from auth_session_lineage where auth_identity_id = $1`,
+        [authIdentityId]
+      )
+      const refresh = await pool.query(
+        `select status from auth_refresh_credential
+          where lineage_id in (
+            select id from auth_session_lineage where auth_identity_id = $1
+          )`,
+        [authIdentityId]
+      )
+
+      expect(completed).toEqual({
+        outcome: "completed",
+        credentialVersion: 2,
+      })
+      expect(provider.updateCalls).toBe(providerUpdateCalls)
+      expect(provider.verifyCalls).toBe(providerVerifyCalls)
+      expect(Number(afterRequest.credential_version)).toBe(2)
+      expect(afterRequest.operation_status).toBe("stable")
+      expect(afterRequest.operation_type).toBeNull()
+      expect(afterRequest.operation_id).toBeNull()
+      expect(afterRequest.completed_at).toBeNull()
+      expect(afterRequest.credential_updated_at).toBeNull()
+      expect(afterRequest.revocation_committed_at).toBeNull()
+      expect(lineages.rows.every((row) => row.status === "revoked")).toBe(true)
+      expect(refresh.rows.every((row) => row.status === "revoked")).toBe(true)
+      expect(lineages.rows).toHaveLength(2)
+      expect(refresh.rows).toHaveLength(2)
     })
 
     it("delegates reset claimed/due and reset ambiguous/due without completing", async () => {

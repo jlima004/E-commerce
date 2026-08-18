@@ -378,7 +378,7 @@ class MemoryPasswordChangeDatabase
 
     if (
       sql.startsWith(
-        "update auth_credential_state set operation_status = 'credential_updated'"
+        "update auth_credential_state set operation_status = 'revocation_pending'"
       )
     ) {
       const [updatedAtMarker, updatedAt, id] = bindings
@@ -392,7 +392,7 @@ class MemoryPasswordChangeDatabase
       ) {
         return rawRows([])
       }
-      credential.operation_status = "credential_updated"
+      credential.operation_status = "revocation_pending"
       credential.credential_updated_at = updatedAtMarker
       credential.credential_version = Number(credential.credential_version) + 1
       credential.version = Number(credential.version) + 1
@@ -410,7 +410,7 @@ class MemoryPasswordChangeDatabase
       if (
         !credential ||
         credential.id !== id ||
-        credential.operation_status !== "credential_updated" ||
+        credential.operation_status !== "revocation_pending" ||
         credential.deleted_at
       ) {
         return rawRows([])
@@ -943,6 +943,10 @@ describe("password-change domain faults", () => {
 
     expect(result).toEqual({ outcome: "recovery_pending" })
     expect(database.state.credential?.credential_version).toBe(2)
+    expect(database.state.credential?.operation_status).toBe("revocation_pending")
+    expect(database.state.credential?.credential_updated_at).toBeTruthy()
+    expect(database.state.credential?.revocation_committed_at).toBeNull()
+    expect(database.state.credential?.completed_at).toBeNull()
     expect(
       database.state.lineages.every((lineage) => lineage.status === "active")
     ).toBe(true)
@@ -978,6 +982,11 @@ describe("password-change domain faults", () => {
     expect(database.state.lineages[0]?.revocation_reason).toBe("password_change")
     expect(database.state.refresh[0]?.status).toBe("revoked")
     expect(database.state.sessionsIssued).toBe(0)
+    expect(database.state.credential?.operation_status).toBe(
+      "revocation_committed"
+    )
+    expect(database.state.credential?.revocation_committed_at).toBeTruthy()
+    expect(database.state.credential?.completed_at).toBeNull()
     expect(database.state.credential?.operation_status).not.toBe("stable")
   })
 
@@ -1030,6 +1039,87 @@ describe("password-change domain faults", () => {
 })
 
 describe("password-change resume faults", () => {
+  it("same-key resume after revocation_pending completes without second provider or version bump", async () => {
+    const database = new MemoryPasswordChangeDatabase()
+    database.seedCredential()
+    database.seedLineage()
+    const provider = new RecordingProvider({
+      authIdentityId: AUTH_IDENTITY_ID,
+      password: CURRENT_PASSWORD,
+    })
+
+    const crashed = await changePassword(
+      database,
+      changeInput(provider, {
+        hooks: {
+          async onStep(step) {
+            if (step === "before_global_revoke") {
+              throw new Error("fault before revoke")
+            }
+          },
+        },
+      })
+    )
+    expect(crashed).toEqual({ outcome: "recovery_pending" })
+    expect(database.state.credential?.operation_status).toBe("revocation_pending")
+    expect(database.state.credential?.credential_version).toBe(2)
+    const providerCallsAfterCrash = [...provider.calls]
+    const versionAfterCrash = database.state.credential?.credential_version
+
+    const resumed = await changePassword(
+      database,
+      changeInput(provider, { mode: "resume" })
+    )
+    expect(resumed).toEqual({ outcome: "completed", credentialVersion: 2 })
+    expect(provider.calls).toEqual(providerCallsAfterCrash)
+    expect(provider.updateCalls).toBe(1)
+    expect(database.state.credential?.credential_version).toBe(versionAfterCrash)
+    expect(database.state.credential?.operation_status).toBe("stable")
+    expect(database.state.lineages[0]?.status).toBe("revoked")
+    expect(database.state.sessionsIssued).toBe(0)
+  })
+
+  it("same-key resume after revocation_committed completes without second provider or version bump", async () => {
+    const database = new MemoryPasswordChangeDatabase()
+    database.seedCredential()
+    database.seedLineage()
+    const provider = new RecordingProvider({
+      authIdentityId: AUTH_IDENTITY_ID,
+      password: CURRENT_PASSWORD,
+    })
+
+    const crashed = await changePassword(
+      database,
+      changeInput(provider, {
+        hooks: {
+          async onStep(step) {
+            if (step === "after_revoke_before_response") {
+              throw new Error("fault before response")
+            }
+          },
+        },
+      })
+    )
+    expect(crashed).toEqual({ outcome: "recovery_pending" })
+    expect(database.state.credential?.operation_status).toBe(
+      "revocation_committed"
+    )
+    expect(database.state.credential?.credential_version).toBe(2)
+    const providerCallsAfterCrash = [...provider.calls]
+    const versionAfterCrash = database.state.credential?.credential_version
+
+    const resumed = await changePassword(
+      database,
+      changeInput(provider, { mode: "resume" })
+    )
+    expect(resumed).toEqual({ outcome: "completed", credentialVersion: 2 })
+    expect(provider.calls).toEqual(providerCallsAfterCrash)
+    expect(provider.updateCalls).toBe(1)
+    expect(database.state.credential?.credential_version).toBe(versionAfterCrash)
+    expect(database.state.credential?.operation_status).toBe("stable")
+    expect(database.state.sessionsIssued).toBe(0)
+  })
+
   it("same-key recovery verifies the re-presented newPassword and does not repeat update", async () => {
     const database = new MemoryPasswordChangeDatabase()
     database.seedCredential()
