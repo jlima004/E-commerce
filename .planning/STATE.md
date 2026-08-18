@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Backend Storefront Readiness
 current_phase: 14
 current_phase_name: customer-auth-verification
-current_plan: 20
+current_plan: 21
 status: ready
-last_updated: "2026-08-18T16:31:00-03:00"
+last_updated: "2026-08-18T17:28:00-03:00"
 progress:
   total_phases: 10
   completed_phases: 1
   total_plans: 28
-  completed_plans: 26
+  completed_plans: 27
   percent: 11
-stopped_at: 14-19 DOCUMENTARY CLOSURE COMPLETE — 14-20 AUTHORIZED FOR EXECUTION
+stopped_at: 14-20 DOCUMENTARY CLOSURE COMPLETE — 14-21 AUTHORIZED FOR EXECUTION
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: `.planning/PROJECT.md`.
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, duplicate order or improper fulfillment.
 
-**Current focus:** Phase 14 — `14-19 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-20 AUTHORIZED FOR EXECUTION / NOT STARTED`.
+**Current focus:** Phase 14 — `14-20 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-21 AUTHORIZED FOR EXECUTION / NOT STARTED`.
 
 ## Execution Policy
 
@@ -35,7 +35,7 @@ Execution remains manual-review gated.
 - `workflow._auto_chain_active=false`
 - `parallelization=false`
 
-Human approval closes only the reviewed plan. The human has explicitly authorized execution of `14-20`; that authorization does not extend to `14-21` or any later plan.
+Human approval closes only the reviewed plan. The human has explicitly authorized execution of `14-21`; that authorization does not extend to Phase 15, frontend, deploy, real providers or remote infrastructure.
 
 ## Current Gate
 
@@ -46,8 +46,8 @@ Phase 14 PLAN: HUMAN APPROVED — PASS
 Phase 14 SPEC/SDD: HUMAN APPROVED — PASS
 Phase 14 IMPLEMENTATION PROMPT: HUMAN APPROVED — PASS
 
-14-01..14-19: HUMAN APPROVED — PASS
-14-07..14-19: DOCUMENTALLY CLOSED
+14-01..14-20: HUMAN APPROVED — PASS
+14-07..14-20: DOCUMENTALLY CLOSED
 
 B14-13-HR-01: CLOSED — PASS
 B14-14-HR-01: CLOSED — PASS
@@ -57,10 +57,11 @@ B14-17-HR-01: CLOSED — PASS
 B14-18-HR-01..HR-02: CLOSED — PASS
 B14-19-HR-01: CLOSED — PASS
 B14-19-PUSH-01: CLOSED — PASS
+B14-20-HR-01: CLOSED — PASS
 
-14-19: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
-14-20: AUTHORIZED FOR EXECUTION / NOT STARTED
-14-21: NOT AUTHORIZED / NOT STARTED
+14-20: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+14-21: AUTHORIZED FOR EXECUTION / NOT STARTED
+PHASE 15: NOT AUTHORIZED / NOT STARTED
 
 Deploy: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
@@ -72,21 +73,20 @@ FRONTEND: BLOCKED
 
 Phase 14 (customer-auth-verification) remains **EXECUTING — SERIAL / MANUAL-GATED**.
 
-- Phase 14 plans HUMAN APPROVED: **19/21**
-- Phase 14 tasks complete: **57/63**
-- Latest closed plan: **14-19 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**
-- Next plan: **14-20 — AUTHORIZED FOR EXECUTION / NOT STARTED**
-- `14-21`: **NOT AUTHORIZED**
+- Phase 14 plans HUMAN APPROVED: **20/21**
+- Phase 14 tasks complete: **60/63**
+- Latest closed plan: **14-20 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**
+- Next plan: **14-21 — AUTHORIZED FOR EXECUTION / NOT STARTED**
 
 Milestone v1.1:
 
 - phases closed: 1/10
 - Phase 13 requirements complete: FND-01..FND-08 = 8/8
 - milestone requirements complete: 8/91
-- plans human-approved executed: **26 total** (Phase 13: 7; Phase 14: 19)
+- plans human-approved executed: **27 total** (Phase 13: 7; Phase 14: 20)
 - frontend: BLOCKED
 
-AUTH-01..AUTH-09 are not globally complete merely because `14-19` closed. Plans `14-20` and `14-21` remain required.
+AUTH-01..AUTH-09 are not globally complete merely because `14-20` closed. `14-21` owns final executable verification and human review for Phase 14.
 
 ## Accepted Evidence References
 
@@ -105,55 +105,55 @@ Detailed accepted evidence remains in the plan summaries:
 - `.planning/phases/14-customer-auth-verification/14-17-SUMMARY.md`
 - `.planning/phases/14-customer-auth-verification/14-18-SUMMARY.md`
 - `.planning/phases/14-customer-auth-verification/14-19-SUMMARY.md`
+- `.planning/phases/14-customer-auth-verification/14-20-SUMMARY.md`
 
-## 14-19 Accepted Closure
+## 14-20 Accepted Closure
 
-Plan `14-19` is fully executed, remediated, verified, human approved, pushed and documentally closed.
+Plan `14-20` is fully executed, remediated, verified, human approved, pushed and documentally closed.
 
-Accepted API Docs invariants:
+Accepted API Docs artifact invariants:
 
-- TypeScript Store API Docs registry contains exactly 12 Phase 14 BFF/backend auth contracts in addition to the 9 legacy Store operations;
-- six approved `/auth` method+path pairs are Store-document owned while remaining Auth runtime operations;
-- Store documentation partition remains fail-closed and does not accept generic `/auth/*`;
-- raw Customer, `/auth/session`, callbacks, MFA, native aliases and browser logout remain denied/not invented;
-- `AUTH_HTTP_CONTRACT` remains the HTTP-contract authority;
-- all 12 contracts are non-interactive and browser-direct Medusa is forbidden;
-- `bffServiceCredential` (`x-indicio-bff-auth`) is the documented BFF caller authority, AND-composed with publishable and with customer bearer where required;
-- publishable remains defense-in-depth / Store-hop requirement, not caller authentication;
-- sensitive examples remain absent and the walker was not weakened;
-- generated Store/Admin/Webhooks JSON remained byte-unchanged in 14-19; writer was not executed.
+- Store OpenAPI 1.1.0 was generated only by `npm run openapi:generate -w @dtc/backend -- --surface store` from the approved 14-19 TypeScript registry;
+- generated Store contains exactly 14 paths: 2 health + the 12 approved Phase-14 BFF/backend operations;
+- `/auth/session`, MFA, callbacks and browser logout remain absent;
+- Store security retains exactly `bffServiceCredential`, `publishableApiKey`, `customerBearer`, `customerSession` with approved single-object AND semantics;
+- Store artifact is deterministic and byte-equal to `buildContracts()` output;
+- Admin/Webhooks artifacts remain byte-identical;
+- generated Store contains no usable sensitive examples/defaults;
+- Swagger remains non-interactive;
+- runtime, registry, schema, migrations, env and dependencies were unchanged by 14-20.
 
-Human-review/push blockers:
+Human-review remediation:
 
 ```text
-B14-19-HR-01: CLOSED — PASS
-B14-19-PUSH-01: CLOSED — PASS
+B14-20-HR-01: CLOSED — PASS
 ```
 
-Push Protection remediation removed a synthetic `sk_test_*` fixture from unpublished history without bypass or force push and preserved the sensitive-walker proof using semantic provider metadata.
+The stale pre-writer health-only committed-artifact assertion in `generation.unit.spec.ts` was replaced, under a narrow human scope amendment, by exact committed-Store byte equality against `buildContracts()` while preserving the independent in-memory exact-set and `/auth/session` DENY proofs.
 
 Final accepted evidence:
 
 ```text
+generation.unit.spec.ts full: PASS — 163/163
 auth-contract.unit.spec.ts: PASS — 24/24
-security.unit.spec.ts: PASS — 15/15
-cumulative auth-contract + coverage + store-contract + security + generation: PASS — 247/247
-swagger-config / swagger-assets / exposure / runtime-documents / security-headers: PASS — 90/90
+swagger-config.unit.spec.ts: PASS — 11/11
+sensitive walker: PASS
 openapi:lint: PASS
-backend build: PASS
-direct ESLint production: 0 errors
+writer repeat: BYTE EQUAL
+BUILT STORE == COMMITTED STORE: PASS
 git diff --check: PASS
-generated JSON bytes/SHA256: PASS — identical
-git diff generated JSON: EMPTY
-runtime: UNTOUCHED
-repository lint wrapper: KNOWN TOOLING FAILURE — empty JSON / EOF
+Store: 82624 bytes / 4e1693221a8b7ffe2f601b4e694cf1f15f42cec1d473b831a07a91894ad81dc7
+Admin: 98767 bytes / 6ea59bf72f62eff5cea87fdccabe44042fb41cdc25e7a6291448ae7844df6b0a — unchanged
+Webhooks: 21736 bytes / 47e923846ac650b31e78851ed5134297c7c7b653e828803a5fa10f5dadd01be4 — unchanged
+openapi:check: NOT EXECUTED in 14-20 by design
+runtime/dependencies/env/schema/migrations: UNCHANGED
 ```
 
-Human-pushed execution/remediation head before documentary closure:
+Human-pushed technical/remediation head before documentary closure:
 
-`394b7d49f68c31c331f14873f26dc9ef863832ad`
+`4230b3096fd60c6a69563677c197c25c65e5e3db`
 
-No deploy, real-provider, remote-infra, schema/migration, dependency or frontend work was authorized by this closure.
+No deploy, real-provider, remote-infra or frontend work was authorized by this closure.
 
 ## BFF Boundary Carry-Forward
 
@@ -169,30 +169,27 @@ The approved final Phase 14 runtime exact-sets contain six Auth operations and s
 
 Production will eventually require `CUSTOMER_AUTH_BFF_SERVICE_SECRET`; no Heroku environment change is authorized by this state update.
 
-## 14-20 Status — AUTHORIZED FOR EXECUTION
+## 14-21 Status — AUTHORIZED FOR EXECUTION
 
-By explicit human authorization, `14-20-PLAN.md` is **AUTHORIZED FOR EXECUTION / NOT STARTED**.
+By explicit human authorization, `14-21-PLAN.md` is **AUTHORIZED FOR EXECUTION / NOT STARTED**.
 
-Plan objective: generate and review the Store OpenAPI 1.1.0 artifact from the approved 14-19 TypeScript registry while keeping Admin/Webhooks byte-identical and reserving the clean-check gate for plan 21.
+Plan objective: execute final Phase-14 validation for AUTH-01..AUTH-09, D14-01..D14-16, the 4 research blockers and 8 MUST findings, including exact surface, security/leakage and Order-authority invariants, then stop for final human review.
 
-Execution sequence:
+Authorized execution sequence:
 
-- `14-20-01` is authorized to run only `npm run openapi:generate -w @dtc/backend -- --surface store`, review the diff and prove only `apps/backend/src/api-docs/generated/store.openapi.json` changes.
-- `14-20-02` is authorized after predecessor evidence to repeat the Store writer for deterministic-byte proof and run auth-contract/sensitive-walker/OpenAPI lint validation.
-- `14-20-03` remains a **BLOCKING HUMAN VERIFY** checkpoint. Execution must stop there.
+- `14-21-01`: create only the final aggregation specs listed in `14-21-PLAN.md`; execute the quick unit gate, focused HTTP/security/multiprocess gates and the dedicated disposable-PostgreSQL Order-invariant proof exactly as specified.
+- `14-21-02`: execute the long serial command ledger from `14-VALIDATION.md` with stop-on-first-failure, including read-only `openapi:check`, required local Redis/PostgreSQL gates, exactly one disposable PostgreSQL spec per process with cleanup, normal regressions, lint/build and negative leakage/drift scans. Evidence must remain sanitized.
+- `14-21-03`: **BLOCKING HUMAN VERIFY**. Execution must stop there and present AUTH 9/9, D14 16/16, blockers 4/4, MUST 8/8, exact surface, Order/leakage negatives and full regression evidence.
 
-Binding 14-20 restrictions:
+Binding restrictions:
 
-- Store JSON must be produced only by the writer; no manual JSON editing;
-- Admin/Webhooks must remain byte-identical;
-- generated Store artifact must be deterministic and sensitive-safe;
-- Swagger must remain non-interactive;
-- global `openapi:check` is not authorized in 14-20; plan 21 owns the clean-check gate;
-- no package/dependency installation;
-- no runtime, schema, migration or env changes;
-- no deploy/release, real providers, remote DB/Redis or frontend work;
-- `14-21` remains NOT AUTHORIZED;
-- no auto-chain beyond `14-20-03`.
+- use the literal `14-VALIDATION.md` command ledger; do not group PostgreSQL specs;
+- any suite, leakage, Order-authority or OpenAPI drift failure is immediately BLOCKED;
+- do not regenerate JSON to hide drift;
+- no real provider or remote infrastructure;
+- no dependency/package/env/runtime feature expansion outside the five plan-owned aggregation specs;
+- no Phase 15, frontend, deploy/release or auto-chain;
+- `14-21-SUMMARY.md` is created only at the workflow point defined by `14-21-PLAN.md` after the final human checkpoint.
 
 ## Hard Invariants Still in Force
 
@@ -206,24 +203,24 @@ Binding 14-20 restrictions:
 
 ## Blockers / Concerns
 
-No open blocker remains in the human-approved scope through `14-19`.
+No open blocker remains in the human-approved scope through `14-20`.
 
-For `14-20`, stop conditions are those in `14-20-PLAN.md`: stop if JSON is edited manually, writer changes Admin/Webhooks, output is non-deterministic, an example contains sensitive data, Swagger becomes interactive, or work crosses into the plan-21 clean-check boundary.
+For `14-21`, stop conditions are those in `14-21-PLAN.md` and `14-VALIDATION.md`. Any new failure is a blocker; do not repair outside the owning scope or hide evidence.
 
 Deploy, real providers, remote infrastructure and frontend remain unauthorized.
 
 ## Session Continuity
 
-**Resume file:** `.planning/phases/14-customer-auth-verification/14-19-SUMMARY.md`
+**Resume file:** `.planning/phases/14-customer-auth-verification/14-20-SUMMARY.md`
 
-Last session: 2026-08-18T16:31:00-03:00
+Last session: 2026-08-18T17:28:00-03:00
 
 Stopped at:
 
 ```text
-14-19: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
-14-20: AUTHORIZED FOR EXECUTION / NOT STARTED
-14-21: NOT AUTHORIZED
+14-20: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+14-21: AUTHORIZED FOR EXECUTION / NOT STARTED
+PHASE 15: NOT AUTHORIZED
 DEPLOY: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
 ```
@@ -231,15 +228,15 @@ REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
 Resume with:
 
 - `.planning/STATE.md`
-- `.planning/phases/14-customer-auth-verification/14-19-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-20-PLAN.md`
+- `.planning/phases/14-customer-auth-verification/14-20-SUMMARY.md`
+- `.planning/phases/14-customer-auth-verification/14-21-PLAN.md`
+- `.planning/phases/14-customer-auth-verification/14-VALIDATION.md`
 - `.planning/phases/14-customer-auth-verification/14-IMPLEMENTATION-PROMPT.md`
 - `.planning/phases/14-customer-auth-verification/14-SPEC.md`
 - `.planning/phases/14-customer-auth-verification/14-SDD.md`
-- `.planning/phases/14-customer-auth-verification/14-VALIDATION.md`
 - `.planning/ROADMAP.md`
 - `.planning/REQUIREMENTS.md`
 
-**Next permitted step:** execute `14-20-01` according to `14-20-PLAN.md`; proceed serially to `14-20-02` after its prerequisite evidence, then stop at `14-20-03` for blocking human review.
+**Next permitted step:** execute `14-21-01` according to `14-21-PLAN.md`; proceed serially to `14-21-02` after prerequisite evidence, then stop at `14-21-03` for blocking human review.
 
-Do not automatically start `14-21`, run global `openapi:check`, deploy, exercise real providers, alter remote infrastructure, start frontend, or move/recreate tag `v1.0`.
+Do not automatically start Phase 15, deploy, exercise real providers, alter remote infrastructure, start frontend, or move/recreate tag `v1.0`.
