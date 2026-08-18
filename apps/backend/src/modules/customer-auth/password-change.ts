@@ -533,7 +533,7 @@ async function persistCredentialUpdated(
   return requireUpdatedCredential(
     await transaction.raw(
       `update auth_credential_state
-          set operation_status = 'credential_updated',
+          set operation_status = 'revocation_pending',
               credential_updated_at = ?,
               credential_version = credential_version + 1,
               version = version + 1,
@@ -604,7 +604,7 @@ async function persistRevocationCommitted(
               updated_at = ?
         where id = ?
           and operation_type = 'password_change'
-          and operation_status = 'credential_updated'
+          and operation_status = 'revocation_pending'
           and current_password_verified_at is not null
           and provider_proved_at is not null
           and credential_updated_at is not null
@@ -668,7 +668,7 @@ async function markFailedReconcilable(
             updated_at = ?
       where id = ?
         and operation_type = 'password_change'
-        and operation_status in ('claimed', 'credential_proved', 'credential_updated', 'revocation_committed', 'provider_outcome_ambiguous')
+        and operation_status in ('claimed', 'credential_proved', 'credential_updated', 'provider_outcome_ambiguous')
         and current_password_verified_at is not null
         and completed_at is null
         and deleted_at is null`,
@@ -687,7 +687,7 @@ async function resumeInFlight(
   const nextStatus = credential.revocation_committed_at
     ? "revocation_committed"
     : credential.credential_updated_at
-      ? "credential_updated"
+      ? "revocation_pending"
       : credential.provider_proved_at
         ? "credential_proved"
         : "claimed"
@@ -923,65 +923,72 @@ export async function changePassword(
     return denied()
   }
 
-  const { phase } = prepared.ready
+  const { phase, credential: preparedCredential } = prepared.ready
+  const alreadyPastCredentialBump =
+    Boolean(preparedCredential.provider_proved_at) &&
+    Boolean(preparedCredential.credential_updated_at)
 
-  let proof: "proved" | "ambiguous"
-  try {
-    await runHook(input.hooks, "after_claim")
-    if (phase === "fresh_claim") {
-      const updated = await input.provider.updatePassword({
-        authIdentityId,
-        password: newPassword,
-      })
-      if (updated !== "updated") {
-        proof = "ambiguous"
-      } else {
-        await runHook(input.hooks, "after_provider_update")
-        const proved = await input.provider.verifyPassword({
+  let proof: "proved" | "ambiguous" = "proved"
+  if (!alreadyPastCredentialBump) {
+    try {
+      await runHook(input.hooks, "after_claim")
+      if (phase === "fresh_claim") {
+        const updated = await input.provider.updatePassword({
           authIdentityId,
           password: newPassword,
         })
-        proof = proved ? "proved" : "ambiguous"
+        if (updated !== "updated") {
+          proof = "ambiguous"
+        } else {
+          await runHook(input.hooks, "after_provider_update")
+          const proved = await input.provider.verifyPassword({
+            authIdentityId,
+            password: newPassword,
+          })
+          proof = proved ? "proved" : "ambiguous"
+        }
+      } else {
+        proof = await proveRecoveryPassword(
+          input.provider,
+          authIdentityId,
+          newPassword
+        )
       }
-    } else {
-      proof = await proveRecoveryPassword(
-        input.provider,
-        authIdentityId,
-        newPassword
-      )
+    } catch {
+      proof = "ambiguous"
     }
-  } catch {
-    proof = "ambiguous"
-  }
 
-  if (proof !== "proved") {
-    await database.transaction(async (transaction) => {
-      const locked = await readCredentialForUpdate(transaction, authIdentityId)
-      if (locked) {
-        await markFailedReconcilable(transaction, locked, now)
-      }
-    })
-    return { outcome: "recovery_pending" }
+    if (proof !== "proved") {
+      await database.transaction(async (transaction) => {
+        const locked = await readCredentialForUpdate(transaction, authIdentityId)
+        if (locked) {
+          await markFailedReconcilable(transaction, locked, now)
+        }
+      })
+      return { outcome: "recovery_pending" }
+    }
   }
 
   try {
-    await database.transaction(async (transaction) => {
-      const locked = await readCredentialForUpdate(transaction, authIdentityId)
-      if (!locked) {
-        return transactionRequired()
-      }
-      const resumed = await resumeInFlight(transaction, locked, now)
-      await persistProviderProof(transaction, resumed, now)
-    })
-    await runHook(input.hooks, "before_version_bump")
-    await database.transaction(async (transaction) => {
-      const locked = await readCredentialForUpdate(transaction, authIdentityId)
-      if (!locked) {
-        return transactionRequired()
-      }
-      const resumed = await resumeInFlight(transaction, locked, now)
-      await persistCredentialUpdated(transaction, resumed, now)
-    })
+    if (!alreadyPastCredentialBump) {
+      await database.transaction(async (transaction) => {
+        const locked = await readCredentialForUpdate(transaction, authIdentityId)
+        if (!locked) {
+          return transactionRequired()
+        }
+        const resumed = await resumeInFlight(transaction, locked, now)
+        await persistProviderProof(transaction, resumed, now)
+      })
+      await runHook(input.hooks, "before_version_bump")
+      await database.transaction(async (transaction) => {
+        const locked = await readCredentialForUpdate(transaction, authIdentityId)
+        if (!locked) {
+          return transactionRequired()
+        }
+        const resumed = await resumeInFlight(transaction, locked, now)
+        await persistCredentialUpdated(transaction, resumed, now)
+      })
+    }
     await runHook(input.hooks, "before_global_revoke")
     await database.transaction(async (transaction) => {
       const locked = await readCredentialForUpdate(transaction, authIdentityId)
@@ -1009,7 +1016,11 @@ export async function changePassword(
     await database
       .transaction(async (transaction) => {
         const locked = await readCredentialForUpdate(transaction, authIdentityId)
-        if (locked && locked.operation_status !== "stable") {
+        if (
+          locked &&
+          locked.operation_status !== "stable" &&
+          !locked.credential_updated_at
+        ) {
           await markFailedReconcilable(transaction, locked, now)
         }
       })
