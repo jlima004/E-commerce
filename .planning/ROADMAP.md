@@ -21,11 +21,11 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 13 está CLOSED — HUMAN APPROVED, FND-01..FND-08 COMPLETE
 - Phase 14 CONTEXT, RESEARCH, PLAN, SPEC/SDD e Implementation Prompt estão HUMAN APPROVED — PASS
 - execução Phase 14 permanece estritamente serial e manual-gated
-- `14-01..14-19` estão HUMAN APPROVED — PASS
-- `14-07..14-19` estão DOCUMENTALLY CLOSED
-- blockers humanos fechados até `B14-19-HR-01`; `B14-19-PUSH-01` também está CLOSED — PASS
-- `14-20` está **AUTHORIZED FOR EXECUTION / NOT STARTED**
-- `14-21` permanece **NOT AUTHORIZED / NOT STARTED**
+- `14-01..14-20` estão HUMAN APPROVED — PASS
+- `14-07..14-20` estão DOCUMENTALLY CLOSED
+- blockers humanos fechados até `B14-20-HR-01`; `B14-19-PUSH-01` também está CLOSED — PASS
+- `14-21` está **AUTHORIZED FOR EXECUTION / NOT STARTED**
+- Phase 15 permanece **NOT AUTHORIZED / NOT STARTED**
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
 ## Milestones
@@ -42,7 +42,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | Phase | Nome | Depends on | Requirements | Estado |
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
-| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 19/21 plans HUMAN APPROVED — PASS; 57/63 tasks complete; 14-19 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-20 AUTHORIZED FOR EXECUTION |
+| 14 | Customer Auth & Verification | 13 | 9 | EXECUTING — SERIAL / MANUAL-GATED; 20/21 plans HUMAN APPROVED — PASS; 60/63 tasks complete; 14-20 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 14-21 AUTHORIZED FOR EXECUTION |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | Not started |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
@@ -71,16 +71,15 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 ### Execution status
 
 - 21 planos em 21 waves estritamente seriais (`14-01 → ... → 14-21`).
-- 63 tasks totais / **57 complete**.
-- **19/21 plans HUMAN APPROVED — PASS**.
+- 63 tasks totais / **60 complete**.
+- **20/21 plans HUMAN APPROVED — PASS**.
 - AUTH coverage planejada: 9/9.
 - D14 coverage planejada: 16/16.
 - P14-D coverage planejada: 14/14.
-- `14-19 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
-- `B14-19-HR-01 CLOSED — PASS`.
-- `B14-19-PUSH-01 CLOSED — PASS`.
-- `14-20 AUTHORIZED FOR EXECUTION / NOT STARTED`.
-- `14-21 NOT AUTHORIZED / NOT STARTED`.
+- `14-20 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
+- `B14-20-HR-01 CLOSED — PASS`.
+- `14-21 AUTHORIZED FOR EXECUTION / NOT STARTED`.
+- Phase 15 NOT AUTHORIZED / NOT STARTED.
 - Deploy NOT AUTHORIZED.
 - Real Resend / real providers NOT AUTHORIZED.
 - Remote DB/Redis changes NOT AUTHORIZED.
@@ -107,8 +106,8 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 - [x] `14-17-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 - [x] `14-18-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 - [x] `14-19-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
-- [ ] `14-20-PLAN.md` — AUTHORIZED FOR EXECUTION / NOT STARTED
-- [ ] `14-21-PLAN.md` — NOT AUTHORIZED / NOT STARTED
+- [x] `14-20-PLAN.md` — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+- [ ] `14-21-PLAN.md` — AUTHORIZED FOR EXECUTION / NOT STARTED
 
 ### Accepted closure references
 
@@ -127,6 +126,7 @@ Detailed accepted evidence is preserved in the corresponding summaries:
 - `14-17-SUMMARY.md` — current-password proof and originating-lineage-bound password-change recovery
 - `14-18-SUMMARY.md` — secretless reconciliation and final Phase-14 runtime exact-set
 - `14-19-SUMMARY.md` — API Docs registry, exact `/auth` documentation partition, BFF OpenAPI caller authority and Push Protection remediation
+- `14-20-SUMMARY.md` — writer-generated Store artifact, deterministic bytes, BFF security, sensitive safety and generation-snapshot remediation
 
 ### 14-19 closure
 
@@ -142,33 +142,44 @@ Accepted invariants:
 - Swagger e as 12 operações permanecem non-interactive;
 - sensitive walker não foi enfraquecido;
 - generated Store/Admin/Webhooks JSON permaneceu byte-unchanged; writer não rodou;
-- `B14-19-HR-01` foi remediado e fechado;
-- `B14-19-PUSH-01` foi fechado após remoção de fixture sintética `sk_test_*` do histórico não publicado sem bypass/force e push fast-forward bem-sucedido.
+- `B14-19-HR-01` e `B14-19-PUSH-01` estão CLOSED — PASS.
 
 Human-pushed execution/remediation head before documentary closure:
 
 `394b7d49f68c31c331f14873f26dc9ef863832ad`
 
-### 14-20 authorization
+### 14-20 closure
 
-By explicit human authorization, `14-20-PLAN.md` is **AUTHORIZED FOR EXECUTION / NOT STARTED**.
+`14-20` materializou e fechou o Store OpenAPI 1.1.0 gerado pelo writer a partir do registry aprovado em 14-19.
 
-The plan owns only the generated Store OpenAPI artifact after the 14-19 registry approval:
+Accepted invariants:
 
-- `14-20-01`: execute only `npm run openapi:generate -w @dtc/backend -- --surface store`; diff must be only `apps/backend/src/api-docs/generated/store.openapi.json`; Admin/Webhooks remain byte-identical;
-- `14-20-02`: repeat the Store writer to prove deterministic bytes and run auth-contract/sensitive-walker/OpenAPI lint validation;
-- `14-20-03`: **BLOCKING HUMAN VERIFY**; stop before 14-21.
+- Store artifact = 82624 bytes / SHA256 `4e1693221a8b7ffe2f601b4e694cf1f15f42cec1d473b831a07a91894ad81dc7`;
+- 14 paths exatos = 2 health + 12 Phase-14 BFF/backend operations;
+- writer repetido é byte-equal e committed Store == `buildContracts()` Store;
+- Admin permanece 98767 bytes / `6ea59bf72f62eff5cea87fdccabe44042fb41cdc25e7a6291448ae7844df6b0a`;
+- Webhooks permanece 21736 bytes / `47e923846ac650b31e78851ed5134297c7c7b653e828803a5fa10f5dadd01be4`;
+- security BFF AND, sensitive walker e Swagger non-interactive permanecem aprovados;
+- `generation.unit.spec.ts` full PASS 163/163, auth-contract 24/24, openapi:lint PASS;
+- `B14-20-HR-01` foi remediado sem criar snapshot hardcoded do artifact e está CLOSED — PASS;
+- `openapi:check` não rodou em 14-20 por design e agora pertence ao gate read-only de 14-21.
 
-Binding restrictions:
+Human-pushed technical/remediation head before documentary closure:
 
-- no manual JSON edit;
-- no Admin/Webhooks writer drift;
-- no sensitive example or Swagger interactivity;
-- no global `openapi:check` in 14-20 — plan 21 owns the clean-check gate;
-- no dependency/package/env/runtime/schema/migration changes;
-- no auto-chain;
-- `14-21` remains NOT AUTHORIZED;
-- deploy/release, real providers, remote DB/Redis and frontend remain unauthorized.
+`4230b3096fd60c6a69563677c197c25c65e5e3db`
+
+### 14-21 authorization
+
+By explicit human authorization, `14-21-PLAN.md` is **AUTHORIZED FOR EXECUTION / NOT STARTED**.
+
+`14-21` é o plano final de validação da Phase 14 e deve obedecer estritamente ao `14-21-PLAN.md` e ao command ledger de `14-VALIDATION.md`:
+
+- `14-21-01`: criar somente os cinco aggregation specs listados no plano; executar quick units, matrizes HTTP/security/multiprocess e a prova Order-invariant em PostgreSQL descartável;
+- `14-21-02`: executar o gate longo serial com stop-on-first-failure, incluindo `openapi:check` read-only em checkout limpo, um spec PostgreSQL por processo descartável com cleanup, Redis/local gates, regressões, lint/build e scans negativos de leakage/drift;
+- `14-21-03`: **BLOCKING HUMAN VERIFY**; apresentar AUTH 9/9, D14 16/16, blockers 4/4, MUST 8/8, exact surface, zero auth Order, webhook canônico positivo, leakage negativo e full regressions;
+- qualquer failure novo é BLOCKED; não corrigir fora do plano proprietário nem regenerar JSON para esconder drift;
+- `14-21-SUMMARY.md` somente no ponto definido pelo workflow após a decisão humana de `14-21-03`;
+- Phase 15, frontend, deploy/release, real providers e remote infrastructure continuam não autorizados.
 
 ## Phase 15: Guest Cart Capability & Concurrency
 
@@ -222,4 +233,4 @@ Binding restrictions:
 
 O milestone só pode fechar quando houver evidência PASS para todos os gates previstos: contratos Store/OpenAPI, autenticação, capability/concorrência e merge de carrinho, checkout BR/privacidade, Gelato shipping, PaymentAttempt/confirmation, order/catalog handoff, kit types/Zod/fixtures/mocks, contract tests, suites backend, migrations/constraints, drift/lint/build, security negative proofs e release verification aplicável.
 
-Nenhum fechamento de plano individual autoriza automaticamente o próximo plano, provider real, infraestrutura remota, deploy ou frontend. A progressão permanece serial e human-gated.
+Nenhum fechamento de plano individual autoriza automaticamente Phase 15, provider real, infraestrutura remota, deploy ou frontend. A progressão permanece serial e human-gated.
