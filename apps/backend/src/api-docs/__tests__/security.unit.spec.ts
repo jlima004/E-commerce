@@ -5,6 +5,8 @@ import {
   ADMIN_NATIVE_SECURITY,
   ADMIN_USER_SECURITY,
   GELATO_WEBHOOK_SECRET_SECURITY,
+  STORE_AUTH_ACCESS_BEARER,
+  STORE_AUTH_PUBLIC_BFF,
   STORE_AUTH_SECURITY_BY_REQUIREMENT,
   STORE_OPTIONAL_CUSTOMER,
   STORE_PUBLISHABLE_ONLY,
@@ -229,7 +231,12 @@ describe("OpenAPI Store security contract and surface isolation", () => {
   it("keeps all security schemes surface-local", () => {
     expect(
       Object.keys(storeDocument?.components.securitySchemes ?? {}).sort()
-    ).toEqual(["customerBearer", "customerSession", "publishableApiKey"])
+    ).toEqual([
+      "bffServiceCredential",
+      "customerBearer",
+      "customerSession",
+      "publishableApiKey",
+    ])
 
     expect(
       Object.keys(adminDocument?.components.securitySchemes ?? {}).sort()
@@ -238,7 +245,12 @@ describe("OpenAPI Store security contract and surface isolation", () => {
       Object.keys(webhooksDocument?.components.securitySchemes ?? {}).sort()
     ).toEqual(["gelatoWebhookSecret", "stripeSignature"])
     expect(storeDocument?.components.securitySchemes).not.toHaveProperty("adminBearer")
+    expect(storeDocument?.components.securitySchemes).not.toHaveProperty("adminSession")
+    expect(storeDocument?.components.securitySchemes).not.toHaveProperty("adminApiKey")
     expect(adminDocument?.components.securitySchemes).not.toHaveProperty("customerBearer")
+    expect(adminDocument?.components.securitySchemes).not.toHaveProperty(
+      "bffServiceCredential"
+    )
     expect(storeDocument?.components.securitySchemes).not.toHaveProperty(
       "stripeSignature"
     )
@@ -249,7 +261,101 @@ describe("OpenAPI Store security contract and surface isolation", () => {
       "publishableApiKey"
     )
     expect(webhooksDocument?.components.securitySchemes).not.toHaveProperty(
+      "bffServiceCredential"
+    )
+    expect(webhooksDocument?.components.securitySchemes).not.toHaveProperty(
       "adminBearer"
+    )
+  })
+
+  it("registers bffServiceCredential as the BFF caller apiKey header, without examples", () => {
+    const bffScheme = storeDocument?.components.securitySchemes?.bffServiceCredential
+    expect(bffScheme).toEqual(
+      expect.objectContaining({
+        type: "apiKey",
+        in: "header",
+        name: "x-indicio-bff-auth",
+      })
+    )
+    expect(bffScheme).toEqual(
+      expect.objectContaining({
+        description: expect.stringMatching(/server-to-server/i),
+      })
+    )
+    expect(bffScheme).toEqual(
+      expect.objectContaining({
+        description: expect.stringMatching(/BFF/i),
+      })
+    )
+    expect(bffScheme).toEqual(
+      expect.objectContaining({
+        description: expect.stringMatching(/caller (?:authentication|authority)/i),
+      })
+    )
+    expect(bffScheme).toEqual(
+      expect.objectContaining({
+        description: expect.stringMatching(/in addition to (?:the )?publishable/i),
+      })
+    )
+    expect(bffScheme).toEqual(
+      expect.objectContaining({
+        description: expect.stringMatching(/never exposed to the browser/i),
+      })
+    )
+    expect((bffScheme as { description?: string }).description).not.toMatch(
+      /(?:is|as) (?:a )?browser(?:\/user)? credential/i
+    )
+    expect((bffScheme as { description?: string }).description).not.toMatch(
+      /browser (?:is|may be|can be) (?:an )?authorized/i
+    )
+    expect(bffScheme).not.toHaveProperty("example")
+    expect(bffScheme).not.toHaveProperty("examples")
+    expect(bffScheme).not.toHaveProperty("default")
+    expect(JSON.stringify(bffScheme)).not.toMatch(
+      /CUSTOMER_AUTH_BFF_SERVICE_SECRET/
+    )
+    expect(
+      storeDocument?.components.parameters
+    ).not.toHaveProperty("XIndicioBffAuth")
+  })
+
+  it("decouples Phase 14 BFF+publishable auth from legacy publishable-only Store hops", () => {
+    expect(STORE_PUBLISHABLE_ONLY).toEqual([{ publishableApiKey: [] }])
+    expect(STORE_OPTIONAL_CUSTOMER).toEqual([
+      { publishableApiKey: [] },
+      { publishableApiKey: [], customerBearer: [] },
+      { publishableApiKey: [], customerSession: [] },
+    ])
+    expect(STORE_REQUIRED_CUSTOMER).toEqual([
+      { publishableApiKey: [], customerBearer: [] },
+      { publishableApiKey: [], customerSession: [] },
+    ])
+    expect(JSON.stringify(STORE_PUBLISHABLE_ONLY)).not.toMatch(
+      /bffServiceCredential/
+    )
+    expect(JSON.stringify(STORE_OPTIONAL_CUSTOMER)).not.toMatch(
+      /bffServiceCredential/
+    )
+    expect(JSON.stringify(STORE_REQUIRED_CUSTOMER)).not.toMatch(
+      /bffServiceCredential/
+    )
+
+    expect(STORE_AUTH_PUBLIC_BFF).toEqual([
+      { bffServiceCredential: [], publishableApiKey: [] },
+    ])
+    expect(STORE_AUTH_PUBLIC_BFF).not.toEqual(STORE_PUBLISHABLE_ONLY)
+    expect(STORE_AUTH_ACCESS_BEARER).toEqual([
+      {
+        bffServiceCredential: [],
+        publishableApiKey: [],
+        customerBearer: [],
+      },
+    ])
+    expect(STORE_AUTH_SECURITY_BY_REQUIREMENT.public_bff).toEqual(
+      STORE_AUTH_PUBLIC_BFF
+    )
+    expect(STORE_AUTH_SECURITY_BY_REQUIREMENT.access_bearer).toEqual(
+      STORE_AUTH_ACCESS_BEARER
     )
   })
 

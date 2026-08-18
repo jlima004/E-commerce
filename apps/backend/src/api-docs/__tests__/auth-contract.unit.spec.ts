@@ -265,27 +265,64 @@ describe("Phase 14 auth OpenAPI schema and security contract", () => {
     )
   })
 
-  it("maps each auth requirement to BFF-only security and the matching headers", () => {
-    expect(STORE_AUTH_SECURITY_BY_REQUIREMENT.public_bff).toEqual([
+  it("maps each auth requirement to BFF caller AND publishable security and the matching headers", () => {
+    const publicBffAndPublishable = [
+      { bffServiceCredential: [], publishableApiKey: [] },
+    ]
+    const accessBearerAndPublishable = [
+      {
+        bffServiceCredential: [],
+        publishableApiKey: [],
+        customerBearer: [],
+      },
+    ]
+
+    expect(STORE_AUTH_SECURITY_BY_REQUIREMENT.public_bff).toEqual(
+      publicBffAndPublishable
+    )
+    expect(STORE_AUTH_SECURITY_BY_REQUIREMENT.public_bff_no_session).toEqual(
+      publicBffAndPublishable
+    )
+    expect(STORE_AUTH_SECURITY_BY_REQUIREMENT.public_bff).not.toEqual([
       { publishableApiKey: [] },
     ])
-    expect(STORE_AUTH_SECURITY_BY_REQUIREMENT.public_bff_no_session).toEqual([
+    expect(STORE_AUTH_SECURITY_BY_REQUIREMENT.public_bff).not.toEqual([
+      { bffServiceCredential: [] },
       { publishableApiKey: [] },
     ])
-    expect(STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE).toMatch(/no customer session/i)
+    expect(STORE_AUTH_SECURITY_BY_REQUIREMENT.public_bff_no_session).toEqual(
+      STORE_AUTH_SECURITY_BY_REQUIREMENT.public_bff
+    )
+
+    expect(STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE).toMatch(/BFF/i)
+    expect(STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE).toMatch(
+      /service caller credential|caller credential/i
+    )
+    expect(STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE).toMatch(/publishable/i)
+    expect(STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE).toMatch(
+      /no customer (?:access )?bearer/i
+    )
+    expect(STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE).toMatch(/session/i)
     expect(STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE).toMatch(/browser/i)
-    expect(STORE_AUTH_SECURITY_BY_REQUIREMENT.access_bearer).toEqual([
-      { publishableApiKey: [], customerBearer: [] },
-    ])
+    expect(STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE).not.toMatch(
+      /publishable (?:store )?key only/i
+    )
+    expect(STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE).not.toMatch(
+      /absence of BFF|without (?:the )?BFF|no BFF caller/i
+    )
+
+    expect(STORE_AUTH_SECURITY_BY_REQUIREMENT.access_bearer).toEqual(
+      accessBearerAndPublishable
+    )
     expect(
       STORE_AUTH_SECURITY_BY_REQUIREMENT.access_bearer_and_idempotency_key
-    ).toEqual([{ publishableApiKey: [], customerBearer: [] }])
+    ).toEqual(accessBearerAndPublishable)
     expect(
       STORE_AUTH_SECURITY_BY_REQUIREMENT.refresh_header_and_idempotency_key
-    ).toEqual([{ publishableApiKey: [] }])
+    ).toEqual(publicBffAndPublishable)
     expect(
       STORE_AUTH_SECURITY_BY_REQUIREMENT.capability_and_idempotency_key
-    ).toEqual([{ publishableApiKey: [] }])
+    ).toEqual(publicBffAndPublishable)
 
     expect(STORE_AUTH_HEADERS_BY_REQUIREMENT.refresh_header_and_idempotency_key).toEqual(
       ["x-indicio-refresh-token", "Idempotency-Key"]
@@ -296,6 +333,9 @@ describe("Phase 14 auth OpenAPI schema and security contract", () => {
     expect(
       STORE_AUTH_HEADERS_BY_REQUIREMENT.access_bearer_and_idempotency_key
     ).toEqual(["Idempotency-Key"])
+    expect(STORE_AUTH_HEADERS_BY_REQUIREMENT.public_bff).toEqual([])
+    expect(STORE_AUTH_HEADERS_BY_REQUIREMENT.public_bff_no_session).toEqual([])
+    expect(STORE_AUTH_HEADERS_BY_REQUIREMENT.access_bearer).toEqual([])
   })
 
   it("documents the refresh header as BFF-only, non-interactive, and not a browser credential", () => {
@@ -347,9 +387,51 @@ describe("Phase 14 auth OpenAPI schema and security contract", () => {
     expect(parameters.XIndicioRefreshToken).not.toHaveProperty("example")
     expect(schemes).not.toHaveProperty("bffRefreshHeader")
     expect(schemes).not.toHaveProperty("refreshToken")
+    expect(schemes).not.toHaveProperty("bffSecret")
+    expect(schemes).not.toHaveProperty("capability")
+    expect(schemes).not.toHaveProperty("idempotencyKey")
     expect(Object.keys(schemes).sort()).toEqual(
-      ["customerBearer", "customerSession", "publishableApiKey"].sort()
+      [
+        "bffServiceCredential",
+        "customerBearer",
+        "customerSession",
+        "publishableApiKey",
+      ].sort()
     )
+
+    const bffScheme = schemes.bffServiceCredential as Record<string, unknown>
+    expect(bffScheme).toEqual(
+      expect.objectContaining({
+        type: "apiKey",
+        in: "header",
+        name: "x-indicio-bff-auth",
+      })
+    )
+    expect(bffScheme.description).toMatch(/server-to-server/i)
+    expect(bffScheme.description).toMatch(/BFF/i)
+    expect(bffScheme.description).toMatch(/caller (?:authentication|authority)/i)
+    expect(bffScheme.description).toMatch(
+      /in addition to (?:the )?publishable/i
+    )
+    expect(bffScheme.description).toMatch(
+      /never (?:a )?(?:browser|user)/i
+    )
+    expect(bffScheme.description).toMatch(/never exposed to the browser/i)
+    expect(bffScheme.description).not.toMatch(
+      /(?:is|as) (?:a )?browser(?:\/user)? credential/i
+    )
+    expect(bffScheme.description).not.toMatch(
+      /browser (?:is|may be|can be) (?:an )?authorized/i
+    )
+    expect(bffScheme).not.toHaveProperty("example")
+    expect(bffScheme).not.toHaveProperty("examples")
+    expect(bffScheme).not.toHaveProperty("default")
+    expect(JSON.stringify(bffScheme)).not.toMatch(
+      /CUSTOMER_AUTH_BFF_SERVICE_SECRET/
+    )
+
+    expect(parameters).not.toHaveProperty("XIndicioBffAuth")
+    expect(JSON.stringify(parameters)).not.toMatch(/x-indicio-bff-auth/)
 
     for (const [name, scheme] of Object.entries(schemes)) {
       expect(scheme).toEqual(
@@ -363,23 +445,53 @@ describe("Phase 14 auth OpenAPI schema and security contract", () => {
         })
       )
       expect(scheme).not.toHaveProperty("example")
+      expect(scheme).not.toHaveProperty("examples")
+      expect(scheme).not.toHaveProperty("default")
       expect(JSON.stringify(scheme)).not.toMatch(/bff secret|service credential as a user/i)
       expect(name).not.toMatch(/bffSecret/i)
     }
   })
 
-  it("does not turn the publishable key into caller authentication", () => {
+  it("keeps publishable as Store-hop defense-in-depth and BFF service credential as caller authority on all 12 operations", () => {
     expect(JSON.stringify(STORE_AUTH_SECURITY_BY_REQUIREMENT)).toMatch(
       /publishableApiKey/
     )
+    expect(JSON.stringify(STORE_AUTH_SECURITY_BY_REQUIREMENT)).toMatch(
+      /bffServiceCredential/
+    )
+
     for (const entry of AUTH_HTTP_CONTRACT) {
       const security = STORE_AUTH_SECURITY_BY_REQUIREMENT[entry.auth]
       const usesPublishable = security.some((requirement) =>
         Object.prototype.hasOwnProperty.call(requirement, "publishableApiKey")
       )
+      const usesBffCaller = security.some((requirement) =>
+        Object.prototype.hasOwnProperty.call(requirement, "bffServiceCredential")
+      )
       expect(usesPublishable).toBe(true)
-      if (entry.auth === "public_bff" || entry.auth === "public_bff_no_session") {
-        expect(security).toEqual([{ publishableApiKey: [] }])
+      expect(usesBffCaller).toBe(true)
+      expect(security).not.toEqual([{ publishableApiKey: [] }])
+      expect(security).not.toEqual([
+        { bffServiceCredential: [] },
+        { publishableApiKey: [] },
+      ])
+      expect(security).toHaveLength(1)
+
+      if (
+        entry.auth === "access_bearer" ||
+        entry.auth === "access_bearer_and_idempotency_key"
+      ) {
+        expect(security).toEqual([
+          {
+            bffServiceCredential: [],
+            publishableApiKey: [],
+            customerBearer: [],
+          },
+        ])
+      } else {
+        expect(security).toEqual([
+          { bffServiceCredential: [], publishableApiKey: [] },
+        ])
       }
     }
   })
@@ -578,6 +690,21 @@ describe("Phase 14 auth OpenAPI registry exact-set", () => {
       expect(operation.path).toBe(entry.path)
       expect(operation.security).toEqual(
         STORE_AUTH_SECURITY_BY_REQUIREMENT[entry.auth]
+      )
+      expect(operation.security).toHaveLength(1)
+      expect(operation.security[0]).toEqual(
+        expect.objectContaining({
+          bffServiceCredential: [],
+          publishableApiKey: [],
+        })
+      )
+      expect(operation.security).not.toEqual([{ publishableApiKey: [] }])
+      expect(operation.security).not.toEqual([
+        { bffServiceCredential: [] },
+        { publishableApiKey: [] },
+      ])
+      expect(JSON.stringify(operation.parameters)).not.toMatch(
+        /x-indicio-bff-auth/
       )
       expect(operation.surface).toBe("store")
       expect(operation.sourceClassification).toBe("project-custom")

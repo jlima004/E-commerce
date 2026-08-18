@@ -15,14 +15,16 @@ export const STORE_REQUIRED_CUSTOMER = [
   { publishableApiKey: [], customerSession: [] },
 ] as const
 
-export const STORE_AUTH_PUBLIC_BFF = STORE_PUBLISHABLE_ONLY
+export const STORE_AUTH_PUBLIC_BFF = [
+  { bffServiceCredential: [], publishableApiKey: [] },
+] as const
 
 export const STORE_AUTH_ACCESS_BEARER = [
-  { publishableApiKey: [], customerBearer: [] },
+  { bffServiceCredential: [], publishableApiKey: [], customerBearer: [] },
 ] as const
 
 export const STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE =
-  "Same-origin Next.js BFF to Medusa using the publishable store key only. The browser is not an authorized Medusa client and never calls this contract directly. No customer session or access bearer is presented or minted."
+  "Same-origin Next.js BFF to Medusa using the mandatory BFF service caller credential plus the publishable Store key. No customer access bearer or Medusa customer session is presented or minted. The browser never receives the BFF service credential and is not an authorized direct Medusa client."
 
 export const STORE_AUTH_SECURITY_BY_REQUIREMENT = {
   public_bff: STORE_AUTH_PUBLIC_BFF,
@@ -70,6 +72,14 @@ export const STORE_AUTH_IDEMPOTENCY_KEY_REF = {
 export function registerStoreSecuritySchemes(
   registry: ContractRegistryBundle
 ): void {
+  registry.registerComponent("store", "securitySchemes", "bffServiceCredential", {
+    type: "apiKey",
+    in: "header",
+    name: "x-indicio-bff-auth",
+    description:
+      "Server-to-server caller authentication presented only by the same-origin Next.js BFF to Medusa. This is the BFF service caller authority, required in addition to the publishable Store key when that key is present. It is never a browser or user credential, is never exposed to the browser, and does not authorize the browser to call Medusa directly. Examples are omitted. Swagger remains non-interactive.",
+  })
+
   registry.registerComponent("store", "securitySchemes", "publishableApiKey", {
     type: "apiKey",
     in: "header",
