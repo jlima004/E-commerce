@@ -88,3 +88,54 @@
 - **No Remote Database Alterations:** All migration tests and schema verification were conducted exclusively against disposable local Docker PostgreSQL containers.
 - **No Storefront Route Promotion:** `POST /store/carts` and `GET/POST /store/carts/active` route promotion is reserved for Plan `15-03`.
 - **Exact-Set Catalog:** Surface lock remained untouched; no unauthorized endpoints were exposed.
+
+---
+
+## Human Review Remediation
+
+### 1. Remediation Scope & Context
+- **Target Plan:** `15-02` (Guest Cart Capability Domain, Service, Migrations & Postgres Proof)
+- **Remediation Trigger:** Closure of Human Review Blockers `B15-02-HR-01`, `B15-02-HR-02`, and `B15-02-HR-03`.
+- **Governing Constraints:** Single-plan remediation (15-03 NOT authorized, Phase 16 NOT authorized, no remote DB/Redis, no real providers, no git push/PR/deploy, `parallelization: false`, `auto-chain: false`).
+
+---
+
+### 2. Blocker Remediation & Verification Details
+
+#### B15-02-HR-01: DML / Migration / Snapshot Drift + CLI Generation Stop Condition Violated — CLOSED (PASS)
+- **Root Cause Analysis:** Medusa CLI `npx medusa db:generate` boots the entire Express app, admin dashboard compiler, and background processors, which held open event-loop handles when spawned inside the disposable container test runner without tty stdin. Migration generation was factually resolved by invoking Medusa's official `buildGenerateMigrationScript` from `@medusajs/utils` against the loopback disposable PostgreSQL instance.
+- **Migration & Snapshot Generation:** Cleanly generated `Migration20260819215236.ts` and `.snapshot-guest-cart-capability.json`.
+- **Full Column & Lifecycle Alignment:** DML model `models/guest-cart-capability.ts`, generated migration, snapshot, and PostgreSQL integration test catalog assertions all declare and verify the complete set of 11 columns: `id` (text), `cart_id` (text), `token_hash` (text), `status` (text check active/expired/revoked/consumed), `expires_at` (timestamptz), `consumed_at` (timestamptz nullable), `revoked_at` (timestamptz nullable), `last_used_at` (timestamptz nullable), `created_at` (timestamptz), `updated_at` (timestamptz), `deleted_at` (timestamptz nullable).
+
+#### B15-02-HR-02: Mint / Lookup / Lifecycle are NOT Persistent — CLOSED (PASS)
+- **Full Persistence Implementation:** `GuestCartCapabilityModuleService` (extending `MedusaService({ GuestCartCapability })`) implements persistent methods:
+  - `mintGuestCartCapability(input)`: Generates 32-byte CSPRNG base64url token, computes SHA-256 hash, persists record via `createGuestCartCapabilities` (`status: "active"`, `expires_at: now + 7d`, `consumed_at: null`, `revoked_at: null`, `last_used_at: null`), returns `{ record, plaintext_token }`.
+  - `lookupGuestCartCapabilityByPresentedToken(presentedToken, options)`: Validates exact secret token (NO `.trim()` normalization), computes SHA-256 hash, queries PostgreSQL via `listGuestCartCapabilities`, validates constant-time hash comparison + dummy on miss, validates active status and non-expired state, updates `last_used_at = now` and rolling `expires_at = min(now + 7d, created_at + 30d)` in PostgreSQL via `updateGuestCartCapabilities`, and returns the touched record.
+  - `consumeGuestCartCapability(id, options)`: Updates `status: "consumed"` and `consumed_at = now` in PostgreSQL. Subsequent lookups fail with `GUEST_CART_CAPABILITY_LOOKUP_INVALID`.
+  - `revokeGuestCartCapability(id, options)`: Updates `status: "revoked"` and `revoked_at = now` in PostgreSQL. Subsequent lookups fail with `GUEST_CART_CAPABILITY_LOOKUP_INVALID`.
+  - `expireGuestCartCapability(id, options)`: Updates `status: "expired"` in PostgreSQL. Subsequent lookups fail with `GUEST_CART_CAPABILITY_LOOKUP_INVALID`.
+- **Exact Token Semantics:** No `.trim()` normalization is applied to presented tokens. Whitespace padding causes hash mismatch and throws `GUEST_CART_CAPABILITY_LOOKUP_INVALID`. Verified by unit and disposable PostgreSQL integration tests.
+
+#### B15-02-HR-03: Required Subagent Evidence Missing — CLOSED (PASS)
+- **Sequential Subagent Execution Chronology:**
+
+| Subagent | Role / Mode | Scope & Actions | Verdict |
+|---|---|---|---|
+| **Subagent A (Root Cause / As-Built)** | Read-Only | Audited `db:generate` hang root cause, schema drift across DML/migration/snapshot, and identified missing service persistence methods. | **PASS** |
+| **Subagent B (Implementation / TDD)** | Write | Updated DML model, generated `Migration20260819215236.ts` and snapshot via `buildGenerateMigrationScript`, implemented persistent service methods in `service.ts`, exact token lookup in `lookup.ts`, updated types in `types.ts`, and updated unit/postgres test specs. | **PASS** |
+| **Subagent C (Verification)** | Read + Execute | Executed unit test suites (45/45 passed), disposable PostgreSQL integration test suite (9/9 passed), backend build `medusa build` (exit 0), and `git diff --check` (clean). | **PASS** |
+| **Subagent D (Adversarial Review)** | Read-Only | Verified zero schema drift, verified hash-only persistence and zero plaintext token leakage in DB, verified persistent lifecycle transitions, verified exact token matching without trim normalization, and verified strict Plan 15-02 boundary. | **PASS** |
+
+---
+
+### 3. Remediation Test Evidence Summary
+
+| Test Suite / Gate | Result | Coverage Details |
+|---|---|---|
+| `guest-cart-capability-hash.unit.spec.ts` | **PASS (15/15)** | CSPRNG 32 bytes, base64url shape, SHA-256 determinism, timingSafeEqual, dummy compare. |
+| `guest-cart-capability-service.unit.spec.ts` | **PASS (22/22)** | Plaintext assertions, in-memory helper mint/updates, rolling 7d TTL, 30d cap, exact token presentation (no-trim rejection), service method mock delegation. |
+| `medusa-config.unit.spec.ts` | **PASS (8/8)** | Module registration in `medusa-config.ts` without regressions. |
+| `guest-cart-capability.postgres.spec.ts` | **PASS (9/9)** | 11-column catalog check (`consumed_at`, `revoked_at`, `last_used_at`), UNIQUE token_hash, partial UNIQUE active cart, hash-only canary, lifecycle status checks, persistent mint + persistent rolling touch, 30-day absolute hard cap, exact byte matching (no-trim), persistent consume/revoke/expire. |
+| `npm run build -w @dtc/backend` | **PASS (exit 0)** | 0 compilation errors across backend server and admin dashboard. |
+| `git diff --check` | **PASS (clean)** | Clean diff without trailing whitespace or formatting conflicts. |
+
