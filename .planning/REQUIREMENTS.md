@@ -1,7 +1,7 @@
 # Requirements: Milestone v1.1 — Backend Storefront Readiness
 
 **Definido:** 2026-08-06
-**Status:** aberto; 8 requisitos concluídos (FND-01..FND-08); 83 abertos
+**Status:** aberto; **17 requisitos concluídos** (FND-01..FND-08, AUTH-01..AUTH-09); **74 abertos**
 **Escopo:** somente backend; o Frontend Milestone 1 permanece bloqueado
 
 > Decisões existentes em PRD/SRS/rastreabilidade não equivalem a implementação. Requisitos só podem ser concluídos com a evidência prevista no roadmap e gate de closure da phase correspondente.
@@ -29,21 +29,25 @@ Deixar o backend completamente preparado para o início do Frontend Milestone 1,
 
 Phase 13 closure artifact: `.planning/phases/13-storefront-contract-foundation-surface-lockdown/13-CLOSURE.md` — CLOSED — HUMAN APPROVED.
 
-Phase 14 authorization: **AUTHORIZED — CONTEXT NOT STARTED**. Subsequent Phase 14 gates remain separately human-gated.
-
 ### Phase 14 — Customer Auth & Verification
 
-| ID | Classe | Requisito verificável |
-|---|---|---|
-| AUTH-01 | Runtime | Coordenar cadastro de identidade e criação de `Customer` sem tratar registration JWT como Customer criado. |
-| AUTH-02 | Runtime | Aplicar a política flexível: sessão inicial não verificada pode comprar; login posterior após logout/expiração fica bloqueado até verificação. |
-| AUTH-03 | Contrato | Documentar login e fronteira de logout BFF-only, sem criar uma operação Store artificial quando o logout for responsabilidade do BFF. |
-| AUTH-04 | Segurança | Implementar solicitação e conclusão de reset de senha com token expiráveis/uso único e resposta anti-enumeração. |
-| AUTH-05 | Segurança | Revogar credenciais/tokens anteriores após reset ou alteração de senha e provar rejeição da sessão antiga. |
-| AUTH-06 | Segurança | Permitir refresh somente para JWT válido, não expirado e não revogado. |
-| AUTH-07 | Runtime | Permitir solicitar, reenviar, confirmar e consultar verificação de e-mail com estados públicos estáveis. |
-| AUTH-08 | Persistência | Avaliar e, se necessário, materializar estado próprio de verificação e outbox de notificações auth com tokens hash-only. |
-| AUTH-09 | Segurança | Aplicar rate limit e anti-enumeração consistentes a cadastro, login, reset, resend e verificação. |
+| ID | Classe | Requisito verificável | Status |
+|---|---|---|---|
+| AUTH-01 | Runtime | Coordenar cadastro de identidade e criação de `Customer` sem tratar registration JWT como Customer criado. | COMPLETE |
+| AUTH-02 | Runtime | Aplicar a política flexível: sessão inicial não verificada pode comprar; login posterior após logout/expiração fica bloqueado até verificação. | COMPLETE |
+| AUTH-03 | Contrato | Documentar login e fronteira de logout BFF-only, sem criar uma operação Store artificial quando o logout for responsabilidade do BFF. | COMPLETE |
+| AUTH-04 | Segurança | Implementar solicitação e conclusão de reset de senha com token expiráveis/uso único e resposta anti-enumeração. | COMPLETE |
+| AUTH-05 | Segurança | Revogar credenciais/tokens anteriores após reset ou alteração de senha e provar rejeição da sessão antiga. | COMPLETE |
+| AUTH-06 | Segurança | Permitir refresh somente para JWT válido, não expirado e não revogado. | COMPLETE |
+| AUTH-07 | Runtime | Permitir solicitar, reenviar, confirmar e consultar verificação de e-mail com estados públicos estáveis. | COMPLETE |
+| AUTH-08 | Persistência | Avaliar e, se necessário, materializar estado próprio de verificação e outbox de notificações auth com tokens hash-only. | COMPLETE |
+| AUTH-09 | Segurança | Aplicar rate limit e anti-enumeração consistentes a cadastro, login, reset, resend e verificação. | COMPLETE |
+
+`requirements-completed:` `[AUTH-01, AUTH-02, AUTH-03, AUTH-04, AUTH-05, AUTH-06, AUTH-07, AUTH-08, AUTH-09]`
+
+Phase 14 closure artifact: `.planning/phases/14-customer-auth-verification/14-CLOSURE.md` — CLOSED — HUMAN APPROVED.
+
+Phase 15 authorization: **AUTHORIZED — CONTEXT NOT STARTED**. RESEARCH and subsequent Phase-15 gates remain separately human-gated.
 
 ### Phase 15 — Guest Cart Capability & Concurrency
 
@@ -234,7 +238,7 @@ Phase 14 authorization: **AUTHORIZED — CONTEXT NOT STARTED**. Subsequent Phase
 | FE-CNT-004 | Frontend/operacional | 22 | KIT-09 | README/canal; sem nova Store route | canal publicado no handoff |
 | FE-CNT-005 | Jurídico/humano | 22 | KIT-12 | gate jurídico | aprovação explícita antes do go-live |
 
-**Cobertura FE:** 54/54 com responsabilidade explícita; nenhum item está marcado como entregue por decisão documental.
+**Cobertura FE:** 54/54 com responsabilidade explícita; nenhum item está marcado como entregue apenas por decisão documental. Os itens FE-AUTH apontam para requisitos AUTH agora concluídos pela closure da Phase 14; isso não significa implementação do frontend.
 
 ## Fora de escopo v1.1
 
@@ -250,14 +254,12 @@ Phase 14 authorization: **AUTHORIZED — CONTEXT NOT STARTED**. Subsequent Phase
 
 ## Coverage
 
-- Requisitos v1.1: 83 abertos, 8 concluídos (FND-01..FND-08).
+- Requisitos v1.1: **74 abertos, 17 concluídos** (FND-01..FND-08, AUTH-01..AUTH-09).
 - Mapeados a exatamente uma phase: 91.
 - FE requirements com responsabilidade explícita: 54/54.
 - Phases: 13–22, lineares.
 - Phase 13: 8/8 COMPLETE; CLOSED — HUMAN APPROVED.
-- Phase 14: AUTHORIZED — CONTEXT NOT STARTED.
-- Phase 15..22: not started / not authorized.
+- Phase 14: 9/9 COMPLETE; CLOSED — HUMAN APPROVED.
+- Phase 15: **AUTHORIZED — CONTEXT NOT STARTED**.
+- Phase 16..22: not started / not authorized.
 - Frontend Milestone 1: BLOCKED.
-
----
-*Última atualização: 2026-08-10 — Phase 13 HUMAN APPROVED — CLOSED; FND-01..FND-08 COMPLETE; Phase 14 AUTHORIZED for CONTEXT only; frontend blocked.*

@@ -7,6 +7,8 @@ import {
 } from "../../src/api/store-surface/guard"
 import {
   STORE_SURFACE_MANIFEST,
+  STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
+  storeSurfaceOperationKey,
   summarizeStoreSurfaceManifest,
   type StoreSurfaceEntry,
 } from "../../src/api/store-surface/manifest"
@@ -88,16 +90,16 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     )
   })
 
-  it("denies all 51 DENY operations before scope/handler side effects", () => {
-    expect(counts.total).toBe(58)
-    expect(counts.deny).toBe(51)
+  it("denies all 50 DENY operations before scope/handler side effects", () => {
+    expect(counts.total).toBe(63)
+    expect(counts.deny).toBe(50)
     expect(counts.preserveLegacy).toBe(7)
-    expect(counts.m1EnabledPolicy).toBe(0)
+    expect(counts.m1EnabledPolicy).toBe(6)
 
     const denyEntries = STORE_SURFACE_MANIFEST.filter(
       (entry) => entry.runtime_policy === "DENY"
     )
-    expect(denyEntries).toHaveLength(51)
+    expect(denyEntries).toHaveLength(50)
 
     for (const entry of denyEntries) {
       const next = jest.fn()
@@ -144,6 +146,54 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
         action: "allow",
         mode: "preserve_legacy",
       })
+    }
+  })
+
+  it("allows exactly the Phase 14 M1_ENABLED exact-set without implicit authorization", () => {
+    const m1Enabled = STORE_SURFACE_MANIFEST.filter(
+      (entry) => entry.runtime_policy === "M1_ENABLED"
+    )
+    expect(m1Enabled).toHaveLength(6)
+    expect(
+      m1Enabled.map((entry) =>
+        storeSurfaceOperationKey(entry.method, entry.pathTemplate)
+      )
+    ).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
+
+    for (const entry of m1Enabled) {
+      expect(entry.m1_enablement).toBe("enabled")
+      const next = jest.fn()
+      const res = createMockResponse()
+      const req = createMockRequest({
+        method: entry.method,
+        originalUrl: concretePath(entry),
+      })
+
+      middleware(req as never, res as never, next)
+      expect(next).toHaveBeenCalledTimes(1)
+      expect(res.statusMock).not.toHaveBeenCalled()
+
+      const decision = decideStoreSurfaceAccess(entry.method, concretePath(entry))
+      expect(decision).toMatchObject({
+        action: "allow",
+        mode: "m1_enabled",
+      })
+    }
+
+    const phase14Keys = new Set<string>(STORE_SURFACE_PHASE14_ENABLED_OPERATIONS)
+    const outsideExactSet = STORE_SURFACE_MANIFEST.filter((entry) => {
+      const key = storeSurfaceOperationKey(entry.method, entry.pathTemplate)
+      return !phase14Keys.has(key)
+    })
+    for (const entry of outsideExactSet) {
+      expect(entry.runtime_policy).not.toBe("M1_ENABLED")
+      if (entry.runtime_policy === "DENY" || entry.classification === "BLOCKED") {
+        const decision = decideStoreSurfaceAccess(
+          entry.method,
+          concretePath(entry)
+        )
+        expect(decision.action).toBe("deny")
+      }
     }
   })
 
@@ -271,12 +321,12 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     // lockdown proof is the guard short-circuit above (handler call count 0).
   })
 
-  it("keeps classification distribution and zero M1_ENABLED at enforcement time", () => {
+  it("keeps classification distribution and Phase 14 M1_ENABLED exact-set at enforcement time", () => {
     expect(counts.authorized).toBe(0)
-    expect(counts.extended).toBe(10)
+    expect(counts.extended).toBe(15)
     expect(counts.blocked).toBe(17)
     expect(counts.outsideFrontendM1).toBe(31)
-    expect(counts.m1EnabledPolicy).toBe(0)
-    expect(counts.m1EnablementEnabled).toBe(0)
+    expect(counts.m1EnabledPolicy).toBe(6)
+    expect(counts.m1EnablementEnabled).toBe(6)
   })
 })

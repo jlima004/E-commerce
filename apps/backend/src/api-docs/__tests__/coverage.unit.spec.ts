@@ -10,8 +10,20 @@ import {
   ROUTE_EXCLUSIONS,
   validateRouteExclusions,
 } from "../coverage/exclusions"
-import { verifyCoverage } from "../coverage/verify-coverage"
-import { verifyStoreSurfaceExactSets } from "../coverage/verify-coverage"
+import {
+  routeBelongsToSurface,
+  routeSurface,
+  STORE_DOCUMENTATION_AUTH_OPERATIONS,
+  STORE_RUNTIME_EXACT_SET,
+  verifyCoverage,
+  verifyStoreSurfaceExactSets,
+} from "../coverage/verify-coverage"
+import { validateSurfacePartition } from "../generation/validate"
+import { AUTH_HTTP_CONTRACT } from "../../api/auth-surface/contracts"
+import {
+  AUTH_SURFACE_LOCAL_OPERATIONS,
+  AUTH_SURFACE_NATIVE_OPERATIONS,
+} from "../../api/auth-surface/manifest"
 import {
   NATIVE_EXTENSIONS,
   type NativeExtensionEntry,
@@ -24,6 +36,7 @@ import { buildContracts } from "../generation/build-documents"
 import { scanInstalledStoreSurface } from "../../../scripts/store-surface/scan-installed"
 import {
   STORE_SURFACE_MANIFEST,
+  STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
   type StoreSurfaceEntry,
 } from "../../api/store-surface/manifest"
 
@@ -124,10 +137,56 @@ function completeStoreRegistry(): ContractRegistryBundle {
   return registry
 }
 
+function discoveredRoute(
+  method: DiscoveredRoute["method"],
+  routePath: string
+): DiscoveredRoute {
+  return {
+    sourceFile: "apps/backend/src/api/fixture/route.ts",
+    method,
+    path: routePath,
+    exportKind: "function",
+  }
+}
+
+const APPROVED_STORE_DOCUMENTATION_AUTH_ROUTES: DiscoveredRoute[] =
+  STORE_DOCUMENTATION_AUTH_OPERATIONS.map((key) => {
+    const [method, ...pathParts] = key.split(" ")
+    return discoveredRoute(
+      method as DiscoveredRoute["method"],
+      pathParts.join(" ")
+    )
+  })
+
+const UNSUPPORTED_AUTH_ROUTES: DiscoveredRoute[] = [
+  discoveredRoute("POST", "/auth/session"),
+  discoveredRoute("DELETE", "/auth/session"),
+  discoveredRoute("GET", "/auth/{actor_type}/{auth_provider}/callback"),
+  discoveredRoute("POST", "/auth/{actor_type}/{auth_provider}/callback"),
+  discoveredRoute("POST", "/auth/mfa/challenges/{id}/verify"),
+  discoveredRoute("GET", "/auth/mfa/factors"),
+  discoveredRoute("POST", "/auth/mfa/factors"),
+  discoveredRoute("POST", "/auth/verification/request"),
+  discoveredRoute("POST", "/auth/verification/confirm"),
+  discoveredRoute("POST", "/auth/{actor_type}/{auth_provider}/reset-password"),
+  discoveredRoute("POST", "/auth/{actor_type}/{auth_provider}/update"),
+  discoveredRoute("POST", "/auth/{actor_type}/{auth_provider}/register"),
+  discoveredRoute("GET", "/auth/token/refresh"),
+  discoveredRoute("POST", "/auth/token"),
+  discoveredRoute("POST", "/auth/refresh"),
+  discoveredRoute("POST", "/auth/customer/emailpass/reset"),
+  discoveredRoute("POST", "/auth/customer/emailpass/"),
+  discoveredRoute("GET", "/auth/customer/emailpass"),
+  discoveredRoute("POST", "/Auth/customer/emailpass"),
+  discoveredRoute("POST", "/auth/customer/google"),
+  discoveredRoute("POST", "/auth/user/emailpass"),
+  discoveredRoute("PUT", "/auth/customer/emailpass"),
+]
+
 describe("OpenAPI route coverage foundation", () => {
   it("discovers all current route files and bracket segments through the TypeScript AST", () => {
     const routes = discoverRoutes()
-    expect(routes).toHaveLength(23)
+    expect(routes).toHaveLength(35)
     expect(routes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -155,6 +214,13 @@ describe("OpenAPI route coverage foundation", () => {
           method: "GET",
           path: "/openapi/store.json",
           exportKind: "function",
+        }),
+        ...STORE_DOCUMENTATION_AUTH_OPERATIONS.map((key) => {
+          const [method, ...pathParts] = key.split(" ")
+          return expect.objectContaining({
+            method,
+            path: pathParts.join(" "),
+          })
         }),
       ])
     )
@@ -257,13 +323,31 @@ describe("OpenAPI route coverage foundation", () => {
     ).toThrow("missing reason")
   })
 
-  it("passes foundation, surface-scoped, and Wave 6 global coverage", () => {
+  it("passes foundation, admin, and webhooks coverage before Store auth registration", () => {
     const registry = createFoundationRegistry()
     expect(() => verifyCoverage("foundation", registry)).not.toThrow()
-    expect(() => verifyCoverage("store", registry)).not.toThrow()
     expect(() => verifyCoverage("admin", registry)).not.toThrow()
     expect(() => verifyCoverage("webhooks", registry)).not.toThrow()
+  })
+
+  it("requires the Phase-14 Store documentation exact-set for store and global coverage", () => {
+    const registry = createFoundationRegistry()
+    expect(() => verifyCoverage("store", registry)).not.toThrow()
     expect(() => verifyCoverage("global", registry)).not.toThrow()
+  })
+
+  it("locks installed Store runtime inventory at 63 = 51 native + 12 local", () => {
+    const scan = scanInstalledStoreSurface()
+    const native = scan.discovered.filter(
+      (operation) => operation.source === "native"
+    ).length
+    const local = scan.discovered.filter(
+      (operation) => operation.source === "local"
+    ).length
+
+    expect(scan.discovered).toHaveLength(STORE_RUNTIME_EXACT_SET.total)
+    expect(native).toBe(STORE_RUNTIME_EXACT_SET.native)
+    expect(local).toBe(STORE_RUNTIME_EXACT_SET.local)
   })
 
   it("proves runtime, manifest, and executable Store M1 as separate exact sets", () => {
@@ -278,22 +362,35 @@ describe("OpenAPI route coverage foundation", () => {
       scan.discovered
     )
 
-    expect(scan.ok).toBe(true)
-    expect(evidence.runtime).toEqual({ native: 51, local: 7, total: 58 })
+    expect(evidence.runtime).toEqual({ ...STORE_RUNTIME_EXACT_SET })
     expect(evidence.manifest).toEqual({
-      total: 58,
+      total: 63,
       authorized: 0,
-      extended: 10,
+      extended: 15,
       blocked: 17,
       outsideFrontendM1: 31,
-      m1Enabled: 0,
+      m1Enabled: 6,
     })
-    expect(evidence.executableStoreBusinessKeys).toEqual([])
-    expect(evidence.documentStoreBusinessKeys).toEqual([])
+    expect(evidence.executableStoreBusinessKeys).toEqual(
+      [...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS].sort()
+    )
+    expect(evidence.documentStoreBusinessKeys).toEqual(
+      [...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS].sort()
+    )
     expect(evidence.healthSupportKeys).toEqual([
       "GET /health/live",
       "GET /health/ready",
     ])
+    expect(
+      evidence.executableStoreBusinessKeys.every((key) =>
+        key.startsWith("GET /store/") || key.startsWith("POST /store/")
+      )
+    ).toBe(true)
+    expect(
+      evidence.executableStoreBusinessKeys.some((key) =>
+        key.includes("/auth/")
+      )
+    ).toBe(false)
   })
 
   it.each([
@@ -466,5 +563,142 @@ describe("OpenAPI route coverage foundation", () => {
         [...EXCLUDED_ROUTES, LOCAL_STORE_ROUTE]
       )
     ).toThrow(expected)
+  })
+})
+
+describe("Store documentation /auth exact-set (fail-closed)", () => {
+  it("keeps the documentation allowlist equal to AUTH_HTTP_CONTRACT /auth entries and local auth-surface ops", () => {
+    expect([...STORE_DOCUMENTATION_AUTH_OPERATIONS]).toHaveLength(6)
+    expect(
+      AUTH_HTTP_CONTRACT.filter((entry) => entry.path.startsWith("/auth/"))
+        .map((entry) => `${entry.method} ${entry.path}`)
+        .sort()
+    ).toEqual([...STORE_DOCUMENTATION_AUTH_OPERATIONS].sort())
+    expect(
+      AUTH_SURFACE_LOCAL_OPERATIONS.map(
+        (entry) => `${entry.method} ${entry.pathTemplate}`
+      ).sort()
+    ).toEqual([...STORE_DOCUMENTATION_AUTH_OPERATIONS].sort())
+  })
+
+  it("maps only the approved /auth exact-set onto the Store documentation surface", () => {
+    for (const route of APPROVED_STORE_DOCUMENTATION_AUTH_ROUTES) {
+      expect(routeBelongsToSurface(route, "store")).toBe(true)
+      expect(routeSurface(route)).toBe("store")
+      expect(routeBelongsToSurface(route, "admin")).toBe(false)
+      expect(routeBelongsToSurface(route, "webhooks")).toBe(false)
+    }
+  })
+
+  it("keeps session, callbacks, MFA, native aliases, and variants outside Store documentation", () => {
+    const nativeUnsupported = AUTH_SURFACE_NATIVE_OPERATIONS.filter(
+      (entry) =>
+        `${entry.method} ${entry.pathTemplate}` !==
+        "POST /auth/token/refresh"
+    )
+    expect(nativeUnsupported.length).toBe(AUTH_SURFACE_NATIVE_OPERATIONS.length - 1)
+
+    for (const entry of nativeUnsupported) {
+      const route = discoveredRoute(entry.method, entry.pathTemplate)
+      expect(routeBelongsToSurface(route, "store")).toBe(false)
+      expect(() => routeSurface(route)).toThrow(/incompatible surface/i)
+      expect(() =>
+        validateSurfacePartition("store", {
+          [entry.pathTemplate]: { [entry.method.toLowerCase()]: {} },
+        })
+      ).toThrow(/Contract partition violation/i)
+    }
+
+    for (const route of UNSUPPORTED_AUTH_ROUTES) {
+      expect(routeBelongsToSurface(route, "store")).toBe(false)
+      expect(() => routeSurface(route)).toThrow(/incompatible surface/i)
+      expect(() =>
+        validateSurfacePartition("store", {
+          [route.path]: { [route.method.toLowerCase()]: {} },
+        })
+      ).toThrow(/Contract partition violation/i)
+    }
+  })
+
+  it("accepts Store partition for /store, /health, and the approved /auth exact-set only", () => {
+    expect(() =>
+      validateSurfacePartition("store", {
+        "/store/customers/me": { get: {} },
+        "/health/live": { get: {} },
+        "/health/ready": { get: {} },
+        "/auth/customer/emailpass/register": { post: {} },
+        "/auth/customer/emailpass": { post: {} },
+        "/auth/customer/emailpass/revoke-current-lineage": { post: {} },
+        "/auth/customer/emailpass/reset-password": { post: {} },
+        "/auth/customer/emailpass/update": { post: {} },
+        "/auth/token/refresh": { post: {} },
+      })
+    ).not.toThrow()
+
+    expect(() =>
+      validateSurfacePartition("store", {
+        "/auth/customer/emailpass": { post: {}, get: {} },
+      })
+    ).toThrow("Contract partition violation: store GET /auth/customer/emailpass")
+    expect(() =>
+      validateSurfacePartition("store", {
+        "/auth/session": { post: {} },
+      })
+    ).toThrow("Contract partition violation: store POST /auth/session")
+    expect(() =>
+      validateSurfacePartition("store", {
+        "/auth/customer/emailpass/": { post: {} },
+      })
+    ).toThrow("Contract partition violation: store POST /auth/customer/emailpass/")
+  })
+
+  it("requires every approved /auth operation in store coverage and rejects omitting one", () => {
+    const discovered = [
+      ...EXCLUDED_ROUTES,
+      LOCAL_STORE_ROUTE,
+      ...APPROVED_STORE_DOCUMENTATION_AUTH_ROUTES,
+    ]
+
+    expect(() =>
+      verifyCoverage("store", completeStoreRegistry(), discovered)
+    ).toThrow(/OpenAPI route coverage is incomplete: .*store POST \/auth\/customer\/emailpass/)
+
+    const registry = completeStoreRegistry()
+    APPROVED_STORE_DOCUMENTATION_AUTH_ROUTES.forEach((route, index) => {
+      registry.registerOperation(
+        operation({
+          method: route.method,
+          path: route.path,
+          operationId: `storeAuthExact${index}`,
+        })
+      )
+    })
+    expect(() => verifyCoverage("store", registry, discovered)).not.toThrow()
+
+    const omitted = new ContractRegistryBundle()
+    for (const documented of registry.getOperations("store")) {
+      if (documented.path !== "/auth/token/refresh") {
+        omitted.registerOperation(documented)
+      }
+    }
+    expect(() => verifyCoverage("store", omitted, discovered)).toThrow(
+      "store POST /auth/token/refresh"
+    )
+  })
+
+  it("does not treat `/auth/*` as a supported documentation prefix", () => {
+    expect(
+      STORE_DOCUMENTATION_AUTH_OPERATIONS.some((key) =>
+        key.endsWith("/auth/*")
+      )
+    ).toBe(false)
+    expect(
+      routeBelongsToSurface(discoveredRoute("POST", "/auth/anything-else"), "store")
+    ).toBe(false)
+    expect(() =>
+      validateSurfacePartition("store", {
+        "/auth/anything-else": { post: {} },
+      })
+    ).toThrow(/Contract partition violation/i)
   })
 })

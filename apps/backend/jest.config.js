@@ -1,4 +1,8 @@
 const { loadEnv } = require("@medusajs/utils");
+
+const dbTempName = (process.env.DB_TEMP_NAME ?? "").trim();
+const databaseUrl = (process.env.DATABASE_URL ?? "").trim();
+
 loadEnv("test", process.cwd());
 
 module.exports = {
@@ -21,7 +25,16 @@ module.exports = {
 if (process.env.TEST_TYPE === "integration:http") {
   module.exports.testMatch = ["**/integration-tests/http/*.spec.[jt]s"];
 } else if (process.env.TEST_TYPE === "integration:modules") {
+  const hasDisposableContext =
+    dbTempName.length > 0 && databaseUrl.length > 0;
+
   module.exports.testMatch = ["**/src/modules/*/__tests__/**/*.spec.[jt]s"];
+
+  if (hasDisposableContext) {
+    module.exports.testMatch.push(
+      "<rootDir>/integration-tests/modules/**/*.spec.[jt]s"
+    );
+  }
 } else if (process.env.TEST_TYPE === "unit") {
   module.exports.testMatch = ["**/src/**/__tests__/**/*.unit.spec.[jt]s"];
 }

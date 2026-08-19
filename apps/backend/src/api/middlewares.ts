@@ -9,7 +9,7 @@ import {
   type MedusaResponse,
 } from "@medusajs/framework/http"
 import * as Sentry from "@sentry/node"
-import { MedusaError } from "@medusajs/utils"
+import { ContainerRegistrationKeys, MedusaError } from "@medusajs/utils"
 import type { Logger as PinoLogger } from "pino"
 import {
   sellableGateProductCreateMiddleware,
@@ -38,10 +38,25 @@ import { buildSentryCaptureContext, shouldCaptureError } from "../observability/
 import { createStoreTrackingLookupGuardMiddleware } from "../modules/tracking-access-token/lookup"
 import { storeSurfaceGuardMiddleware } from "./store-surface/guard"
 import {
+  authSurfaceGuardMiddleware,
+  normalizeAuthRequestPath,
+} from "./auth-surface/guard"
+import { toAuthErrorResponse } from "./auth-surface/errors"
+import {
   attachStoreErrorEnvelope,
   sanitizeStoreCorrelationId,
   toStoreErrorResponse,
 } from "./store-surface/errors"
+import {
+  authorizeCustomerAuthAccess,
+  createKnexCustomerAuthAccessDatabase,
+  type CustomerAuthAccessContext,
+} from "../modules/customer-auth/access-guard"
+import {
+  CUSTOMER_AUTH_BFF_AUTH_HEADER,
+  CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS,
+  authenticateBffServiceRequest,
+} from "../modules/customer-auth/bff-service-auth"
 
 const CORRELATION_HEADER = "x-correlation-id"
 const CORRELATION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
@@ -52,6 +67,8 @@ const TRANSACTION_NOT_STARTED = "TransactionNotStartedError"
 type RequestWithLogging = MedusaRequest & {
   correlationId?: string
   log?: PinoLogger
+  customerAuth?: CustomerAuthAccessContext
+  customerAuthBff?: { authorized: true }
 }
 
 type AccessLogMiddlewareDeps = {
@@ -101,6 +118,68 @@ function getRouteTemplate(req: MedusaRequest): string {
   }
 
   return req.originalUrl || req.url || "/unknown"
+}
+
+const CUSTOMER_AUTH_REVOKE_PATH =
+  "/auth/customer/emailpass/revoke-current-lineage"
+const CUSTOMER_AUTH_VERIFICATION_CONTRACTS = new Set([
+  "POST /store/customers/me/verify",
+  "POST /store/customers/verify/resend",
+  "POST /store/customers/verify",
+  "GET /store/customers/me/verify/status",
+  "GET /store/customers/me",
+])
+
+function resolveAuthRequestPath(req: MedusaRequest): string {
+  const originalUrl = typeof req.originalUrl === "string" ? req.originalUrl : ""
+  if (originalUrl === "/auth" || originalUrl.startsWith("/auth/")) {
+    return originalUrl
+  }
+
+  const baseUrl = typeof req.baseUrl === "string" ? req.baseUrl : ""
+  const path = typeof req.path === "string" ? req.path : ""
+  const joined = `${baseUrl}${path}`
+  if (joined === "/auth" || joined.startsWith("/auth/")) {
+    return joined
+  }
+
+  return typeof req.url === "string" ? req.url : joined
+}
+
+function isExactCustomerAuthRevokeRequest(req: MedusaRequest): boolean {
+  return (
+    req.method?.toUpperCase() === "POST" &&
+    normalizeAuthRequestPath(resolveAuthRequestPath(req)) ===
+      CUSTOMER_AUTH_REVOKE_PATH
+  )
+}
+
+function resolveStoreRequestPath(req: MedusaRequest): string {
+  const candidates = [
+    typeof req.originalUrl === "string" ? req.originalUrl : "",
+    `${typeof req.baseUrl === "string" ? req.baseUrl : ""}${
+      typeof req.path === "string" ? req.path : ""
+    }`,
+    typeof req.url === "string" ? req.url : "",
+    (req as MedusaRequest & { route?: { path?: string } }).route?.path ?? "",
+  ]
+
+  for (const candidate of candidates) {
+    const path = candidate.split(/[?#]/, 1)[0] ?? ""
+    if (path === "/store" || path.startsWith("/store/")) {
+      return path
+    }
+  }
+
+  return ""
+}
+
+export function isExactCustomerAuthVerificationRequest(
+  req: MedusaRequest
+): boolean {
+  return CUSTOMER_AUTH_VERIFICATION_CONTRACTS.has(
+    `${req.method?.toUpperCase() ?? "GET"} ${resolveStoreRequestPath(req)}`
+  )
 }
 
 export function resolveRequestRouteOrJob(req: MedusaRequest): string {
@@ -250,7 +329,9 @@ export function createStoreErrorEnvelopeMiddleware() {
     res: MedusaResponse,
     next: MedusaNextFunction
   ): void {
-    attachStoreErrorEnvelope(req as RequestWithLogging, res)
+    if (!isExactCustomerAuthVerificationRequest(req)) {
+      attachStoreErrorEnvelope(req as RequestWithLogging, res)
+    }
     next()
   }
 }
@@ -311,6 +392,17 @@ export function createSentryErrorHandler(
     // Store-only public envelope. Admin/Webhooks keep Medusa delegation.
     if (isStoreApiRequest(req)) {
       if (res.headersSent) {
+        return
+      }
+
+      if (isExactCustomerAuthVerificationRequest(req)) {
+        const normalized = toAuthErrorResponse(
+          { code: "AUTH_TEMPORARILY_UNAVAILABLE" },
+          { correlationId }
+        )
+        res.setHeader(CORRELATION_HEADER, correlationId)
+        res.setHeader("Retry-After", "60")
+        res.status(normalized.statusCode).json(normalized.body)
         return
       }
 
@@ -388,6 +480,148 @@ export const sentryErrorMiddleware = createSentryErrorHandler()
 export const storeTrackingLookupGuardMiddleware =
   createStoreTrackingLookupGuardMiddleware()
 
+export type CustomerAuthAccessGuardMiddlewareOptions = {
+  now?: () => Date
+}
+
+export function createCustomerAuthAccessGuardMiddleware(
+  options: CustomerAuthAccessGuardMiddlewareOptions = {}
+) {
+  return async function customerAuthAccessGuardMiddleware(
+    req: MedusaRequest,
+    res: MedusaResponse,
+    next: MedusaNextFunction
+  ): Promise<void> {
+    const request = req as RequestWithLogging
+    let decision
+
+    try {
+      const connection = req.scope.resolve(
+        ContainerRegistrationKeys.PG_CONNECTION
+      ) as {
+        raw(
+          sql: string,
+          bindings?: unknown[]
+        ): Promise<{ rows?: Array<Record<string, unknown>> }>
+      }
+      if (!connection || typeof connection.raw !== "function") {
+        throw new Error("CUSTOMER_AUTH_POSTGRES_UNAVAILABLE")
+      }
+      decision = await authorizeCustomerAuthAccess(
+        createKnexCustomerAuthAccessDatabase(connection),
+        req.headers.authorization,
+        {
+          jwtSecret: env.JWT_SECRET,
+          now: options.now?.() ?? new Date(),
+          ...(isExactCustomerAuthRevokeRequest(req)
+            ? { operation: "revoke-current-lineage" as const }
+            : {}),
+        }
+      )
+    } catch {
+      decision = {
+        authorized: false as const,
+        statusCode: 503 as const,
+        code: "AUTH_TEMPORARILY_UNAVAILABLE" as const,
+      }
+    }
+
+    if (!decision.authorized) {
+      const normalized = toAuthErrorResponse(
+        { code: decision.code },
+        { correlationId: request.correlationId }
+      )
+      res.status(normalized.statusCode).json(normalized.body)
+      return
+    }
+
+    request.customerAuth = decision
+    next()
+  }
+}
+
+export const customerAuthAccessGuardMiddleware =
+  createCustomerAuthAccessGuardMiddleware()
+
+export type CustomerAuthBffServiceGuardMiddlewareOptions = {
+  expectedSecret?: string
+}
+
+export function createCustomerAuthBffServiceGuardMiddleware(
+  options: CustomerAuthBffServiceGuardMiddlewareOptions = {}
+) {
+  return function customerAuthBffServiceGuardMiddleware(
+    req: MedusaRequest,
+    res: MedusaResponse,
+    next: MedusaNextFunction
+  ): void {
+    const request = req as RequestWithLogging
+    const decision = authenticateBffServiceRequest({
+      expectedSecret: Object.prototype.hasOwnProperty.call(
+        options,
+        "expectedSecret"
+      )
+        ? options.expectedSecret
+        : env.CUSTOMER_AUTH_BFF_SERVICE_SECRET,
+      headerValue: req.headers[CUSTOMER_AUTH_BFF_AUTH_HEADER],
+    })
+
+    if (decision.outcome === "authorized") {
+      request.customerAuthBff = { authorized: true }
+      next()
+      return
+    }
+
+    if (decision.outcome === "unavailable") {
+      const normalized = toAuthErrorResponse(
+        { code: "AUTH_TEMPORARILY_UNAVAILABLE" },
+        { correlationId: request.correlationId }
+      )
+      res.status(normalized.statusCode).json(normalized.body)
+      return
+    }
+
+    if (!res.headersSent) {
+      res.status(404).json({ type: "not_found", message: "Not Found" })
+    }
+  }
+}
+
+export const customerAuthBffServiceGuardMiddleware =
+  createCustomerAuthBffServiceGuardMiddleware()
+
+function customerAuthBffProtectedRouteEntries(): Array<{
+  method: Array<"GET" | "POST">
+  matcher: string
+  middlewares: Array<
+    | typeof customerAuthBffServiceGuardMiddleware
+    | typeof customerAuthAccessGuardMiddleware
+  >
+}> {
+  return CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS.map((operation) => {
+    const [rawMethod, path] = operation.split(" ")
+    const method = rawMethod as "GET" | "POST"
+    const requiresCustomerAccess =
+      path === "/auth/customer/emailpass/revoke-current-lineage" ||
+      path === "/store/customers/me" ||
+      path === "/store/customers/me/verify" ||
+      path === "/store/customers/me/verify/status"
+    // POST /store/customers/me/password stays BFF-only: the handler owns
+    // stable-or-resume access and must not inherit the stable-only access guard.
+
+    return {
+      method: [method],
+      matcher: path,
+      middlewares: requiresCustomerAccess
+        ? [
+            customerAuthBffServiceGuardMiddleware,
+            customerAuthAccessGuardMiddleware,
+          ]
+        : [customerAuthBffServiceGuardMiddleware],
+    }
+  })
+}
+
 export default defineMiddlewares({
   errorHandler: sentryErrorMiddleware,
   routes: [
@@ -403,6 +637,15 @@ export default defineMiddlewares({
       matcher: "/store*",
       middlewares: [storeErrorEnvelopeMiddleware, storeSurfaceGuardMiddleware],
     },
+    // Method-less /auth* is sorted before native/local handlers. Every Phase 14
+    // entry starts DENY; owner plans may elevate one exact local override only.
+    {
+      matcher: "/auth*",
+      middlewares: [authSurfaceGuardMiddleware],
+    },
+    // Exact Phase 14 BFF contracts only. Surface guards stay on /auth* and
+    // /store*. BFF service auth is caller authority, not method/path policy.
+    ...customerAuthBffProtectedRouteEntries(),
     {
       method: ["GET"],
       matcher: "/store/products",

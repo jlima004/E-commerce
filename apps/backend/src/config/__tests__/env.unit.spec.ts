@@ -39,6 +39,7 @@ const backendRoot = path.resolve(__dirname, "../../..")
 const templatePath = path.join(backendRoot, ".env.template")
 
 const productionSecret = "a".repeat(32)
+const syntheticBffServiceSecret = "b".repeat(32)
 const storageEndpoint =
   "https://exampleproject.storage.supabase.co/storage/v1/s3"
 const storagePublicUrl =
@@ -83,6 +84,7 @@ function productionFixture(
     S3_SECRET_ACCESS_KEY: storageSecretAccessKey,
     S3_FILE_URL: storagePublicUrl,
     STORE_IDEMPOTENCY_KEY_PEPPER: syntheticStoreIdempotencyPepper,
+    CUSTOMER_AUTH_BFF_SERVICE_SECRET: syntheticBffServiceSecret,
     ...overrides,
   }
 }
@@ -195,6 +197,43 @@ describe("environment configuration", () => {
           ),
         "JWT_SECRET",
         ["supersecret"]
+      )
+    })
+
+    it("requires CUSTOMER_AUTH_BFF_SERVICE_SECRET without leaking the value", () => {
+      const canary = "canary-bff-service-secret-value-32b-xx"
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            productionFixture({
+              CUSTOMER_AUTH_BFF_SERVICE_SECRET: undefined,
+            })
+          ),
+        "CUSTOMER_AUTH_BFF_SERVICE_SECRET",
+        [canary, syntheticBffServiceSecret]
+      )
+    })
+
+    it("rejects a short or placeholder BFF service secret without leaking it", () => {
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            productionFixture({
+              CUSTOMER_AUTH_BFF_SERVICE_SECRET: "supersecret",
+            })
+          ),
+        "CUSTOMER_AUTH_BFF_SERVICE_SECRET",
+        ["supersecret"]
+      )
+      expectErrorWithoutValues(
+        () =>
+          parseEnv(
+            productionFixture({
+              CUSTOMER_AUTH_BFF_SERVICE_SECRET: "too-short",
+            })
+          ),
+        "CUSTOMER_AUTH_BFF_SERVICE_SECRET",
+        ["too-short"]
       )
     })
 
@@ -801,6 +840,55 @@ describe(".env.template contract", () => {
     )
     expect(template).not.toContain(syntheticStoreIdempotencyPepper)
     expect(template).not.toContain(STORE_IDEMPOTENCY_KEY_PEPPER_DEV_DEFAULT)
+  })
+
+  it("documents CUSTOMER_AUTH_BFF_SERVICE_SECRET as an empty placeholder only", () => {
+    const template = fs.readFileSync(templatePath, "utf8")
+    const assignmentOccurrences =
+      template.split("CUSTOMER_AUTH_BFF_SERVICE_SECRET=").length - 1
+    const emptyAssignmentLines = template
+      .split(/\r?\n/)
+      .filter((line) => line === "CUSTOMER_AUTH_BFF_SERVICE_SECRET=")
+
+    expect(assignmentOccurrences).toBe(1)
+    expect(emptyAssignmentLines).toHaveLength(1)
+    expect(template).not.toContain(syntheticBffServiceSecret)
+    expect(template).not.toContain(productionSecret)
+  })
+})
+
+describe("CUSTOMER_AUTH_BFF_SERVICE_SECRET contract", () => {
+  it("leaves the BFF service secret unset in development when absent", () => {
+    const parsed = parseEnv(
+      localFixture({
+        CUSTOMER_AUTH_BFF_SERVICE_SECRET: undefined,
+      })
+    )
+
+    expect(parsed.CUSTOMER_AUTH_BFF_SERVICE_SECRET).toBeUndefined()
+  })
+
+  it("accepts a synthetic high-entropy local secret without returning it in errors", () => {
+    const parsed = parseEnv(
+      localFixture({
+        CUSTOMER_AUTH_BFF_SERVICE_SECRET: syntheticBffServiceSecret,
+      })
+    )
+
+    expect(parsed.CUSTOMER_AUTH_BFF_SERVICE_SECRET).toBe(syntheticBffServiceSecret)
+  })
+
+  it("rejects an inadequate local secret without leaking the value", () => {
+    expectErrorWithoutValues(
+      () =>
+        parseEnv(
+          localFixture({
+            CUSTOMER_AUTH_BFF_SERVICE_SECRET: "supersecret",
+          })
+        ),
+      "CUSTOMER_AUTH_BFF_SERVICE_SECRET",
+      ["supersecret"]
+    )
   })
 })
 

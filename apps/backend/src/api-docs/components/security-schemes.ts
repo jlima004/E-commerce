@@ -15,9 +15,71 @@ export const STORE_REQUIRED_CUSTOMER = [
   { publishableApiKey: [], customerSession: [] },
 ] as const
 
+export const STORE_AUTH_PUBLIC_BFF = [
+  { bffServiceCredential: [], publishableApiKey: [] },
+] as const
+
+export const STORE_AUTH_ACCESS_BEARER = [
+  { bffServiceCredential: [], publishableApiKey: [], customerBearer: [] },
+] as const
+
+export const STORE_AUTH_PUBLIC_BFF_NO_SESSION_NOTE =
+  "Same-origin Next.js BFF to Medusa using the mandatory BFF service caller credential plus the publishable Store key. No customer access bearer or Medusa customer session is presented or minted. The browser never receives the BFF service credential and is not an authorized direct Medusa client."
+
+export const STORE_AUTH_SECURITY_BY_REQUIREMENT = {
+  public_bff: STORE_AUTH_PUBLIC_BFF,
+  public_bff_no_session: STORE_AUTH_PUBLIC_BFF,
+  access_bearer: STORE_AUTH_ACCESS_BEARER,
+  refresh_header_and_idempotency_key: STORE_AUTH_PUBLIC_BFF,
+  capability_and_idempotency_key: STORE_AUTH_PUBLIC_BFF,
+  access_bearer_and_idempotency_key: STORE_AUTH_ACCESS_BEARER,
+} as const
+
+export const STORE_AUTH_HEADERS_BY_REQUIREMENT = {
+  public_bff: [] as const,
+  public_bff_no_session: [] as const,
+  access_bearer: [] as const,
+  refresh_header_and_idempotency_key: [
+    "x-indicio-refresh-token",
+    "Idempotency-Key",
+  ] as const,
+  capability_and_idempotency_key: ["Idempotency-Key"] as const,
+  access_bearer_and_idempotency_key: ["Idempotency-Key"] as const,
+} as const
+
+export const STORE_AUTH_REFRESH_HEADER_PARAMETER = {
+  name: "x-indicio-refresh-token",
+  in: "header" as const,
+  required: true,
+  schema: {
+    type: "string",
+    minLength: 1,
+  },
+  description:
+    "Opaque refresh capability presented only on the same-origin Next.js BFF to Medusa hop. It is not a user/browser credential, never a Swagger Try-It-Out field, and not authorization for direct browser access to Medusa. Examples are omitted. Swagger remains non-interactive.",
+  "x-bff-only": true,
+  "x-not-browser-credential": true,
+} as const
+
+export const STORE_AUTH_REFRESH_HEADER_REF = {
+  $ref: "#/components/parameters/XIndicioRefreshToken",
+} as const
+
+export const STORE_AUTH_IDEMPOTENCY_KEY_REF = {
+  $ref: "#/components/parameters/IdempotencyKey",
+} as const
+
 export function registerStoreSecuritySchemes(
   registry: ContractRegistryBundle
 ): void {
+  registry.registerComponent("store", "securitySchemes", "bffServiceCredential", {
+    type: "apiKey",
+    in: "header",
+    name: "x-indicio-bff-auth",
+    description:
+      "Server-to-server caller authentication presented only by the same-origin Next.js BFF to Medusa. This is the BFF service caller authority, required in addition to the publishable Store key when that key is present. It is never a browser or user credential, is never exposed to the browser, and does not authorize the browser to call Medusa directly. Examples are omitted. Swagger remains non-interactive.",
+  })
+
   registry.registerComponent("store", "securitySchemes", "publishableApiKey", {
     type: "apiKey",
     in: "header",
@@ -41,6 +103,13 @@ export function registerStoreSecuritySchemes(
     description:
       "Optional or required Medusa customer session assembled by the same-origin BFF for server-to-server use. It is not a browser credential for direct Medusa access; guest and confirmation capabilities likewise remain server-side.",
   })
+
+  registry.registerComponent(
+    "store",
+    "parameters",
+    "XIndicioRefreshToken",
+    STORE_AUTH_REFRESH_HEADER_PARAMETER
+  )
 }
 
 export const ADMIN_NATIVE_SECURITY = [

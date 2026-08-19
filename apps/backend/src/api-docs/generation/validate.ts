@@ -16,6 +16,37 @@ const HTTP_METHOD_KEYS = new Set([
   "head",
 ])
 
+/**
+ * Store OpenAPI documentation ownership of `/auth` is this method+path
+ * exact-set only — never a generic `/auth/*` prefix. Coverage mapping and
+ * the registry exact-set (Subagent D) must agree with this list so only
+ * these six BFF/backend contracts can compose the Store document.
+ */
+export const STORE_DOCUMENTATION_AUTH_OPERATIONS = [
+  "POST /auth/customer/emailpass/register",
+  "POST /auth/customer/emailpass",
+  "POST /auth/customer/emailpass/revoke-current-lineage",
+  "POST /auth/customer/emailpass/reset-password",
+  "POST /auth/customer/emailpass/update",
+  "POST /auth/token/refresh",
+] as const
+
+export type StoreDocumentationAuthOperation =
+  (typeof STORE_DOCUMENTATION_AUTH_OPERATIONS)[number]
+
+const STORE_DOCUMENTATION_AUTH_OPERATION_SET: ReadonlySet<string> = new Set(
+  STORE_DOCUMENTATION_AUTH_OPERATIONS
+)
+
+export function isStoreDocumentationAuthOperation(
+  method: string,
+  path: string
+): boolean {
+  return STORE_DOCUMENTATION_AUTH_OPERATION_SET.has(
+    `${method.toUpperCase()} ${path}`
+  )
+}
+
 const SENSITIVE_PATTERNS = [
   /\bsk_(?:live|test)_[A-Za-z0-9_-]+/i,
   /\bwhsec_[A-Za-z0-9_-]+/i,
@@ -67,20 +98,42 @@ function walk(
   }
 }
 
-function validateSurfacePartition(
+export function validateSurfacePartition(
   surface: ContractSurface,
   paths: Record<string, unknown>
 ): void {
-  for (const routePath of Object.keys(paths)) {
-    const valid =
-      surface === "store"
-        ? routePath.startsWith("/store/") || routePath.startsWith("/health/")
-        : surface === "admin"
-          ? routePath.startsWith("/admin/")
-          : routePath.startsWith("/hooks/")
+  for (const [routePath, pathItem] of Object.entries(paths)) {
+    if (surface === "admin") {
+      if (!routePath.startsWith("/admin/")) {
+        throw new Error(`Contract partition violation: ${surface} ${routePath}`)
+      }
+      continue
+    }
+    if (surface === "webhooks") {
+      if (!routePath.startsWith("/hooks/")) {
+        throw new Error(`Contract partition violation: ${surface} ${routePath}`)
+      }
+      continue
+    }
 
-    if (!valid) {
+    if (routePath.startsWith("/store/") || routePath.startsWith("/health/")) {
+      continue
+    }
+
+    const methods = Object.keys(
+      pathItem && typeof pathItem === "object" ? pathItem : {}
+    ).filter((key) => HTTP_METHOD_KEYS.has(key))
+
+    if (methods.length === 0) {
       throw new Error(`Contract partition violation: ${surface} ${routePath}`)
+    }
+
+    for (const method of methods) {
+      if (!isStoreDocumentationAuthOperation(method, routePath)) {
+        throw new Error(
+          `Contract partition violation: ${surface} ${method.toUpperCase()} ${routePath}`
+        )
+      }
     }
   }
 }

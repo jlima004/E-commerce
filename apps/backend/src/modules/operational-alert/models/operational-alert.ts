@@ -3,6 +3,7 @@ import { model } from "@medusajs/framework/utils"
 export const OPERATIONAL_ALERT_TYPES = [
   "payment_stuck",
   "fulfillment_failed",
+  "auth_notification_failed",
 ] as const
 export const OPERATIONAL_ALERT_SEVERITIES = [
   "low",
@@ -19,6 +20,7 @@ export const OPERATIONAL_ALERT_STATUSES = [
 export const OPERATIONAL_ALERT_ENTITY_TYPES = [
   "payment_attempt",
   "fulfillment",
+  "auth_notification_outbox",
 ] as const
 
 export type OperationalAlertType = (typeof OPERATIONAL_ALERT_TYPES)[number]

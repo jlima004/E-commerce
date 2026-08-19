@@ -17,6 +17,8 @@ import {
 } from "../redis-config"
 
 const productionSecret = "a".repeat(32)
+const customerAuthBffServiceSecret = "b".repeat(32)
+const storeIdempotencyKeyPepper = Buffer.alloc(32, 1).toString("base64url")
 const sharedRedisUrl = "redis://redis.example.com:6379"
 const storageEndpoint =
   "https://exampleproject.storage.supabase.co/storage/v1/s3"
@@ -87,6 +89,8 @@ function productionFixture(
     S3_ACCESS_KEY_ID: "example-access-key-id",
     S3_SECRET_ACCESS_KEY: "example-secret-access-key-value",
     S3_FILE_URL: storagePublicUrl,
+    CUSTOMER_AUTH_BFF_SERVICE_SECRET: customerAuthBffServiceSecret,
+    STORE_IDEMPOTENCY_KEY_PEPPER: storeIdempotencyKeyPepper,
     ...overrides,
   }
 }

@@ -81,7 +81,8 @@ function entry(
 }
 
 /**
- * Closed 58-operation inventory. Order follows RESEARCH §5 row numbers.
+ * Closed 63-operation inventory. Order follows RESEARCH §5 row numbers,
+ * followed by the Phase 14 verification contracts and password change.
  */
 export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
   entry({
@@ -280,10 +281,11 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
     pathTemplate: "/store/customers/me",
     origin: "native",
     classification: "EXTENDED",
-    runtime_policy: "DENY",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
     openapi_m1_expectation: "include_executable_m1",
     rationale:
-      "Account M1 candidate needing BFF-only DTO/error shaping — DENY until Phase 14.",
+      "Phase 14 current auth/customer state; PostgreSQL access guard and allowlisted DTO are mandatory.",
     owner_phase: "14",
     owner_domain: "auth",
   }),
@@ -732,7 +734,85 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
       "Public scaffold route returns 200 without product contract; BLOCKED→DENY.",
     owner_domain: "scaffold",
   }),
+  entry({
+    method: "POST",
+    pathTemplate: "/store/customers/me/verify",
+    origin: "local",
+    classification: "EXTENDED",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
+    openapi_m1_expectation: "include_executable_m1",
+    rationale:
+      "Phase 14 authenticated email-verification request; PostgreSQL access guard and verification-request limiter are mandatory.",
+    owner_phase: "14",
+    owner_domain: "auth",
+  }),
+  entry({
+    method: "POST",
+    pathTemplate: "/store/customers/verify/resend",
+    origin: "local",
+    classification: "EXTENDED",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
+    openapi_m1_expectation: "include_executable_m1",
+    rationale:
+      "Phase 14 public resend contract with normalized input, anti-enumeration envelope and absorb-on-failure limiter policy.",
+    owner_phase: "14",
+    owner_domain: "auth",
+  }),
+  entry({
+    method: "POST",
+    pathTemplate: "/store/customers/verify",
+    origin: "local",
+    classification: "EXTENDED",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
+    openapi_m1_expectation: "include_executable_m1",
+    rationale:
+      "Phase 14 public capability confirmation; hash-only verification and no session or Order side effects.",
+    owner_phase: "14",
+    owner_domain: "auth",
+  }),
+  entry({
+    method: "GET",
+    pathTemplate: "/store/customers/me/verify/status",
+    origin: "local",
+    classification: "EXTENDED",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
+    openapi_m1_expectation: "include_executable_m1",
+    rationale:
+      "Phase 14 authenticated sanitized verification status DTO behind the PostgreSQL access guard.",
+    owner_phase: "14",
+    owner_domain: "auth",
+  }),
+  entry({
+    method: "POST",
+    pathTemplate: "/store/customers/me/password",
+    origin: "local",
+    classification: "EXTENDED",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
+    openapi_m1_expectation: "include_executable_m1",
+    rationale:
+      "Phase 14 authenticated password change behind the BFF service guard and stable-or-resume handler.",
+    owner_phase: "14",
+    owner_domain: "auth",
+  }),
 ] as const satisfies readonly StoreSurfaceEntry[]
+
+export const STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS = [
+  "POST /store/customers/me/verify",
+  "POST /store/customers/verify/resend",
+  "POST /store/customers/verify",
+  "GET /store/customers/me/verify/status",
+] as const
+
+export const STORE_SURFACE_PHASE14_ENABLED_OPERATIONS = [
+  "GET /store/customers/me",
+  ...STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS,
+  "POST /store/customers/me/password",
+] as const
 
 export function storeSurfaceOperationKey(
   method: string,
@@ -828,10 +908,10 @@ export function validateStoreSurfaceManifest(
   const violations: StoreSurfaceManifestViolation[] = []
   const counts = summarizeStoreSurfaceManifest(entries)
 
-  if (counts.total !== 58) {
+  if (counts.total !== 63) {
     violations.push({
       code: "COUNT_TOTAL",
-      message: `expected 58 entries, found ${counts.total}`,
+      message: `expected 63 entries, found ${counts.total}`,
     })
   }
   if (counts.authorized !== 0) {
@@ -840,10 +920,10 @@ export function validateStoreSurfaceManifest(
       message: `expected AUTHORIZED=0, found ${counts.authorized}`,
     })
   }
-  if (counts.extended !== 10) {
+  if (counts.extended !== 15) {
     violations.push({
       code: "COUNT_EXTENDED",
-      message: `expected EXTENDED=10, found ${counts.extended}`,
+      message: `expected EXTENDED=15, found ${counts.extended}`,
     })
   }
   if (counts.blocked !== 17) {
@@ -858,22 +938,22 @@ export function validateStoreSurfaceManifest(
       message: `expected OUTSIDE_FRONTEND_M1=31, found ${counts.outsideFrontendM1}`,
     })
   }
-  if (counts.m1EnabledPolicy !== 0) {
+  if (counts.m1EnabledPolicy !== 6) {
     violations.push({
       code: "M1_ENABLED_POLICY",
-      message: `Phase 13 forbids runtime_policy M1_ENABLED; found ${counts.m1EnabledPolicy}`,
+      message: `Phase 14 requires exactly six M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
     })
   }
-  if (counts.m1EnablementEnabled !== 0) {
+  if (counts.m1EnablementEnabled !== 6) {
     violations.push({
       code: "M1_ENABLEMENT_ENABLED",
-      message: `Phase 13 forbids m1_enablement enabled; found ${counts.m1EnablementEnabled}`,
+      message: `Phase 14 requires exactly six enablements; found ${counts.m1EnablementEnabled}`,
     })
   }
-  if (counts.deny + counts.preserveLegacy !== counts.total) {
+  if (counts.deny + counts.preserveLegacy + counts.m1EnabledPolicy !== counts.total) {
     violations.push({
       code: "POLICY_SUM",
-      message: `DENY+PRESERVE_LEGACY must equal total (${counts.deny}+${counts.preserveLegacy}!=${counts.total})`,
+      message: `DENY+PRESERVE_LEGACY+M1_ENABLED must equal total (${counts.deny}+${counts.preserveLegacy}+${counts.m1EnabledPolicy}!=${counts.total})`,
     })
   }
   if (counts.duplicates.length > 0) {
@@ -971,6 +1051,24 @@ export function validateStoreSurfaceManifest(
         message: `invalid runtime_policy ${String(item.runtime_policy)}`,
       })
     }
+  }
+
+  const enabledOperations = entries
+    .filter((item) => item.runtime_policy === "M1_ENABLED")
+    .map((item) => storeSurfaceOperationKey(item.method, item.pathTemplate))
+  if (
+    enabledOperations.length !==
+      STORE_SURFACE_PHASE14_ENABLED_OPERATIONS.length ||
+    enabledOperations.some(
+      (operation, index) =>
+        operation !== STORE_SURFACE_PHASE14_ENABLED_OPERATIONS[index]
+    )
+  ) {
+    violations.push({
+      code: "PHASE14_EXACT_SURFACE",
+      message:
+        "M1_ENABLED must contain exactly GET /store/customers/me, the four Phase 14 verification operations, and POST /store/customers/me/password",
+    })
   }
 
   return violations

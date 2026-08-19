@@ -1,0 +1,60 @@
+{
+  "schema": "dtc.customer-auth.collision-audit-evidence",
+  "version": 1,
+  "timestamp_utc": "2026-08-13T22:13:13Z",
+  "status": "PASS",
+  "blockers": [],
+  "collision_count": 0,
+  "scanned": {
+    "identity": 1,
+    "customer": 1,
+    "normalized_groups": 2,
+    "invalid_inputs": 0
+  },
+  "target": {
+    "database_engine": "PostgreSQL 17",
+    "classification": "local-disposable",
+    "network_scope": "loopback-only",
+    "host": "127.0.0.1",
+    "database_name_pattern": "p12_disposable_[run-id]",
+    "container_name_pattern": "p12-pg-[run-id]",
+    "persistent_or_remote": false
+  },
+  "execution": {
+    "runner": "apps/backend/scripts/run-disposable-postgres-tests.mjs",
+    "test_command": "npm run test:integration:modules -w @dtc/backend -- --runTestsByPath integration-tests/modules/customer-auth-email-collision.postgres.spec.ts",
+    "scenario": "zero-collision",
+    "audit_cli": "node --no-warnings --experimental-strip-types apps/backend/scripts/audit-customer-auth-email-collisions.ts",
+    "audit_cli_invocations": 1,
+    "audit_cli_exit_code": 0,
+    "test_suites": {
+      "passed": 1,
+      "total": 1
+    }
+  },
+  "write_audit": {
+    "transaction_mode": "BEGIN READ ONLY",
+    "rollback": true,
+    "writes": 0,
+    "before": {
+      "identity": 1,
+      "customer": 1
+    },
+    "after": {
+      "identity": 1,
+      "customer": 1
+    }
+  },
+  "sanitization": {
+    "pii_present": false,
+    "secrets_present": false,
+    "credentials_present": false,
+    "raw_owner_identifiers_present": false
+  },
+  "cleanup": {
+    "status": "PASS",
+    "database_absent": true,
+    "container_removed": true,
+    "preexisting_resources_modified": false
+  }
+}

@@ -54,6 +54,9 @@ const projectConfig = {
     authCors: env.AUTH_CORS,
     jwtSecret: env.JWT_SECRET,
     cookieSecret: env.COOKIE_SECRET,
+    authMethodsPerActor: {
+      customer: ["emailpass"],
+    },
   },
 }
 
@@ -100,6 +103,10 @@ const modules = [
   {
     key: "store_resource_version",
     resolve: "./src/modules/store-resource-version",
+  },
+  {
+    key: "customer_auth",
+    resolve: "./src/modules/customer-auth/service",
   },
   {
     resolve: "./src/modules/payment-attempt",

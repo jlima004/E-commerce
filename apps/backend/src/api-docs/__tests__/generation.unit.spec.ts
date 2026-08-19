@@ -6,7 +6,8 @@ import { CONTRACT_TITLES, CONTRACT_VERSIONS } from "../document"
 import { buildContracts } from "../generation/build-documents"
 import { canonicalize } from "../generation/canonicalize"
 import { serializeDocument } from "../generation/serialize"
-import { validateDocument } from "../generation/validate"
+import { validateDocument, validateSurfacePartition } from "../generation/validate"
+import { STORE_DOCUMENTATION_AUTH_OPERATIONS } from "../coverage/verify-coverage"
 import {
   ContractRegistryBundle,
   createFoundationRegistry,
@@ -89,14 +90,33 @@ describe("OpenAPI foundation generation", () => {
     const admin = first.find((contract) => contract.surface === "admin")
     const webhooks = first.find((contract) => contract.surface === "webhooks")
     expect(Object.keys(store?.document.paths ?? {}).sort()).toEqual([
+      "/auth/customer/emailpass",
+      "/auth/customer/emailpass/register",
+      "/auth/customer/emailpass/reset-password",
+      "/auth/customer/emailpass/revoke-current-lineage",
+      "/auth/customer/emailpass/update",
+      "/auth/token/refresh",
       "/health/live",
       "/health/ready",
+      "/store/customers/me",
+      "/store/customers/me/password",
+      "/store/customers/me/verify",
+      "/store/customers/me/verify/status",
+      "/store/customers/verify",
+      "/store/customers/verify/resend",
     ])
     expect(
       Object.keys(store?.document.paths ?? {}).filter((routePath) =>
         routePath.startsWith("/store/")
-      )
-    ).toEqual([])
+      ).sort()
+    ).toEqual([
+      "/store/customers/me",
+      "/store/customers/me/password",
+      "/store/customers/me/verify",
+      "/store/customers/me/verify/status",
+      "/store/customers/verify",
+      "/store/customers/verify/resend",
+    ])
     expect(Object.keys(admin?.document.paths ?? {}).sort()).toEqual([
       "/admin/exchanges",
       "/admin/exchanges/{id}",
@@ -143,6 +163,47 @@ describe("OpenAPI foundation generation", () => {
     }
   })
 
+  it("partitions Store documents to /store, /health, and the approved /auth exact-set", () => {
+    expect(() =>
+      validateSurfacePartition("store", {
+        "/health/live": { get: {} },
+        "/store/customers/me": { get: {} },
+        "/auth/customer/emailpass": { post: {} },
+        "/auth/token/refresh": { post: {} },
+      })
+    ).not.toThrow()
+
+    for (const key of STORE_DOCUMENTATION_AUTH_OPERATIONS) {
+      const [method, ...pathParts] = key.split(" ")
+      expect(() =>
+        validateSurfacePartition("store", {
+          [pathParts.join(" ")]: { [method.toLowerCase()]: {} },
+        })
+      ).not.toThrow()
+    }
+
+    expect(() =>
+      validateSurfacePartition("store", {
+        "/auth/session": { post: {} },
+      })
+    ).toThrow("Contract partition violation: store POST /auth/session")
+    expect(() =>
+      validateSurfacePartition("store", {
+        "/auth/{actor_type}/{auth_provider}/callback": { get: {} },
+      })
+    ).toThrow(/Contract partition violation: store GET \/auth\/\{actor_type\}\/\{auth_provider\}\/callback/)
+    expect(() =>
+      validateSurfacePartition("store", {
+        "/auth/mfa/factors": { get: {} },
+      })
+    ).toThrow("Contract partition violation: store GET /auth/mfa/factors")
+    expect(() =>
+      validateSurfacePartition("admin", {
+        "/auth/customer/emailpass": { post: {} },
+      })
+    ).toThrow("Contract partition violation: admin /auth/customer/emailpass")
+  })
+
   it("keeps Store correlation semantics isolated from stable Admin and generated artifacts", () => {
     const contracts = buildContracts()
     const bySurface = Object.fromEntries(
@@ -166,11 +227,22 @@ describe("OpenAPI foundation generation", () => {
     )
 
     const generatedDir = path.resolve(__dirname, "..", "generated")
-    for (const contract of contracts) {
+    for (const contract of contracts.filter(
+      (entry) => entry.surface !== "store"
+    )) {
       expect(contract.bytes).toBe(
         fs.readFileSync(path.join(generatedDir, contract.fileName), "utf8")
       )
     }
+    const committedStore = fs.readFileSync(
+      path.join(generatedDir, "store.openapi.json"),
+      "utf8"
+    )
+    const builtStore = contracts.find((contract) => contract.surface === "store")
+    expect(committedStore).toContain("/health/live")
+    expect(JSON.parse(committedStore).paths["/auth/session"]).toBeUndefined()
+    expect(builtStore?.bytes).toBeDefined()
+    expect(builtStore?.bytes).toBe(committedStore)
   })
 
   it("uses an explicit operation description and otherwise falls back to summary", () => {

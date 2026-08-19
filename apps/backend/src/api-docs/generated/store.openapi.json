@@ -63,6 +63,18 @@
           "pattern": "^[A-Za-z0-9._-]{1,128}$",
           "type": "string"
         }
+      },
+      "XIndicioRefreshToken": {
+        "description": "Opaque refresh capability presented only on the same-origin Next.js BFF to Medusa hop. It is not a user/browser credential, never a Swagger Try-It-Out field, and not authorization for direct browser access to Medusa. Examples are omitted. Swagger remains non-interactive.",
+        "in": "header",
+        "name": "x-indicio-refresh-token",
+        "required": true,
+        "schema": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "x-bff-only": true,
+        "x-not-browser-credential": true
       }
     },
     "responses": {},
@@ -485,6 +497,366 @@
           "item_labels",
           "updated_at",
           "message"
+        ],
+        "type": "object"
+      },
+      "StoreAuthCurrentCustomer": {
+        "additionalProperties": false,
+        "description": "Minimized public customer and auth state. Internal identifiers and credentials are omitted.",
+        "properties": {
+          "auth": {
+            "additionalProperties": false,
+            "properties": {
+              "absoluteExpiresAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "originalAuthenticatedAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "verificationState": {
+                "enum": [
+                  "pending",
+                  "verified"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "verificationState",
+              "originalAuthenticatedAt",
+              "absoluteExpiresAt"
+            ],
+            "type": "object"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/StoreAuthCustomer"
+          }
+        },
+        "required": [
+          "customer",
+          "auth"
+        ],
+        "type": "object"
+      },
+      "StoreAuthCustomer": {
+        "additionalProperties": false,
+        "description": "Minimized public customer. Internal identifiers and credentials are omitted.",
+        "properties": {
+          "email": {
+            "description": "Minimized public customer address. OpenAPI examples are omitted.",
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "firstName",
+          "lastName"
+        ],
+        "type": "object"
+      },
+      "StoreAuthEmailRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "Caller-supplied address bytes. Canonicalization is owned by the runtime normalizer. OpenAPI examples are omitted.",
+            "format": "email",
+            "maxLength": 320,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "StoreAuthEmptyRequest": {
+        "additionalProperties": false,
+        "description": "Exactly empty JSON object. Extra fields are rejected.",
+        "properties": {},
+        "type": "object"
+      },
+      "StoreAuthErrorResponse": {
+        "additionalProperties": false,
+        "description": "Closed public auth error. Clients must branch on code, not message.",
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable public auth error code.",
+            "enum": [
+              "AUTHENTICATION_REQUIRED",
+              "AUTH_RECOVERY_PENDING",
+              "AUTH_REQUEST_REJECTED",
+              "AUTH_TEMPORARILY_UNAVAILABLE",
+              "CURRENT_CREDENTIAL_INVALID",
+              "EMAIL_VERIFICATION_REQUIRED",
+              "INVALID_CREDENTIALS",
+              "INVALID_REQUEST",
+              "RATE_LIMITED",
+              "RESET_INVALID_OR_EXPIRED",
+              "VERIFICATION_INVALID_OR_EXPIRED"
+            ],
+            "type": "string"
+          },
+          "correlationId": {
+            "description": "Server-sanitized correlation identifier. OpenAPI examples are omitted.",
+            "pattern": "^[A-Za-z0-9._-]{1,128}$",
+            "type": "string"
+          },
+          "message": {
+            "description": "Fixed presentation message; clients must branch on code, not message.",
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "correlationId"
+        ],
+        "type": "object"
+      },
+      "StoreAuthLoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "Caller-supplied address bytes. Canonicalization is owned by the runtime normalizer. OpenAPI examples are omitted.",
+            "format": "email",
+            "maxLength": 320,
+            "minLength": 3,
+            "type": "string"
+          },
+          "password": {
+            "description": "Credential bytes, 12 to 128 characters, without silent trim. OpenAPI examples are omitted.",
+            "maxLength": 128,
+            "minLength": 12,
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "type": "object"
+      },
+      "StoreAuthPasswordChangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "currentPassword": {
+            "description": "Credential bytes, 12 to 128 characters, without silent trim. OpenAPI examples are omitted.",
+            "maxLength": 128,
+            "minLength": 12,
+            "type": "string"
+          },
+          "newPassword": {
+            "description": "Credential bytes, 12 to 128 characters, without silent trim. OpenAPI examples are omitted.",
+            "maxLength": 128,
+            "minLength": 12,
+            "type": "string"
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ],
+        "type": "object"
+      },
+      "StoreAuthPasswordResetResult": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "const": "PASSWORD_RESET_COMPLETED",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "StoreAuthRequestAccepted": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "const": "REQUEST_ACCEPTED",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "StoreAuthResetConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "newPassword": {
+            "description": "Credential bytes, 12 to 128 characters, without silent trim. OpenAPI examples are omitted.",
+            "maxLength": 128,
+            "minLength": 12,
+            "type": "string"
+          },
+          "token": {
+            "description": "One-time capability, 43 to 512 characters. Never echoed. OpenAPI examples are omitted.",
+            "maxLength": 512,
+            "minLength": 43,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "newPassword"
+        ],
+        "type": "object"
+      },
+      "StoreAuthSessionEnvelope": {
+        "additionalProperties": false,
+        "description": "Server-to-server BFF-to-Medusa session envelope. The browser never receives this envelope; it is not the future same-origin BFF browser session contract. Token examples are omitted.",
+        "properties": {
+          "absoluteExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "accessExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "accessToken": {
+            "description": "Access material for the BFF-to-Medusa hop. OpenAPI examples are omitted.",
+            "type": "string"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/StoreAuthCustomer"
+          },
+          "originalAuthenticatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "refreshExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "refreshToken": {
+            "description": "Refresh material for the BFF-to-Medusa hop. OpenAPI examples are omitted.",
+            "type": "string"
+          },
+          "verificationState": {
+            "enum": [
+              "pending",
+              "verified"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "accessToken",
+          "accessExpiresAt",
+          "refreshToken",
+          "refreshExpiresAt",
+          "originalAuthenticatedAt",
+          "absoluteExpiresAt",
+          "customer",
+          "verificationState"
+        ],
+        "type": "object"
+      },
+      "StoreAuthSignupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "Caller-supplied address bytes. Canonicalization is owned by the runtime normalizer. OpenAPI examples are omitted.",
+            "format": "email",
+            "maxLength": 320,
+            "minLength": 3,
+            "type": "string"
+          },
+          "firstName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "lastName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "password": {
+            "description": "Credential bytes, 12 to 128 characters, without silent trim. OpenAPI examples are omitted.",
+            "maxLength": 128,
+            "minLength": 12,
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "firstName",
+          "lastName"
+        ],
+        "type": "object"
+      },
+      "StoreAuthVerificationConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "description": "One-time capability, 43 to 512 characters. Never echoed. OpenAPI examples are omitted.",
+            "maxLength": 512,
+            "minLength": 43,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
+      "StoreAuthVerificationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "const": "EMAIL_VERIFIED",
+            "type": "string"
+          },
+          "state": {
+            "const": "verified",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "state"
+        ],
+        "type": "object"
+      },
+      "StoreAuthVerificationStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "pending",
+              "verified"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
         ],
         "type": "object"
       },
@@ -1082,6 +1454,12 @@
       }
     },
     "securitySchemes": {
+      "bffServiceCredential": {
+        "description": "Server-to-server caller authentication presented only by the same-origin Next.js BFF to Medusa. This is the BFF service caller authority, required in addition to the publishable Store key when that key is present. It is never a browser or user credential, is never exposed to the browser, and does not authorize the browser to call Medusa directly. Examples are omitted. Swagger remains non-interactive.",
+        "in": "header",
+        "name": "x-indicio-bff-auth",
+        "type": "apiKey"
+      },
       "customerBearer": {
         "bearerFormat": "JWT",
         "description": "Optional or required customer JWT used only on the server-to-server BFF to Medusa hop. The same-origin BFF keeps it server-side; the browser is not authorized to call Medusa directly with it.",
@@ -1117,6 +1495,618 @@
   },
   "openapi": "3.1.2",
   "paths": {
+    "/auth/customer/emailpass": {
+      "post": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly.",
+        "operationId": "storeAuthLoginCustomer",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAuthLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthSessionEnvelope"
+                }
+              }
+            },
+            "description": "Success. Server-to-server BFF material only.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code INVALID_REQUEST.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code INVALID_CREDENTIALS.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code EMAIL_VERIFICATION_REQUIRED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code RATE_LIMITED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTH_TEMPORARILY_UNAVAILABLE.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Authenticate a customer with email and password",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/customer/emailpass/register": {
+      "post": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly.",
+        "operationId": "storeAuthRegisterCustomer",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAuthSignupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthSessionEnvelope"
+                }
+              }
+            },
+            "description": "Success with public code AUTHENTICATED. Server-to-server BFF material only.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code INVALID_REQUEST.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTH_REQUEST_REJECTED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code RATE_LIMITED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTH_TEMPORARILY_UNAVAILABLE.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Register a customer with email and password",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/customer/emailpass/reset-password": {
+      "post": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly.",
+        "operationId": "storeAuthRequestPasswordReset",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAuthEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthRequestAccepted"
+                }
+              }
+            },
+            "description": "Success with public code REQUEST_ACCEPTED. Server-to-server BFF material only.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code INVALID_REQUEST.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Accept a password-reset request",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/customer/emailpass/revoke-current-lineage": {
+      "post": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly.",
+        "operationId": "storeAuthRevokeCurrentLineage",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAuthEmptyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Completed with an empty body.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTHENTICATION_REQUIRED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTH_TEMPORARILY_UNAVAILABLE.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "customerBearer": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Revoke the current BFF session",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/customer/emailpass/update": {
+      "post": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly.",
+        "operationId": "storeAuthConfirmPasswordReset",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAuthResetConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthPasswordResetResult"
+                }
+              }
+            },
+            "description": "Success with public code PASSWORD_RESET_COMPLETED. Server-to-server BFF material only.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code RESET_INVALID_OR_EXPIRED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code RATE_LIMITED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure. Codes AUTH_TEMPORARILY_UNAVAILABLE or AUTH_RECOVERY_PENDING. Retry-After is 60 seconds when AUTH_TEMPORARILY_UNAVAILABLE is returned at pre_lookup.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Confirm a password reset with a one-time capability",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/token/refresh": {
+      "post": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly.",
+        "operationId": "storeAuthRefreshToken",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/XIndicioRefreshToken"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAuthEmptyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthSessionEnvelope"
+                }
+              }
+            },
+            "description": "Success. Server-to-server BFF material only.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code INVALID_REQUEST.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTHENTICATION_REQUIRED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code RATE_LIMITED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTH_TEMPORARILY_UNAVAILABLE.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Rotate the BFF refresh capability",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/health/live": {
       "get": {
         "description": "Liveness probe",
@@ -1239,6 +2229,535 @@
           "Infrastructure"
         ]
       }
+    },
+    "/store/customers/me": {
+      "get": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly.",
+        "operationId": "storeCustomersGetMe",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthCurrentCustomer"
+                }
+              }
+            },
+            "description": "Success. Server-to-server BFF material only.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTHENTICATION_REQUIRED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTH_TEMPORARILY_UNAVAILABLE.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "customerBearer": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Get the current authenticated customer",
+        "tags": [
+          "Customer"
+        ]
+      }
+    },
+    "/store/customers/me/password": {
+      "post": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly.",
+        "operationId": "storeCustomersChangePassword",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAuthPasswordChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Completed with an empty body.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code CURRENT_CREDENTIAL_INVALID.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTHENTICATION_REQUIRED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code RATE_LIMITED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTH_RECOVERY_PENDING.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "customerBearer": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Change the current customer password",
+        "tags": [
+          "Customer"
+        ]
+      }
+    },
+    "/store/customers/me/verify": {
+      "post": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly.",
+        "operationId": "storeCustomersRequestVerification",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAuthEmptyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthRequestAccepted"
+                }
+              }
+            },
+            "description": "Success with public code REQUEST_ACCEPTED. Server-to-server BFF material only.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTHENTICATION_REQUIRED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code RATE_LIMITED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTH_TEMPORARILY_UNAVAILABLE.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "customerBearer": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Request email verification for the current customer",
+        "tags": [
+          "Customer"
+        ]
+      }
+    },
+    "/store/customers/me/verify/status": {
+      "get": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly.",
+        "operationId": "storeCustomersGetVerificationStatus",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthVerificationStatus"
+                }
+              }
+            },
+            "description": "Success. Server-to-server BFF material only.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTHENTICATION_REQUIRED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTH_TEMPORARILY_UNAVAILABLE.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "customerBearer": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Get email verification status for the current customer",
+        "tags": [
+          "Customer"
+        ]
+      }
+    },
+    "/store/customers/verify": {
+      "post": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly. Same-origin Next.js BFF to Medusa using the mandatory BFF service caller credential plus the publishable Store key. No customer access bearer or Medusa customer session is presented or minted. The browser never receives the BFF service credential and is not an authorized direct Medusa client.",
+        "operationId": "storeCustomersConfirmVerification",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAuthVerificationConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthVerificationResult"
+                }
+              }
+            },
+            "description": "Success with public code EMAIL_VERIFIED. Server-to-server BFF material only.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code VERIFICATION_INVALID_OR_EXPIRED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code RATE_LIMITED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code AUTH_TEMPORARILY_UNAVAILABLE.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Confirm email verification with a one-time capability",
+        "tags": [
+          "Customer"
+        ]
+      }
+    },
+    "/store/customers/verify/resend": {
+      "post": {
+        "description": "Browser traffic stays on the same-origin Next.js BFF. The BFF presents a service credential to Medusa. The browser is not an authorized Medusa client and must not call this operation directly.",
+        "operationId": "storeCustomersResendVerification",
+        "parameters": [
+          {
+            "description": "Optional correlation candidate. The server validates the closed format and replaces invalid or missing values before returning x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAuthEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthRequestAccepted"
+                }
+              }
+            },
+            "description": "Success with public code REQUEST_ACCEPTED. Server-to-server BFF material only.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreAuthErrorResponse"
+                }
+              }
+            },
+            "description": "Public auth failure with code INVALID_REQUEST.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Resend email verification",
+        "tags": [
+          "Customer"
+        ]
+      }
     }
   },
   "servers": [
@@ -1249,10 +2768,16 @@
   ],
   "tags": [
     {
+      "name": "Auth"
+    },
+    {
       "name": "Cart"
     },
     {
       "name": "Catalog"
+    },
+    {
+      "name": "Customer"
     },
     {
       "name": "Infrastructure"
