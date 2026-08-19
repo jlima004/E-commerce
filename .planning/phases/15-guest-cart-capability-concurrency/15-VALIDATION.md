@@ -2,7 +2,7 @@
 phase: 15
 slug: guest-cart-capability-concurrency
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-19
 requirements: [CART-01, CART-02, CART-03, CART-04, CART-05, CART-06, CART-07, CART-08, CART-09]
@@ -60,15 +60,48 @@ Frontend traceability (not extra requirements): `FE-CART-001..005`, `FE-CART-008
 
 ## Per-Task Verification Map
 
-Planner must expand this into one row per executable task. Status stays pending until execution (not authorized in this gate).
+One row per executable (`type=auto`) task, bound to the PLAN `<automated>` command. Status stays pending until execution (not authorized in this gate). Checkpoint tasks keep `git diff --check` and are omitted here.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| *(bound by PLAN.md)* | — | — | CART-01..CART-09 | T-15-* / RESEARCH residual risks | see map above | unit / HTTP / PG | focused `--runTestsByPath` only | ❌ until PLAN names files | ⬜ pending |
+| 15-01-01 | 01 | 0 | CART-01..09 | residual RESEARCH | deterministic clock/entropy/CAS/leakage/exact-set | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/modules/guest-cart-capability/__tests__/guest-cart-validation-foundation.unit.spec.ts` | named | ⬜ pending |
+| 15-01-02 | 01 | 0 | CART-01 | residual RESEARCH | hash-only PG + UNIQUE token_hash | PG | `node apps/backend/scripts/run-disposable-postgres-tests.mjs -- npm run test:integration:modules -w @dtc/backend -- --runTestsByPath integration-tests/modules/guest-cart-validation-foundation.postgres.spec.ts` | named | ⬜ pending |
+| 15-02-01 | 02 | 1 | CART-01, CART-02 | T-15-* | DB_MODEL hash-only GuestCartCapability | docs | `node -e "const s=require('fs').readFileSync('docs/DB_MODEL_v1.22.md','utf8'); for (const x of ['GuestCartCapability','guest_cart_capability','token_hash','consumed','gccap','7d','30d']) if (!s.includes(x)) throw new Error('missing '+x)"` | named | ⬜ pending |
+| 15-02-02 | 02 | 1 | CART-01, CART-02 | T-15-* | SHA-256 utf8 hex; no plaintext column | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/modules/guest-cart-capability/__tests__/guest-cart-capability-hash.unit.spec.ts` | named | ⬜ pending |
+| 15-03-01 | 03 | 2 | CART-01, CART-03 | T-15-* | mint hash-only; dummy-miss lookup | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/modules/guest-cart-capability/__tests__/guest-cart-capability-service.unit.spec.ts` | named | ⬜ pending |
+| 15-03-02 | 03 | 2 | CART-01 | T-15-* | module key export | static | `node -e "const s=require('fs').readFileSync('apps/backend/src/modules/guest-cart-capability/index.ts','utf8'); for (const x of ['GUEST_CART_CAPABILITY_MODULE','guest_cart_capability','GuestCartCapabilityModuleService']) if (!s.includes(x)) throw new Error('missing '+x)"` | named | ⬜ pending |
+| 15-04-01 | 04 | 3 | CART-01, CART-03 | T-15-* | module+link registered | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/infrastructure/__tests__/medusa-config.unit.spec.ts` | named | ⬜ pending |
+| 15-04-02 | 04 | 3 | CART-01, CART-03 | T-15-* | UNIQUE token_hash; one active per cart | PG | `node apps/backend/scripts/run-disposable-postgres-tests.mjs -- npm run test:integration:modules -w @dtc/backend -- --runTestsByPath src/modules/guest-cart-capability/__tests__/guest-cart-capability.postgres.spec.ts` | named | ⬜ pending |
+| 15-05-01 | 05 | 4 | CART-02, CART-04 | T-15-05-01 | sibling BFF tuple of 6; auth 12 intact | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/__tests__/bff-protected-operations.unit.spec.ts` | named | ⬜ pending |
+| 15-05-02 | 05 | 4 | CART-02, CART-04 | T-15-05-01 T-15-05-02 | middlewares wiring + missing-BFF 404; no capability header | HTTP | `node -e "const s=require('fs').readFileSync('apps/backend/src/api/middlewares.ts','utf8'); for (const x of ['STORE_CART_BFF_PROTECTED_OPERATIONS','storeCartBffProtectedRouteEntries']) if (!s.includes(x)) throw new Error('missing '+x)" && npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-bff-guard.spec.ts` | named | ⬜ pending |
+| 15-06-01 | 06 | 5 | CART-01, CART-02, CART-04 | T-15-06-01 | active M1; session is not possession | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts src/modules/checkout/__tests__/active-cart.unit.spec.ts` | named | ⬜ pending |
+| 15-06-02 | 06 | 5 | CART-01, CART-02, CART-04 | T-15-06-01 T-15-06-02 | tracer emit-once; missing-BFF; migrate/quarantine inherited active session tests | HTTP | `npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-tracer.spec.ts integration-tests/http/cart-checkout-store.spec.ts` | named | ⬜ pending |
+| 15-07-01 | 07 | 6 | CART-03 | T-15-* | TTL 7d/30d; consume-on-complete | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/modules/guest-cart-capability/__tests__/guest-cart-capability-lifecycle.unit.spec.ts` | named | ⬜ pending |
+| 15-07-02 | 07 | 6 | CART-03 | T-15-* | expired/revoked/consumed uniform 404 | HTTP | `npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-lifecycle.spec.ts` | named | ⬜ pending |
+| 15-08-01 | 08 | 7 | CART-04 | T-15-08-01 | scopes P15-D04; replay cart_id+DTO only | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/__tests__/idempotency-scope.unit.spec.ts` | named | ⬜ pending |
+| 15-08-02 | 08 | 7 | CART-04 | T-15-08-02 | Q-11 Option A; no re-emit | HTTP | `npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-idempotency.spec.ts` | named | ⬜ pending |
+| 15-09-01 | 09 | 8 | CART-07, CART-08 | T-15-09-01 | ETag quoted; replay attaches current ETag | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/__tests__/concurrency.unit.spec.ts` | named | ⬜ pending |
+| 15-09-02 | 09 | 8 | CART-08 | T-15-09-02 | 412 snapshot DTO allowlisted | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/errors.unit.spec.ts` | named | ⬜ pending |
+| 15-10-01 | 10 | 9 | CART-06 | T-15-* | qty int 1-99; 0 update-only | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/line-items/__tests__/validators.unit.spec.ts` | named | ⬜ pending |
+| 15-11-01 | 11 | 10 | CART-05, CART-06, CART-07, CART-08 | T-15-* | add local + staged exact-set | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts src/api/store/carts/line-items/__tests__/validators.unit.spec.ts` | named | ⬜ pending |
+| 15-11-02 | 11 | 10 | CART-05, CART-06, CART-07, CART-08 | T-15-* | add HTTP; 412; P15-D07 replay | HTTP | `npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-line-item-add.spec.ts` | named | ⬜ pending |
+| 15-12-01 | 12 | 11 | CART-05, CART-06, CART-07, CART-08 | T-15-* | update local + qty 0 | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts src/api/store/carts/line-items/__tests__/validators.unit.spec.ts` | named | ⬜ pending |
+| 15-12-02 | 12 | 11 | CART-05, CART-06, CART-07, CART-08 | T-15-* | qty HTTP matrix + 412 | HTTP | `npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-line-item-update.spec.ts` | named | ⬜ pending |
+| 15-13-01 | 13 | 12 | CART-05, CART-07, CART-08 | T-15-* | DELETE by line_id + exact-set | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts` | named | ⬜ pending |
+| 15-13-02 | 13 | 12 | CART-05, CART-07, CART-08 | T-15-* | delete HTTP; 412; replay | HTTP | `npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-line-item-delete.spec.ts` | named | ⬜ pending |
+| 15-14-01 | 14 | 13 | CART-05, CART-07, CART-08 | T-15-14-02 | clear-all + COUNT_TOTAL 64 | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts` | named | ⬜ pending |
+| 15-14-02 | 14 | 13 | CART-05, CART-07, CART-08 | T-15-14-01 T-15-14-03 | empty clear still claim+If-Match | HTTP | `npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-line-item-clear.spec.ts` | named | ⬜ pending |
+| 15-15-01 | 15 | 14 | CART-09, CART-05 | T-15-15-03 | PA invalidate + SHP no-op | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/modules/checkout/__tests__/shipping-invalidation.unit.spec.ts src/modules/payment-attempt/__tests__/cart-invalidation-cart-m1.unit.spec.ts` | named | ⬜ pending |
+| 15-15-02 | 15 | 14 | CART-09, CART-05 | T-15-15-01 T-15-15-02 | XOR capability then Authorization then 404; native DENY | HTTP | `npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/customer-cart-line-items.spec.ts integration-tests/http/guest-cart-native-deny.spec.ts` | named | ⬜ pending |
+| 15-16-01 | 16 | 15 | CART-02, CART-04, CART-08 | T-15-16-01 | request header GET+mutations; 201 response emit-once | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/store-contract.unit.spec.ts` | named | ⬜ pending |
+| 15-16-02 | 16 | 15 | CART-02, CART-08 | T-15-16-01 T-15-16-02 | no examples; nonInteractive | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api-docs/__tests__/store-contract.unit.spec.ts` | named | ⬜ pending |
+| 15-17-01 | 17 | 16 | CART-02, CART-08 | T-15-16-01 | writer-only Store artifact; lint | lint | `npm run openapi:lint -w @dtc/backend` | named | ⬜ pending |
+| 15-18-01 | 18 | 17 | CART-01..09 | T-15-18-01 T-15-18-03 | matrix HTTP + one-spec Order PG | HTTP+PG | `npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-contract-matrix.spec.ts && node apps/backend/scripts/run-disposable-postgres-tests.mjs -- npm run test:integration:modules -w @dtc/backend -- --runTestsByPath integration-tests/modules/guest-cart-order-invariants.postgres.spec.ts` | named | ⬜ pending |
+| 15-18-02 | 18 | 17 | CART-01..09 | T-15-18-01 T-15-18-02 | openapi:check clean + matrix re-run | check+HTTP | `npm run openapi:check -w @dtc/backend && npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-contract-matrix.spec.ts` | named | ⬜ pending |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky. File Exists = named in PLAN; not created until authorized execution.*
 
-Nyquist continuity: no 3 consecutive production-code tasks without an automated verify. Sampling continuity is a PLAN checker Dimension 8 gate.
+Nyquist continuity: no 3 consecutive production-code tasks without an automated verify. Sampling continuity is a PLAN checker Dimension 8 gate. Bound 33/33 auto tasks. Execution remains NOT AUTHORIZED.
 
 ## Wave 0 Requirements
 
@@ -110,14 +143,14 @@ Automated verification covers all in-scope CART behaviors once PLAN binds comman
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
 - [ ] Sampling continuity: no 3 consecutive tasks without automated verify
 - [ ] Wave 0 covers all MISSING references
 - [ ] No watch-mode flags
 - [ ] Feedback latency < 30s for task-level unit verify
-- [ ] `nyquist_compliant: true` set in frontmatter after planner binds per-task commands
+- [x] `nyquist_compliant: true` set in frontmatter after planner binds per-task commands
 - [ ] CART-01..CART-09 each appear in at least one PLAN `requirements` field
 - [ ] Inherited Auth M1 exact-set and zero-Order proofs are in the phase gate
 - [ ] No execution, deploy, real provider, remote infra, or frontend is authorized by this file
 
-**Approval:** pending — strategy drafted from human-approved RESEARCH. Planner must bind exact spec paths. Execution remains NOT AUTHORIZED.
+**Approval:** per-task map bound from PLAN `<automated>` commands. Execution remains NOT AUTHORIZED.
