@@ -25,7 +25,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - `B14-21-HR-01..HR-05` estão CLOSED — PASS
 - Phase 15 CONTEXT está **HUMAN APPROVED — PASS**
 - Phase 15 RESEARCH está **HUMAN APPROVED — PASS**
-- Phase 15 PLAN está **AUTHORIZED — NOT STARTED**
+- Phase 15 PLAN está **REPLANNED — AWAITING HUMAN REVIEW** (8 plans / 8 serial waves)
 - Phase-15 EXECUTION e gates posteriores permanecem não autorizados até revisão humana própria
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
@@ -44,7 +44,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
 | 14 | Customer Auth & Verification | 13 | 9 | **CLOSED — HUMAN APPROVED; 21/21 plans; 63/63 tasks; 9/9 requirements** |
-| 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN WRITTEN — AWAITING HUMAN REVIEW** |
+| 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN REPLANNED — AWAITING HUMAN REVIEW (8 plans / 8 serial waves)** |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
 | 18 | Gelato Shipping Quote & Selection | 17 | 8 | Not started |
@@ -83,7 +83,7 @@ Closure authority: `.planning/phases/13-storefront-contract-foundation-surface-l
 - `Phase 14 HUMAN APPROVED — CLOSED`.
 - Phase 15 CONTEXT HUMAN APPROVED — PASS.
 - Phase 15 RESEARCH HUMAN APPROVED — PASS.
-- Phase 15 PLAN WRITTEN — AWAITING HUMAN REVIEW.
+- Phase 15 PLAN REPLANNED — AWAITING HUMAN REVIEW (8 plans / 8 serial waves).
 - Deploy NOT AUTHORIZED.
 - Real Resend / real providers NOT AUTHORIZED.
 - Remote DB/Redis changes NOT AUTHORIZED.
@@ -195,79 +195,42 @@ Technical head consumed by closure:
 
 **Goal:** substituir a sessão como prova principal de posse por capability opaca e tornar mutações concorrentes seguras.
 
-**Status:** **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN WRITTEN — AWAITING HUMAN REVIEW.** Depends on Phase 14 CLOSED. EXECUTION remains NOT AUTHORIZED.
+**Status:** **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN REPLANNED — AWAITING HUMAN REVIEW.** Depends on Phase 14 CLOSED. EXECUTION remains NOT AUTHORIZED.
 
-**Plans:** 18 plans
+**Plans:** 8 plans / 8 serial waves (replaces the superseded 18-plan set)
 
 Plans:
-**Wave 1**
+**Wave 0**
 
-- [ ] 15-01-PLAN.md — Wave 0 harness Nyquist + PLAN locks P15-D01..P15-D10
-- [ ] 15-02-PLAN.md — DB_MODEL + types/hash/model hash-only
+- [ ] 15-01-PLAN.md — Validation Foundation & PLAN locks P15-D01..P15-D10
+
+**Wave 1** *(blocked on Wave 0 completion)*
+
+- [ ] 15-02-PLAN.md — Guest Capability Domain & Persistence
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 15-03-PLAN.md — mint/lookup/lifecycle service
+- [ ] 15-03-PLAN.md — Active Cart M1 Boundary & Tracer (Guest + Customer)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 15-04-PLAN.md — module register, link, medusa db:generate + PG
+- [ ] 15-04-PLAN.md — Active Cart Lifecycle, Idempotency & Concurrency
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 15-05-PLAN.md — BFF sibling list for six cart ops
+- [ ] 15-05-PLAN.md — Line-Item Mutation Core: Add & Update
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 15-06-PLAN.md — tracer POST/GET /store/carts/active M1
+- [ ] 15-06-PLAN.md — Delete, Clear & Final Cart Surface
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 15-07-PLAN.md — TTL 7d/30d and uniform 404 lifecycle
+- [ ] 15-07-PLAN.md — Store API Contract
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 15-08-PLAN.md — idempotency + Q-11 Option A emit-once
-
-**Wave 8** *(blocked on Wave 7 completion)*
-
-- [ ] 15-09-PLAN.md — ETag/CAS initialize + 412 envelope
-
-**Wave 9** *(blocked on Wave 8 completion)*
-
-- [ ] 15-10-PLAN.md — qty Zod wrapper 1–99 / 0=remove
-
-**Wave 10** *(blocked on Wave 9 completion)*
-
-- [ ] 15-11-PLAN.md — add line-item workflow + If-Match
-
-**Wave 11** *(blocked on Wave 10 completion)*
-
-- [ ] 15-12-PLAN.md — update line-item qty 0=remove
-
-**Wave 12** *(blocked on Wave 11 completion)*
-
-- [ ] 15-13-PLAN.md — delete line-item
-
-**Wave 13** *(blocked on Wave 12 completion)*
-
-- [ ] 15-14-PLAN.md — clear-all local + COUNT_TOTAL 64
-
-**Wave 14** *(blocked on Wave 13 completion)*
-
-- [ ] 15-15-PLAN.md — CART-09 invalidation + Customer path + native DENY
-
-**Wave 15** *(blocked on Wave 14 completion)*
-
-- [ ] 15-16-PLAN.md — API Docs TypeScript registry
-
-**Wave 16** *(blocked on Wave 15 completion)*
-
-- [ ] 15-17-PLAN.md — openapi:generate --surface store
-
-**Wave 17** *(blocked on Wave 16 completion)*
-
-- [ ] 15-18-PLAN.md — final exact-set / leakage / zero-Order gate
+- [ ] 15-08-PLAN.md — Final Phase Verification (mandatory ledger)
 
 The accepted Phase-15 CONTEXT and RESEARCH are the authorities for the planning boundary. Human authorization permitted Phase-15 PLAN only. EXECUTION and all later gates remain separately human-gated and are not authorized by this change.
 
@@ -317,4 +280,4 @@ The accepted Phase-15 CONTEXT and RESEARCH are the authorities for the planning 
 
 O milestone só pode fechar quando houver evidência PASS para todos os gates previstos: contratos Store/OpenAPI, autenticação, capability/concorrência e merge de carrinho, checkout BR/privacidade, Gelato shipping, PaymentAttempt/confirmation, order/catalog handoff, kit types/Zod/fixtures/mocks, contract tests, suites backend, migrations/constraints, drift/lint/build, security negative proofs e release verification aplicável.
 
-Phase 15 CONTEXT and RESEARCH are HUMAN APPROVED — PASS and Phase 15 PLAN is WRITTEN — AWAITING HUMAN REVIEW (18 plans). No Phase-15 EXECUTION or later gate, provider real, infraestrutura remota, deploy ou frontend is automatically authorized.
+Phase 15 CONTEXT and RESEARCH are HUMAN APPROVED — PASS and Phase 15 PLAN is REPLANNED — AWAITING HUMAN REVIEW (8 plans / 8 serial waves). No Phase-15 EXECUTION or later gate, provider real, infraestrutura remota, deploy ou frontend is automatically authorized.

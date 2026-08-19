@@ -355,18 +355,24 @@ Also keep `assertNoPaymentOrOrderFields` (lines 185–199) on every public cart 
 
 **Do not copy** `attach/route.ts` transfer/merge workflows (Phase 16). Its `workflowEngine.run(...)` style is valid Medusa v2, but attach remains DENY.
 
-Handler skeleton to copy from active cart:
+Handler skeleton for line-item mutations (8-plan topology, 15-05/15-06). Do **not** reverse validation and claim.
 
-1. Resolve actor (guest capability **or** Customer access context).
-2. Assert `{id}` is that actor’s active cart.
-3. Require `If-Match` (fail-closed if missing).
-4. `store-idempotency.claim` (mutations).
-5. Local qty validator (CART-06).
-6. `StoreResourceVersion.compareAndSwapWithMutation` wrapping the Medusa workflow.
-7. `invalidateActivePaymentAttemptForCartChange` + shipping no-op hooks.
-8. Refetch + `assertNoPaymentOrOrderFields` + `serializeStoreCartPreOrder` + `ETag`.
+1. BFF already passed.
+2. Resolve actor (guest capability **XOR** Customer access context).
+3. Assert `{id}` is that actor’s active cart (uniform 404).
+4. Parse + validate request/path semantics (**before** claim). Genuine non-integers (`1.5`, `1.1`, `98.9`); JSON `1` and `1.0` are the same Number.
+5. Require `Idempotency-Key`.
+6. `store-idempotency.claim` (**before** If-Match).
+7. Replay short-circuit: refetch canonical `PublicStoreCartPreOrder` + current ETag; HTTP 200; never re-emit capability; never persist a full response DTO.
+8. Require `If-Match` (missing/malformed → 400 `VALIDATION_ERROR`).
+9. `StoreResourceVersion.compareAndSwapWithMutation` wrapping the Medusa workflow.
+10. `applyStructuralCartInvalidation` (`invalidateActivePaymentAttemptForCartChange` + shipping no-op hooks). Helper exists before the first M1 mutation.
+11. Terminalize claim with existing states only (`markCompleted` / `markFailedRetryable` / `markFailedTerminal`). Stale 412 must not leave `processing`.
+12. Refetch + `assertNoPaymentOrOrderFields` + `serializeStoreCartPreOrder` + current `ETag`.
 
-Empty clear: RESEARCH says 200 idempotent if no items (still needs ownership + If-Match + idempotency as PLAN defines).
+Empty clear: RESEARCH says 200 idempotent if no items (still needs ownership + If-Match + idempotency as PLAN defines). Zero items: no workflow and no structural version bump.
+
+Wave topology for execution: Wave 0 = 15-01 … Wave 7 = 15-08 (one plan per wave).
 
 ---
 
@@ -658,7 +664,7 @@ Do not execute tests in this mapping step.
 
 ### Idempotency ≠ ownership ≠ If-Match
 **Source:** `store-idempotency/service.ts` claim + forbidden `capability` key; `parameters.ts` IdempotencyKey description.
-**Apply to:** POST active + line-item mutations. Replay = safe context only (Q-11).
+**Apply to:** POST active + line-item mutations. Replay = HTTP 200 of refetch canonical cart + current ETag only (Q-11 Option A). Mint success = 201. Do not persist a full response DTO.
 
 ### Optimistic concurrency
 **Source:** `store-resource-version/service.ts` `compareAndSwapWithMutation`; OpenAPI `ETag` / `If-Match`; errors.ts 412 → `PRECONDITION_FAILED`.
