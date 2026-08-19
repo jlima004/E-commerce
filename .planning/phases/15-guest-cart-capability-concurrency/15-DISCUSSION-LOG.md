@@ -55,6 +55,27 @@ Non-blocking nits from adversarial review were applied: canonical-refs heading n
 
 ---
 
+## RESEARCH gate (2026-08-19)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Auto-chain to PLAN after RESEARCH | Forbidden by operator | |
+| Research-only; stop at human review of 15-RESEARCH.md | `/gsd-plan-phase 15 --research-phase`; PLAN not authorized | ✓ |
+
+**Sources consulted:** 15-CONTEXT.md (boundary), STATE/ROADMAP/REQUIREMENTS, Phase 13/14 closures, PRD Backend/Frontend, SRS, DB_MODEL v1.21/v1.22, as-built Medusa 2.16.0 (`node_modules` + project routes), Context7 `/websites/medusajs` (secondary).
+
+**Subagents (sequential, read-only until RESEARCH.md write):**
+- A as-built — Composer 2.5 — PASS
+- B security/concurrency — Grok 4.6 — PASS
+- C Medusa/runtime + Context7 — Composer 2.5 — PASS
+- D adversarial review — Grok 4.6 — PASS (warnings applied before commit)
+
+**Q-01..Q-11:** RESEARCH recommendations only, not D15 locks. Human may diverge on TTL numeric value and Q-11 orphan rotation. Exact-set 63→64 is a human-review lock of this RESEARCH, not a silent PLAN default.
+
+**Not authorized by this log:** PLAN, execution, frontend, deploy, providers reais, infra remota, push.
+
+---
+
 ## Deferred Ideas
 
 - Cart merge & review / capability consumption on merge — Phase 16
