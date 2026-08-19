@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
 status: ready
-last_updated: "2026-08-19T18:45:00.000Z"
+last_updated: "2026-08-19T19:20:00.000Z"
 progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 36
   completed_plans: 28
   percent: 20
-stopped_at: PHASE 15 PLAN REPLANNED — AWAITING HUMAN REVIEW — EXECUTION NOT AUTHORIZED
+stopped_at: PHASE 15 PLAN REMEDIATED — AWAITING HUMAN RE-REVIEW — EXECUTION NOT AUTHORIZED
 current_phase: 15
 current_phase_name: guest-cart-capability-concurrency
 current_plan: null
@@ -24,7 +24,7 @@ See: `.planning/PROJECT.md`.
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, duplicate order or improper fulfillment.
 
-**Current focus:** Phase 15 — `Guest Cart Capability & Concurrency`, with **RESEARCH HUMAN APPROVED — PASS / PLAN REPLANNED — AWAITING HUMAN REVIEW (8 plans / 8 serial waves)**. EXECUTION remains not authorized.
+**Current focus:** Phase 15 — `Guest Cart Capability & Concurrency`, with **RESEARCH HUMAN APPROVED — PASS / PLAN REMEDIATED — AWAITING HUMAN RE-REVIEW (8 plans / 8 serial waves)**. EXECUTION remains not authorized.
 
 ## Execution Policy
 
@@ -35,7 +35,7 @@ Execution remains manual-review gated.
 - `workflow._auto_chain_active=false`
 - `parallelization=false`
 
-Human approval closes only the reviewed gate. Phase 15 CONTEXT and RESEARCH are human-approved. Phase 15 PLAN is replanned (8 serial waves, 15-01..15-08) and awaits human review. Execution and later Phase-15 gates remain separately unauthorized.
+Human approval closes only the reviewed gate. Phase 15 CONTEXT and RESEARCH are human-approved. Phase 15 PLAN is remediated after human review of the 8-plan replan (B15-P-RP-HR-01..03 + stale If-Match) and awaits human re-review. Execution and later Phase-15 gates remain separately unauthorized.
 
 ## Current Gate
 
@@ -56,7 +56,7 @@ B14-21-HR-05: CLOSED — PASS
 
 Phase 15 CONTEXT: HUMAN APPROVED — PASS
 Phase 15 RESEARCH: HUMAN APPROVED — PASS
-Phase 15 PLAN: REPLANNED — AWAITING HUMAN REVIEW
+Phase 15 PLAN: REMEDIATED — AWAITING HUMAN RE-REVIEW
 8 plans / 8 serial waves
 Phase 15 EXECUTION: NOT AUTHORIZED
 
@@ -75,7 +75,7 @@ Milestone v1.1:
 - Phase 13: FND-01..FND-08 = **8/8 COMPLETE**
 - Phase 14: AUTH-01..AUTH-09 = **9/9 COMPLETE**
 - known plans human-approved executed: **28/28** (Phase 13: 7; Phase 14: 21)
-- Phase 15: **RESEARCH HUMAN APPROVED — PASS / PLAN REPLANNED — AWAITING HUMAN REVIEW** (8 plans on disk; not executed)
+- Phase 15: **RESEARCH HUMAN APPROVED — PASS / PLAN REMEDIATED — AWAITING HUMAN RE-REVIEW** (8 plans on disk; not executed)
 - frontend: BLOCKED
 
 ## Accepted Evidence References
@@ -190,7 +190,7 @@ By explicit human authorization after Phase-15 RESEARCH review, and after a comp
 Phase 15 — Guest Cart Capability & Concurrency
 CONTEXT: HUMAN APPROVED — PASS
 RESEARCH: HUMAN APPROVED — PASS
-PLAN: REPLANNED — AWAITING HUMAN REVIEW
+PLAN: REMEDIATED — AWAITING HUMAN RE-REVIEW
 8 plans / 8 serial waves
 EXECUTION: NOT AUTHORIZED
 ```
@@ -222,9 +222,9 @@ The 8-plan set at `15-01-PLAN.md` … `15-08-PLAN.md` replaces the superseded 18
 
 No open Phase-14 blocker remains.
 
-Phase 15 CONTEXT and RESEARCH are human-approved. PLAN is replanned (8 serial waves) and awaits human review. Execution, deploy, real providers, remote infrastructure and frontend remain unauthorized.
+Phase 15 CONTEXT and RESEARCH are human-approved. PLAN is remediated (8 serial waves) and awaits human re-review. Execution, deploy, real providers, remote infrastructure and frontend remain unauthorized.
 
-Human PLAN-review blockers the replan is intended to close (pending human review of the 8-plan set):
+Original PLAN-review blockers the 8-plan replan is intended to close (pending human re-review of the remediated 8-plan set):
 
 - B15-P-HR-01 POST ACTIVE CAPABILITY CONTRACT / OPENAPI DRIFT
 - B15-P-HR-02 IDEMPOTENCY REPLAY MATERIALIZATION
@@ -233,11 +233,18 @@ Human PLAN-review blockers the replan is intended to close (pending human review
 - B15-P-HR-05 IMPOSSIBLE 1.0 NUMERIC TEST
 - B15-P-HR-06 FINAL REGRESSION GATE IS OPTIONAL
 
+Human replan-review blockers closed documentarily in this remediation (awaiting human re-review; not PLAN HUMAN APPROVED; not execution evidence):
+
+- B15-P-RP-HR-01 — FIXED — conditional Customer authorization
+- B15-P-RP-HR-02 — FIXED — execution subagent policy encoded
+- B15-P-RP-HR-03 — FIXED — post-create/mint partial-effect policy
+- Stale If-Match — FIXED — failed_terminal deterministic replay
+
 ## Session Continuity
 
 **Resume file:** .planning/phases/15-guest-cart-capability-concurrency/15-01-PLAN.md
 
-Last session: 2026-08-19T18:45:00.000Z
+Last session: 2026-08-19T19:20:00.000Z
 
 Stopped at:
 
@@ -246,7 +253,7 @@ PHASE 14: HUMAN APPROVED — CLOSED
 AUTH-01..AUTH-09: 9/9 COMPLETE
 PHASE 15 CONTEXT: HUMAN APPROVED — PASS
 PHASE 15 RESEARCH: HUMAN APPROVED — PASS
-PHASE 15 PLAN: REPLANNED — AWAITING HUMAN REVIEW (8 plans / 8 serial waves)
+PHASE 15 PLAN: REMEDIATED — AWAITING HUMAN RE-REVIEW (8 plans / 8 serial waves)
 PHASE 15 EXECUTION: NOT AUTHORIZED
 FRONTEND: BLOCKED
 DEPLOY: NOT AUTHORIZED
@@ -264,4 +271,4 @@ Resume with:
 - `.planning/phases/14-customer-auth-verification/14-21-SUMMARY.md`
 - `.planning/phases/14-customer-auth-verification/14-CLOSURE.md`
 
-**Next permitted step:** human review of the 8 Phase-15 PLAN.md files. EXECUTION remains not authorized until a separate `/gsd-execute-phase` authorization.
+**Next permitted step:** human re-review of the remediated 8 Phase-15 PLAN.md files. EXECUTION remains not authorized until a separate `/gsd-execute-phase` authorization. Do not run `/gsd-execute-phase 15`.

@@ -54,7 +54,7 @@ Existing Wave 0 harness from Phases 13/14 (disposable Postgres, leakage collecto
 | CART-04 / Q-11 | Replay não devolve header da capability; refetch canônico | HTTP | emit-once; replay 200 materializes current cart | HTTP replay after 201 (15-04, 15-08) |
 | CART-05 | Workflow nativo via rota local; nativo HTTP ainda DENY | HTTP + guard | no second cart engine; native create/read/complete/attach/shipping remain DENY | HTTP add/update/delete/clear + native DENY (15-05, 15-06, 15-08) |
 | CART-06 | 1–99; 0 remove; rejeitar decimal/negativo/>99 | unit + HTTP | integer qty only; genuine non-integers `1.5`/`1.1`/`98.9` | unit + HTTP 1/99/0/-1/100/decimal (15-05, 15-08) |
-| CART-07 / CART-08 | If-Match stale → 412 + snapshot sem token | HTTP + PG CAS | monotonic version; `ETag`; no destructive retry | HTTP stale aba + PG CAS (15-04, 15-05, 15-06, 15-08) |
+| CART-07 / CART-08 | If-Match stale → 412 + snapshot sem token | HTTP + PG CAS | monotonic version; `ETag`; `markFailedTerminal` + `CART_VERSION_MISMATCH`; same-key replay remains 412 with zero mutation | HTTP stale aba + PG CAS (15-04, 15-05, 15-06, 15-08) |
 | CART-09 | Mutação chama invalidação PA + hook SHP no-op | unit | invalidate incompatible PA; quote/select hook no-op until Phase 18; no Gelato | unit invalidation + SHP no-op (15-05, 15-06, 15-08) |
 | FND / AUTH inherit | Exact-set 6 auth intacto; complete DENY; zero Order | HTTP herdado | Phase 14 Auth M1 exact-set preserved; `POST /store/carts/{id}/complete` DENY; canonical webhook remains Order birth | inherited HTTP + Order count zero (15-08) |
 
@@ -71,6 +71,15 @@ Human-review blockers this topology must close:
 | B15-P-HR-05 IMPOSSIBLE 1.0 NUMERIC TEST | 15-05 |
 | B15-P-HR-06 FINAL REGRESSION GATE IS OPTIONAL | 15-08 |
 
+Human-review blockers closed by this documentary remediation (still pending human re-review; not execution evidence):
+
+| ID | Closed in |
+|---|---|
+| B15-P-RP-HR-01 conditional Customer access on mixed Guest/Customer routes | 15-03 |
+| B15-P-RP-HR-02 execution subagent policy not encoded | 15-01 (canonical); 15-03/15-04/15-05 reference; this file binds 15-02..15-08 |
+| B15-P-RP-HR-03 active create→mint partial-effect policy | 15-04 |
+| Stale If-Match deterministic `failed_terminal` | 15-05 |
+
 ## Per-Task Verification Map
 
 One row per executable (`type=auto`) task, bound to the PLAN `<automated>` command. Status stays pending until execution (not authorized in this gate). Checkpoint tasks keep `git diff --check` and are omitted here.
@@ -82,14 +91,14 @@ One row per executable (`type=auto`) task, bound to the PLAN `<automated>` comma
 | 15-02-01 | 02 | 1 | CART-01, CART-02 | T-15-02-* | DB_MODEL + production generate/hash/compare | docs+unit | `node -e "const s=require('fs').readFileSync('docs/DB_MODEL_v1.22.md','utf8'); for (const x of ['GuestCartCapability','guest_cart_capability','token_hash','consumed','gccap','7d','30d']) if (!s.includes(x)) throw new Error('missing '+x)" && npm run test:unit -w @dtc/backend -- --runTestsByPath src/modules/guest-cart-capability/__tests__/guest-cart-capability-hash.unit.spec.ts` | named | ⬜ pending |
 | 15-02-02 | 02 | 1 | CART-01, CART-03 | T-15-02-* | mint hash-only; dummy-miss lookup | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/modules/guest-cart-capability/__tests__/guest-cart-capability-service.unit.spec.ts` | named | ⬜ pending |
 | 15-02-03 | 02 | 1 | CART-01, CART-03 | T-15-02-* | module+link+UNIQUE+one-active | unit+PG | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/infrastructure/__tests__/medusa-config.unit.spec.ts && node apps/backend/scripts/run-disposable-postgres-tests.mjs -- npm run test:integration:modules -w @dtc/backend -- --runTestsByPath src/modules/guest-cart-capability/__tests__/guest-cart-capability.postgres.spec.ts` | named | ⬜ pending |
-| 15-03-01 | 03 | 2 | CART-02, CART-04 | T-15-03-01 | sibling BFF tuple of 6; actor primitive | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/__tests__/bff-protected-operations.unit.spec.ts src/modules/checkout/__tests__/active-cart.unit.spec.ts` | named | ⬜ pending |
+| 15-03-01 | 03 | 2 | CART-02, CART-04 | T-15-03-01 | sibling BFF tuple of 6; conditional actor A/B/C; no raw access guard on mixed matchers | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/__tests__/bff-protected-operations.unit.spec.ts src/modules/checkout/__tests__/active-cart.unit.spec.ts` | named | ⬜ pending |
 | 15-03-02 | 03 | 2 | CART-01, CART-02, CART-04 | T-15-03-* | active M1=8 Guest+Customer; invalid-present no create | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts src/modules/checkout/__tests__/active-cart.unit.spec.ts` | named | ⬜ pending |
 | 15-03-03 | 03 | 2 | CART-01, CART-02, CART-04 | T-15-03-* | HTTP tracer Guest+Customer; no describe.skip | HTTP | `npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-bff-guard.spec.ts integration-tests/http/guest-cart-tracer.spec.ts integration-tests/http/customer-cart-active.spec.ts integration-tests/http/cart-checkout-store.spec.ts` | named | ⬜ pending |
 | 15-04-01 | 04 | 3 | CART-07, CART-08 | T-15-04-* | ETag quoted; 412 snapshot DTO | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/__tests__/concurrency.unit.spec.ts src/api/store-surface/__tests__/errors.unit.spec.ts` | named | ⬜ pending |
 | 15-04-02 | 04 | 3 | CART-03 | T-15-04-* | TTL 7d/30d; uniform 404 | unit+HTTP | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/modules/guest-cart-capability/__tests__/guest-cart-capability-lifecycle.unit.spec.ts && npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-lifecycle.spec.ts` | named | ⬜ pending |
-| 15-04-03 | 04 | 3 | CART-04 | T-15-04-* | replay 200 refetch; Q-11 Option A | unit+HTTP | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/__tests__/idempotency-scope.unit.spec.ts && npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-idempotency.spec.ts integration-tests/http/guest-cart-tracer.spec.ts integration-tests/http/customer-cart-active.spec.ts` | named | ⬜ pending |
+| 15-04-03 | 04 | 3 | CART-04 | T-15-04-* | replay 200 refetch; Q-11 Option A; post-create/pre-capability failure does not create a second cart | unit+HTTP | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/__tests__/idempotency-scope.unit.spec.ts && npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-idempotency.spec.ts integration-tests/http/guest-cart-tracer.spec.ts integration-tests/http/customer-cart-active.spec.ts` | named | ⬜ pending |
 | 15-05-01 | 05 | 4 | CART-06, CART-09 | T-15-05-* | genuine decimals; CART-09 helper before mutation | unit | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/line-items/__tests__/validators.unit.spec.ts src/modules/checkout/__tests__/shipping-invalidation.unit.spec.ts src/modules/payment-attempt/__tests__/cart-invalidation-cart-m1.unit.spec.ts` | named | ⬜ pending |
-| 15-05-02 | 05 | 4 | CART-05..09 | T-15-05-* | add pipeline validate→claim→If-Match; Guest+Customer | unit+HTTP | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts && npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-line-item-add.spec.ts integration-tests/http/customer-cart-line-items.spec.ts` | named | ⬜ pending |
+| 15-05-02 | 05 | 4 | CART-05..09 | T-15-05-* | add pipeline validate→claim→If-Match; Guest+Customer; stale 412 = failed_terminal deterministic replay | unit+HTTP | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts && npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-line-item-add.spec.ts integration-tests/http/customer-cart-line-items.spec.ts` | named | ⬜ pending |
 | 15-05-03 | 05 | 4 | CART-05..09 | T-15-05-* | update qty 0=remove; genuine decimals HTTP | unit+HTTP | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts src/api/store/carts/line-items/__tests__/validators.unit.spec.ts && npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-line-item-update.spec.ts integration-tests/http/customer-cart-line-items.spec.ts` | named | ⬜ pending |
 | 15-06-01 | 06 | 5 | CART-05, CART-07, CART-08 | T-15-06-* | DELETE by line_id | unit+HTTP | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts && npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-line-item-delete.spec.ts integration-tests/http/customer-cart-line-items.spec.ts` | named | ⬜ pending |
 | 15-06-02 | 06 | 5 | CART-05, CART-07, CART-08 | T-15-06-* | clear-all + COUNT_TOTAL 64; empty no bump | unit+HTTP | `npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store-surface/__tests__/manifest.unit.spec.ts && npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-line-item-clear.spec.ts` | named | ⬜ pending |
@@ -132,12 +141,16 @@ Reuse Phase 13/14 infrastructure. Phase 15 Wave 0 (plan 15-01) must include:
 11. Customer GET/POST active ship in the same cut as guest active M1. No `describe.skip` bridge.
 12. POST active: absent header creates; present-invalid header returns uniform 404 and does not create. Request header is documented on all six Cart M1 operations.
 13. Final regression ledger is mandatory. Incomplete ledger is BLOCKED, never PASS.
+14. Mixed Guest+Customer cart routes: Guest request without Customer `Authorization` is not blocked by the Customer access guard. `Authorization` triggers Phase-14 Customer access authority only when present. Invalid-present capability never falls through to Customer. Raw `customerAuthAccessGuardMiddleware` is not mounted unconditionally on the six mixed cart matchers.
+15. Execution subagent policy exists in 15-01 (`Phase 15 Execution Orchestration Policy`) and is mandatory when EXECUTION is authorized. It does not authorize EXECUTION. Each executed PLAN must run sequential subagents: audit + implementation + verification + adversarial review. Human checkpoint between PLANs remains blocking.
+16. Simulated post-create / pre-capability failure does not create two carts for the same idempotent intention; no secret recovery; no abandoned `processing`. Classify with existing store-idempotency states only; never `failed_retryable` after confirmed create if that would allow a second create.
+17. Stale If-Match = `markFailedTerminal` + `failure_code CART_VERSION_MISMATCH` + HTTP 412 + current canonical snapshot + current ETag + zero mutation. Same-key + same-fingerprint replay remains 412 without re-executing CAS/workflow.
 
 ## Manual-Only Verifications
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Human review between plans | CART-01..CART-09 | project policy (`mode=interactive`) | stop after each SUMMARY; only explicit approval unlocks next plan |
+| Human review between plans | CART-01..CART-09 | project policy (`mode=interactive`) | stop after each SUMMARY; only explicit approval unlocks next plan; sequential subagents per 15-01 policy when EXECUTION is authorized |
 | TTL numeric (7d rolling / 30d cap) | CART-03 | RESEARCH default; human may adjust at PLAN review | confirm PLAN lock; do not call remote clocks/providers |
 | Q-11 orphan policy | CART-04 | RESEARCH recommendation locked as P15-D09 Option A | confirm PLAN records default vs rotation-on-replay |
 | Real providers / remote infra | — | explicitly unauthorized | do not call Stripe/Resend/Gelato/Supabase remote/Redis remote |
@@ -169,6 +182,7 @@ Marked from Subagent C coverage checker PASS (2026-08-19), not from execution. W
 - [x] Final regression ledger is mandatory (no optional language)
 - [x] Exactly 8 active PLAN files; linear 01→08; waves 0–7
 - [x] No execution, deploy, real provider, remote infra, or frontend is authorized by this file
+- [x] 15-01 encodes `Phase 15 Execution Orchestration Policy` (future how-to; not EXECUTION authorization)
 
 **Approval:** per-task map bound from PLAN `<automated>` commands. Execution remains NOT AUTHORIZED.
 `wave_0_complete` remains **false**.
