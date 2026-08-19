@@ -48,9 +48,16 @@ export type GuestCartCapabilityRecord = {
 export type MintGuestCartCapabilityInput = {
   cart_id: string
   expires_at?: Date | string
+  now?: Date
+  randomBytesFn?: (size: number) => Buffer
 }
 
 export type MintGuestCartCapabilityResult = {
   record: GuestCartCapabilityRecord
   plaintext_token: string
+}
+
+export type LookupGuestCartCapabilityOptions = {
+  now?: Date
+  touch?: boolean
 }

@@ -35,14 +35,15 @@ export async function lookupGuestCartCapabilityByPresentedToken(
 ): Promise<GuestCartCapabilityRecord> {
   const now = deps.now ?? new Date()
 
-  if (typeof presentedToken !== "string" || presentedToken.trim().length === 0) {
+  // Exact token semantics: no .trim() normalization, token is exact secret string
+  if (typeof presentedToken !== "string" || presentedToken.length === 0) {
     performDummyGuestCartCapabilityHashComparison()
     throwGuestCartCapabilityLookupInvalidError()
   }
 
   let candidateHash: string
   try {
-    candidateHash = hashGuestCartCapability(presentedToken.trim())
+    candidateHash = hashGuestCartCapability(presentedToken)
   } catch {
     performDummyGuestCartCapabilityHashComparison()
     throwGuestCartCapabilityLookupInvalidError()

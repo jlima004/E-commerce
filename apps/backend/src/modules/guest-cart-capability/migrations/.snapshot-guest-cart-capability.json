@@ -73,7 +73,7 @@
             "revoked",
             "consumed"
           ],
-          "mappedType": "text"
+          "mappedType": "enum"
         },
         "expires_at": {
           "name": "expires_at",
@@ -91,21 +91,53 @@
           "enumItems": [],
           "mappedType": "datetime"
         },
-        "metadata": {
-          "name": "metadata",
-          "type": "jsonb",
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
           "nullable": true,
           "unique": false,
-          "length": null,
+          "length": 6,
           "precision": null,
           "scale": null,
           "default": null,
           "comment": null,
           "enumItems": [],
-          "mappedType": "json"
+          "mappedType": "datetime"
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamptz",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamptz",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
         },
         "created_at": {
           "name": "created_at",
@@ -169,22 +201,22 @@
           "expression": "CREATE INDEX IF NOT EXISTS \"IDX_guest_cart_capability_deleted_at\" ON \"guest_cart_capability\" (\"deleted_at\") WHERE deleted_at IS NULL"
         },
         {
-          "keyName": "UQ_guest_cart_capability_token_hash",
+          "keyName": "IDX_guest_cart_capability_token_hash_unique",
           "columnNames": [],
           "composite": false,
           "constraint": false,
           "primary": false,
           "unique": false,
-          "expression": "CREATE UNIQUE INDEX IF NOT EXISTS \"UQ_guest_cart_capability_token_hash\" ON \"guest_cart_capability\" (\"token_hash\") WHERE deleted_at IS NULL"
+          "expression": "CREATE UNIQUE INDEX IF NOT EXISTS \"IDX_guest_cart_capability_token_hash_unique\" ON \"guest_cart_capability\" (\"token_hash\") WHERE deleted_at IS NULL"
         },
         {
-          "keyName": "UQ_guest_cart_capability_active_cart",
+          "keyName": "IDX_guest_cart_capability_cart_id_active_unique",
           "columnNames": [],
           "composite": false,
           "constraint": false,
           "primary": false,
           "unique": false,
-          "expression": "CREATE UNIQUE INDEX IF NOT EXISTS \"UQ_guest_cart_capability_active_cart\" ON \"guest_cart_capability\" (\"cart_id\") WHERE status = 'active' AND deleted_at IS NULL"
+          "expression": "CREATE UNIQUE INDEX IF NOT EXISTS \"IDX_guest_cart_capability_cart_id_active_unique\" ON \"guest_cart_capability\" (\"cart_id\") WHERE status = 'active' AND deleted_at IS NULL"
         },
         {
           "keyName": "IDX_guest_cart_capability_status_expires_at",
@@ -206,13 +238,7 @@
           "unique": true
         }
       ],
-      "checks": [
-        {
-          "name": "guest_cart_capability_status_check",
-          "expression": "status in ('active', 'expired', 'revoked', 'consumed')",
-          "definition": "check ((\"status\" in ('active', 'expired', 'revoked', 'consumed')))"
-        }
-      ],
+      "checks": [],
       "foreignKeys": {},
       "nativeEnums": {}
     }

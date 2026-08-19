@@ -7,6 +7,7 @@ import {
   buildGuestCartCapabilityTouchRollingUpdate,
   computeInitialExpiresAt,
   computeRollingExpiresAt,
+  GuestCartCapabilityModuleService,
   GUEST_CART_CAPABILITY_TTL_MAX_MS,
   GUEST_CART_CAPABILITY_TTL_ROLLING_MS,
   isGuestCartCapabilityActive,
@@ -219,13 +220,13 @@ describe("Guest Cart Capability Service & Lookup Unit Suite (Task 15-02-02)", ()
     })
   })
 
-  describe("lookupGuestCartCapabilityByPresentedToken", () => {
+  describe("lookupGuestCartCapabilityByPresentedToken (exact token semantics)", () => {
     const validMint = mintGuestCartCapabilityInMemory(
       { cart_id: "cart_valid" },
       { id: "gccap_valid", now: clock.now(), randomBytesFn: entropy.randomBytesFn }
     )
 
-    it("resolves record on valid token presentation", async () => {
+    it("resolves record on exact valid token presentation", async () => {
       const record = await lookupGuestCartCapabilityByPresentedToken(
         validMint.plaintext_token,
         {
@@ -241,6 +242,33 @@ describe("Guest Cart Capability Service & Lookup Unit Suite (Task 15-02-02)", ()
 
       expect(record.id).toBe(validMint.record.id)
       expect(record.cart_id).toBe("cart_valid")
+    })
+
+    it("rejects token with whitespace padding (NO trim normalization)", async () => {
+      // Must NOT normalize or trim
+      await expect(
+        lookupGuestCartCapabilityByPresentedToken(` ${validMint.plaintext_token}`, {
+          listByHash: async (hash) => {
+            if (hash === validMint.record.token_hash) {
+              return validMint.record
+            }
+            return null
+          },
+          now: clock.now(),
+        })
+      ).rejects.toThrow(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
+
+      await expect(
+        lookupGuestCartCapabilityByPresentedToken(`${validMint.plaintext_token} `, {
+          listByHash: async (hash) => {
+            if (hash === validMint.record.token_hash) {
+              return validMint.record
+            }
+            return null
+          },
+          now: clock.now(),
+        })
+      ).rejects.toThrow(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
     })
 
     it("throws uniform GUEST_CART_CAPABILITY_LOOKUP_INVALID on missing or empty token", async () => {
@@ -301,6 +329,117 @@ describe("Guest Cart Capability Service & Lookup Unit Suite (Task 15-02-02)", ()
           now: clock.now(),
         })
       ).rejects.toThrow(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
+    })
+  })
+
+  describe("GuestCartCapabilityModuleService persistent methods", () => {
+    function createServiceInstance(): GuestCartCapabilityModuleService {
+      const service = Object.create(GuestCartCapabilityModuleService.prototype)
+      return service
+    }
+
+    it("mintGuestCartCapability delegates to createGuestCartCapabilities and returns plaintextToken", async () => {
+      const service = createServiceInstance()
+      const mockCreated = {
+        id: "gccap_mock_1",
+        cart_id: "cart_mock_1",
+        token_hash: "mock_hash_1",
+        status: GUEST_CART_CAPABILITY_STATUS.ACTIVE,
+        expires_at: new Date(Date.now() + 7 * 86400 * 1000),
+        consumed_at: null,
+        revoked_at: null,
+        last_used_at: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+        deleted_at: null,
+      }
+
+      ;(service as any).createGuestCartCapabilities = jest.fn().mockResolvedValue([mockCreated])
+
+      const result = await service.mintGuestCartCapability({
+        cart_id: "cart_mock_1",
+        now: clock.now(),
+        randomBytesFn: entropy.randomBytesFn,
+      })
+
+      expect(result.plaintext_token).toHaveLength(43)
+      expect(result.record).toEqual(mockCreated)
+      expect((service as any).createGuestCartCapabilities).toHaveBeenCalledTimes(1)
+    })
+
+    it("lookupGuestCartCapabilityByPresentedToken performs persistent touch", async () => {
+      const service = createServiceInstance()
+      const validMint = mintGuestCartCapabilityInMemory(
+        { cart_id: "cart_touch_mock" },
+        { id: "gccap_touch_mock", now: clock.now(), randomBytesFn: entropy.randomBytesFn }
+      )
+
+      const touchedRecord = {
+        ...validMint.record,
+        last_used_at: clock.now().toISOString(),
+        expires_at: computeRollingExpiresAt(validMint.record.created_at, clock.now()).toISOString(),
+      }
+
+      ;(service as any).listGuestCartCapabilities = jest.fn().mockResolvedValue([validMint.record])
+      ;(service as any).updateGuestCartCapabilities = jest.fn().mockResolvedValue([touchedRecord])
+
+      const result = await service.lookupGuestCartCapabilityByPresentedToken(
+        validMint.plaintext_token,
+        { now: clock.now(), touch: true }
+      )
+
+      expect(result.id).toBe(validMint.record.id)
+      expect((service as any).updateGuestCartCapabilities).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: validMint.record.id,
+          last_used_at: clock.now(),
+        }),
+        undefined
+      )
+    })
+
+    it("consumeGuestCartCapability updates status to consumed and records consumed_at", async () => {
+      const service = createServiceInstance()
+      const consumedRecord = {
+        id: "gccap_c1",
+        status: GUEST_CART_CAPABILITY_STATUS.CONSUMED,
+        consumed_at: clock.now(),
+      }
+
+      ;(service as any).updateGuestCartCapabilities = jest.fn().mockResolvedValue([consumedRecord])
+
+      const result = await service.consumeGuestCartCapability("gccap_c1", { now: clock.now() })
+      expect(result.status).toBe(GUEST_CART_CAPABILITY_STATUS.CONSUMED)
+      expect((service as any).updateGuestCartCapabilities).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "gccap_c1",
+          status: GUEST_CART_CAPABILITY_STATUS.CONSUMED,
+          consumed_at: clock.now(),
+        }),
+        undefined
+      )
+    })
+
+    it("revokeGuestCartCapability updates status to revoked and records revoked_at", async () => {
+      const service = createServiceInstance()
+      const revokedRecord = {
+        id: "gccap_r1",
+        status: GUEST_CART_CAPABILITY_STATUS.REVOKED,
+        revoked_at: clock.now(),
+      }
+
+      ;(service as any).updateGuestCartCapabilities = jest.fn().mockResolvedValue([revokedRecord])
+
+      const result = await service.revokeGuestCartCapability("gccap_r1", { now: clock.now() })
+      expect(result.status).toBe(GUEST_CART_CAPABILITY_STATUS.REVOKED)
+      expect((service as any).updateGuestCartCapabilities).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "gccap_r1",
+          status: GUEST_CART_CAPABILITY_STATUS.REVOKED,
+          revoked_at: clock.now(),
+        }),
+        undefined
+      )
     })
   })
 })
