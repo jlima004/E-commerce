@@ -26,6 +26,7 @@ import { runAuthNotificationReconcile } from "../../../jobs/auth-notification-re
 import {
   runAuthNotificationRelay,
   resolveAuthRelayConfig,
+  resolveProductionAuthStorefrontUrl,
 } from "../../../jobs/auth-notification-relay"
 
 describe("Auth Notification Outbox Unit Test Suite (P14-D10)", () => {
@@ -1995,6 +1996,25 @@ describe("Auth Notification Outbox Unit Test Suite (P14-D10)", () => {
       ).toBeNull()
     })
 
+    it.each([
+      ["https://[::ffff:127.0.0.1]"],
+      ["https://[::ffff:7f00:1]"],
+      ["https://[::ffff:127.1.2.3]"],
+      ["https://127.1.2.3"],
+      ["https://[::1]"],
+      ["https://[0:0:0:0:0:0:0:1]"],
+    ])("rejects production loopback storefront URL %s", (url) => {
+      expect(resolveProductionAuthStorefrontUrl(url)).toBeNull()
+    })
+
+    it("does not treat a mapped documentation IPv4 as loopback", () => {
+      const resolved = resolveProductionAuthStorefrontUrl(
+        "https://[::ffff:c000:201]"
+      )
+      expect(resolved).not.toBeNull()
+      expect(resolved).toMatch(/^https:\/\/\[::ffff:c000:201\]$/i)
+    })
+
     it("does not call the provider when production storefront URL is missing", async () => {
       const previous = {
         NODE_ENV: process.env.NODE_ENV,
@@ -2077,6 +2097,38 @@ describe("Auth Notification Outbox Unit Test Suite (P14-D10)", () => {
         })
 
         expect(result.skipped_missing_config).toBe(true)
+        expect(mockClient.send).toHaveBeenCalledTimes(0)
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv
+      }
+    })
+
+    it("does not call the provider when production config has a mapped IPv4 loopback URL", async () => {
+      const previousNodeEnv = process.env.NODE_ENV
+      const mockClient = {
+        send: jest.fn(async () => ({ providerMessageId: "must_not_send" })),
+      }
+
+      process.env.NODE_ENV = "production"
+      try {
+        const result = await runAuthNotificationRelay({
+          knex: {
+            async raw() {
+              throw new Error("outbox must not be queried")
+            },
+          },
+          client: mockClient,
+          config: {
+            apiKey: "re_synthetic_test_key",
+            fromEmail: "noreply@shop.example",
+            storefrontUrl: "https://[::ffff:127.0.0.1]",
+          },
+          isWorker: () => true,
+          isReleaseMigration: () => false,
+        })
+
+        expect(result.skipped_missing_config).toBe(true)
+        expect(result.processed).toBe(0)
         expect(mockClient.send).toHaveBeenCalledTimes(0)
       } finally {
         process.env.NODE_ENV = previousNodeEnv

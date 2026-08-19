@@ -246,24 +246,157 @@ function isProductionAuthEnv(
   return env.NODE_ENV === "production"
 }
 
+function parseIpv4Octets(value: string): [number, number, number, number] | null {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(value)
+  if (!match) {
+    return null
+  }
+
+  const octets: [number, number, number, number] = [
+    Number(match[1]),
+    Number(match[2]),
+    Number(match[3]),
+    Number(match[4]),
+  ]
+  if (octets.some((octet) => octet > 255)) {
+    return null
+  }
+
+  return octets
+}
+
+function isIpv4LoopbackAddress(value: string): boolean {
+  const octets = parseIpv4Octets(value)
+  return octets !== null && octets[0] === 127
+}
+
+function normalizeIpv6Hextet(value: string): string | null {
+  if (!/^[0-9a-f]{1,4}$/.test(value)) {
+    return null
+  }
+
+  return value.replace(/^0+/, "") || "0"
+}
+
+function expandIpv6Hextets(host: string): string[] | null {
+  let working = host
+  let embeddedHextets: string[] = []
+
+  const dottedSuffix = /^(.+):(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(host)
+  if (dottedSuffix) {
+    const octets = parseIpv4Octets(dottedSuffix[2])
+    if (!octets) {
+      return null
+    }
+
+    working = dottedSuffix[1]
+    embeddedHextets = [
+      ((octets[0] << 8) | octets[1]).toString(16),
+      ((octets[2] << 8) | octets[3]).toString(16),
+    ]
+  }
+
+  const appendNormalized = (groups: string[]): string[] | null => {
+    const normalized: string[] = []
+    for (const group of groups) {
+      const hextet = normalizeIpv6Hextet(group)
+      if (hextet === null) {
+        return null
+      }
+      normalized.push(hextet)
+    }
+    return normalized
+  }
+
+  if (working.includes("::")) {
+    const parts = working.split("::")
+    if (parts.length !== 2) {
+      return null
+    }
+
+    const left = parts[0] === "" ? [] : parts[0].split(":")
+    const right = parts[1] === "" ? [] : parts[1].split(":")
+    if (left.includes("") || right.includes("")) {
+      return null
+    }
+
+    const knownCount = left.length + right.length + embeddedHextets.length
+    if (knownCount > 8) {
+      return null
+    }
+
+    const expanded = appendNormalized([
+      ...left,
+      ...Array(8 - knownCount).fill("0"),
+      ...right,
+      ...embeddedHextets,
+    ])
+    return expanded?.length === 8 ? expanded : null
+  }
+
+  const groups = working === "" ? [] : working.split(":")
+  if (groups.includes("")) {
+    return null
+  }
+
+  const expanded = appendNormalized([...groups, ...embeddedHextets])
+  return expanded?.length === 8 ? expanded : null
+}
+
+function extractIpv4MappedEmbeddedAddress(hextets: string[]): string | null {
+  if (
+    hextets.length !== 8 ||
+    hextets[0] !== "0" ||
+    hextets[1] !== "0" ||
+    hextets[2] !== "0" ||
+    hextets[3] !== "0" ||
+    hextets[4] !== "0" ||
+    hextets[5] !== "ffff"
+  ) {
+    return null
+  }
+
+  const high = Number.parseInt(hextets[6], 16)
+  const low = Number.parseInt(hextets[7], 16)
+  if (!Number.isInteger(high) || !Number.isInteger(low)) {
+    return null
+  }
+
+  return `${(high >> 8) & 255}.${high & 255}.${(low >> 8) & 255}.${low & 255}`
+}
+
+function isIpv6UnspecifiedOrLoopback(hextets: string[]): boolean {
+  const values = hextets.map((hextet) => Number.parseInt(hextet, 16))
+  if (values.some((value) => !Number.isInteger(value))) {
+    return false
+  }
+
+  if (values.every((value) => value === 0)) {
+    return true
+  }
+
+  return values.slice(0, 7).every((value) => value === 0) && values[7] === 1
+}
+
 function isLoopbackAuthStorefrontHostname(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, "").toLowerCase()
   if (host === "localhost" || host.endsWith(".localhost")) {
     return true
   }
-  if (host === "::1" || host === "0:0:0:0:0:0:0:1") {
+  if (host === "0.0.0.0" || isIpv4LoopbackAddress(host)) {
     return true
   }
-  if (host === "0.0.0.0" || host === "::" || host === "0:0:0:0:0:0:0:0") {
+
+  const hextets = expandIpv6Hextets(host)
+  if (!hextets) {
+    return false
+  }
+  if (isIpv6UnspecifiedOrLoopback(hextets)) {
     return true
   }
-  if (/^127(?:\.\d{1,3}){3}$/.test(host)) {
-    return true
-  }
-  if (/^::ffff:127(?:\.\d{1,3}){3}$/.test(host)) {
-    return true
-  }
-  return false
+
+  const mappedIpv4 = extractIpv4MappedEmbeddedAddress(hextets)
+  return mappedIpv4 !== null && isIpv4LoopbackAddress(mappedIpv4)
 }
 
 export function resolveProductionAuthStorefrontUrl(
