@@ -230,8 +230,10 @@ v1.0 Phase 03 session cart (archived CART-01..04)
 - CART-09 vs Phase 18: over-scope (implementar quote Gelato) ou under-prove
   (ignorar invalidação).
 - `clearCartLineItems` (`DELETE /store/carts/{id}/line-items`) está no PRD e
-  **não** no manifest Store instalado; Medusa nativo documenta add/update/delete
-  por item, não um DELETE de coleção. Não inventar a rota neste CONTEXT.
+  **não** no manifest Store instalado. CART-05 / PRD exigem reutilizar o motor
+  Medusa quando adequado; CART-06 / PRD definem quantidade e `0 = remove`. O
+  mecanismo nativo exato de add/update/delete/clear-all no runtime instalado
+  permanece para RESEARCH autorizado (Q-05). Não inventar a rota neste CONTEXT.
 - Reabilitar attach (`DENY`) pularia o contrato de merge (Phase 16).
 - `13-VALIDATION.md` schema físico (bigint UNIQUE) foi supersedido pelo HCD
   13-05 (integer + partial UNIQUE). Não usar VALIDATION como autoridade física.
@@ -283,20 +285,26 @@ fecharam. Não resolvem as dúvidas abertas.
   a capability quando o carrinho expirar, for consumido ou concluído (CART-03).
   Merge bem-sucedido consome a capability — **na Phase 16** (PRD §7.2 / MRG-05),
   não agora. TTL numérico é dúvida aberta Q-02.
-- **D15-05 — Create/get:** criação/recuperação lazy e idempotente; mesma
-  `Idempotency-Key` retorna o mesmo contexto ainda válido; resposta é o estado
-  canônico do carrinho (CART-04; SRS-BE-CART-002). PRD §7.2 mostra `201` com
-  `ETag` e o header da capability na criação. O split exato Store vs BFF do
-  “emitir uma vez” é Q-10.
+- **D15-05 — Create/get:** criação/recuperação lazy e idempotente, devolvendo o
+  estado canônico do carrinho (CART-04; SRS-BE-CART-002). A exigência de
+  idempotência permanece. PRD §7.2 mostra `201` com `ETag` e o header da
+  capability na criação. A mesma `Idempotency-Key` deve poder retornar o mesmo
+  contexto ainda válido **como requisito**, mas este CONTEXT **não** trata o
+  replay da capability bruta como tecnicamente resolvido: se a criação for
+  efetivada e a resposta com o token for perdida, o backend não reconstrói a
+  capability original a partir do hash. Essa reconciliação é Q-11. O split
+  exato Store vs BFF do “emitir uma vez” é Q-10.
 
 ### Mutations and Medusa reuse
 
 - **D15-06 — Sem segundo motor:** add/update/delete/clear reutilizam operações
-  Medusa nativas **quando adequadas** (CART-05; D13-07). A biblioteca Medusa v2
-  documenta `POST /store/carts/{id}/line-items`, update via
-  `updateLineItemInCartWorkflow` (quantidade `0` remove o item) e
-  `DELETE /store/carts/{id}/line-items/{line_id}`. Isso confirma engine nativa
-  para item; **não** decide o mecanismo de clear-all (Q-05) nem autoriza
+  Medusa nativas **quando adequadas** (CART-05; D13-07; PRD). Quantidade e
+  `0 = remove` já estão locked por CART-06 / PRD. Este CONTEXT **não** trata
+  documentação externa Medusa como autoridade técnica. Ainda a confirmar em
+  RESEARCH autorizado: mecanismos nativos exatos disponíveis no runtime Medusa
+  instalado; compatibilidade de add/update/delete; mecanismo de clear-all;
+  eventual diferença entre documentação atual e a versão efetivamente
+  instalada. **Não** decide o mecanismo de clear-all (Q-05) nem autoriza
   habilitar as rotas DENY neste gate.
 - **D15-07 — Quantidade:** inteiro 1–99; `0` em update = remoção; rejeitar
   negativo, decimal e `>99` (CART-06; PRD §7.3). Preço/elegibilidade vêm da
@@ -344,7 +352,7 @@ fecharam. Não resolvem as dúvidas abertas.
 
 - **D15-17 — Este gate é CONTEXT-only.** Não autoriza RESEARCH, PLAN, SPEC,
   execução, frontend, deploy, providers reais nem infra remota.
-- **D15-18 — Dúvidas abertas não são decisões.** Q-01..Q-10 abaixo não podem
+- **D15-18 — Dúvidas abertas não são decisões.** Q-01..Q-11 abaixo não podem
   ser fechadas por discricionariedade do agente.
 
 ### Agent Discretion
@@ -353,7 +361,9 @@ O futuro RESEARCH (somente após autorização humana separada) pode comparar
 mecanismos para: persistência do hash da capability; TTL; dual-run de sessão;
 timing de promoção `PRESERVE_LEGACY`→`M1_ENABLED`; mecanismo de clear-all;
 prova CART-09 vs SHP; mutações autenticadas sem merge; DTO/snapshot; quais
-mutações exigem `Idempotency-Key`; split Store vs BFF do header na criação.
+mutações exigem `Idempotency-Key`; split Store vs BFF do header na criação;
+reconciliação de create idempotente/replay após resposta perdida com
+capability CSPRNG emitida uma vez e persistência hash-only (Q-11).
 
 Não há discricionariedade para relaxar hash-only, header-only, BFF-only,
 Order-birth, fail-closed, `If-Match`/`412`, quantidade 1–99, anti-enumeração,
@@ -372,12 +382,13 @@ RESEARCH futuro (quando autorizado) deve respondê-las sem expandir escopo.
 | Q-02 | Qual o TTL numérico da capability? | CART-03 exige expiração; nenhum número está locked. TTL 30 min de confirmação auth é outro token. | Copiar TTL de auth |
 | Q-03 | O que acontece com `req.session.active_cart_id`? | CART-01 remove a prova *principal*. Compat hint, remoção ou dual-run durante `PRESERVE_LEGACY` não está escrito. | Apagar sessão no CONTEXT |
 | Q-04 | Quando `GET/POST /store/carts/active` saem de `PRESERVE_LEGACY`? | `owner_phase` 15; janela de compatibilidade vs corte seco não está no ROADMAP. | Promover rotas neste gate |
-| Q-05 | Como materializar `clearCartLineItems`? | PRD pede `DELETE /store/carts/{id}/line-items`; manifest tem só POST nessa path + POST/DELETE por item. Medusa nativo não documenta DELETE de coleção. | Inventar rota nativa “faltante” |
+| Q-05 | Como materializar `clearCartLineItems`? | PRD pede `DELETE /store/carts/{id}/line-items`; manifest tem só POST nessa path + POST/DELETE por item. O mecanismo nativo de clear-all no runtime Medusa instalado ainda não foi confirmado em RESEARCH autorizado. | Inventar rota nativa “faltante” |
 | Q-06 | Como CART-09 prova invalidação de quote/seleção sem Phase 18? | PaymentAttempt invalidation existe; quote/select não. Hook/no-op vs adiar evidência SHP não está fechado. | Implementar Gelato quote |
 | Q-07 | Mutações M1 de line-item cobrem também cart autenticado? | Título da phase é Guest; AUTH-02/CHK-01 separam compra vs checkout guest. CART-01..09 não dizem se Customer autenticado reutiliza as mesmas ops sem merge. | Puxar Phase 16 |
 | Q-08 | Qual o shape público do Cart DTO / snapshot de 412? | D13-09 deixou field names para RESEARCH de cart; Phase 13 não materializou DTO de Cart. | Inventar schema OpenAPI agora |
 | Q-09 | Quais mutações exigem `Idempotency-Key`? | PRD trava a chave no create guest; D13-13 diz que mutações repetíveis *podem* exigir chave. CART-01..09 não listam o conjunto. | Exigir chave em tudo ou em nada |
 | Q-10 | O Store emite `x-indicio-guest-cart-token` no 201, ou só o BFF? | PRD mostra o header na criação; D13-02 trava que o browser nunca o vê. Split Store↔BFF do “return once” ainda é detalhe de contrato. | Expor capability no browser |
+| Q-11 | Como reconciliar create idempotente/replay após resposta perdida com capability CSPRNG emitida uma vez e persistência hash-only? | CART-04 exige create/get idempotente; CART-01/PRD exigem CSPRNG emitida uma vez e persistência hash-only. Se a criação for efetivada mas a resposta com a capability bruta for perdida, o backend não reconstrói o original a partir do hash. RESEARCH futuro (quando autorizado) deve definir o comportamento sem persistir capability plaintext, enfraquecer hash-only, transformar `Idempotency-Key` em prova de posse, expor capability ao browser, nem inventar mecanismo de replay neste CONTEXT. | Tratar replay da capability como já resolvido; persistir plaintext; usar `Idempotency-Key` como posse |
 
 Não tratar merge, CPF, Gelato quote ou PaymentAttempt M1 como dúvidas desta
 phase — estão atribuídos a phases posteriores.
@@ -487,9 +498,13 @@ phase — estão atribuídos a phases posteriores.
   `apps/backend/integration-tests/http/cart-checkout-store.spec.ts`,
   `apps/backend/src/modules/checkout/__tests__/active-cart.unit.spec.ts`,
   `apps/backend/src/api-docs/__tests__/store-contract.unit.spec.ts`.
-- Medusa v2 nativo (documentação atual): add line item, update line item
-  (qty 0 remove), delete line item. Clear-all de coleção **não** está no
-  contrato nativo documentado — ver Q-05.
+- Autoridade já locked: CART-05 / PRD exigem reutilizar o motor Medusa quando
+  adequado; CART-06 / PRD definem quantidade e `0 = remove`.
+- Ainda a confirmar em RESEARCH autorizado (não é autoridade deste CONTEXT):
+  mecanismos nativos exatos disponíveis no runtime Medusa instalado;
+  compatibilidade de add/update/delete; mecanismo de clear-all; eventual
+  diferença entre documentação atual e a versão efetivamente instalada.
+  Ver Q-05. Material externo de docs Medusa não fecha estes pontos.
 
 </code_context>
 

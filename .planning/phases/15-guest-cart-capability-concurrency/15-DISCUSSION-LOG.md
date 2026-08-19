@@ -19,7 +19,7 @@
 
 **User's choice:** Documentary CONTEXT only. RESEARCH, PLAN, execution, frontend, providers reais, DB/Redis remotos, push e deploy permanecem não autorizados. Sem auto-chain.
 
-**Notes:** Orchestration used sequential read-only subagents: CONTEXT INPUT AUDIT (Grok 4.6, PASS) then ADVERSARIAL REVIEW (Composer 2.5, PASS). Context7 was used only to confirm that Medusa v2 documents native add/update/delete line-item operations (qty 0 removes); that confirmation did not close Q-05 (clear-all).
+**Notes:** Orchestration used sequential read-only subagents: CONTEXT INPUT AUDIT (Grok 4.6, PASS) then ADVERSARIAL REVIEW (Composer 2.5, PASS). Context7 was consulted during CONTEXT capture to inspect current Medusa v2 documentation (native add/update/delete line-item operations; qty 0 removes). That consultation is a historical record only: it did not close a decision, is not PLAN authority, does not replace RESEARCH, and does not make external Medusa documentation CONTEXT technical authority. Any claim about native Medusa capabilities must be reconfirmed in authorized RESEARCH against the version/runtime actually used. Q-05 (clear-all) remains open.
 
 ---
 
@@ -34,14 +34,14 @@
 
 ---
 
-## Gray areas Q-01..Q-10
+## Gray areas Q-01..Q-11
 
 | Option | Description | Selected |
 |--------|-------------|----------|
 | Close gray areas as D15 decisions in this CONTEXT | Would anticipate RESEARCH/implementation | |
 | Record as open questions; Agent Discretion may not close them | CONTEXT lists dúvidas abertas; RESEARCH not authorized | ✓ |
 
-**User's choice:** Leave Q-01..Q-10 open (capability persistence, TTL, session dual-run, PRESERVE_LEGACY promotion timing, clear-all mechanism, CART-09 vs Phase 18, authenticated-cart mutations, Cart DTO, Idempotency-Key on mutations, Store vs BFF header split).
+**User's choice:** Leave Q-01..Q-11 open (capability persistence, TTL, session dual-run, PRESERVE_LEGACY promotion timing, clear-all mechanism, CART-09 vs Phase 18, authenticated-cart mutations, Cart DTO, Idempotency-Key on mutations, Store vs BFF header split, idempotent create vs hash-only capability replay after lost response).
 
 **Notes:** No conversational prompting turns were run. The human prompt already specified the CONTEXT sections and forbade later gates.
 
@@ -49,7 +49,7 @@
 
 ## Claude's Discretion
 
-None for closing Q-01..Q-10 or promoting routes. Discretion is reserved for a future authorized RESEARCH comparison of mechanisms only, without relaxing hash-only, BFF-only, Order-birth, If-Match, qty 1–99, or Phase 14 exact-sets.
+None for closing Q-01..Q-11 or promoting routes. Discretion is reserved for a future authorized RESEARCH comparison of mechanisms only, without relaxing hash-only, BFF-only, Order-birth, If-Match, qty 1–99, or Phase 14 exact-sets.
 
 Non-blocking nits from adversarial review were applied: canonical-refs heading now addresses future RESEARCH/planning agents without authorizing those gates; test paths listed as as-built evidence, not a test plan.
 
