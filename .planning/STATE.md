@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
 status: ready
-last_updated: "2026-08-19T19:20:00.000Z"
+last_updated: "2026-08-19T19:39:00.000Z"
 progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 36
   completed_plans: 28
   percent: 20
-stopped_at: PHASE 15 PLAN REMEDIATED — AWAITING HUMAN RE-REVIEW — EXECUTION NOT AUTHORIZED
+stopped_at: PHASE 15 EXECUTION AUTHORIZED — NOT STARTED
 current_phase: 15
 current_phase_name: guest-cart-capability-concurrency
 current_plan: null
@@ -24,7 +24,7 @@ See: `.planning/PROJECT.md`.
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, duplicate order or improper fulfillment.
 
-**Current focus:** Phase 15 — `Guest Cart Capability & Concurrency`, with **RESEARCH HUMAN APPROVED — PASS / PLAN REMEDIATED — AWAITING HUMAN RE-REVIEW (8 plans / 8 serial waves)**. EXECUTION remains not authorized.
+**Current focus:** Phase 15 — `Guest Cart Capability & Concurrency`, with **CONTEXT HUMAN APPROVED — PASS / RESEARCH HUMAN APPROVED — PASS / PLAN HUMAN APPROVED — PASS / EXECUTION AUTHORIZED — NOT STARTED** (8 plans / 8 serial waves).
 
 ## Execution Policy
 
@@ -35,7 +35,7 @@ Execution remains manual-review gated.
 - `workflow._auto_chain_active=false`
 - `parallelization=false`
 
-Human approval closes only the reviewed gate. Phase 15 CONTEXT and RESEARCH are human-approved. Phase 15 PLAN is remediated after human review of the 8-plan replan (B15-P-RP-HR-01..03 + stale If-Match) and awaits human re-review. Execution and later Phase-15 gates remain separately unauthorized.
+Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. After human re-review closed B15-P-HR-01..06, B15-P-RP-HR-01..03 and the stale If-Match contract, Phase 15 EXECUTION is explicitly authorized. This authorization permits execution of the approved 8-plan topology under the `Phase 15 Execution Orchestration Policy`; each blocking human checkpoint between plans remains in force and no PLAN auto-starts its successor. Phase 16 and later gates remain separately unauthorized.
 
 ## Current Gate
 
@@ -56,9 +56,9 @@ B14-21-HR-05: CLOSED — PASS
 
 Phase 15 CONTEXT: HUMAN APPROVED — PASS
 Phase 15 RESEARCH: HUMAN APPROVED — PASS
-Phase 15 PLAN: REMEDIATED — AWAITING HUMAN RE-REVIEW
+Phase 15 PLAN: HUMAN APPROVED — PASS
 8 plans / 8 serial waves
-Phase 15 EXECUTION: NOT AUTHORIZED
+Phase 15 EXECUTION: AUTHORIZED — NOT STARTED
 
 Deploy / release: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
@@ -75,7 +75,7 @@ Milestone v1.1:
 - Phase 13: FND-01..FND-08 = **8/8 COMPLETE**
 - Phase 14: AUTH-01..AUTH-09 = **9/9 COMPLETE**
 - known plans human-approved executed: **28/28** (Phase 13: 7; Phase 14: 21)
-- Phase 15: **RESEARCH HUMAN APPROVED — PASS / PLAN REMEDIATED — AWAITING HUMAN RE-REVIEW** (8 plans on disk; not executed)
+- Phase 15: **PLAN HUMAN APPROVED — PASS / EXECUTION AUTHORIZED — NOT STARTED** (8 plans on disk; none executed yet)
 - frontend: BLOCKED
 
 ## Accepted Evidence References
@@ -184,28 +184,35 @@ Browser-direct Medusa remains forbidden. Backend access JWT, refresh credentials
 
 ## Phase 15 Authorization
 
-By explicit human authorization after Phase-15 RESEARCH review, and after a complete PLAN replan:
+By explicit human authorization after Phase-15 PLAN human re-review:
 
 ```text
 Phase 15 — Guest Cart Capability & Concurrency
 CONTEXT: HUMAN APPROVED — PASS
 RESEARCH: HUMAN APPROVED — PASS
-PLAN: REMEDIATED — AWAITING HUMAN RE-REVIEW
+PLAN: HUMAN APPROVED — PASS
 8 plans / 8 serial waves
-EXECUTION: NOT AUTHORIZED
+EXECUTION: AUTHORIZED — NOT STARTED
 ```
 
 Phase-15 RESEARCH is accepted at
 `.planning/phases/15-guest-cart-capability-concurrency/15-RESEARCH.md`.
-The 8-plan set at `15-01-PLAN.md` … `15-08-PLAN.md` replaces the superseded 18-plan decomposition. This authorization extends only to creating/reviewing the Phase-15 PLAN and does **not** extend to:
+The approved 8-plan set at `15-01-PLAN.md` … `15-08-PLAN.md` replaces the superseded 18-plan decomposition. Execution is authorized only within those approved PLAN scopes and under the canonical `Phase 15 Execution Orchestration Policy` in `15-01-PLAN.md`:
 
-- execution;
-- implementation prompt beyond planning artifacts;
+- orchestrator: Grok 4.6;
+- sequential subagents chosen between Grok 4.6 and Composer 2.5;
+- `parallelization=false`;
+- `auto-chain=false`;
+- blocking human checkpoint between PLANs remains mandatory.
+
+This authorization does **not** extend to:
+
+- Phase 16 or later phases;
 - frontend;
 - deploy/release;
 - real providers;
 - remote infrastructure;
-- auto-chain.
+- bypassing a blocking human checkpoint between Phase-15 PLANs.
 
 ## Hard Invariants Still in Force
 
@@ -222,29 +229,26 @@ The 8-plan set at `15-01-PLAN.md` … `15-08-PLAN.md` replaces the superseded 18
 
 No open Phase-14 blocker remains.
 
-Phase 15 CONTEXT and RESEARCH are human-approved. PLAN is remediated (8 serial waves) and awaits human re-review. Execution, deploy, real providers, remote infrastructure and frontend remain unauthorized.
+Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Phase 15 EXECUTION is authorized but has not started. Deploy, real providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
 
-Original PLAN-review blockers the 8-plan replan is intended to close (pending human re-review of the remediated 8-plan set):
+Closed Phase-15 PLAN-review blockers:
 
-- B15-P-HR-01 POST ACTIVE CAPABILITY CONTRACT / OPENAPI DRIFT
-- B15-P-HR-02 IDEMPOTENCY REPLAY MATERIALIZATION
-- B15-P-HR-03 VALIDATION / CLAIM ORDER + CLAIM LIFECYCLE
-- B15-P-HR-04 CUSTOMER ACTIVE REGRESSION BETWEEN WAVES
-- B15-P-HR-05 IMPOSSIBLE 1.0 NUMERIC TEST
-- B15-P-HR-06 FINAL REGRESSION GATE IS OPTIONAL
-
-Human replan-review blockers closed documentarily in this remediation (awaiting human re-review; not PLAN HUMAN APPROVED; not execution evidence):
-
-- B15-P-RP-HR-01 — FIXED — conditional Customer authorization
-- B15-P-RP-HR-02 — FIXED — execution subagent policy encoded
-- B15-P-RP-HR-03 — FIXED — post-create/mint partial-effect policy
-- Stale If-Match — FIXED — failed_terminal deterministic replay
+- B15-P-HR-01 — CLOSED — PASS — POST ACTIVE CAPABILITY CONTRACT / OPENAPI DRIFT
+- B15-P-HR-02 — CLOSED — PASS — IDEMPOTENCY REPLAY MATERIALIZATION
+- B15-P-HR-03 — CLOSED — PASS — VALIDATION / CLAIM ORDER + CLAIM LIFECYCLE
+- B15-P-HR-04 — CLOSED — PASS — CUSTOMER ACTIVE REGRESSION BETWEEN WAVES
+- B15-P-HR-05 — CLOSED — PASS — IMPOSSIBLE 1.0 NUMERIC TEST
+- B15-P-HR-06 — CLOSED — PASS — FINAL REGRESSION GATE IS OPTIONAL
+- B15-P-RP-HR-01 — CLOSED — PASS — conditional Customer authorization
+- B15-P-RP-HR-02 — CLOSED — PASS — execution subagent policy encoded
+- B15-P-RP-HR-03 — CLOSED — PASS — post-create/mint partial-effect policy
+- Stale If-Match contract — CLOSED — PASS — failed_terminal deterministic replay
 
 ## Session Continuity
 
 **Resume file:** .planning/phases/15-guest-cart-capability-concurrency/15-01-PLAN.md
 
-Last session: 2026-08-19T19:20:00.000Z
+Last session: 2026-08-19T19:39:00.000Z
 
 Stopped at:
 
@@ -253,8 +257,8 @@ PHASE 14: HUMAN APPROVED — CLOSED
 AUTH-01..AUTH-09: 9/9 COMPLETE
 PHASE 15 CONTEXT: HUMAN APPROVED — PASS
 PHASE 15 RESEARCH: HUMAN APPROVED — PASS
-PHASE 15 PLAN: REMEDIATED — AWAITING HUMAN RE-REVIEW (8 plans / 8 serial waves)
-PHASE 15 EXECUTION: NOT AUTHORIZED
+PHASE 15 PLAN: HUMAN APPROVED — PASS (8 plans / 8 serial waves)
+PHASE 15 EXECUTION: AUTHORIZED — NOT STARTED
 FRONTEND: BLOCKED
 DEPLOY: NOT AUTHORIZED
 REAL PROVIDERS / REMOTE INFRA: NOT AUTHORIZED
@@ -271,4 +275,4 @@ Resume with:
 - `.planning/phases/14-customer-auth-verification/14-21-SUMMARY.md`
 - `.planning/phases/14-customer-auth-verification/14-CLOSURE.md`
 
-**Next permitted step:** human re-review of the remediated 8 Phase-15 PLAN.md files. EXECUTION remains not authorized until a separate `/gsd-execute-phase` authorization. Do not run `/gsd-execute-phase 15`.
+**Next permitted step:** start Phase-15 execution at `15-01` under the approved sequential-subagent orchestration policy. The blocking human checkpoint in `15-01` must PASS before `15-02` can begin. Phase 16, deploy, real providers, remote infra and frontend remain unauthorized.
