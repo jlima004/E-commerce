@@ -1,6 +1,8 @@
 import path from "path"
 import {
   STORE_SURFACE_MANIFEST,
+  STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
+  storeSurfaceOperationKey,
   summarizeStoreSurfaceManifest,
 } from "../manifest"
 import {
@@ -311,16 +313,31 @@ describe("Store surface guard (FND-02)", () => {
           accessControlRequestMethod: "POST",
         }).action
       ).toBe("deny")
+
+      expect(
+        decideStoreSurfaceAccess("OPTIONS", "/store/customers/me", {
+          origin: "https://bff.example.com",
+          accessControlRequestMethod: "GET",
+        }).action
+      ).toBe("options_preflight")
+
+      expect(
+        decideStoreSurfaceAccess("OPTIONS", "/store/customers/me", {
+          origin: "https://bff.example.com",
+          accessControlRequestMethod: "POST",
+        }).action
+      ).toBe("deny")
     })
 
-    it("denies every runtime_policy DENY and BLOCKED entry from the closed 58-set", () => {
-      expect(counts.deny).toBe(51)
+    it("denies every runtime_policy DENY and BLOCKED entry", () => {
+      expect(counts.deny).toBe(50)
       expect(counts.blocked).toBe(17)
 
       for (const entry of STORE_SURFACE_MANIFEST) {
         if (entry.runtime_policy !== "DENY" && entry.classification !== "BLOCKED") {
           continue
         }
+        expect(entry.runtime_policy).toBe("DENY")
         const concrete = entry.pathTemplate.replace(/\{[^}]+\}/g, "synth_id_01")
         const decision = decideStoreSurfaceAccess(entry.method, concrete)
         expect(decision.action).toBe("deny")
@@ -329,13 +346,13 @@ describe("Store surface guard (FND-02)", () => {
 
     it("allows PRESERVE_LEGACY only as inherited v1.0 pass-through without M1 enablement", () => {
       expect(counts.preserveLegacy).toBe(7)
-      expect(counts.m1EnabledPolicy).toBe(0)
 
       for (const entry of STORE_SURFACE_MANIFEST) {
         if (entry.runtime_policy !== "PRESERVE_LEGACY") {
           continue
         }
         expect(entry.m1_enablement).toBe("disabled")
+        expect(entry.runtime_policy).not.toBe("M1_ENABLED")
         const concrete = entry.pathTemplate.replace(/\{[^}]+\}/g, "synth_id_01")
         const decision = decideStoreSurfaceAccess(entry.method, concrete)
         expect(decision).toEqual({
@@ -346,17 +363,43 @@ describe("Store surface guard (FND-02)", () => {
       }
     })
 
-    it("keeps EXTENDED and OUTSIDE_FRONTEND_M1 M1-disabled regardless of classification alone", () => {
-      for (const entry of STORE_SURFACE_MANIFEST) {
-        if (
-          entry.classification !== "EXTENDED" &&
-          entry.classification !== "OUTSIDE_FRONTEND_M1"
-        ) {
-          continue
-        }
-        expect(entry.m1_enablement).toBe("disabled")
-        expect(entry.runtime_policy).not.toBe("M1_ENABLED")
+    it("allows exactly the Phase 14 M1_ENABLED exact-set as m1_enabled", () => {
+      expect(counts.m1EnabledPolicy).toBe(6)
+      expect(counts.m1EnabledPolicy).toBe(
+        STORE_SURFACE_PHASE14_ENABLED_OPERATIONS.length
+      )
+
+      const m1EnabledEntries = STORE_SURFACE_MANIFEST.filter(
+        (entry) => entry.runtime_policy === "M1_ENABLED"
+      )
+      const m1EnabledKeys = m1EnabledEntries.map((entry) =>
+        storeSurfaceOperationKey(entry.method, entry.pathTemplate)
+      )
+      expect(m1EnabledEntries).toHaveLength(6)
+      expect(m1EnabledKeys).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
+
+      for (const entry of m1EnabledEntries) {
+        expect(entry.m1_enablement).toBe("enabled")
+        const concrete = entry.pathTemplate.replace(/\{[^}]+\}/g, "synth_id_01")
+        const decision = decideStoreSurfaceAccess(entry.method, concrete)
+        expect(decision).toEqual({
+          action: "allow",
+          entry,
+          mode: "m1_enabled",
+        })
       }
+
+      const lineItems = STORE_SURFACE_MANIFEST.find(
+        (entry) =>
+          entry.method === "POST" &&
+          entry.pathTemplate === "/store/carts/{id}/line-items"
+      )
+      expect(lineItems?.classification).toBe("EXTENDED")
+      expect(lineItems?.runtime_policy).toBe("DENY")
+      expect(
+        decideStoreSurfaceAccess("POST", "/store/carts/synth_id_01/line-items")
+          .action
+      ).toBe("deny")
     })
   })
 
@@ -404,6 +447,27 @@ describe("Store surface guard (FND-02)", () => {
       middleware(req as never, res as never, next)
       expect(next).toHaveBeenCalledTimes(1)
       expect(res.status).not.toHaveBeenCalled()
+    })
+
+    it("calls next for the Phase 14 M1_ENABLED exact-set", () => {
+      const middleware = createStoreSurfaceGuardMiddleware()
+
+      for (const key of STORE_SURFACE_PHASE14_ENABLED_OPERATIONS) {
+        const [method, pathTemplate] = key.split(" ")
+        const next = jest.fn()
+        const req = {
+          method,
+          path: pathTemplate.replace(/^\/store/, ""),
+          baseUrl: "/store",
+          originalUrl: pathTemplate,
+          headers: {},
+        }
+        const res = { status: jest.fn(), json: jest.fn(), headersSent: false }
+
+        middleware(req as never, res as never, next)
+        expect(next).toHaveBeenCalledTimes(1)
+        expect(res.status).not.toHaveBeenCalled()
+      }
     })
   })
 })
