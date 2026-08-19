@@ -23,8 +23,9 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - `14-01..14-21` estão HUMAN APPROVED — PASS
 - `14-07..14-21` estão DOCUMENTALLY CLOSED
 - `B14-21-HR-01..HR-05` estão CLOSED — PASS
-- Phase 15 está **AUTHORIZED — CONTEXT NOT STARTED**
-- Phase-15 RESEARCH e gates posteriores permanecem não autorizados até revisão humana própria
+- Phase 15 CONTEXT está **HUMAN APPROVED — PASS**
+- Phase 15 RESEARCH está **EXECUTED — AWAITING HUMAN REVIEW**
+- Phase-15 PLAN e gates posteriores permanecem não autorizados até revisão humana própria
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
 ## Milestones
@@ -42,7 +43,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
 | 14 | Customer Auth & Verification | 13 | 9 | **CLOSED — HUMAN APPROVED; 21/21 plans; 63/63 tasks; 9/9 requirements** |
-| 15 | Guest Cart Capability & Concurrency | 14 | 9 | **AUTHORIZED — CONTEXT NOT STARTED** |
+| 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CONTEXT HUMAN APPROVED — PASS; RESEARCH EXECUTED — AWAITING HUMAN REVIEW** |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
 | 18 | Gelato Shipping Quote & Selection | 17 | 8 | Not started |
@@ -79,7 +80,8 @@ Closure authority: `.planning/phases/13-storefront-contract-foundation-surface-l
 - MUST findings = **8/8 PASS**.
 - `14-21 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED`.
 - `Phase 14 HUMAN APPROVED — CLOSED`.
-- Phase 15 CONTEXT AUTHORIZED / NOT STARTED.
+- Phase 15 CONTEXT HUMAN APPROVED — PASS.
+- Phase 15 RESEARCH EXECUTED — AWAITING HUMAN REVIEW.
 - Deploy NOT AUTHORIZED.
 - Real Resend / real providers NOT AUTHORIZED.
 - Remote DB/Redis changes NOT AUTHORIZED.
@@ -191,9 +193,9 @@ Technical head consumed by closure:
 
 **Goal:** substituir a sessão como prova principal de posse por capability opaca e tornar mutações concorrentes seguras.
 
-**Status:** **AUTHORIZED — CONTEXT NOT STARTED.** Depends on Phase 14 CLOSED.
+**Status:** **CONTEXT HUMAN APPROVED — PASS; RESEARCH EXECUTED — AWAITING HUMAN REVIEW.** Depends on Phase 14 CLOSED.
 
-Authorization is limited to producing/reviewing the Phase-15 CONTEXT artifact. RESEARCH and later gates remain separately human-gated.
+The accepted Phase-15 CONTEXT is the authority for the research boundary. Phase-15 RESEARCH is written and awaits human review. PLAN and all later gates remain separately human-gated and are not authorized by this change.
 
 ## Phase 16: Cart Merge & Review
 
@@ -241,4 +243,4 @@ Authorization is limited to producing/reviewing the Phase-15 CONTEXT artifact. R
 
 O milestone só pode fechar quando houver evidência PASS para todos os gates previstos: contratos Store/OpenAPI, autenticação, capability/concorrência e merge de carrinho, checkout BR/privacidade, Gelato shipping, PaymentAttempt/confirmation, order/catalog handoff, kit types/Zod/fixtures/mocks, contract tests, suites backend, migrations/constraints, drift/lint/build, security negative proofs e release verification aplicável.
 
-Phase 15 CONTEXT is explicitly authorized by the human after Phase-14 closure. No later Phase-15 gate, provider real, infraestrutura remota, deploy ou frontend is automatically authorized.
+Phase 15 CONTEXT is HUMAN APPROVED — PASS and Phase 15 RESEARCH is EXECUTED — AWAITING HUMAN REVIEW. No Phase-15 PLAN or later gate, provider real, infraestrutura remota, deploy ou frontend is automatically authorized.
