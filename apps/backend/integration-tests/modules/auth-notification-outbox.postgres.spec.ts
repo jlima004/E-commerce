@@ -61,7 +61,8 @@ create table if not exists auth_notification_outbox (
   constraint auth_notification_outbox_lease_pair check (((lease_owner IS NULL AND lease_until IS NULL) OR (lease_owner IS NOT NULL AND lease_until IS NOT NULL))),
   constraint auth_notification_outbox_idempotency_shape check (idempotency_key LIKE 'auth/%' AND char_length(idempotency_key) <= 256),
   constraint auth_notification_outbox_template_intent_match check (((template = 'email_verification_v1' AND intent_type = 'verification') OR (template = 'password_reset_v1' AND intent_type = 'reset'))),
-  constraint auth_notification_outbox_recipient_evidence check (char_length(recipient_identity_id) > 0 AND char_length(recipient_hash) > 0 AND char_length(recipient_domain) BETWEEN 1 AND 253)
+  constraint auth_notification_outbox_recipient_evidence check (char_length(recipient_identity_id) > 0 AND char_length(recipient_hash) > 0 AND char_length(recipient_domain) BETWEEN 1 AND 253),
+  constraint auth_notification_outbox_state_markers check (((status = 'recorded' AND recorded_at IS NOT NULL AND claimed_at IS NULL AND sent_at IS NULL AND failed_at IS NULL AND dead_lettered_at IS NULL AND failure_reason IS NULL AND provider_message_id IS NULL) OR (status = 'claimed' AND recorded_at IS NOT NULL AND claimed_at IS NOT NULL AND lease_owner IS NOT NULL AND lease_until IS NOT NULL AND sent_at IS NULL AND failed_at IS NULL AND dead_lettered_at IS NULL AND failure_reason IS NULL AND provider_message_id IS NULL) OR (status = 'sent' AND recorded_at IS NOT NULL AND claimed_at IS NOT NULL AND sent_at IS NOT NULL AND failed_at IS NULL AND dead_lettered_at IS NULL AND failure_reason IS NULL AND provider_message_id IS NOT NULL AND lease_owner IS NULL AND lease_until IS NULL AND next_retry_at IS NULL) OR (status = 'failed' AND recorded_at IS NOT NULL AND claimed_at IS NOT NULL AND failed_at IS NOT NULL AND dead_lettered_at IS NULL AND failure_reason IS NOT NULL AND lease_owner IS NULL AND lease_until IS NULL AND next_retry_at IS NOT NULL) OR (status = 'dead_letter' AND recorded_at IS NOT NULL AND claimed_at IS NOT NULL AND dead_lettered_at IS NOT NULL AND failure_reason IS NOT NULL AND lease_owner IS NULL AND lease_until IS NULL AND next_retry_at IS NULL)))
 );
 create unique index if not exists "UQ_auth_notification_outbox_idempotency_key" on auth_notification_outbox(idempotency_key) where deleted_at is null;
 
@@ -466,6 +467,9 @@ if (!databaseUrl || !databaseName) {
                claimed_at = $1,
                lease_owner = 'worker_A',
                lease_until = $2,
+               failed_at = null,
+               failure_reason = null,
+               next_retry_at = null,
                version = version + 1,
                updated_at = now()
            where id = 'authout_cas_2'
@@ -482,6 +486,9 @@ if (!databaseUrl || !databaseName) {
                claimed_at = $1,
                lease_owner = 'worker_B',
                lease_until = $2,
+               failed_at = null,
+               failure_reason = null,
+               next_retry_at = null,
                version = version + 1,
                updated_at = now()
            where id = 'authout_cas_2'
@@ -2074,6 +2081,198 @@ if (!databaseUrl || !databaseName) {
         expect(outboxRow.status).toBe("sent")
         expect(outboxRow.provider_message_id).toBe("provider_dec_msg")
         expect(JSON.stringify(outboxRow)).not.toContain(derived.capability)
+      })
+    })
+
+    describe("Failed outbox retry claim state markers", () => {
+      it("claims a due failed row with a claimed-compatible shape, retries the provider, and preserves attempt_count", async () => {
+        const email = "retry.markers@loja.com.br"
+        const identityId = "ident_retry_markers_1"
+        const intentId = "authver_retry_markers_1"
+        const nonce = generateCustomerAuthCapabilityNonce()
+        const derived = deriveCustomerAuthCapability({
+          keyring,
+          purpose: "verification",
+          intentId,
+          generation: 1,
+          nonce,
+          keyVersion: 1,
+        })
+        const recipientHash = deriveCustomerAuthRecipientHash({
+          keyring,
+          purpose: "verification",
+          normalizedEmail: normalizeCustomerAuthEmail(email),
+          recipientIdentityId: identityId,
+          keyVersion: 1,
+        })
+        const recordedAt = new Date("2026-08-14T07:00:00.000Z")
+        const claimedAt = new Date(recordedAt.getTime() + 1_000)
+        const failedAt = new Date(recordedAt.getTime() + 2_000)
+        const nextRetryAt = new Date(recordedAt.getTime() + 60_000)
+        const retryNow = new Date(recordedAt.getTime() + 70_000)
+        const outboxId = "authout_retry_markers_1"
+        const idempotencyKey = formatAuthNotificationIdempotencyKey(
+          "email_verification_v1",
+          intentId,
+          1
+        )
+
+        await pool.query(
+          `insert into auth_verification_intent (
+            id, auth_identity_id, token_hash, nonce, key_version, generation,
+            status, version, expires_at, created_at
+          ) values (
+            $1, $2, $3, $4, 1, 1, 'pending', 1, $5, $6
+          )`,
+          [
+            intentId,
+            identityId,
+            derived.material.hash,
+            derived.material.nonce,
+            new Date(recordedAt.getTime() + 30 * 60 * 1000).toISOString(),
+            recordedAt.toISOString(),
+          ]
+        )
+
+        await pool.query(
+          `insert into auth_notification_outbox (
+            id, template, intent_type, intent_id, generation, idempotency_key,
+            status, recipient_identity_id, recipient_hash, recipient_domain,
+            key_version, version, attempt_count, next_retry_at, failure_reason,
+            recorded_at, claimed_at, failed_at
+          ) values (
+            $1, 'email_verification_v1', 'verification', $2, 1, $3,
+            'failed', $4, $5, 'loja.com.br', 1, 3, 2, $6, 'provider_transient',
+            $7, $8, $9
+          )`,
+          [
+            outboxId,
+            intentId,
+            idempotencyKey,
+            identityId,
+            recipientHash,
+            nextRetryAt.toISOString(),
+            recordedAt.toISOString(),
+            claimedAt.toISOString(),
+            failedAt.toISOString(),
+          ]
+        )
+
+        const claimedSnapshots: Array<Record<string, unknown>> = []
+        const mockClient: ResendAuthRelayClient = {
+          async send(_payload, options) {
+            const claimed = await pool.query(
+              "select * from auth_notification_outbox where id = $1",
+              [outboxId]
+            )
+            claimedSnapshots.push(claimed.rows[0])
+            expect(options.idempotencyKey).toBe(idempotencyKey)
+            return { providerMessageId: "msg_retry_markers_1" }
+          },
+        }
+
+        const result = await runAuthNotificationRelay({
+          knex: makeKnexLike(pool),
+          client: mockClient,
+          config: {
+            apiKey: "re_key",
+            fromEmail: "noreply@ecommerce.com.br",
+          },
+          keyring,
+          resolveEmailByIdentityId: async () => email,
+          workerId: "worker_retry_markers",
+          now: () => retryNow,
+          isWorker: () => true,
+          isReleaseMigration: () => false,
+        })
+
+        expect(result.processed).toBe(1)
+        expect(result.sent).toBe(1)
+        expect(claimedSnapshots).toHaveLength(1)
+        expect(claimedSnapshots[0]).toMatchObject({
+          status: "claimed",
+          lease_owner: "worker_retry_markers",
+          attempt_count: 2,
+          generation: 1,
+          idempotency_key: idempotencyKey,
+          recipient_identity_id: identityId,
+          recipient_hash: recipientHash,
+          recipient_domain: "loja.com.br",
+        })
+        expect(claimedSnapshots[0].failed_at).toBeNull()
+        expect(claimedSnapshots[0].failure_reason).toBeNull()
+        expect(claimedSnapshots[0].next_retry_at).toBeNull()
+        expect(claimedSnapshots[0].claimed_at).toBeTruthy()
+        expect(claimedSnapshots[0].lease_until).toBeTruthy()
+        expect(Number(claimedSnapshots[0].version)).toBe(4)
+
+        const finalRow = (
+          await pool.query(
+            "select * from auth_notification_outbox where id = $1",
+            [outboxId]
+          )
+        ).rows[0]
+        expect(finalRow.status).toBe("sent")
+        expect(finalRow.provider_message_id).toBe("msg_retry_markers_1")
+        expect(Number(finalRow.attempt_count)).toBe(2)
+        expect(finalRow.failed_at).toBeNull()
+        expect(finalRow.failure_reason).toBeNull()
+        expect(finalRow.next_retry_at).toBeNull()
+        expect(JSON.stringify(finalRow)).not.toContain(derived.capability)
+      })
+
+      it("does not claim a failed row whose next_retry_at is still in the future", async () => {
+        const now = new Date("2026-08-14T08:00:00.000Z")
+        const outboxId = "authout_retry_future_1"
+        await pool.query(
+          `insert into auth_notification_outbox (
+            id, template, intent_type, intent_id, generation, idempotency_key,
+            status, recipient_identity_id, recipient_hash, recipient_domain,
+            key_version, version, attempt_count, next_retry_at, failure_reason,
+            recorded_at, claimed_at, failed_at
+          ) values (
+            $1, 'email_verification_v1', 'verification', 'authver_retry_future_1', 1,
+            'auth/email_verification_v1/authver_retry_future_1/g1',
+            'failed', 'ident_retry_future_1', 'hash_future', 'loja.com.br', 1, 3, 2,
+            $2, 'provider_transient', $3, $3, $3
+          )`,
+          [
+            outboxId,
+            new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
+            now.toISOString(),
+          ]
+        )
+
+        let providerCalls = 0
+        const result = await runAuthNotificationRelay({
+          knex: makeKnexLike(pool),
+          client: {
+            async send() {
+              providerCalls += 1
+              return { providerMessageId: "msg_must_not_send" }
+            },
+          },
+          config: {
+            apiKey: "re_key",
+            fromEmail: "noreply@ecommerce.com.br",
+          },
+          now: () => now,
+          isWorker: () => true,
+          isReleaseMigration: () => false,
+        })
+
+        expect(result.processed).toBe(0)
+        expect(result.sent).toBe(0)
+        expect(providerCalls).toBe(0)
+        const row = (
+          await pool.query(
+            "select status, attempt_count, failure_reason from auth_notification_outbox where id = $1",
+            [outboxId]
+          )
+        ).rows[0]
+        expect(row.status).toBe("failed")
+        expect(Number(row.attempt_count)).toBe(2)
+        expect(row.failure_reason).toBe("provider_transient")
       })
     })
   })

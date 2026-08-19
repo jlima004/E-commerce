@@ -237,6 +237,101 @@ export async function emitAuthNotificationOperationalAlert(
   }
 }
 
+function isProductionAuthEnv(
+  env: Record<string, string | undefined> = process.env as Record<
+    string,
+    string | undefined
+  >
+): boolean {
+  return env.NODE_ENV === "production"
+}
+
+function isLoopbackAuthStorefrontHostname(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase()
+  if (host === "localhost" || host.endsWith(".localhost")) {
+    return true
+  }
+  if (host === "::1" || host === "0:0:0:0:0:0:0:1") {
+    return true
+  }
+  if (host === "0.0.0.0" || host === "::" || host === "0:0:0:0:0:0:0:0") {
+    return true
+  }
+  if (/^127(?:\.\d{1,3}){3}$/.test(host)) {
+    return true
+  }
+  if (/^::ffff:127(?:\.\d{1,3}){3}$/.test(host)) {
+    return true
+  }
+  return false
+}
+
+export function resolveProductionAuthStorefrontUrl(
+  raw: string | undefined
+): string | null {
+  if (typeof raw !== "string") {
+    return null
+  }
+
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return null
+  }
+
+  if (parsed.protocol !== "https:") {
+    return null
+  }
+  if (parsed.username !== "" || parsed.password !== "") {
+    return null
+  }
+  if (parsed.search !== "" || parsed.hash !== "") {
+    return null
+  }
+  if (!parsed.hostname || isLoopbackAuthStorefrontHostname(parsed.hostname)) {
+    return null
+  }
+
+  const path =
+    parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "")
+  return `${parsed.protocol}//${parsed.host}${path}`
+}
+
+function resolveConfiguredStorefrontUrl(
+  env: Record<string, string | undefined>
+): string | undefined {
+  const raw = (env.STOREFRONT_URL ?? env.NEXT_PUBLIC_STOREFRONT_URL)?.trim()
+  return raw ? raw.replace(/\/+$/, "") : undefined
+}
+
+function bindProductionStorefrontUrl(
+  config: ResendAuthRelayConfig,
+  env: Record<string, string | undefined> = process.env as Record<
+    string,
+    string | undefined
+  >
+): ResendAuthRelayConfig | null {
+  if (!isProductionAuthEnv(env)) {
+    return config
+  }
+
+  const storefrontUrl = resolveProductionAuthStorefrontUrl(config.storefrontUrl)
+  if (!storefrontUrl) {
+    return null
+  }
+
+  return {
+    ...config,
+    storefrontUrl,
+  }
+}
+
 export function resolveAuthRelayConfig(
   env: Record<string, string | undefined> = process.env as Record<
     string,
@@ -259,16 +354,15 @@ export function resolveAuthRelayConfig(
   const replyTo = (
     env.RESEND_AUTH_REPLY_TO ?? env.RESEND_REPLY_TO
   )?.trim()
-  const storefrontUrl = (
-    env.STOREFRONT_URL ?? env.NEXT_PUBLIC_STOREFRONT_URL
-  )?.trim()
-
-  return {
+  const storefrontUrl = resolveConfiguredStorefrontUrl(env)
+  const config: ResendAuthRelayConfig = {
     apiKey,
     fromEmail,
     ...(replyTo ? { replyTo } : {}),
     ...(storefrontUrl ? { storefrontUrl } : {}),
   }
+
+  return bindProductionStorefrontUrl(config, env)
 }
 
 export function createResendAuthRelayClient(
@@ -397,10 +491,13 @@ export async function runAuthNotificationRelay(
     }
   }
 
-  const config =
+  const resolvedConfig =
     deps.config !== undefined
       ? deps.config
       : resolveAuthRelayConfig()
+  const config = resolvedConfig
+    ? bindProductionStorefrontUrl(resolvedConfig)
+    : null
 
   if (!config) {
     return {
@@ -465,6 +562,9 @@ export async function runAuthNotificationRelay(
            claimed_at = ?,
            lease_owner = ?,
            lease_until = ?,
+           failed_at = null,
+           failure_reason = null,
+           next_retry_at = null,
            version = version + 1,
            updated_at = now()
        where id = ?

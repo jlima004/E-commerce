@@ -98,13 +98,68 @@ function assertKeyring(keyring: AuthRateLimitKeyring): void {
   }
 }
 
-function normalizeIpv6Prefix(address: string): string {
+function expandIpv6Hextets(address: string): string[] | null {
   const [leftRaw, rightRaw = ""] = address.toLowerCase().split("::")
   const left = leftRaw ? leftRaw.split(":") : []
   const right = rightRaw ? rightRaw.split(":") : []
   const missing = 8 - left.length - right.length
   const parts = [...left, ...Array(Math.max(0, missing)).fill("0"), ...right]
   if (parts.length !== 8 || parts.some((part) => !/^[a-f0-9]{1,4}$/.test(part))) {
+    return null
+  }
+  return parts
+}
+
+function isIpv4MappedZeroPrefix(prefix: string): boolean {
+  if (prefix === "" || prefix === ":") {
+    return true
+  }
+  const parts = prefix.split(":")
+  const numericParts = parts.filter((part) => part !== "")
+  return (
+    numericParts.length <= 5 &&
+    numericParts.every((part) => /^0{1,4}$/.test(part)) &&
+    parts.every((part) => part === "" || /^0{1,4}$/.test(part))
+  )
+}
+
+function canonicalizeIpv4MappedAddress(address: string): string | null {
+  const lower = address.toLowerCase()
+  const dottedMatch = lower.match(
+    /^(.*):ffff:(\d{1,3}(?:\.\d{1,3}){3})$/
+  )
+  if (dottedMatch) {
+    const ipv4 = dottedMatch[2]
+    if (isIP(ipv4) !== 4 || !isIpv4MappedZeroPrefix(dottedMatch[1])) {
+      return null
+    }
+    return ipv4
+  }
+
+  const hextets = expandIpv6Hextets(lower)
+  if (
+    !hextets ||
+    hextets[0] !== "0" ||
+    hextets[1] !== "0" ||
+    hextets[2] !== "0" ||
+    hextets[3] !== "0" ||
+    hextets[4] !== "0" ||
+    hextets[5] !== "ffff"
+  ) {
+    return null
+  }
+
+  const hi = Number.parseInt(hextets[6], 16)
+  const lo = Number.parseInt(hextets[7], 16)
+  if (!Number.isInteger(hi) || !Number.isInteger(lo)) {
+    return null
+  }
+  return `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`
+}
+
+function normalizeIpv6Prefix(address: string): string {
+  const parts = expandIpv6Hextets(address)
+  if (!parts) {
     throw new Error("Invalid auth rate limit IP")
   }
   return `${parts.slice(0, 4).map((part) => Number.parseInt(part, 16).toString(16)).join(":")}::/64`
@@ -113,7 +168,11 @@ function normalizeIpv6Prefix(address: string): string {
 export function normalizeAuthRateLimitNetworkPrefix(ip: string): string {
   const version = isIP(ip)
   if (version === 4) return `${ip}/32`
-  if (version === 6) return normalizeIpv6Prefix(ip)
+  if (version === 6) {
+    const mappedIpv4 = canonicalizeIpv4MappedAddress(ip)
+    if (mappedIpv4) return `${mappedIpv4}/32`
+    return normalizeIpv6Prefix(ip)
+  }
   throw new Error("Invalid auth rate limit IP")
 }
 

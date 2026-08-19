@@ -5,6 +5,7 @@ import {
   buildPostLookupRateLimitKey,
   buildPreLookupRateLimitKeys,
   consumeRateLimitBuckets,
+  normalizeAuthRateLimitNetworkPrefix,
   runAuthRateLimitProtocol,
   type AuthRateLimitKeyring,
 } from "../security/rate-limit"
@@ -116,6 +117,66 @@ describe("P14-D11 auth rate limit", () => {
       ip: IP,
       email: null as unknown as string,
     })).toThrow(CustomerAuthEmailNormalizationError)
+  })
+
+  it("canonicalizes IPv4 and IPv4-mapped IPv6 to the same /32 identity", () => {
+    expect(normalizeAuthRateLimitNetworkPrefix("127.0.0.1")).toBe("127.0.0.1/32")
+    expect(normalizeAuthRateLimitNetworkPrefix("::ffff:127.0.0.1")).toBe(
+      "127.0.0.1/32"
+    )
+    expect(normalizeAuthRateLimitNetworkPrefix("::FFFF:192.168.1.10")).toBe(
+      "192.168.1.10/32"
+    )
+    expect(normalizeAuthRateLimitNetworkPrefix(IP)).toBe(`${IP}/32`)
+    expect(normalizeAuthRateLimitNetworkPrefix(`::ffff:${IP}`)).toBe(`${IP}/32`)
+  })
+
+  it("keeps equivalent IPv4 and mapped IPv4 in the same rate-limit bucket", () => {
+    const ipv4Keys = buildPreLookupRateLimitKeys({
+      operation: "reset-confirm",
+      keyring: KEYRING,
+      ip: "127.0.0.1",
+      presentedToken: TOKEN,
+    })
+    const mappedKeys = buildPreLookupRateLimitKeys({
+      operation: "reset-confirm",
+      keyring: KEYRING,
+      ip: "::ffff:127.0.0.1",
+      presentedToken: TOKEN,
+    })
+    const uppercaseMappedKeys = buildPreLookupRateLimitKeys({
+      operation: "reset-confirm",
+      keyring: KEYRING,
+      ip: "::FFFF:127.0.0.1",
+      presentedToken: TOKEN,
+    })
+    expect(ipv4Keys.map((entry) => entry.key)).toEqual(
+      mappedKeys.map((entry) => entry.key)
+    )
+    expect(ipv4Keys.map((entry) => entry.key)).toEqual(
+      uppercaseMappedKeys.map((entry) => entry.key)
+    )
+    expect(ipv4Keys[0].key).not.toContain("127.0.0.1")
+    expect(ipv4Keys[0].key).not.toContain("ffff")
+  })
+
+  it("normalizes ordinary IPv6 to /64 without treating it as mapped IPv4", () => {
+    expect(normalizeAuthRateLimitNetworkPrefix("2001:db8::1")).toBe(
+      "2001:db8:0:0::/64"
+    )
+    expect(normalizeAuthRateLimitNetworkPrefix(IPV6)).toBe("2001:db8:abcd:1234::/64")
+  })
+
+  it.each([
+    "not-an-ip",
+    "::ffff:127.0.0",
+    "127.0.0.1:ffff::1",
+    "ffff:127.0.0.1",
+    "",
+  ])("rejects malformed mixed IP input: %s", (ip) => {
+    expect(() => normalizeAuthRateLimitNetworkPrefix(ip)).toThrow(
+      "Invalid auth rate limit IP"
+    )
   })
 
   it("normalizes IPv6 to /64 without exposing the address", () => {

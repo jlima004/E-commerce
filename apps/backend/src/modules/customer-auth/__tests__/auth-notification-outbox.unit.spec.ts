@@ -23,7 +23,10 @@ import {
 } from "../security/capabilities"
 import * as CustomerAuthExports from "../index"
 import { runAuthNotificationReconcile } from "../../../jobs/auth-notification-reconcile"
-import { runAuthNotificationRelay } from "../../../jobs/auth-notification-relay"
+import {
+  runAuthNotificationRelay,
+  resolveAuthRelayConfig,
+} from "../../../jobs/auth-notification-relay"
 
 describe("Auth Notification Outbox Unit Test Suite (P14-D10)", () => {
   const keyring = parseCustomerAuthCapabilityKeyring({
@@ -1790,6 +1793,294 @@ describe("Auth Notification Outbox Unit Test Suite (P14-D10)", () => {
         entity_id: "authout_rot_missing_1",
         message_code: "RECIPIENT_MISMATCH",
       })
+    })
+  })
+
+  describe("Failed outbox retry claim markers", () => {
+    it("clears failed markers atomically on claim and does not reset attempt_count", async () => {
+      const intentId = "authver_claim_markers_1"
+      const nonce = generateCustomerAuthCapabilityNonce()
+      const derived = deriveCustomerAuthCapability({
+        keyring,
+        purpose: "verification",
+        intentId,
+        generation: 1,
+        nonce,
+        keyVersion: 1,
+      })
+      const rawEmail = "retry.markers@example.com"
+      const recipientHash = deriveCustomerAuthRecipientHash({
+        keyring,
+        keyVersion: 1,
+        purpose: "verification",
+        normalizedEmail: rawEmail,
+        recipientIdentityId: "ident_claim_markers_1",
+      })
+      const claimSql: string[] = []
+      const mockKnex = {
+        async raw(sql: string) {
+          if (sql.includes("select * from auth_notification_outbox")) {
+            return {
+              rows: [
+                {
+                  id: "authout_claim_markers_1",
+                  template: "email_verification_v1",
+                  intent_type: "verification",
+                  intent_id: intentId,
+                  generation: 1,
+                  idempotency_key:
+                    "auth/email_verification_v1/authver_claim_markers_1/g1",
+                  status: "failed",
+                  recipient_identity_id: "ident_claim_markers_1",
+                  recipient_hash: recipientHash,
+                  recipient_domain: "example.com",
+                  key_version: 1,
+                  version: 3,
+                  attempt_count: 2,
+                  failed_at: "2026-08-14T02:00:01.000Z",
+                  failure_reason: "provider_transient",
+                  next_retry_at: "2026-08-14T02:00:00.000Z",
+                },
+              ],
+            }
+          }
+          if (sql.includes("select * from auth_verification_intent")) {
+            return {
+              rows: [
+                {
+                  id: intentId,
+                  nonce,
+                  token_hash: hashCustomerAuthCapability(derived.capability),
+                  status: "pending",
+                },
+              ],
+            }
+          }
+          if (sql.includes("set status = 'claimed'")) {
+            claimSql.push(sql)
+            expect(sql).toContain("failed_at = null")
+            expect(sql).toContain("failure_reason = null")
+            expect(sql).toContain("next_retry_at = null")
+            expect(sql).toContain("version = version + 1")
+            expect(sql).not.toMatch(/attempt_count\s*=/)
+            return {
+              rows: [
+                {
+                  id: "authout_claim_markers_1",
+                  version: 4,
+                  attempt_count: 2,
+                  status: "claimed",
+                },
+              ],
+            }
+          }
+          if (sql.includes("set status = 'sent'")) {
+            expect(sql).not.toMatch(/attempt_count\s*=/)
+            return {
+              rows: [
+                {
+                  id: "authout_claim_markers_1",
+                  version: 5,
+                  attempt_count: 2,
+                  status: "sent",
+                },
+              ],
+            }
+          }
+          return { rows: [] }
+        },
+      }
+      const mockClient = {
+        send: jest.fn(async () => ({ providerMessageId: "msg_claim_markers_1" })),
+      }
+
+      const result = await runAuthNotificationRelay({
+        knex: mockKnex,
+        client: mockClient,
+        config: {
+          apiKey: "test_key",
+          fromEmail: "noreply@example.com",
+        },
+        keyring,
+        resolveEmailByIdentityId: async () => rawEmail,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(claimSql).toHaveLength(1)
+      expect(result.processed).toBe(1)
+      expect(result.sent).toBe(1)
+      expect(mockClient.send).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe("Auth relay production storefront URL", () => {
+    const resendEnv = {
+      RESEND_API_KEY: "re_synthetic_test_key",
+      RESEND_FROM_EMAIL: "noreply@shop.example",
+    }
+
+    it("allows development fallback when the storefront URL is missing", () => {
+      expect(
+        resolveAuthRelayConfig({
+          NODE_ENV: "development",
+          ...resendEnv,
+        })
+      ).toEqual({
+        apiKey: "re_synthetic_test_key",
+        fromEmail: "noreply@shop.example",
+      })
+    })
+
+    it("allows an explicit local development storefront URL", () => {
+      expect(
+        resolveAuthRelayConfig({
+          NODE_ENV: "test",
+          ...resendEnv,
+          STOREFRONT_URL: "http://localhost:3000/",
+        })
+      ).toEqual({
+        apiKey: "re_synthetic_test_key",
+        fromEmail: "noreply@shop.example",
+        storefrontUrl: "http://localhost:3000",
+      })
+    })
+
+    it("enables production relay only for an explicit public HTTPS storefront URL", () => {
+      expect(
+        resolveAuthRelayConfig({
+          NODE_ENV: "production",
+          ...resendEnv,
+          STOREFRONT_URL: "https://loja.example/",
+        })
+      ).toEqual({
+        apiKey: "re_synthetic_test_key",
+        fromEmail: "noreply@shop.example",
+        storefrontUrl: "https://loja.example",
+      })
+    })
+
+    it("prefers STOREFRONT_URL over NEXT_PUBLIC_STOREFRONT_URL", () => {
+      expect(
+        resolveAuthRelayConfig({
+          NODE_ENV: "production",
+          ...resendEnv,
+          STOREFRONT_URL: "https://canonical.example",
+          NEXT_PUBLIC_STOREFRONT_URL: "https://alias.example",
+        })?.storefrontUrl
+      ).toBe("https://canonical.example")
+    })
+
+    it.each([
+      ["missing URL", {}],
+      ["localhost", { STOREFRONT_URL: "http://localhost:3000" }],
+      ["127.0.0.1", { STOREFRONT_URL: "https://127.0.0.1" }],
+      ["::1", { STOREFRONT_URL: "https://[::1]" }],
+      ["malformed URL", { STOREFRONT_URL: "not a url" }],
+      ["non-HTTPS", { STOREFRONT_URL: "http://loja.example" }],
+      ["credentials", { STOREFRONT_URL: "https://user:pass@loja.example" }],
+      ["query", { STOREFRONT_URL: "https://loja.example/?q=1" }],
+      ["fragment", { STOREFRONT_URL: "https://loja.example/#frag" }],
+      [
+        "API_PUBLIC_URL fallback",
+        { API_PUBLIC_URL: "https://api.example.com" },
+      ],
+    ])("fails closed in production for %s", (_name, extra) => {
+      expect(
+        resolveAuthRelayConfig({
+          NODE_ENV: "production",
+          ...resendEnv,
+          ...extra,
+        })
+      ).toBeNull()
+    })
+
+    it("does not call the provider when production storefront URL is missing", async () => {
+      const previous = {
+        NODE_ENV: process.env.NODE_ENV,
+        STOREFRONT_URL: process.env.STOREFRONT_URL,
+        NEXT_PUBLIC_STOREFRONT_URL: process.env.NEXT_PUBLIC_STOREFRONT_URL,
+        RESEND_API_KEY: process.env.RESEND_API_KEY,
+        RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
+        RESEND_AUTH_API_KEY: process.env.RESEND_AUTH_API_KEY,
+        RESEND_AUTH_FROM_EMAIL: process.env.RESEND_AUTH_FROM_EMAIL,
+        RESEND_AUTH_ENABLED: process.env.RESEND_AUTH_ENABLED,
+      }
+      const logs: Array<{ code: string; meta?: Record<string, unknown> }> = []
+      const mockClient = {
+        send: jest.fn(async () => ({ providerMessageId: "must_not_send" })),
+      }
+
+      process.env.NODE_ENV = "production"
+      process.env.RESEND_API_KEY = "re_synthetic_test_key"
+      process.env.RESEND_FROM_EMAIL = "noreply@shop.example"
+      delete process.env.STOREFRONT_URL
+      delete process.env.NEXT_PUBLIC_STOREFRONT_URL
+      delete process.env.RESEND_AUTH_API_KEY
+      delete process.env.RESEND_AUTH_FROM_EMAIL
+      delete process.env.RESEND_AUTH_ENABLED
+
+      try {
+        const result = await runAuthNotificationRelay({
+          knex: {
+            async raw() {
+              throw new Error("outbox must not be queried")
+            },
+          },
+          client: mockClient,
+          logger: {
+            warn: (code, meta) => logs.push({ code, meta }),
+            error: (code, meta) => logs.push({ code, meta }),
+            info: (code, meta) => logs.push({ code, meta }),
+          },
+          isWorker: () => true,
+          isReleaseMigration: () => false,
+        })
+
+        expect(result.skipped_missing_config).toBe(true)
+        expect(result.processed).toBe(0)
+        expect(mockClient.send).toHaveBeenCalledTimes(0)
+        expect(JSON.stringify(logs)).not.toMatch(/token=|capability/i)
+      } finally {
+        for (const [key, value] of Object.entries(previous)) {
+          if (value === undefined) {
+            delete process.env[key]
+          } else {
+            process.env[key] = value
+          }
+        }
+      }
+    })
+
+    it("does not call the provider when injected production config has a localhost URL", async () => {
+      const previousNodeEnv = process.env.NODE_ENV
+      const mockClient = {
+        send: jest.fn(async () => ({ providerMessageId: "must_not_send" })),
+      }
+
+      process.env.NODE_ENV = "production"
+      try {
+        const result = await runAuthNotificationRelay({
+          knex: {
+            async raw() {
+              throw new Error("outbox must not be queried")
+            },
+          },
+          client: mockClient,
+          config: {
+            apiKey: "re_synthetic_test_key",
+            fromEmail: "noreply@shop.example",
+            storefrontUrl: "http://localhost:3000",
+          },
+          isWorker: () => true,
+          isReleaseMigration: () => false,
+        })
+
+        expect(result.skipped_missing_config).toBe(true)
+        expect(mockClient.send).toHaveBeenCalledTimes(0)
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv
+      }
     })
   })
 })
