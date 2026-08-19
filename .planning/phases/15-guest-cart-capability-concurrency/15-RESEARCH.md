@@ -161,10 +161,24 @@ diff contra `node_modules` antes de PLAN. [EXTERNAL-DOC: Context7 `/websites/med
 6. **Q-11 não pode reemitir o plaintext a partir do hash.** Fato as-built /
    crypto: SHA-256 não é invertível; `store-idempotency` não persiste secrets.
    [VERIFIED: `store-idempotency/service.ts`; LOCKED: CART-01 hash-only]
-   Desenho recomendado (não é D15 lock): Store emite o header uma vez ao BFF;
-   BFF grava cookie HttpOnly **antes** de responder ao browser; replay da
-   `Idempotency-Key` devolve **contexto** (cart + ETag), não o secret.
-   HKDF/envelope cifrado rejeitados. [RECOMMENDATION: Q-11 Option A]
+   Recomendação (não é D15 lock): distinguir **duas** perdas.
+   **A — Store→BFF recebido; BFF→browser falhou.** O BFF já possui a
+   capability. Se o cookie HttpOnly foi gravado **antes** da resposta
+   browser-facing, a posse PODE sobreviver; retry do browser PODE recuperar
+   via cookie + GET com `x-indicio-guest-cart-token`.
+   **B — Store commitou o create; a resposta Store→BFF foi perdida ANTES de
+   o BFF receber a capability.** O BFF **não** possui o secret. Hash-only
+   impede reconstrução. Replay da **mesma** `Idempotency-Key` devolve só
+   **contexto seguro** (cart + ETag); **não** recupera nem reemite a
+   capability. `Idempotency-Key` **não** é credencial de recuperação. A
+   capability perdida permanece irrecuperável; o carrinho fica
+   órfão/inacessível; o BFF inicia novo create com **nova**
+   `Idempotency-Key`; o órfão expira pelo lifecycle/TTL (CART-03).
+   Retry in-process enquanto o BFF ainda tem o 201 em memória **não** é
+   perda Store→BFF — é resposta já recebida. Rejeitados: persistência
+   plaintext, token cifrado recuperável, HKDF/derivação reversível,
+   rotation-on-replay como default, `Idempotency-Key` como capability.
+   [RECOMMENDATION: Q-11 Option A]
 
 7. **Promoção M1 na execução desta phase** (não neste RESEARCH): active +
    3 line-items + **nova** `DELETE` collection. Contagens projetadas: total 64,
@@ -175,15 +189,16 @@ diff contra `node_modules` antes de PLAN. [EXTERNAL-DOC: Context7 `/websites/med
 
 | Concern | Owner | Must not |
 |---|---|---|
-| Prova de posse guest | Módulo dedicado hash-only + header | Sessão Medusa; `Idempotency-Key`; JWT Customer |
-| Prova de posse Customer | JWT/session Customer (Q-07) | Guest capability |
+| Prova de posse guest | Módulo dedicado hash-only + header | Sessão Medusa; `Idempotency-Key`; prova Customer Phase 14 |
+| Prova de posse Customer | Guard BFF + autoridade de acesso Customer aprovada na Phase 14 (`customerAuthAccessGuard` / estado PostgreSQL) + principal Customer/identity estável do contexto autorizado (Q-07) | Native `authenticate("customer", ["session", "bearer"])`; JWT cru; hash do JWT; session id Medusa; guest capability |
 | Concorrência | `StoreResourceVersion` + `If-Match` | Redis como autoridade; retry destrutivo |
-| Idempotência | `store-idempotency` existente | Persistência de secret; transferência de ownership |
+| Idempotência | `store-idempotency` existente | Persistência de secret; transferência de ownership; `Idempotency-Key` como posse |
 | Mutação de itens | Workflows Medusa atrás de rotas **locais** | Reabilitar HTTP nativo DENY |
 | Invalidação pagamento | `cart-invalidation.ts` as-built | PaymentAttempt M1 (Phase 19) |
 | Invalidação quote/select | Hook no-op Phase 15 | Implementar Gelato (Phase 18) |
 | Emissão da capability | Store → BFF header no 201 | Encaminhar ao browser |
-| Recuperação pós-201 | Cookie BFF HttpOnly | Reconstruir token a partir do hash |
+| Recuperação pós-201 (perda A) | Cookie BFF HttpOnly se o BFF já detém o secret e gravou o cookie antes de responder | Reconstruir token a partir do hash; usar `Idempotency-Key` como credencial de recuperação; tratar retry com 201 em memória como perda Store→BFF |
+| Recuperação pós-commit (perda B) | Replay só de contexto seguro; novo create com nova `Idempotency-Key`; órfão segue TTL | Reemitir/recuperar capability; rotation-on-replay como default |
 
 ## Project Constraints (from AGENTS.md / CONTEXT)
 
@@ -411,9 +426,11 @@ só POST nessa path + POST/DELETE por item. [VERIFIED]
 | DELETE sequencial por item | Fallback — pior atomicidade |
 | Inventar rota nativa “faltante” no pacote Medusa | **Proibido** |
 
-Rota local: ownership (capability \| JWT) → `If-Match` → query items → se vazio
-200 idempotente → senão uma invocação do workflow → bump versão → invalidação
-estrutural → DTO + `ETag`.
+Rota local: ownership (guest capability **ou** contexto Customer autorizado
+Phase 14: guard BFF + `customerAuthAccessGuard`) → `If-Match` → query items →
+se vazio 200 idempotente → senão uma invocação do workflow → bump versão →
+invalidação estrutural → DTO + `ETag`. Mesmas operações; provas de posse
+distintas.
 
 **Impacto exact-set:** adicionar a operação sobe `COUNT_TOTAL` 63 → 64. Aceitar
 +1 local em vez de sacrificar o contrato PRD. Atualizar
@@ -440,16 +457,19 @@ Não implementar Gelato quote. Não ignorar invalidação.
 do ator autenticado.
 
 `GET/POST /store/carts/active` já bifurca customer (`customer_id`) vs guest
-(sessão). [VERIFIED: `active-cart.ts`]
+(sessão). [VERIFIED: `active-cart.ts`] Isso é **PRESERVE_LEGACY**, **não** a
+autoridade M1 de Customer.
 
-| Ator | Prova |
+| Ator | Prova M1 |
 |---|---|
-| Guest | `x-indicio-guest-cart-token` |
-| Customer | JWT/session Customer — **não** guest capability |
+| Guest | `x-indicio-guest-cart-token` (persistência hash-only) |
+| Customer | Guard BFF + autoridade de acesso Customer aprovada na Phase 14 (`customerAuthAccessGuard` / estado de acesso em PostgreSQL); principal Customer/identity estável derivado desse contexto autorizado. **Não** native Medusa `authenticate("customer", ["session", "bearer"])`, JWT cru, hash do JWT, session id Medusa, nem guest capability. |
 
-Guest capability não autoriza cart de Customer; JWT não substitui guest
-capability. `{id}` nas rotas de line-item deve ser o cart ativo daquele ator.
-CHK-01 / SRS 2.4 continuam a proibir checkout guest.
+Guest capability não autoriza cart de Customer; a prova Customer não
+substitui guest capability. `{id}` nas rotas de line-item deve ser o cart
+ativo daquele ator. CHK-01 / SRS 2.4 continuam a proibir checkout guest.
+Nenhuma mudança no contrato JWT da Phase 14. Nenhum `actor_type` /
+`actor_id` Medusa novo.
 
 ## Q-08 — Cart DTO / snapshot 412
 
@@ -487,8 +507,24 @@ do PRD Frontend é envelope de **cookie BFF**, não DTO Store/JSON.
 | `DELETE .../line-items` (clear) | **Obrigatória** se a rota M1 existir |
 
 Actor scope no create (ainda sem capability): identidade BFF hashed — **não** a
-própria Idempotency-Key como ator. Após mint, actor scope das mutações = hash
-da capability (não plaintext) ou JWT Customer. [RECOMMENDATION]
+própria Idempotency-Key como ator. Após mint, actor scope das mutações
+[RECOMMENDATION]:
+
+- **Guest:** identidade estável derivada da guest capability / hash da
+  capability, **sem persistir plaintext**.
+- **Customer:** identificador estável de Customer/identity proveniente do
+  contexto autorizado da Phase 14 (`customerId` / principal de identity após
+  guard BFF + `customerAuthAccessGuard`).
+- **Não:** JWT cru, hash do JWT, nem session id nativo Medusa.
+
+Motivo: refresh/rotação de credencial **não** pode alterar o actor scope de
+idempotência quando o Customer/identity continua o mesmo. Guest e Customer
+podem reutilizar as mesmas operações M1; as provas de posse permanecem
+distintas. Nenhuma mudança no JWT da Phase 14; nenhum `actor_type` /
+`actor_id` Medusa novo.
+
+A interação `Idempotency-Key × If-Match` em retries de mutação é decisão
+obrigatória do PLAN (ver Must Be Decided in PLAN). Não desenhada aqui.
 
 ## Q-10 — Store vs BFF na emissão da capability
 
@@ -519,20 +555,47 @@ emitida uma vez e persistência só SHA-256. Hash não é invertível.
 
 ### Option A — ACCEPT (canônica)
 
-BFF persiste a capability no cookie HttpOnly **depois do 201 e antes de qualquer
-sucesso browser-facing**. Perda browser←BFF recupera via cookie + GET com header.
+Recomendação de RESEARCH, **não** D15 lock. Distinguir duas perdas. Não
+adotar persistência plaintext, token cifrado recuperável, HKDF/derivação
+reversível, rotation-on-replay como default, nem `Idempotency-Key` como
+capability/posse.
 
-Protocolo BFF:
+#### A) Store → BFF recebido com sucesso; BFF → browser falhou
+
+O BFF **já possui** a capability. Se o cookie HttpOnly foi gravado **antes**
+da resposta browser-facing, a posse PODE sobreviver. Retry do browser PODE
+recuperar via cookie + GET com `x-indicio-guest-cart-token`.
+
+Protocolo BFF (perda A):
 
 1. Gerar `Idempotency-Key` só em memória para aquele create.
 2. POST Store.
-3. Só após 201+header: escrever cookie; só então responder ao browser.
+3. Após 201+header: o BFF detém a capability. Escrever cookie HttpOnly
+   **antes** de qualquer sucesso browser-facing.
 4. Não persistir a Idempotency-Key no cookie como substituto da capability.
-5. Crash antes do cookie: a key some → novo create com **nova** key (carrinho
-   vazio órfão expira). Não usar a key antiga para “sacar” o secret.
+5. Retry do browser PODE recuperar via cookie + GET com o header.
+6. Se o BFF recebeu o 201 mas crashou **antes** do cookie: o secret em
+   memória some; isso **não** é recuperável via replay da mesma key. Para
+   posse, tratar como perda B (órfão + nova key).
+   Retry **in-process enquanto o 201 ainda está em memória** é retry após
+   resposta Store **já recebida**, **não** perda Store→BFF — não descrevê-lo
+   como cobertura de perda Store→BFF.
 
-Retry in-process no BFF (mesma key) cobre perda Store→BFF enquanto o processo
-ainda tem a 201 em memória.
+#### B) Store commitou o create; resposta Store → BFF perdida ANTES de o BFF receber a capability
+
+O BFF **não** possui o secret. Hash-only impede reconstrução.
+`store-idempotency` pode recuperar somente contexto seguro.
+
+1. Replay da **mesma** `Idempotency-Key` **NÃO** pode recuperar nem reemitir
+   a capability.
+2. `Idempotency-Key` **NÃO** é credencial de recuperação.
+3. Retry PODE recuperar cart / contexto seguro (`cart_id`, DTO canônico,
+   `ETag`) se o carrinho ainda for válido.
+4. A capability perdida permanece irrecuperável; o carrinho fica
+   órfão/inacessível.
+5. O BFF inicia novo create com **nova** `Idempotency-Key`.
+6. O órfão expira pela política de lifecycle/TTL (recomendação Q-02
+   inalterada).
 
 **Fence:** o protocolo de cookie é contrato do BFF futuro. Phase 15 (quando
 executada) entrega mint hash-only + header Store→BFF + replay de contexto sem
@@ -565,15 +628,19 @@ ser CSPRNG e passaria a ser PRF.
 
 1. CSPRNG emitido uma vez no mint do 201. Sem HKDF.
 2. Persistência hash-only (Q-01).
-3. Mesma `Idempotency-Key` → mesmo **contexto** se o carrinho ainda for válido.
+3. Mesma `Idempotency-Key` PODE devolver o mesmo **contexto seguro** se o
+   carrinho ainda for válido. A mesma key **NÃO** reemite nem restaura a
+   capability na perda B. Recuperação via cookie aplica-se **somente** à
+   perda A depois de o BFF ter recebido o header e gravado o cookie.
 4. Não persiste plaintext.
 5. Não põe capability em JSON/URL/logs.
-6. Não faz Idempotency-Key prova de posse.
+6. Não faz Idempotency-Key prova de posse nem credencial de recuperação.
 7. Não expõe ao browser.
 
-**Residual:** crash BFF pré-cookie + create commitado → carrinho vazio órfão até
-TTL. Rotação-on-replay (novo CSPRNG, substitui hash, emite header novo) **não**
-é default e só com lock humano — tensão com “emitted once”.
+**Residual (default):** perda B (e perda A sem cookie): carrinho
+vazio/inacessível até TTL. Rotação-on-replay (novo CSPRNG, substitui hash,
+emite header novo) **não** é default e só com lock humano — tensão com
+“emitted once”.
 
 Auth `recovery_until` 45s **não** se aplica (é recovery de refresh consumido).
 
@@ -586,18 +653,24 @@ Auth `recovery_until` 45s **não** se aplica (é recovery de refresh consumido).
 - Mutações: `If-Match` obrigatório; ausência fail-closed.
 - Stale: 412 `CART_VERSION_MISMATCH` + snapshot sem capability.
 - Sem retry destrutivo automático (D13-23).
-- Idempotency não substitui `If-Match`. Após 412, nova intenção.
+- Idempotency não substitui `If-Match`. Após 412, **nova** intenção continua a
+  exigir estado/versionamento apropriado.
+- PLAN deve definir a precedência `Idempotency-Key × If-Match` em retries de
+  mutação (ver Must Be Decided in PLAN). Esta RESEARCH **não** escolhe a
+  implementação: retry da **mesma** intenção / **mesma** `Idempotency-Key`
+  **não** deve virar `412 CART_VERSION_MISMATCH` só porque a primeira
+  execução avançou o ETag.
 - Versão errada ≠ posse errada — não fundir códigos de erro.
 
 ## Threat Model Applied
 
 | Ameaça | Controle |
 |---|---|
-| Spoofing | Capability necessária; compare timing-safe do SHA-256; erro uniforme D13-12; sessão insuficiente para M1 |
+| Spoofing | Guest M1: capability necessária; compare timing-safe do SHA-256. Customer M1: guard BFF + `customerAuthAccessGuard` / estado PostgreSQL e o identity estável desse contexto. Native JWT/session Customer é **insuficiente** para M1. Erro uniforme D13-12; sessão Medusa insuficiente para guest M1 |
 | Tampering | `If-Match` + CAS Postgres; 412; sem retry destrutivo |
-| Elevation / Bypass | Nativos DENY; line-items só via rotas locais; complete BLOCKED |
+| Elevation / Bypass | Nativos DENY; line-items só via rotas locais; complete BLOCKED; native `authenticate("customer")` não é autoridade M1 |
 | Disclosure | Header-only; hash-only; BFF cookie HttpOnly; allowlist idempotência proíbe `capability`; exemplos sintéticos |
-| Replay | Key ≠ ownership; replay devolve contexto, não secret; mutações exigem header |
+| Replay | Key ≠ ownership; replay devolve contexto, não secret; mesma key **NÃO** reemite capability após perda Store→BFF; `Idempotency-Key` não é credencial de recuperação; mutações guest ainda exigem o header da capability |
 
 ## Don't Hand-Roll
 
@@ -698,10 +771,13 @@ autoriza PLAN nem execução. [LOCKED: D15-17, D15-18]
 - Motor Medusa 2.16.0 para add/update/delete-per-item confirmado; clear-all HTTP
   nativo **ausente**; workflow multi-id **presente**.
 - Validators nativos insuficientes para CART-06 → wrapper local.
-- Q-11: Option A recomendada; B/C/D/E rejeitadas com evidência (não são D15 locks).
+- Q-11: Option A recomendada **após distinguir perda A vs B**; retry
+  in-process com 201 em memória **não** é perda Store→BFF; B/C/D/E
+  rejeitadas com evidência (não são D15 locks).
 - Guest capability ≠ auth refresh HKDF.
 - DTO = `PublicStoreCartPreOrder`; versão só em `ETag`.
-- Dual-path Q-07: mesmas ops, provas distintas.
+- Dual-path Q-07: mesmas ops, provas distintas (guest capability vs
+  contexto de acesso Customer Phase 14 — **não** atalho JWT/session).
 - CART-09: PA real + hook no-op SHP; sem Gelato.
 
 ## Must Be Decided in PLAN
@@ -710,12 +786,25 @@ autoriza PLAN nem execução. [LOCKED: D15-17, D15-18]
 - Formato de encoding do token no header (base64url vs hex do CSPRNG).
 - Lista BFF protegida: estender a de auth vs lista irmã de cart.
 - Actor/resource scope hashes exatos no `store-idempotency` para create vs
-  mutações.
+  mutações. Guest = hash derivado da capability (sem plaintext); Customer =
+  Customer/identity estável do contexto autorizado Phase 14; **não** JWT /
+  hash do JWT / session id nativo Medusa. Refresh não pode mudar o scope
+  enquanto a identity permanece. Inputs exatos de hash continuam decisão
+  de PLAN.
 - Se GET `/store/carts/active` sem cookie/capability retorna 404 (FE-CART-001)
   vs erro uniforme.
 - Atualização de `validateStoreSurfaceManifest` / `COUNT_TOTAL` 64.
 - Ordem das waves: módulo+CAS → BFF gate → promote active → line-items → clear.
 - TTL 7d rolling como default de PLAN (humano pode ajustar no review do PLAN).
+- **INTERAÇÃO `Idempotency-Key × If-Match`.** PLAN deve definir a
+  precedência para retries de mutações, de forma que: (1) uma primeira
+  mutação aplicada com sucesso incrementa a versão; (2) retry da **mesma**
+  intenção / **mesma** `Idempotency-Key` não deve virar artificialmente
+  `412 CART_VERSION_MISMATCH` só porque a própria primeira execução
+  avançou o ETag; (3) `Idempotency-Key` continua a não substituir ownership
+  nem `If-Match`; (4) nova intenção após conflito continua a exigir novo
+  estado/versionamento apropriado. Esta RESEARCH **não** desenha a
+  implementação.
 
 ## Human Decision Required Before PLAN
 
@@ -725,9 +814,11 @@ explícito e comando separado. [LOCKED: D15-17]
 Dois pontos em que o humano pode divergir da recomendação sem reabrir RESEARCH:
 
 1. **TTL numérico** (default RESEARCH: 7d rolling / teto 30d).
-2. **Órfão Q-11:** aceitar carrinho vazio inacessível até TTL após crash BFF
-   pré-cookie (**default**), vs rotação-on-replay (só com lock explícito;
-   tensão com emit-once).
+2. **Órfão Q-11:** aceitar carrinho vazio/inacessível até TTL após perda B
+   (Store commitou, BFF nunca recebeu o secret) e após perda A se o cookie
+   nunca foi gravado (**default**), vs rotação-on-replay (só com lock
+   explícito; tensão com emit-once). Q-11 permanece recomendação de
+   RESEARCH, não D15 lock.
 
 Promoção exact-set 63→64 (e EXTENDED 15→16, local-only 12→13) é lock de
 **review humano deste RESEARCH** (governança apontada pelo Subagent C), não
@@ -739,17 +830,19 @@ e o contrato PRD de clear-all.
 | # | Claim | Risk if Wrong |
 |---|---|---|
 | A1 | “Contexto” em SRS-BE-CART-002 não inclui o secret da capability | Se produto exigir reemissão do token original, Q-11 fica insolúvel sob hash-only |
-| A2 | BFF consegue setar cookie HttpOnly após 201 e antes da resposta browser | Sem isso, Option A degrada; frontend BLOCKED nesta phase mitiga |
-| A3 | Carrinho lazy no 201 está vazio — órfão pré-cookie tem custo baixo | Se create passar a hidratar itens, o custo do órfão sobe |
+| A2 | BFF consegue setar cookie HttpOnly após 201 e antes da resposta browser (**perda A**) | Sem isso, posse na perda A não sobrevive no cookie; frontend BLOCKED nesta phase mitiga |
+| A3 | Carrinho lazy no 201 está vazio — órfão da perda B (e da perda A sem cookie) tem custo baixo | Se create passar a hidratar itens, o custo do órfão sobe |
 | A4 | `deleteLineItemsWorkflow(ids[])` é atômico o bastante para clear-all | Se o workflow falhar mid-ids, PLAN precisa de wrap transacional extra |
 | A5 | Hook no-op SHP basta como evidência CART-09 até Phase 18 | Humano pode exigir tabela placeholder; ainda assim sem Gelato |
+| A6 | Retry in-process com 201 ainda em memória **não** é perda Store→BFF | Tratar isso como perda B faria órfãos em excesso de casos A recuperáveis |
 
 ## Residual Risks / Landmines
 
 1. Dual-run sessão + capability até Phase 19 — documentar matriz de provas por rota.
 2. Emissão do header sem BFF gate se Q-04 promover cedo demais.
 3. `GuestCartEnvelope.guestCartToken` vazar para DTO/OpenAPI.
-4. Actor scope fraco no create (key global) → replay por terceiro.
+4. Actor scope fraco no create (key global) → replay por terceiro. Scope
+   Customer **não** pode ser JWT cru, hash do JWT nem session id Medusa.
 5. `validateStoreSurfaceManifest` Phase 14 hardcode 6 M1.
 6. Colisão semântica v1.0 CART-01..04 vs v1.1 CART-01..09.
 7. Cookie TTL ≠ capability TTL.
@@ -772,6 +865,7 @@ e o contrato PRD de clear-all.
 - As-built: `active/route.ts`, `active-cart.ts`, `serializers.ts`, `manifest.ts`,
   `guard.ts`, `store-resource-version/`, `store-idempotency/`,
   `cart-invalidation.ts`, `eligibility.ts`, `bff-service-auth.ts`,
+  `customer-auth/access-guard.ts`,
   `customer-auth/security/capabilities.ts`, `tracking-access-token/service.ts`
 - Instalado: `@medusajs/medusa@2.16.0` store cart middlewares/validators;
   `@medusajs/core-flows@2.16.0` add/update/delete line-item workflows

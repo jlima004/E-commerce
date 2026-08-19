@@ -76,6 +76,31 @@ Non-blocking nits from adversarial review were applied: canonical-refs heading n
 
 ---
 
+## Human review remediation (2026-08-19) — B15-R-HR-01 / B15-R-HR-02
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Promote Q-11 Option A to a D15 lock | Would close an open question without human RESEARCH lock | |
+| Keep Q-11 as RESEARCH recommendation; distinguish lost-response A vs B; remove in-process Store→BFF conflation | Corrects B15-R-HR-01 without locking Q-11 | ✓ |
+| Treat Customer M1 ownership / idempotency actor scope as JWT/session Customer | Contradicts Phase 14 BFF service guard + customerAuthAccessGuard | |
+| Correct Customer proof and actor scope to Phase 14 authorized context; keep Guest vs Customer proofs distinct | Corrects B15-R-HR-02; no Phase 14 JWT change; no new Medusa actor_type / actor_id | ✓ |
+| Auto-advance to PLAN / write PLAN.md | Forbidden at this gate | |
+| Record INTERACTION Idempotency-Key × If-Match as a mandatory PLAN decision without designing it | Future PLAN only | ✓ |
+
+**B15-R-HR-01 identified and corrected** in `15-RESEARCH.md` only. Option A now splits: (A) Store→BFF received, BFF→browser failed — cookie MAY preserve possession, browser retry MAY recover via cookie + GET; (B) Store committed, Store→BFF lost before BFF received the capability — BFF has no secret, hash-only blocks reconstruction, same Idempotency-Key MUST NOT recover/re-emit the capability, key is not a recovery credential, retry MAY recover safe context only, cart is orphaned, new create uses a new key, orphan expires via TTL. Removed the claim that in-process retry covers Store→BFF loss while the BFF still has the 201 in memory. Not adopted: plaintext persistence, encrypted recoverable token, HKDF/reversible derivation, rotation-on-replay, Idempotency-Key as capability. Q-11 remains a RESEARCH recommendation, not a D15 lock.
+
+**B15-R-HR-02 identified and corrected** in `15-RESEARCH.md` only (Q-07, Q-09, responsibility map, threat model, incidental Q-05 ownership wording). M1 Customer ownership is BFF service guard + Phase 14 `customerAuthAccessGuard` / PostgreSQL-backed access state + stable Customer/identity principal from that context. Must not use native `authenticate("customer", ["session", "bearer"])`, raw JWT, JWT hash, Medusa native session id, or guest capability for Customer. Idempotency actor scope: Guest = capability-derived hash without plaintext persistence; Customer = stable identity from Phase 14 authorized context; not JWT / JWT hash / Medusa session id, so refresh/rotation does not change scope while identity is unchanged. Guest and Customer MAY reuse the same M1 operations; possession proofs remain distinct. No Phase 14 JWT change. No new Medusa `actor_type` / `actor_id`.
+
+**Locked requirements:** D15-01..D15-18 and inherited D13/D14 unchanged. No locked-requirement edits.
+
+**Research:** no new external research; no Context7; no code changes. Documentary remediation of human-review blockers against current documents and as-built Phase 14 / store-idempotency / middlewares.
+
+**PLAN:** remains unauthorized. `15-PLAN.md` must not be created. INTERACTION Idempotency-Key × If-Match is recorded as a mandatory future PLAN decision (same-intention retry must not become 412 merely because the first apply advanced ETag; key still does not replace ownership or If-Match). Not designed in this remediation.
+
+**Not authorized by this log:** PLAN, execution, frontend, deploy, providers reais, infra remota, push, third-file edits.
+
+---
+
 ## Deferred Ideas
 
 - Cart merge & review / capability consumption on merge — Phase 16
