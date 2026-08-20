@@ -150,38 +150,35 @@ function buildCompleteGuestCart(
   })
 }
 
+import {
+  GUEST_CART_CAPABILITY_HEADER,
+  GUEST_CART_CAPABILITY_MODULE,
+} from "../../src/modules/guest-cart-capability/types"
+
 type SessionCapableRequest = MedusaRequest & {
   auth_context?: {
     actor_id?: string
     actor_type?: string
   }
+  customerAuth?: any
   session?: {
     id?: string
     active_cart_id?: string
   }
+  headers?: Record<string, string>
   body?: Record<string, unknown>
-}
-
-function createRequest(overrides: Partial<SessionCapableRequest> = {}) {
-  return {
-    query: {},
-    queryConfig: {
-      fields: ["id"],
-    },
-    filterableFields: {},
-    params: {},
-    body: {},
-    scope: {
-      resolve: jest.fn(),
-    },
-    ...overrides,
-  } as SessionCapableRequest
 }
 
 function createResponse() {
   const jsonSpy = jest.fn()
+  const setHeader = jest.fn()
   const response = {
     statusCode: 200,
+    headers: {} as Record<string, string>,
+    setHeader: jest.fn(function (name: string, value: string) {
+      response.headers[name.toLowerCase()] = value
+      setHeader(name, value)
+    }),
     status: jest.fn(function status(code: number) {
       response.statusCode = code
       return response
@@ -195,6 +192,8 @@ function createResponse() {
 
   return response as MedusaResponse & {
     statusCode: number
+    headers: Record<string, string>
+    setHeader: jest.Mock
     status: jest.Mock
     json: jest.Mock
     jsonSpy: jest.Mock
@@ -233,9 +232,9 @@ function readRemoteQueryTarget(queryObject: RemoteQueryShape): {
     ? Object.keys(queryObject.__value)[0]
     : undefined
   const filters =
-    (entryPoint &&
+    ((entryPoint &&
       queryObject.__value?.[entryPoint]?.__args?.filters) ??
-    {}
+    {}) as Record<string, unknown>
 
   return { entryPoint, filters }
 }
@@ -272,15 +271,54 @@ function createRemoteQueryResolver(input: {
   })
 }
 
+function createRequest(overrides: Partial<SessionCapableRequest> = {}) {
+  return {
+    headers: {},
+    query: {},
+    queryConfig: {
+      fields: ["id"],
+    },
+    filterableFields: {},
+    params: {},
+    body: {},
+    scope: {
+      resolve: jest.fn(),
+    },
+    ...overrides,
+  } as SessionCapableRequest
+}
+
 function wireScope(
   req: SessionCapableRequest,
   options: {
     remoteQuery?: ReturnType<typeof createRemoteQueryResolver>
     workflowRun?: jest.Mock
+    guestCapService?: any
+    pgConnection?: any
   } = {}
 ) {
   const remoteQuery = options.remoteQuery ?? createRemoteQueryResolver({})
   const workflowRun = options.workflowRun ?? jest.fn(async () => ({ result: {} }))
+  const guestCapService = options.guestCapService ?? {
+    mintGuestCartCapability: jest.fn(async ({ cart_id }: { cart_id: string }) => ({
+      record: { id: "gccap_synth", cart_id, token_hash: "hash_synth", status: "active" },
+      plaintext_token: "synth_guest_capability_token",
+    })),
+    lookupGuestCartCapabilityByPresentedToken: jest.fn(async (token: string) => {
+      if (token === "invalid_token") {
+        throw new Error("GUEST_CART_CAPABILITY_LOOKUP_INVALID")
+      }
+      return {
+        id: "gccap_synth",
+        cart_id: (req.session?.active_cart_id as string) || "cart_guest_01",
+        token_hash: "hash_synth",
+        status: "active",
+      }
+    }),
+  }
+  const pgConnection = options.pgConnection ?? {
+    raw: jest.fn(async () => ({ rows: [] })),
+  }
 
   req.scope.resolve = jest.fn((key: string) => {
     if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
@@ -291,10 +329,18 @@ function wireScope(
       return { run: workflowRun }
     }
 
+    if (key === GUEST_CART_CAPABILITY_MODULE) {
+      return guestCapService
+    }
+
+    if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+      return pgConnection
+    }
+
     return undefined
   }) as SessionCapableRequest["scope"]["resolve"]
 
-  return { remoteQuery, workflowRun }
+  return { remoteQuery, workflowRun, guestCapService, pgConnection }
 }
 
 async function invokeActiveCartRoute(
@@ -327,7 +373,7 @@ async function invokeAttachRoute(req: SessionCapableRequest) {
 }
 
 describe("cart checkout store contract", () => {
-  const mockedCreateCartWorkflow = createCartWorkflow as jest.Mock
+  const mockedCreateCartWorkflow = createCartWorkflow as unknown as jest.Mock
 
   beforeEach(() => {
     jest.clearAllMocks()
@@ -369,6 +415,7 @@ describe("cart checkout store contract", () => {
         })
       )
       expect(req.session?.active_cart_id).toBe("cart_created_01")
+      expect(res.headers[GUEST_CART_CAPABILITY_HEADER]).toBeDefined()
     })
 
     it("GET /store/carts/active consulta o guest cart da sessao atual sem email", async () => {
@@ -382,6 +429,9 @@ describe("cart checkout store contract", () => {
       })
 
       const req = createRequest({
+        headers: {
+          [GUEST_CART_CAPABILITY_HEADER]: "synth_guest_capability_token",
+        },
         session: {
           id: "sess_guest_01",
           active_cart_id: guestCart.id,
@@ -419,6 +469,9 @@ describe("cart checkout store contract", () => {
       })
 
       const req = createRequest({
+        customerAuth: {
+          customerId: "cus_123",
+        },
         auth_context: {
           actor_id: "cus_123",
           actor_type: "customer",
@@ -460,6 +513,9 @@ describe("cart checkout store contract", () => {
       })
 
       const req = createRequest({
+        customerAuth: {
+          customerId: "cus_123",
+        },
         auth_context: {
           actor_id: "cus_123",
           actor_type: "customer",
@@ -484,7 +540,7 @@ describe("cart checkout store contract", () => {
         decideStoreSurfaceAccess("POST", "/store/customers/me/cart/attach")
       ).toMatchObject({ action: "deny" })
       expect(
-        defaultMiddlewares.routes.some(
+        (defaultMiddlewares.routes ?? []).some(
           (route) => String(route.matcher) === "/store*"
         )
       ).toBe(true)
@@ -826,6 +882,9 @@ describe("cart checkout store contract", () => {
       })
 
       const req = createRequest({
+        headers: {
+          [GUEST_CART_CAPABILITY_HEADER]: "synth_guest_capability_token",
+        },
         session: {
           id: "sess_01",
           active_cart_id: cart.id,
@@ -889,6 +948,9 @@ describe("cart checkout store contract", () => {
       })
 
       const req = createRequest({
+        headers: {
+          [GUEST_CART_CAPABILITY_HEADER]: "synth_guest_capability_token",
+        },
         session: {
           id: "sess_01",
           active_cart_id: incompleteCart.id,
@@ -913,6 +975,9 @@ describe("cart checkout store contract", () => {
       })
 
       const req = createRequest({
+        headers: {
+          [GUEST_CART_CAPABILITY_HEADER]: "synth_guest_capability_token",
+        },
         session: {
           id: "sess_01",
           active_cart_id: completeCart.id,
@@ -1016,6 +1081,9 @@ describe("cart checkout store contract", () => {
       })
 
       const guestReq = createRequest({
+        headers: {
+          [GUEST_CART_CAPABILITY_HEADER]: "synth_guest_capability_token",
+        },
         session: {
           id: "sess_01",
           active_cart_id: guestCart.id,
@@ -1121,7 +1189,7 @@ describe("cart checkout store contract", () => {
 
       await invokeAttachRoute(req)
 
-      const calledWorkflowIds = workflowRun.mock.calls.map((call) => call[0])
+      const calledWorkflowIds = workflowRun.mock.calls.map((call: unknown[]) => call[0])
       for (const forbidden of FORBIDDEN_WORKFLOW_IDS) {
         expect(calledWorkflowIds).not.toContain(forbidden)
       }
@@ -1129,7 +1197,7 @@ describe("cart checkout store contract", () => {
     })
 
     it("nao registra handlers de webhook nas rotas de cart/checkout da Phase 03", () => {
-      const cartMatchers = defaultMiddlewares.routes
+      const cartMatchers = (defaultMiddlewares.routes ?? [])
         .filter((route) =>
           route.matcher === "/store/carts/active" ||
           route.matcher === "/store/customers/me/cart/attach"

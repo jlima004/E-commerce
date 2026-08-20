@@ -2,6 +2,8 @@ import {
   STORE_SURFACE_MANIFEST,
   STORE_SURFACE_MEDUSA_VERSION,
   STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
+  STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS,
+  STORE_SURFACE_M1_ENABLED_OPERATIONS,
   lookupStoreSurfaceEntry,
   storeSurfaceOperationKey,
   summarizeStoreSurfaceManifest,
@@ -13,8 +15,6 @@ import { scanInstalledStoreSurface } from "../../../../scripts/store-surface/sca
 const PRESERVE_LEGACY_KEYS = [
   "GET /store/products",
   "GET /store/products/{id}",
-  "GET /store/carts/active",
-  "POST /store/carts/active",
   "POST /store/carts/{id}/payment-attempts/card",
   "POST /store/carts/{id}/payment-attempts/pix",
   "POST /store/tracking/lookup",
@@ -59,11 +59,11 @@ describe("Store surface manifest (FND-01)", () => {
     ).toBe(63)
   })
 
-  it("locks M1_ENABLED exact-set to STORE_SURFACE_PHASE14_ENABLED_OPERATIONS", () => {
-    expect(counts.m1EnabledPolicy).toBe(6)
-    expect(counts.m1EnablementEnabled).toBe(6)
+  it("locks M1_ENABLED exact-set to STORE_SURFACE_M1_ENABLED_OPERATIONS (Phase 14 Auth 6 + Phase 15 Cart 2 = 8)", () => {
+    expect(counts.m1EnabledPolicy).toBe(8)
+    expect(counts.m1EnablementEnabled).toBe(8)
     expect(counts.m1EnabledPolicy).toBe(
-      STORE_SURFACE_PHASE14_ENABLED_OPERATIONS.length
+      STORE_SURFACE_M1_ENABLED_OPERATIONS.length
     )
 
     const m1EnabledEntries = STORE_SURFACE_MANIFEST.filter(
@@ -75,13 +75,13 @@ describe("Store surface manifest (FND-01)", () => {
       storeSurfaceOperationKey(entry.method, entry.pathTemplate)
     )
 
-    expect(m1EnabledEntries).toHaveLength(6)
+    expect(m1EnabledEntries).toHaveLength(8)
     expect([...m1EnabledKeys].sort()).toEqual(
-      [...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS].sort()
+      [...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()
     )
-    expect(m1EnabledKeys).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
+    expect(m1EnabledKeys).toEqual([...STORE_SURFACE_M1_ENABLED_OPERATIONS])
 
-    for (const key of STORE_SURFACE_PHASE14_ENABLED_OPERATIONS) {
+    for (const key of STORE_SURFACE_M1_ENABLED_OPERATIONS) {
       const [method, pathTemplate] = key.split(" ")
       const entry = lookupStoreSurfaceEntry(method, pathTemplate)
       expect(entry).toBeDefined()
@@ -89,11 +89,11 @@ describe("Store surface manifest (FND-01)", () => {
       expect(entry!.m1_enablement).toBe("enabled")
     }
 
-    const phase14Keys = new Set<string>(STORE_SURFACE_PHASE14_ENABLED_OPERATIONS)
+    const m1Keys = new Set<string>(STORE_SURFACE_M1_ENABLED_OPERATIONS)
     const extraM1 = STORE_SURFACE_MANIFEST.filter((entry) => {
       const key = storeSurfaceOperationKey(entry.method, entry.pathTemplate)
       return (
-        !phase14Keys.has(key) &&
+        !m1Keys.has(key) &&
         (entry.runtime_policy === "M1_ENABLED" ||
           entry.m1_enablement === "enabled")
       )
@@ -101,10 +101,11 @@ describe("Store surface manifest (FND-01)", () => {
     expect(extraM1).toEqual([])
   })
 
-  it("requires DENY 50 + PRESERVE_LEGACY 7 + M1_ENABLED 6 = 63 with BLOCKED always DENY", () => {
+  it("requires DENY 50 + PRESERVE_LEGACY 5 + M1_ENABLED 8 = 63 with BLOCKED always DENY", () => {
     expect(counts.deny).toBe(50)
+    expect(counts.preserveLegacy).toBe(5)
     expect(counts.preserveLegacy).toBe(PRESERVE_LEGACY_KEYS.length)
-    expect(counts.m1EnabledPolicy).toBe(6)
+    expect(counts.m1EnabledPolicy).toBe(8)
     expect(
       counts.deny + counts.preserveLegacy + counts.m1EnabledPolicy
     ).toBe(63)
@@ -202,7 +203,7 @@ describe("Store surface manifest (FND-01)", () => {
     expect(scan.counts.extended).toBe(15)
     expect(scan.counts.blocked).toBe(17)
     expect(scan.counts.outsideFrontendM1).toBe(31)
-    expect(scan.counts.m1EnabledPolicy).toBe(6)
+    expect(scan.counts.m1EnabledPolicy).toBe(8)
 
     const installedKeys = new Set(scan.discoveredKeys)
     for (const entry of STORE_SURFACE_MANIFEST) {

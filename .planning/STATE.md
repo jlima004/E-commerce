@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
-status: ready
-last_updated: "2026-08-19T19:39:00.000Z"
+status: in_progress
+last_updated: "2026-08-20T00:19:00.000Z"
 progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 36
-  completed_plans: 28
-  percent: 20
-stopped_at: PHASE 15 EXECUTION AUTHORIZED — NOT STARTED
+  completed_plans: 31
+  percent: 25
+stopped_at: Task 15-03-04 Checkpoint de revisão humana (PAUSE) — gate interativo
 current_phase: 15
 current_phase_name: guest-cart-capability-concurrency
-current_plan: null
+current_plan: 15-03
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: `.planning/PROJECT.md`.
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, duplicate order or improper fulfillment.
 
-**Current focus:** Phase 15 — `Guest Cart Capability & Concurrency`, with **CONTEXT HUMAN APPROVED — PASS / RESEARCH HUMAN APPROVED — PASS / PLAN HUMAN APPROVED — PASS / EXECUTION AUTHORIZED — NOT STARTED** (8 plans / 8 serial waves).
+**Current focus:** Phase 15 — guest-cart-capability-concurrency
 
 ## Execution Policy
 
@@ -35,7 +35,7 @@ Execution remains manual-review gated.
 - `workflow._auto_chain_active=false`
 - `parallelization=false`
 
-Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. After human re-review closed B15-P-HR-01..06, B15-P-RP-HR-01..03 and the stale If-Match contract, Phase 15 EXECUTION is explicitly authorized. This authorization permits execution of the approved 8-plan topology under the `Phase 15 Execution Orchestration Policy`; each blocking human checkpoint between plans remains in force and no PLAN auto-starts its successor. Phase 16 and later gates remain separately unauthorized.
+Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01, 15-02, and 15-03 are executed. Currently stopped at Task 15-03-04 human review checkpoint. Phase 16 and later gates remain separately unauthorized.
 
 ## Current Gate
 
@@ -54,11 +54,10 @@ B14-21-HR-03: CLOSED — PASS
 B14-21-HR-04: CLOSED — PASS
 B14-21-HR-05: CLOSED — PASS
 
-Phase 15 CONTEXT: HUMAN APPROVED — PASS
-Phase 15 RESEARCH: HUMAN APPROVED — PASS
-Phase 15 PLAN: HUMAN APPROVED — PASS
-8 plans / 8 serial waves
-Phase 15 EXECUTION: AUTHORIZED — NOT STARTED
+Phase 15: IN PROGRESS
+Plan 15-01: COMPLETED — PASS
+Plan 15-02: COMPLETED — PASS
+Plan 15-03: COMPLETED — Task 15-03-04 Awaiting Human Review Checkpoint
 
 Deploy / release: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED

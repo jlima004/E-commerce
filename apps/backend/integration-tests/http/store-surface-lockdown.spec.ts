@@ -80,7 +80,7 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
   const middleware = createStoreSurfaceGuardMiddleware()
 
   it("registers method-less /store* matcher ahead of specific Store business matchers", () => {
-    const matchers = defaultMiddlewares.routes.map((route) => String(route.matcher))
+    const matchers = (defaultMiddlewares.routes ?? []).map((route) => String(route.matcher))
     const storeGuardIndex = matchers.indexOf("/store*")
     expect(storeGuardIndex).toBeGreaterThanOrEqual(0)
     expect(storeGuardIndex).toBeLessThan(matchers.indexOf("/store/products"))
@@ -93,8 +93,8 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
   it("denies all 50 DENY operations before scope/handler side effects", () => {
     expect(counts.total).toBe(63)
     expect(counts.deny).toBe(50)
-    expect(counts.preserveLegacy).toBe(7)
-    expect(counts.m1EnabledPolicy).toBe(6)
+    expect(counts.preserveLegacy).toBe(5)
+    expect(counts.m1EnabledPolicy).toBe(8)
 
     const denyEntries = STORE_SURFACE_MANIFEST.filter(
       (entry) => entry.runtime_policy === "DENY"
@@ -321,12 +321,12 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     // lockdown proof is the guard short-circuit above (handler call count 0).
   })
 
-  it("keeps classification distribution and Phase 14 M1_ENABLED exact-set at enforcement time", () => {
+  it("keeps classification distribution and Phase 15 M1_ENABLED exact-set at enforcement time", () => {
     expect(counts.authorized).toBe(0)
     expect(counts.extended).toBe(15)
     expect(counts.blocked).toBe(17)
     expect(counts.outsideFrontendM1).toBe(31)
-    expect(counts.m1EnabledPolicy).toBe(6)
-    expect(counts.m1EnablementEnabled).toBe(6)
+    expect(counts.m1EnabledPolicy).toBe(8)
+    expect(counts.m1EnablementEnabled).toBe(8)
   })
 })
