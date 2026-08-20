@@ -10,10 +10,10 @@ progress:
   total_plans: 36
   completed_plans: 30
   percent: 25
-stopped_at: 15-03 human re-review checkpoint
+stopped_at: 15-04 human review checkpoint (B15-P-HR-02)
 current_phase: 15
 current_phase_name: guest-cart-capability-concurrency
-current_plan: 15-03
+current_plan: 15-04
 ---
 
 # Project State
@@ -35,7 +35,7 @@ Execution remains manual-review gated.
 - `workflow._auto_chain_active=false`
 - `parallelization=false`
 
-Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01 and 15-02 are human-approved. Plan 15-03 is remediated and stopped at Task 15-03-04 human re-review checkpoint. Plan 15-04 and later plans remain unauthorized.
+Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01, 15-02, 15-03, 15-04 are executed. Plan 15-04 is stopped at Task 15-04-04 (Checkpoint B15-P-HR-02) awaiting human review. Plan 15-05 and later plans remain unauthorized.
 
 ## Current Gate
 
@@ -57,8 +57,9 @@ B14-21-HR-05: CLOSED — PASS
 Phase 15: IN PROGRESS
 Plan 15-01: HUMAN APPROVED — PASS
 Plan 15-02: HUMAN APPROVED — PASS
-Plan 15-03: REMEDIATED — Task 15-03-04 Awaiting Human Re-Review Checkpoint
-Plan 15-04: NOT AUTHORIZED
+Plan 15-03: EXECUTED — PASS
+Plan 15-04: EXECUTED — Task 15-04-04 Awaiting Human Review Checkpoint (B15-P-HR-02)
+Plan 15-05: NOT AUTHORIZED
 
 Deploy / release: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
