@@ -20,6 +20,17 @@ import {
   createKnexCustomerAuthAccessDatabase,
   type CustomerAuthAccessContext,
 } from "../../../../modules/customer-auth/access-guard"
+import { CUSTOMER_AUTH_BFF_AUTH_HEADER } from "../../../../modules/customer-auth/bff-service-auth"
+import {
+  STORE_IDEMPOTENCY_MODULE,
+  assertValidRawIdempotencyKey,
+  type StoreIdempotencyModuleService,
+} from "../../../../modules/store-idempotency"
+import {
+  guestCartCreateActorScope,
+  customerActorScope,
+  hashBffSecret,
+} from "../idempotency-scope"
 import { env } from "../../../../config/env"
 import { storeCartPreOrderFields } from "../query-config"
 import type { StoreCartPreOrderRecord } from "../serializers"
@@ -49,19 +60,24 @@ async function listCustomerCarts(
   customerId: string
 ): Promise<StoreCartRecord[]> {
   const remoteQuery = req.scope.resolve(ContainerRegistrationKeys.REMOTE_QUERY)
+
   const queryObject = remoteQueryObjectFromString({
     entryPoint: "cart",
     variables: {
       filters: {
         customer_id: customerId,
+        completed_at: null,
       },
     },
     fields: [...ACTIVE_CART_QUERY_FIELDS],
   })
 
-  const result = await remoteQuery(queryObject)
-  return (result as StoreCartRecord[]).filter(
-    (cart) => isIncompleteCart(cart) && isActiveMetadata(cart.metadata as Record<string, unknown>)
+  const results = (await remoteQuery(queryObject)) as StoreCartRecord[]
+
+  return results.filter(
+    (cart) =>
+      isIncompleteCart(cart) &&
+      isActiveMetadata(cart.metadata as Record<string, unknown>)
   )
 }
 
@@ -70,6 +86,7 @@ async function refetchActiveCart(
   cartId: string
 ): Promise<StoreCartRecord> {
   const remoteQuery = req.scope.resolve(ContainerRegistrationKeys.REMOTE_QUERY)
+
   const queryObject = remoteQueryObjectFromString({
     entryPoint: "cart",
     variables: {
@@ -107,7 +124,7 @@ async function retrieveCartById(
       return null
     }
 
-    if (!isIncompleteCart(cart) || !isActiveMetadata(cart.metadata as Record<string, unknown>)) {
+    if (!isActiveMetadata(cart.metadata as Record<string, unknown>)) {
       return null
     }
 
@@ -152,9 +169,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const actor = await resolveActor(req)
 
   if (actor.actorType === "invalid_guest_capability") {
+    // GET with capability PRESENT but invalid/expired/revoked/consumed/missing in DB
+    // MUST return uniform 404
     throw new MedusaError(
       MedusaError.Types.NOT_FOUND,
-      "No active cart found for the presented guest capability"
+      "Presented guest capability is invalid, expired, revoked, or consumed"
     )
   }
 
@@ -175,6 +194,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
 
   if (actor.actorType === "guest_anonymous") {
+    // GET with NO identity headers MUST return 404 (GET never auto-mints!)
     throw new MedusaError(
       MedusaError.Types.NOT_FOUND,
       "No active cart found for anonymous guest request"
@@ -275,14 +295,119 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       return
     }
 
-    const { result } = await createCartWorkflow(req.scope).run({
-      input: {
-        customer_id: actor.customerId,
-        currency_code: "brl",
+    // Customer creation path with Idempotency
+    const rawIdempotencyKey = req.headers["idempotency-key"]
+    if (
+      !rawIdempotencyKey ||
+      typeof rawIdempotencyKey !== "string" ||
+      rawIdempotencyKey.trim().length === 0
+    ) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "Idempotency-Key header is required for cart creation"
+      )
+    }
+    assertValidRawIdempotencyKey(rawIdempotencyKey)
+
+    const storeIdempotencyService = req.scope.resolve<StoreIdempotencyModuleService>(
+      STORE_IDEMPOTENCY_MODULE
+    )
+    const actorScope = customerActorScope({
+      customerId: actor.customerId,
+    })
+    const canonicalSemanticObject = {
+      customer_id: actor.customerId,
+      currency_code: "brl",
+    }
+    const claimResult = await storeIdempotencyService.claim({
+      operation: "store.carts.active.create",
+      actorScope,
+      rawIdempotencyKey,
+      canonicalSemanticObject,
+    })
+
+    if (claimResult.type === "conflict") {
+      throw Object.assign(
+        new MedusaError(
+          MedusaError.Types.CONFLICT,
+          "Idempotency key reuse conflict"
+        ),
+        { code: "IDEMPOTENCY_KEY_REUSE_CONFLICT", statusCode: 409, status: 409 }
+      )
+    }
+
+    if (claimResult.type === "in_progress") {
+      throw Object.assign(
+        new MedusaError(
+          MedusaError.Types.CONFLICT,
+          "Operation currently in progress for this idempotency key"
+        ),
+        { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
+      )
+    }
+
+    if (claimResult.type === "replay") {
+      const record = claimResult.record
+      if (record.state === "completed" && record.result_id) {
+        const cart = await refetchActiveCart(req, record.result_id)
+        assertNoPaymentOrOrderFields(cart)
+        const version = await initializeCartResourceVersion(req, cart.id)
+        res.setHeader("ETag", formatCartEtag(version))
+        res.status(200).json({ cart })
+        return
+      }
+      throw Object.assign(
+        new MedusaError(
+          MedusaError.Types.CONFLICT,
+          "Idempotency key previously terminated with failure or requires reconciliation"
+        ),
+        { code: "IDEMPOTENCY_KEY_REUSE_CONFLICT", statusCode: 409, status: 409 }
+      )
+    }
+
+    let cartId: string | null = null
+    try {
+      const { result } = await createCartWorkflow(req.scope).run({
+        input: {
+          customer_id: actor.customerId,
+          currency_code: "brl",
+        },
+      })
+      cartId = result.id
+    } catch (error) {
+      try {
+        await storeIdempotencyService.markFailedRetryable({
+          id: claimResult.record.id,
+          expectedState: "processing",
+          expectedStateVersion: claimResult.record.state_version,
+          failure_code: "CART_CREATION_FAILED",
+          next_retry_at: new Date(Date.now() + 5000),
+          retry_attempt_count: 1,
+          retry_started_at: new Date(),
+          state_deadline_at: new Date(Date.now() + 5 * 60 * 1000),
+        })
+      } catch {}
+      throw error
+    }
+
+    const cart = await refetchActiveCart(req, cartId)
+    assertNoPaymentOrOrderFields(cart)
+
+    await storeIdempotencyService.markCompleted({
+      id: claimResult.record.id,
+      expectedState: "processing",
+      expectedStateVersion: claimResult.record.state_version,
+      result_type: "cart",
+      result_id: cart.id,
+      response_status: 201,
+      result_safe_metadata: {
+        operation: "store.carts.active.create",
+        result_type: "cart",
+        result_id: cart.id,
+        response_status: 201,
       },
     })
-    const cart = await refetchActiveCart(req, result.id)
-    assertNoPaymentOrOrderFields(cart)
+
     const version = await initializeCartResourceVersion(req, cart.id)
     res.setHeader("ETag", formatCartEtag(version))
     // Customer path never emits guest capability header
@@ -292,23 +417,155 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   // Branch C: guest_anonymous (no guest capability header, no authorization header)
   // BFF guard has already authorized request
-  const { result } = await createCartWorkflow(req.scope).run({
-    input: {
-      currency_code: "brl",
-    },
+  const rawIdempotencyKey = req.headers["idempotency-key"]
+  if (
+    !rawIdempotencyKey ||
+    typeof rawIdempotencyKey !== "string" ||
+    rawIdempotencyKey.trim().length === 0
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Idempotency-Key header is required for cart creation"
+    )
+  }
+  assertValidRawIdempotencyKey(rawIdempotencyKey)
+
+  const storeIdempotencyService = req.scope.resolve<StoreIdempotencyModuleService>(
+    STORE_IDEMPOTENCY_MODULE
+  )
+  const bffHeader = req.headers[CUSTOMER_AUTH_BFF_AUTH_HEADER]
+  const actorScope = guestCartCreateActorScope({
+    bffKeyHash: hashBffSecret(bffHeader),
   })
-  const cart = await refetchActiveCart(req, result.id)
-  assertNoPaymentOrOrderFields(cart)
+  const canonicalSemanticObject = {
+    currency_code: "brl",
+  }
+  const claimResult = await storeIdempotencyService.claim({
+    operation: "store.carts.active.create",
+    actorScope,
+    rawIdempotencyKey,
+    canonicalSemanticObject,
+  })
+
+  if (claimResult.type === "conflict") {
+    throw Object.assign(
+      new MedusaError(
+        MedusaError.Types.CONFLICT,
+        "Idempotency key reuse conflict"
+      ),
+      { code: "IDEMPOTENCY_KEY_REUSE_CONFLICT", statusCode: 409, status: 409 }
+    )
+  }
+
+  if (claimResult.type === "in_progress") {
+    throw Object.assign(
+      new MedusaError(
+        MedusaError.Types.CONFLICT,
+        "Operation currently in progress for this idempotency key"
+      ),
+      { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
+    )
+  }
+
+  if (claimResult.type === "replay") {
+    const record = claimResult.record
+    if (record.state === "completed" && record.result_id) {
+      const cart = await refetchActiveCart(req, record.result_id)
+      assertNoPaymentOrOrderFields(cart)
+      const version = await initializeCartResourceVersion(req, cart.id)
+      res.setHeader("ETag", formatCartEtag(version))
+      // Replay contract: HTTP 200 without x-indicio-guest-cart-token header
+      res.status(200).json({ cart })
+      return
+    }
+    throw Object.assign(
+      new MedusaError(
+        MedusaError.Types.CONFLICT,
+        "Idempotency key previously terminated with failure or requires reconciliation"
+      ),
+      { code: "IDEMPOTENCY_KEY_REUSE_CONFLICT", statusCode: 409, status: 409 }
+    )
+  }
+
+  let cartId: string | null = null
+  try {
+    const { result } = await createCartWorkflow(req.scope).run({
+      input: {
+        currency_code: "brl",
+      },
+    })
+    cartId = result.id
+  } catch (error) {
+    try {
+      await storeIdempotencyService.markFailedRetryable({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: claimResult.record.state_version,
+        failure_code: "CART_CREATION_FAILED",
+        next_retry_at: new Date(Date.now() + 5000),
+        retry_attempt_count: 1,
+        retry_started_at: new Date(),
+        state_deadline_at: new Date(Date.now() + 5 * 60 * 1000),
+      })
+    } catch {}
+    throw error
+  }
+
+  let cart: StoreCartRecord
+  try {
+    cart = await refetchActiveCart(req, cartId)
+    assertNoPaymentOrOrderFields(cart)
+  } catch (error) {
+    try {
+      await storeIdempotencyService.markReconciliationRequired({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: claimResult.record.state_version,
+        failure_code: "CART_REFETCH_FAILED",
+      })
+    } catch {}
+    throw error
+  }
+
+  let mintResult: { plaintext_token: string }
+  try {
+    const guestCapService = req.scope.resolve<GuestCartCapabilityModuleService>(
+      GUEST_CART_CAPABILITY_MODULE
+    )
+    mintResult = await guestCapService.mintGuestCartCapability({
+      cart_id: cart.id,
+    })
+
+    await storeIdempotencyService.markCompleted({
+      id: claimResult.record.id,
+      expectedState: "processing",
+      expectedStateVersion: claimResult.record.state_version,
+      result_type: "cart",
+      result_id: cart.id,
+      response_status: 201,
+      result_safe_metadata: {
+        operation: "store.carts.active.create",
+        result_type: "cart",
+        result_id: cart.id,
+        response_status: 201,
+      },
+    })
+  } catch (error) {
+    // Post-create / mint failure: NEVER mark retryable (which would allow a 2nd create on retry!)
+    // Mark reconciliation_required or failed_terminal, preserving result_id = cart.id
+    try {
+      await storeIdempotencyService.markReconciliationRequired({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: claimResult.record.state_version,
+        failure_code: "CAPABILITY_MINT_FAILED",
+      })
+    } catch {}
+    throw error
+  }
+
   const version = await initializeCartResourceVersion(req, cart.id)
   res.setHeader("ETag", formatCartEtag(version))
-
-  // Mint guest cart capability
-  const guestCapService = req.scope.resolve<GuestCartCapabilityModuleService>(
-    GUEST_CART_CAPABILITY_MODULE
-  )
-  const mintResult = await guestCapService.mintGuestCartCapability({
-    cart_id: cart.id,
-  })
 
   // Set header only on 201 guest create
   res.setHeader(GUEST_CART_CAPABILITY_HEADER, mintResult.plaintext_token)

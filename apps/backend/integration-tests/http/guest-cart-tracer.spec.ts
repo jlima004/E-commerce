@@ -166,16 +166,37 @@ function createSyntheticHarness() {
     },
   }))
 
+  const mockStoreIdempotencyService = {
+    async claim() {
+      return {
+        type: "claimed",
+        record: {
+          id: `stidem_${Math.random()}`,
+          state: "processing",
+          state_version: 1,
+        },
+      }
+    },
+    async markCompleted() {},
+    async markFailedRetryable() {},
+    async markFailedTerminal() {},
+    async markReconciliationRequired() {},
+  }
+
   function createRequest(input: {
     method: "GET" | "POST"
     headers?: Record<string, string>
     session?: any
   }) {
+    const headers = {
+      ...(input.method === "POST" ? { "idempotency-key": `idem_${Math.random()}` } : {}),
+      ...(input.headers ?? {}),
+    }
     return {
       method: input.method,
       url: "/store/carts/active",
       originalUrl: "/store/carts/active",
-      headers: input.headers ?? {},
+      headers,
       session: input.session,
       scope: {
         resolve: (key: any) => {
@@ -184,6 +205,9 @@ function createSyntheticHarness() {
           }
           if (key === "store_resource_version") {
             return mockResourceVersionService
+          }
+          if (key === "store_idempotency") {
+            return mockStoreIdempotencyService
           }
           if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
             return mockRemoteQuery

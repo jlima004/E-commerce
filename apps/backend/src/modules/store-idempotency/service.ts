@@ -437,6 +437,9 @@ export function assertNoSensitiveStoreIdempotencyPersistence(
     "tracking_token",
     "cpf",
     "federal_tax_id",
+    "guest_cart_token",
+    "guestcarttoken",
+    "x-indicio-guest-cart-token",
   ]
 
   for (const key of Object.keys(row)) {
