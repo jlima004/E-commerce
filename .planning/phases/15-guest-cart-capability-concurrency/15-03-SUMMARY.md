@@ -164,9 +164,87 @@ The following files modified in original 15-03 execution belonged to future wave
 
 ---
 
+---
+
+## B15-03-HR-05 Final Runtime Remediation
+
+### Root Cause
+`apps/backend/src/api/store/carts/active/route.ts` threw `new MedusaError(MedusaError.Types.UNEXPECTED_STATE, ...)` when `actor.statusCode === 503` without attaching `statusCode: 503` / `status: 503`. The Store error boundary normalizer `toStoreErrorResponse` classifies generic `UNEXPECTED_STATE` errors without status hints as `500 INTERNAL_ERROR` rather than `503 SERVICE_UNAVAILABLE`.
+
+### Minimal Fix Owner & Implementation
+- **Owner:** `apps/backend/src/api/store/carts/active/route.ts`
+- **Fix:** In both `GET` and `POST` handlers, when `actor.statusCode === 503`, throw `Object.assign(new MedusaError(MedusaError.Types.UNEXPECTED_STATE, "Customer authentication authority temporarily unavailable"), { statusCode: 503, status: 503 })`.
+- **Global Error Infra:** Unchanged (`store-surface/errors.ts` and `middlewares.ts` remain untouched; `GLOBAL ERROR INFRA CHANGE REQUIRED: NO`).
+
+### Public HTTP 503 Proof (PROVA 5)
+- **BFF:** PASS (allows request with valid `x-customer-auth-bff-auth-secret`)
+- **Authorization:** PRESENT (valid Bearer JWT issued via `issueCustomerAuthAccessToken`)
+- **Customer Authority:** EXECUTED (via `authorizeCustomerAuthAccess`)
+- **PostgreSQL Outage:** SIMULATED LOCAL (`database.query` rejects with connection unavailable)
+- **Pipeline:** `BFF Guard -> active handler (GET / POST) -> Store Error Boundary (createSentryErrorHandler)`
+- **Actual Final HTTP Status:** 503
+- **Public Error Body:**
+  ```json
+  {
+    "code": "SERVICE_UNAVAILABLE",
+    "message": "Service Unavailable",
+    "retryable": false,
+    "correlationId": "<correlation_uuid>"
+  }
+  ```
+- **Cart Created:** 0 (`harness.carts.size === 0`)
+- **Guest Capability Response Header (`x-indicio-guest-cart-token`):** ABSENT / undefined
+
+### Regression Verification Matrix
+- **Invalid Customer Auth (PROVA 4):** 401 UNAUTHORIZED (forged token, malformed token, revoked lineage, stale credential version all return 401, never 503) — PASS
+- **Strict XOR Precedence (PROVA 6):** 404 NOT_FOUND (invalid guest capability + valid Customer Authorization fails closed as 404, never falling back to Customer) — PASS
+- **Valid Customer POST (PROVA 1 & 2):** 201 Created / 200 OK (reuses existing cart, customer_id preserved, zero guest capability emitted) — PASS
+- **Valid Customer GET (PROVA 3):** 200 OK (returns customer cart, zero guest capability emitted) — PASS
+- **Missing BFF Secret (PROVA 8):** 404 NOT_FOUND (blocked at BFF middleware before active cart handler) — PASS
+
+### Subagent Execution Records (B15-03-HR-05)
+
+#### Subagent A
+- **ID:** `NOT EXPOSED BY ANTIGRAVITY`
+- **Session ID:** `09727d4f-6cd7-498e-ae1f-cee36bed6d60`
+- **Step:** 1 (Runtime / Error Boundary Audit)
+- **Model:** Grok 4.6
+- **Role:** Runtime / Error Boundary Audit
+- **Mode:** READ-ONLY
+- **Verdict:** PASS — Root cause identified: `active/route.ts` threw `MedusaError.Types.UNEXPECTED_STATE` lacking `statusCode: 503`. Identified minimal fix owner `active/route.ts` with no global error infra change required (`GLOBAL ERROR INFRA CHANGE REQUIRED: NO`).
+
+#### Subagent B
+- **ID:** `NOT EXPOSED BY ANTIGRAVITY`
+- **Session ID:** `09727d4f-6cd7-498e-ae1f-cee36bed6d60`
+- **Step:** 2 (Narrow Runtime Fix + TDD)
+- **Model:** Composer 2.5
+- **Role:** Narrow Runtime Fix + TDD
+- **Mode:** WRITE
+- **Verdict:** PASS — Added public pipeline HTTP test asserting 503, proved failure (500) on unpatched code, applied minimal runtime fix attaching `statusCode: 503, status: 503` in `active/route.ts`, and verified test passes (8/8).
+
+#### Subagent C
+- **ID:** `NOT EXPOSED BY ANTIGRAVITY`
+- **Session ID:** `09727d4f-6cd7-498e-ae1f-cee36bed6d60`
+- **Step:** 3 (Focused Verification)
+- **Model:** Grok 4.6
+- **Role:** Focused Verification
+- **Mode:** READ + EXECUTE
+- **Verdict:** PASS — Executed focused unit tests (29/29 PASS), full 15-03 HTTP integration test suite (53/53 PASS, 0 skips), `npm run build` (PASS, 0 errors), `git diff --check` (PASS, 0 errors).
+
+#### Subagent D
+- **ID:** `NOT EXPOSED BY ANTIGRAVITY`
+- **Session ID:** `09727d4f-6cd7-498e-ae1f-cee36bed6d60`
+- **Step:** 4 (Adversarial Review)
+- **Model:** Composer 2.5
+- **Role:** Adversarial Review
+- **Mode:** READ-ONLY
+- **Verdict:** PASS — Proved public HTTP response is genuine 503, error body matches Store public contract without data leakage, 401/404 regressions intact, no global infra modified, zero 15-04 features, zero API Docs modifications, zero remote infrastructure accessed.
+
+---
+
 ## Final Remediated Evidence
 
-- **15-03 TECHNICAL:** REMEDIATED — PASS
+- **15-03 TECHNICAL:** FINAL REMEDIATION — PASS
 - **15-03 HUMAN CHECKPOINT:** AWAITING HUMAN RE-REVIEW (Task 15-03-04)
 - **15-04:** NOT AUTHORIZED
 - **Remote Providers / Remote DB / Remote Redis / Deploy:** NONE
