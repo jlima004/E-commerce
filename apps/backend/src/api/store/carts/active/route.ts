@@ -23,6 +23,7 @@ import {
 import { CUSTOMER_AUTH_BFF_AUTH_HEADER } from "../../../../modules/customer-auth/bff-service-auth"
 import {
   STORE_IDEMPOTENCY_MODULE,
+  STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
   assertValidRawIdempotencyKey,
   type LifecycleClaimResult,
   type StoreIdempotencyModuleService,
@@ -323,7 +324,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       currency_code: "brl",
     }
     const claimResult = await storeIdempotencyService.claim({
-      operation: "store.carts.active.create",
+      operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
       actorScope,
       rawIdempotencyKey,
       canonicalSemanticObject,
@@ -400,10 +401,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       expectedStateVersion: currentStateVersion,
       result_type: "cart",
       result_id: cartId,
+      response_status: 201,
       result_safe_metadata: {
-        operation: "store.carts.active.create",
+        operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
         result_type: "cart",
         result_id: cartId,
+        response_status: 201,
       },
     })
 
@@ -447,7 +450,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         result_id: cart.id,
         response_status: 201,
         result_safe_metadata: {
-          operation: "store.carts.active.create",
+          operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
           result_type: "cart",
           result_id: cart.id,
           response_status: 201,
@@ -497,7 +500,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     currency_code: "brl",
   }
   const claimResult = await storeIdempotencyService.claim({
-    operation: "store.carts.active.create",
+    operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
     actorScope,
     rawIdempotencyKey,
     canonicalSemanticObject,
@@ -574,10 +577,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     expectedStateVersion: currentStateVersion,
     result_type: "cart",
     result_id: cartId,
+    response_status: 201,
     result_safe_metadata: {
-      operation: "store.carts.active.create",
+      operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
       result_type: "cart",
       result_id: cartId,
+      response_status: 201,
     },
   })
 
@@ -645,7 +650,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       result_id: cart.id,
       response_status: 201,
       result_safe_metadata: {
-        operation: "store.carts.active.create",
+        operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
         result_type: "cart",
         result_id: cart.id,
         response_status: 201,

@@ -19,6 +19,7 @@ function createMockService(initialRows: StoreIdempotencyRecordRow[] = []) {
         const [
           resultType,
           resultId,
+          responseStatus,
           resultSafeMetadataJson,
           updatedAt,
           id,
@@ -42,6 +43,7 @@ function createMockService(initialRows: StoreIdempotencyRecordRow[] = []) {
           state_version: current.state_version + 1,
           result_type: (resultType as string) ?? null,
           result_id: (resultId as string) ?? null,
+          response_status: responseStatus != null ? Number(responseStatus) : null,
           result_safe_metadata: resultSafeMetadataJson
             ? JSON.parse(resultSafeMetadataJson as string)
             : null,
@@ -106,7 +108,7 @@ function baseRow(overrides: Partial<StoreIdempotencyRecordRow> = {}): StoreIdemp
 }
 
 describe("StoreIdempotencyModuleService.recordProcessingResult (Unit)", () => {
-  it("1. updates processing record with result_type, result_id and advances state_version while remaining in processing", async () => {
+  it("1. updates processing record with result_type, result_id, response_status=201 and advances state_version while remaining in processing", async () => {
     const row = baseRow({ state_version: 1, state: "processing" })
     const { service, rows } = createMockService([row])
 
@@ -116,10 +118,12 @@ describe("StoreIdempotencyModuleService.recordProcessingResult (Unit)", () => {
       expectedStateVersion: 1,
       result_type: "cart",
       result_id: "cart_01JTESTRECORD01",
+      response_status: 201,
       result_safe_metadata: {
         operation: "store.carts.active.create",
         result_type: "cart",
         result_id: "cart_01JTESTRECORD01",
+        response_status: 201,
       },
       at,
     })
@@ -130,10 +134,12 @@ describe("StoreIdempotencyModuleService.recordProcessingResult (Unit)", () => {
       expect(result.record.state_version).toBe(2)
       expect(result.record.result_type).toBe("cart")
       expect(result.record.result_id).toBe("cart_01JTESTRECORD01")
+      expect(result.record.response_status).toBe(201)
       expect(result.record.result_safe_metadata).toEqual({
         operation: "store.carts.active.create",
         result_type: "cart",
         result_id: "cart_01JTESTRECORD01",
+        response_status: 201,
       })
       expect(result.record.updated_at).toBe(at.toISOString())
     }
@@ -141,6 +147,25 @@ describe("StoreIdempotencyModuleService.recordProcessingResult (Unit)", () => {
     expect(rows[0].state).toBe("processing")
     expect(rows[0].state_version).toBe(2)
     expect(rows[0].result_id).toBe("cart_01JTESTRECORD01")
+    expect(rows[0].response_status).toBe(201)
+  })
+
+  it("1b. response_status null is accepted when not provided", async () => {
+    const row = baseRow({ state_version: 1, state: "processing" })
+    const { service, rows } = createMockService([row])
+
+    const result = await service.recordProcessingResult({
+      id: "stidem_test_01",
+      expectedStateVersion: 1,
+      result_type: "cart",
+      result_id: "cart_01JTESTRECORD01",
+    })
+
+    expect(result.type).toBe("claimed")
+    if (result.type === "claimed") {
+      expect(result.record.response_status).toBeNull()
+    }
+    expect(rows[0].response_status).toBeNull()
   })
 
   it("2. returns lost when expectedStateVersion is stale", async () => {
@@ -234,5 +259,67 @@ describe("StoreIdempotencyModuleService.recordProcessingResult (Unit)", () => {
         } as any,
       })
     ).rejects.toThrow(MedusaError)
+  })
+
+  describe("response_status validation", () => {
+    it("rejects response_status = 99 (below 100)", async () => {
+      const row = baseRow()
+      const { service } = createMockService([row])
+
+      await expect(
+        service.recordProcessingResult({
+          id: "stidem_test_01",
+          expectedStateVersion: 1,
+          result_type: "cart",
+          result_id: "cart_01JTESTRECORD01",
+          response_status: 99,
+        })
+      ).rejects.toThrow(MedusaError)
+    })
+
+    it("rejects response_status = 600 (above 599)", async () => {
+      const row = baseRow()
+      const { service } = createMockService([row])
+
+      await expect(
+        service.recordProcessingResult({
+          id: "stidem_test_01",
+          expectedStateVersion: 1,
+          result_type: "cart",
+          result_id: "cart_01JTESTRECORD01",
+          response_status: 600,
+        })
+      ).rejects.toThrow(MedusaError)
+    })
+
+    it("rejects response_status = 200.5 (non-integer)", async () => {
+      const row = baseRow()
+      const { service } = createMockService([row])
+
+      await expect(
+        service.recordProcessingResult({
+          id: "stidem_test_01",
+          expectedStateVersion: 1,
+          result_type: "cart",
+          result_id: "cart_01JTESTRECORD01",
+          response_status: 200.5,
+        })
+      ).rejects.toThrow(MedusaError)
+    })
+
+    it("rejects response_status = '201' (string type)", async () => {
+      const row = baseRow()
+      const { service } = createMockService([row])
+
+      await expect(
+        service.recordProcessingResult({
+          id: "stidem_test_01",
+          expectedStateVersion: 1,
+          result_type: "cart",
+          result_id: "cart_01JTESTRECORD01",
+          response_status: "201" as any,
+        })
+      ).rejects.toThrow(MedusaError)
+    })
   })
 })
