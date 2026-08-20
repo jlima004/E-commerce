@@ -147,10 +147,17 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
 
   if (actor.actorType === "customer_auth_denied") {
+    if (actor.statusCode === 503) {
+      throw Object.assign(
+        new MedusaError(
+          MedusaError.Types.UNEXPECTED_STATE,
+          "Customer authentication authority temporarily unavailable"
+        ),
+        { statusCode: 503, status: 503 }
+      )
+    }
     throw new MedusaError(
-      actor.statusCode === 503
-        ? MedusaError.Types.UNEXPECTED_STATE
-        : MedusaError.Types.UNAUTHORIZED,
+      MedusaError.Types.UNAUTHORIZED,
       "Customer authentication failed"
     )
   }
@@ -199,10 +206,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 
   if (actor.actorType === "customer_auth_denied") {
+    if (actor.statusCode === 503) {
+      throw Object.assign(
+        new MedusaError(
+          MedusaError.Types.UNEXPECTED_STATE,
+          "Customer authentication authority temporarily unavailable"
+        ),
+        { statusCode: 503, status: 503 }
+      )
+    }
     throw new MedusaError(
-      actor.statusCode === 503
-        ? MedusaError.Types.UNEXPECTED_STATE
-        : MedusaError.Types.UNAUTHORIZED,
+      MedusaError.Types.UNAUTHORIZED,
       "Customer authentication failed"
     )
   }

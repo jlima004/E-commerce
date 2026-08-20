@@ -24,6 +24,7 @@ import {
 } from "../../src/modules/customer-auth/bff-service-auth"
 import {
   createCustomerAuthBffServiceGuardMiddleware,
+  createSentryErrorHandler,
 } from "../../src/api/middlewares"
 import { env } from "../../src/config/env"
 
@@ -60,6 +61,47 @@ function createMockResponse() {
     statusMock: status,
     jsonMock: json,
     setHeaderMock: setHeader,
+  }
+}
+
+async function executeStoreCartPipeline(
+  req: any,
+  res: any,
+  handler: (req: any, res: any) => Promise<void>
+) {
+  const bffGuard = createCustomerAuthBffServiceGuardMiddleware({
+    expectedSecret: VALID_TEST_BFF_SECRET,
+  })
+  const sentryHandler = createSentryErrorHandler({
+    medusaErrorHandler: () => {},
+    captureException: () => "mock_sentry_id",
+  })
+
+  let nextCalled = false
+  await new Promise<void>((resolve, reject) => {
+    bffGuard(req, res, ((err?: unknown) => {
+      if (err) return reject(err)
+      nextCalled = true
+      resolve()
+    }) as never)
+    if (!nextCalled && res.headersSent) {
+      resolve()
+    }
+  })
+
+  if (!nextCalled) {
+    return
+  }
+
+  try {
+    await handler(req, res)
+  } catch (error) {
+    await new Promise<void>((resolve) => {
+      sentryHandler(error, req, res, (() => resolve()) as never)
+      if (res.headersSent) {
+        resolve()
+      }
+    })
   }
 }
 
@@ -477,25 +519,55 @@ describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — Real Author
     expect(harness.carts.size).toBe(0)
   })
 
-  it("PROVA 5: Authority Unavailable — PostgreSQL indisponivel resulta em 503 e zero cart", async () => {
+  it("PROVA 5: Authority Unavailable — PostgreSQL indisponivel resulta em HTTP 503 publico, envelope SERVICE_UNAVAILABLE e zero cart", async () => {
     const harness = createCustomerHarness()
     const session = harness.createCustomerSession("cus_unavail")
 
     harness.setDbUnavailable(true)
 
-    const req = harness.createRequest({
+    // 5.1 POST /store/carts/active through full Store public pipeline (BFF guard -> active handler -> Store error boundary)
+    const reqPost = harness.createRequest({
       method: "POST",
       headers: {
         authorization: `Bearer ${session.token}`,
       },
     })
-    const res = createMockResponse()
+    const resPost = createMockResponse()
 
-    await expect(postActiveCart(req as never, res as never)).rejects.toMatchObject({
-      type: MedusaError.Types.UNEXPECTED_STATE,
+    await executeStoreCartPipeline(reqPost, resPost, postActiveCart)
+
+    expect(resPost.statusCode).toBe(503)
+    expect(resPost.body).toEqual({
+      code: "SERVICE_UNAVAILABLE",
+      message: "Service Unavailable",
+      retryable: false,
+      correlationId: expect.any(String),
     })
+    expect(resPost.headers["x-correlation-id"]).toBeDefined()
     expect(harness.carts.size).toBe(0)
-    expect(res.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
+    expect(resPost.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
+
+    // 5.2 GET /store/carts/active through full Store public pipeline on authority outage
+    const reqGet = harness.createRequest({
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
+    })
+    const resGet = createMockResponse()
+
+    await executeStoreCartPipeline(reqGet, resGet, getActiveCart)
+
+    expect(resGet.statusCode).toBe(503)
+    expect(resGet.body).toEqual({
+      code: "SERVICE_UNAVAILABLE",
+      message: "Service Unavailable",
+      retryable: false,
+      correlationId: expect.any(String),
+    })
+    expect(resGet.headers["x-correlation-id"]).toBeDefined()
+    expect(harness.carts.size).toBe(0)
+    expect(resGet.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
   })
 
   it("PROVA 6: XOR Guest Precedence — capability PRESENTE mas invalida + Authorization valida retorna 404 e nao cai para Customer", async () => {
