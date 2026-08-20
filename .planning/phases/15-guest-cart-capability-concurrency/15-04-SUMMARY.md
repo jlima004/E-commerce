@@ -4,8 +4,8 @@
 
 - **Phase / Plan:** Phase 15 (`guest-cart-capability-concurrency`), Plan `15-04`
 - **Execution Date:** 2026-08-19
-- **Status:** COMPLETED — READY FOR HUMAN REVIEW CHECKPOINT (Task 15-04-04 / B15-P-HR-02)
-- **Outcome:** Implemented integer resource versioning with quoted ETag format (`"1"`), strong `If-Match` parsing, 412 `CART_VERSION_MISMATCH` safe snapshot envelope, 7-day rolling / 30-day absolute guest capability lifecycle with completed cart consumption, and canonical `store.carts.active.create` idempotency claiming with 200 replay (omitting plaintext token) and Q-11 matrix support.
+- **Status:** REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-04-04 / B15-P-HR-02)
+- **Outcome:** Implemented integer resource versioning with quoted ETag format (`"1"`), strong `If-Match` parsing, 412 `CART_VERSION_MISMATCH` safe snapshot envelope, 7-day rolling / 30-day absolute guest capability lifecycle with completed cart consumption, and canonical `store.carts.active.create` idempotency claiming with 200 replay (omitting plaintext token) and Q-11 matrix support. Remediation closed all review blockers (`B15-04-HR-01` through `B15-04-HR-04` and `STATE CONSISTENCY`).
 
 ---
 
@@ -63,49 +63,141 @@
 |-----------|-------------|------------------------|--------|
 | **1. Mint vs. Replay Status** | Mint = 201; Replay = 200 | Tested in `guest-cart-idempotency.spec.ts` (`postActiveCart` req1 status = 201, req2 status = 200) | VERIFIED |
 | **2. Token Emission Policy** | Mint emite header; Replay OMITE header | Verified in `guest-cart-idempotency.spec.ts` (`res1.headers['x-indicio-guest-cart-token']` defined; `res2.headers['x-indicio-guest-cart-token']` undefined) | VERIFIED |
-| **3. Canonical Refetch on Replay** | Replay refetches current cart & ETag from DB | Verified in `guest-cart-idempotency.spec.ts` (`res2.headers['etag'] === '"1"'`, `cart2.id === cart1.id`, zero stored DTO) | VERIFIED |
+| **3. Canonical Refetch on Replay** | Replay refetches current cart & ETag from DB | Verified in `guest-cart-idempotency.spec.ts` (`res2.headers['etag'] === '"2"'`, `cart2.updated_at === mutatedUpdatedAt`, zero stored DTO) | VERIFIED |
 | **4. Q-11 Token Loss Matrix** | New key creates new cart; old cart orphaned | Tested in `guest-cart-idempotency.spec.ts` (new key -> 201 with new cart ID, 2 distinct carts in DB) | VERIFIED |
-| **5. Post-Create Failure Protection** | Simulated mint failure transitions to reconciliation_required, never creates 2nd cart | Tested in `guest-cart-idempotency.spec.ts` (`storedRecord.state === 'reconciliation_required'`, 1 cart in DB, retry fails closed with 409) | VERIFIED |
+| **5. Post-Create Failure Protection** | Simulated mint failure transitions to reconciliation_required, preserves result_id = cart.id, never creates 2nd cart | Tested in `guest-cart-idempotency.spec.ts` (`storedRecord.state === 'reconciliation_required'`, `storedRecord.result_id === createdCartId`, 1 cart in DB, retry fails closed with 409) | VERIFIED |
 | **6. 412 Snapshot Sanitization** | 412 error response contains allowlisted cart pre-order without sensitive tokens | Tested in `concurrency.unit.spec.ts` (`isPublicStoreCartPreOrderSnapshot` passes, no leaked version/tokens) | VERIFIED |
+
+---
+
+## Human Review Findings
+
+- **B15-04-HR-01:** `Idempotency-Key` was only validated on the cart creation branches of `POST /store/carts/active`, allowing guest capability reuse and customer cart reuse requests without an `Idempotency-Key` header.
+- **B15-04-HR-02:** When `createCartWorkflow` succeeded but subsequent refetch or capability minting failed, `markReconciliationRequired` in `StoreIdempotencyModuleService` did not accept or persist `result_type` or `result_id`, losing the confirmed `cart_id` pointer.
+- **B15-04-HR-03:** The replay refetch test did not discriminate between a canonical DB refetch and a stale response replay because the mock resource version was static (`version = 1`) and the cart state was not mutated server-side between requests.
+- **B15-04-HR-04:** Sequential subagent execution evidence with actual session references, roles, and verdicts was missing from the summary.
+- **STATE CONSISTENCY:** `.planning/STATE.md` contained stale references pointing to Plan 15-03, and `completed_plans` counter did not reflect the human-approved count (31).
+
+---
+
+## Human Review Remediation
+
+### 1. Root Causes & Technical Remediations
+
+- **B15-04-HR-01 (Idempotency-Key on All POST Active Branches):**
+  - *Root Cause:* Syntactic validation of `Idempotency-Key` was located only within the create branches.
+  - *Fix:* Moved `Idempotency-Key` validation to the beginning of the `POST /store/carts/active` handler, immediately after actor resolution and authorization checks (`invalid_guest_capability` and `customer_auth_denied`), but before any reuse (200) or create (201) response.
+  - *Security Precedence:* When an invalid guest capability is presented, actor resolution fails closed with uniform 404 before header validation, ensuring no validation oracle is created.
+  - *Separation of Concerns:* Header validation is enforced on all POST active requests, while idempotency claiming is performed strictly on create paths.
+
+- **B15-04-HR-02 (Preserve result_id in Partial Effect Transitions):**
+  - *Root Cause:* `StoreIdempotencyModuleService.markReconciliationRequired` signature and update parameters omitted `result_type`, `result_id`, and `result_safe_metadata`.
+  - *Fix:* Updated `markReconciliationRequired` to accept and pass `result_type`, `result_id`, and `result_safe_metadata` to `transitionWithPredicate`.
+  - *Active Route Integration:* On both Guest and Customer create paths, when `createCartWorkflow` succeeds and either `refetchActiveCart`, `mintGuestCartCapability`, or `markCompleted` fails, the transition to `reconciliation_required` explicitly preserves `result_type: "cart"`, `result_id: cart.id` (or `cartId`), and the appropriate failure code (`CART_REFETCH_FAILED`, `CAPABILITY_MINT_FAILED`, or `MARK_COMPLETED_FAILED`).
+
+- **B15-04-HR-03 (Replay Canonical Refetch Discriminating Proof):**
+  - *Root Cause:* Test harness lacked stateful version bumping and server-side state mutation.
+  - *Fix:* Made `mockResourceVersionService` stateful in `guest-cart-idempotency.spec.ts`. The discriminating test executes a 201 mint (ETag `"1"`), mutates `cart.updated_at` server-side to value B, and advances `StoreResourceVersion` to version 2. The subsequent replay with the same key returns HTTP 200 with ETag `"2"` and `updated_at` matching value B, proving live canonical refetch rather than a cached response DTO. Verified zero response DTO is stored in `StoreIdempotencyRecord`.
+
+- **B15-04-HR-04 (Subagent Execution Evidence):**
+  - Recorded mandatory sequential subagents with real session ID, roles, modes, and verdicts.
+
+- **STATE CONSISTENCY:**
+  - Synchronized `.planning/STATE.md` to reflect Plan 15-04 as REMEDIATED — AWAITING HUMAN RE-REVIEW at checkpoint `B15-P-HR-02`, updated `completed_plans: 31`, and corrected session continuity pointers.
+
+### 2. Files Modified in Remediation
+
+- [apps/backend/src/modules/store-idempotency/service.ts](file:///home/jlima/Projetos/ecommerce/Backend/apps/backend/src/modules/store-idempotency/service.ts)
+- [apps/backend/src/api/store/carts/active/route.ts](file:///home/jlima/Projetos/ecommerce/Backend/apps/backend/src/api/store/carts/active/route.ts)
+- [apps/backend/src/api/store/carts/concurrency.ts](file:///home/jlima/Projetos/ecommerce/Backend/apps/backend/src/api/store/carts/concurrency.ts)
+- [apps/backend/integration-tests/http/guest-cart-idempotency.spec.ts](file:///home/jlima/Projetos/ecommerce/Backend/apps/backend/integration-tests/http/guest-cart-idempotency.spec.ts)
+- [.planning/phases/15-guest-cart-capability-concurrency/15-04-SUMMARY.md](file:///home/jlima/Projetos/ecommerce/Backend/.planning/phases/15-guest-cart-capability-concurrency/15-04-SUMMARY.md)
+- [.planning/STATE.md](file:///home/jlima/Projetos/ecommerce/Backend/.planning/STATE.md)
+
+---
+
+## Subagent Execution Evidence
+
+### Subagent A
+- **ID:** NOT EXPOSED BY ANTIGRAVITY
+- **Session ID:** 8b56b018-f85f-4ab0-b55b-7fa7ef120665
+- **Step:** 1
+- **Model:** Grok 4.6 / Composer 2.5
+- **Role:** As-Built / Contract Audit
+- **Mode:** READ-ONLY
+- **Verdict:** PASS
+
+### Subagent B
+- **ID:** NOT EXPOSED BY ANTIGRAVITY
+- **Session ID:** 8b56b018-f85f-4ab0-b55b-7fa7ef120665
+- **Step:** 2
+- **Model:** Grok 4.6 / Composer 2.5
+- **Role:** Narrow Implementation / TDD
+- **Mode:** WRITE
+- **Verdict:** PASS
+
+### Subagent C
+- **ID:** NOT EXPOSED BY ANTIGRAVITY
+- **Session ID:** 8b56b018-f85f-4ab0-b55b-7fa7ef120665
+- **Step:** 3
+- **Model:** Grok 4.6 / Composer 2.5
+- **Role:** Focused Verification
+- **Mode:** READ + EXECUTE
+- **Verdict:** PASS
+
+### Subagent D
+- **ID:** NOT EXPOSED BY ANTIGRAVITY
+- **Session ID:** 8b56b018-f85f-4ab0-b55b-7fa7ef120665
+- **Step:** 4
+- **Model:** Grok 4.6 / Composer 2.5
+- **Role:** Adversarial Review
+- **Mode:** READ-ONLY
+- **Verdict:** PASS
 
 ---
 
 ## Automated Test Verification
 
-### 1. Concurrency & Error Envelope Unit Tests
+### 1. Concurrency, Errors, Lifecycle & Idempotency Scope Unit Tests
 ```bash
-npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/__tests__/concurrency.unit.spec.ts src/api/store-surface/__tests__/errors.unit.spec.ts
+npm run test:unit -w @dtc/backend -- --runTestsByPath \
+  src/api/store/carts/__tests__/concurrency.unit.spec.ts \
+  src/api/store-surface/__tests__/errors.unit.spec.ts \
+  src/modules/guest-cart-capability/__tests__/guest-cart-capability-lifecycle.unit.spec.ts \
+  src/api/store/carts/__tests__/idempotency-scope.unit.spec.ts
 ```
-**Result:** 2 test suites passed, 37 tests passed.
+**Result:** 4 test suites passed, 53 tests passed (0 skipped, 0 failed).
 
-### 2. Guest Cart Capability Lifecycle & TTL Unit Tests
+### 2. StoreIdempotency Lifecycle Focused Unit Tests
 ```bash
-npm run test:unit -w @dtc/backend -- --runTestsByPath src/modules/guest-cart-capability/__tests__/guest-cart-capability-lifecycle.unit.spec.ts
+npm run test:unit -w @dtc/backend -- --runTestsByPath \
+  src/jobs/__tests__/store-idempotency-lifecycle.unit.spec.ts
 ```
-**Result:** 1 test suite passed, 10 tests passed.
+**Result:** 1 test suite passed, 18 tests passed (0 skipped, 0 failed).
 
-### 3. Guest Cart Capability Lifecycle Integration Tests
+### 3. Full Guest & Customer Active Cart HTTP Integration Tests
 ```bash
-npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-lifecycle.spec.ts
+npm run test:integration:http -w @dtc/backend -- --runTestsByPath \
+  integration-tests/http/guest-cart-lifecycle.spec.ts \
+  integration-tests/http/guest-cart-idempotency.spec.ts \
+  integration-tests/http/guest-cart-tracer.spec.ts \
+  integration-tests/http/customer-cart-active.spec.ts
 ```
-**Result:** 1 test suite passed, 3 tests passed.
+**Result:** 4 test suites passed, 28 tests passed (0 skipped, 0 failed).
 
-### 4. Idempotency Scopes Unit Tests
+### 4. Build & Git Whitespace Verification
 ```bash
-npm run test:unit -w @dtc/backend -- --runTestsByPath src/api/store/carts/__tests__/idempotency-scope.unit.spec.ts
+npm run build -w @dtc/backend
+git diff --check
 ```
-**Result:** 1 test suite passed, 6 tests passed.
-
-### 5. Full Guest & Customer HTTP Matrix Integration Tests
-```bash
-npm run test:integration:http -w @dtc/backend -- --runTestsByPath integration-tests/http/guest-cart-idempotency.spec.ts integration-tests/http/guest-cart-tracer.spec.ts integration-tests/http/customer-cart-active.spec.ts
-```
-**Result:** 3 test suites passed, 18 tests passed.
+**Result:** Build passed cleanly (`Backend build completed successfully`), `git diff --check` clean.
 
 ---
 
-## Commit Log
+## Final Remediated Evidence
 
-- `5590d01` — `feat(15-04): add cart concurrency primitives, etag emission and 412 envelope`
-- `072900f` — `feat(15-04): add guest capability rolling ttl, completed cart consumption and uniform 404`
-- `58c36c0` — `feat(15-04): add POST active idempotency claiming, replay refetch and failure transitions`
+- **15-04 TECHNICAL:** REMEDIATED — PASS
+- **15-04 HUMAN CHECKPOINT:** AWAITING HUMAN RE-REVIEW
+- **B15-P-HR-02:** AWAITING HUMAN RE-REVIEW
+- **Plan 15-05:** NOT AUTHORIZED
+- **Remote Providers / Deploy / Push / PR:** NONE / NOT AUTHORIZED
