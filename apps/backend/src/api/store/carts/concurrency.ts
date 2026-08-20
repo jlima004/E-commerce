@@ -107,7 +107,7 @@ export async function initializeCartResourceVersion(
     const sharedContext: StoreResourceVersionMutationContext = {
       __type: "MedusaContext",
       transactionManager: {
-        getTransactionContext: () => trx,
+        getTransactionContext: () => trx as never,
       },
     }
     const row = await versionService.initialize(

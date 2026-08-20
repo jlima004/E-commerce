@@ -261,6 +261,21 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     )
   }
 
+  // Idempotency-Key validation is mandatory on ALL POST active branches
+  // (after actor resolution and auth checks, before any 200/201 response)
+  const rawIdempotencyKey = req.headers["idempotency-key"]
+  if (
+    !rawIdempotencyKey ||
+    typeof rawIdempotencyKey !== "string" ||
+    rawIdempotencyKey.trim().length === 0
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Idempotency-Key header is required for cart creation"
+    )
+  }
+  assertValidRawIdempotencyKey(rawIdempotencyKey)
+
   if (actor.actorType === "guest") {
     const guestCapService = req.scope.resolve<GuestCartCapabilityModuleService>(
       GUEST_CART_CAPABILITY_MODULE
@@ -295,20 +310,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       return
     }
 
-    // Customer creation path with Idempotency
-    const rawIdempotencyKey = req.headers["idempotency-key"]
-    if (
-      !rawIdempotencyKey ||
-      typeof rawIdempotencyKey !== "string" ||
-      rawIdempotencyKey.trim().length === 0
-    ) {
-      throw new MedusaError(
-        MedusaError.Types.INVALID_DATA,
-        "Idempotency-Key header is required for cart creation"
-      )
-    }
-    assertValidRawIdempotencyKey(rawIdempotencyKey)
-
+    // Customer creation path with Idempotency claim
     const storeIdempotencyService = req.scope.resolve<StoreIdempotencyModuleService>(
       STORE_IDEMPOTENCY_MODULE
     )
@@ -390,23 +392,52 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       throw error
     }
 
-    const cart = await refetchActiveCart(req, cartId)
-    assertNoPaymentOrOrderFields(cart)
+    let cart: StoreCartRecord
+    try {
+      cart = await refetchActiveCart(req, cartId)
+      assertNoPaymentOrOrderFields(cart)
+    } catch (error) {
+      try {
+        await storeIdempotencyService.markReconciliationRequired({
+          id: claimResult.record.id,
+          expectedState: "processing",
+          expectedStateVersion: claimResult.record.state_version,
+          result_type: "cart",
+          result_id: cartId,
+          failure_code: "CART_REFETCH_FAILED",
+        })
+      } catch {}
+      throw error
+    }
 
-    await storeIdempotencyService.markCompleted({
-      id: claimResult.record.id,
-      expectedState: "processing",
-      expectedStateVersion: claimResult.record.state_version,
-      result_type: "cart",
-      result_id: cart.id,
-      response_status: 201,
-      result_safe_metadata: {
-        operation: "store.carts.active.create",
+    try {
+      await storeIdempotencyService.markCompleted({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: claimResult.record.state_version,
         result_type: "cart",
         result_id: cart.id,
         response_status: 201,
-      },
-    })
+        result_safe_metadata: {
+          operation: "store.carts.active.create",
+          result_type: "cart",
+          result_id: cart.id,
+          response_status: 201,
+        },
+      })
+    } catch (error) {
+      try {
+        await storeIdempotencyService.markReconciliationRequired({
+          id: claimResult.record.id,
+          expectedState: "processing",
+          expectedStateVersion: claimResult.record.state_version,
+          result_type: "cart",
+          result_id: cart.id,
+          failure_code: "MARK_COMPLETED_FAILED",
+        })
+      } catch {}
+      throw error
+    }
 
     const version = await initializeCartResourceVersion(req, cart.id)
     res.setHeader("ETag", formatCartEtag(version))
@@ -417,19 +448,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   // Branch C: guest_anonymous (no guest capability header, no authorization header)
   // BFF guard has already authorized request
-  const rawIdempotencyKey = req.headers["idempotency-key"]
-  if (
-    !rawIdempotencyKey ||
-    typeof rawIdempotencyKey !== "string" ||
-    rawIdempotencyKey.trim().length === 0
-  ) {
-    throw new MedusaError(
-      MedusaError.Types.INVALID_DATA,
-      "Idempotency-Key header is required for cart creation"
-    )
-  }
-  assertValidRawIdempotencyKey(rawIdempotencyKey)
-
   const storeIdempotencyService = req.scope.resolve<StoreIdempotencyModuleService>(
     STORE_IDEMPOTENCY_MODULE
   )
@@ -521,6 +539,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         id: claimResult.record.id,
         expectedState: "processing",
         expectedStateVersion: claimResult.record.state_version,
+        result_type: "cart",
+        result_id: cartId,
         failure_code: "CART_REFETCH_FAILED",
       })
     } catch {}
@@ -535,7 +555,23 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     mintResult = await guestCapService.mintGuestCartCapability({
       cart_id: cart.id,
     })
+  } catch (error) {
+    // Post-create / mint failure: NEVER mark retryable (which would allow a 2nd create on retry!)
+    // Mark reconciliation_required or failed_terminal, preserving result_id = cart.id
+    try {
+      await storeIdempotencyService.markReconciliationRequired({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: claimResult.record.state_version,
+        result_type: "cart",
+        result_id: cart.id,
+        failure_code: "CAPABILITY_MINT_FAILED",
+      })
+    } catch {}
+    throw error
+  }
 
+  try {
     await storeIdempotencyService.markCompleted({
       id: claimResult.record.id,
       expectedState: "processing",
@@ -551,14 +587,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       },
     })
   } catch (error) {
-    // Post-create / mint failure: NEVER mark retryable (which would allow a 2nd create on retry!)
-    // Mark reconciliation_required or failed_terminal, preserving result_id = cart.id
     try {
       await storeIdempotencyService.markReconciliationRequired({
         id: claimResult.record.id,
         expectedState: "processing",
         expectedStateVersion: claimResult.record.state_version,
-        failure_code: "CAPABILITY_MINT_FAILED",
+        result_type: "cart",
+        result_id: cart.id,
+        failure_code: "MARK_COMPLETED_FAILED",
       })
     } catch {}
     throw error

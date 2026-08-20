@@ -1,4 +1,5 @@
 import {
+  GET as getActiveCart,
   POST as postActiveCart,
 } from "../../src/api/store/carts/active/route"
 import {
@@ -77,6 +78,7 @@ function createIdempotencyHarness() {
   let cartSequence = 1
   let capSequence = 1
   let idemSequence = 1
+  const resourceVersions = new Map<string, number>()
 
   const mockGuestCapService = {
     async mintGuestCartCapability(input: { cart_id: string }) {
@@ -163,14 +165,18 @@ function createIdempotencyHarness() {
     },
     async markCompleted(input: {
       id: string
+      result_type?: string | null
       result_id?: string | null
       response_status?: number | null
+      result_safe_metadata?: any
     }) {
       for (const record of db.idempotencyRecords.values()) {
         if (record.id === input.id) {
           record.state = "completed"
+          record.result_type = input.result_type ?? null
           record.result_id = input.result_id ?? null
           record.response_status = input.response_status ?? null
+          record.result_safe_metadata = input.result_safe_metadata ?? null
           record.completed_at = new Date().toISOString()
           record.terminalized_at = new Date().toISOString()
           record.state_version += 1
@@ -179,10 +185,19 @@ function createIdempotencyHarness() {
       }
       return { type: "lost", record: null }
     },
-    async markReconciliationRequired(input: { id: string; failure_code?: string | null }) {
+    async markReconciliationRequired(input: {
+      id: string
+      result_type?: string | null
+      result_id?: string | null
+      result_safe_metadata?: any
+      failure_code?: string | null
+    }) {
       for (const record of db.idempotencyRecords.values()) {
         if (record.id === input.id) {
           record.state = "reconciliation_required"
+          record.result_type = input.result_type ?? null
+          record.result_id = input.result_id ?? null
+          record.result_safe_metadata = input.result_safe_metadata ?? null
           record.failure_code = input.failure_code ?? null
           record.state_version += 1
           return { type: "claimed", record }
@@ -204,7 +219,10 @@ function createIdempotencyHarness() {
 
   const mockResourceVersionService = {
     async initialize(type: string, id: string) {
-      return { id: `strver_${id}`, resource_type: type, resource_id: id, version: 1 }
+      const key = `${type}:${id}`
+      const current = resourceVersions.get(key) ?? 1
+      resourceVersions.set(key, current)
+      return { id: `strver_${id}`, resource_type: type, resource_id: id, version: current }
     },
   }
 
@@ -256,7 +274,7 @@ function createIdempotencyHarness() {
   }))
 
   function createRequest(input: {
-    method: "POST"
+    method: "GET" | "POST"
     headers?: Record<string, string>
     customerAuth?: any
   }) {
@@ -297,151 +315,341 @@ function createIdempotencyHarness() {
     createRequest,
     mockGuestCapService,
     mockStoreIdempotencyService,
+    mockRemoteQuery,
+    setResourceVersion: (type: string, id: string, version: number) => {
+      resourceVersions.set(`${type}:${id}`, version)
+    },
   }
 }
 
-describe("Guest Cart Idempotency, Replay 200 & Q-11 Matrix (P15-D04 / P15-D09 / B15-P-HR-02)", () => {
-  it("executes mint on first request (201 with header) and refetch replay on same key (200 without header)", async () => {
-    const harness = createIdempotencyHarness()
-    const idempotencyKey = "idem_guest_mint_and_replay_01"
+describe("Guest & Customer Active Cart Idempotency, Concurrency & Replay Matrix", () => {
+  describe("B15-04-HR-01: Idempotency-Key Header Required on All POST Active Branches", () => {
+    it("rejects anonymous guest POST without Idempotency-Key with 400 VALIDATION_ERROR", async () => {
+      const harness = createIdempotencyHarness()
+      const req = harness.createRequest({
+        method: "POST",
+        // no idempotency-key header
+      })
+      const res = createMockResponse()
 
-    // First request: mint
-    const req1 = harness.createRequest({
-      method: "POST",
-      headers: { "idempotency-key": idempotencyKey },
+      await expect(postActiveCart(req as never, res as never)).rejects.toMatchObject({
+        type: MedusaError.Types.INVALID_DATA,
+      })
+      expect(harness.db.carts.size).toBe(0)
     })
-    const res1 = createMockResponse()
-    await postActiveCart(req1 as never, res1 as never)
 
-    expect(res1.statusCode).toBe(201)
-    const emittedToken = res1.headers[GUEST_CART_CAPABILITY_HEADER]
-    expect(emittedToken).toBeDefined()
-    expect(typeof emittedToken).toBe("string")
-    expect(res1.headers["etag"]).toBe('"1"')
+    it("rejects valid guest capability reuse POST without Idempotency-Key with 400 VALIDATION_ERROR", async () => {
+      const harness = createIdempotencyHarness()
+      // First create cart with valid key
+      const createReq = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": "idem_create_guest_01" },
+      })
+      const createRes = createMockResponse()
+      await postActiveCart(createReq as never, createRes as never)
+      expect(createRes.statusCode).toBe(201)
+      const token = createRes.headers[GUEST_CART_CAPABILITY_HEADER]
 
-    const cart1 = (res1.body as any).cart
-    expect(cart1).toBeDefined()
-    expect(cart1.id).toBeDefined()
+      // Now attempt reuse POST without idempotency-key
+      const reuseReq = harness.createRequest({
+        method: "POST",
+        headers: { [GUEST_CART_CAPABILITY_HEADER]: token },
+        // missing idempotency-key
+      })
+      const reuseRes = createMockResponse()
 
-    // Second request: replay of SAME Idempotency-Key
-    const req2 = harness.createRequest({
-      method: "POST",
-      headers: { "idempotency-key": idempotencyKey },
+      await expect(postActiveCart(reuseReq as never, reuseRes as never)).rejects.toMatchObject({
+        type: MedusaError.Types.INVALID_DATA,
+      })
     })
-    const res2 = createMockResponse()
-    await postActiveCart(req2 as never, res2 as never)
 
-    // Replay returns HTTP 200, OMIT x-indicio-guest-cart-token, refetches canonical cart and attaches ETag
-    expect(res2.statusCode).toBe(200)
-    expect(res2.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
-    expect(res2.headers["etag"]).toBe('"1"')
+    it("rejects Customer with existing cart POST without Idempotency-Key with 400 VALIDATION_ERROR", async () => {
+      const harness = createIdempotencyHarness()
+      const customerAuth = { customerId: "cus_existing_user" }
 
-    const cart2 = (res2.body as any).cart
-    expect(cart2).toBeDefined()
-    expect(cart2.id).toBe(cart1.id)
+      // 1. Create first cart for customer with valid key
+      const createReq = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": "idem_create_cus_01" },
+        customerAuth,
+      })
+      const createRes = createMockResponse()
+      await postActiveCart(createReq as never, createRes as never)
+      expect(createRes.statusCode).toBe(201)
 
-    // Negative proof: exactly ONE cart exists in DB for this key
-    expect(harness.db.carts.size).toBe(1)
+      // 2. Second POST for customer with existing cart but missing Idempotency-Key
+      const reuseReq = harness.createRequest({
+        method: "POST",
+        customerAuth,
+        // missing idempotency-key
+      })
+      const reuseRes = createMockResponse()
+
+      await expect(postActiveCart(reuseReq as never, reuseRes as never)).rejects.toMatchObject({
+        type: MedusaError.Types.INVALID_DATA,
+      })
+    })
+
+    it("rejects Customer without existing cart POST without Idempotency-Key with 400 VALIDATION_ERROR", async () => {
+      const harness = createIdempotencyHarness()
+      const customerAuth = { customerId: "cus_new_user_no_cart" }
+
+      const req = harness.createRequest({
+        method: "POST",
+        customerAuth,
+        // missing idempotency-key
+      })
+      const res = createMockResponse()
+
+      await expect(postActiveCart(req as never, res as never)).rejects.toMatchObject({
+        type: MedusaError.Types.INVALID_DATA,
+      })
+      expect(harness.db.carts.size).toBe(0)
+    })
+
+    it("allows GET active without Idempotency-Key header", async () => {
+      const harness = createIdempotencyHarness()
+      // 1. Create cart
+      const createReq = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": "idem_for_get_check" },
+      })
+      const createRes = createMockResponse()
+      await postActiveCart(createReq as never, createRes as never)
+      const token = createRes.headers[GUEST_CART_CAPABILITY_HEADER]
+
+      // 2. GET without idempotency-key header -> 200
+      const getReq = harness.createRequest({
+        method: "GET",
+        headers: { [GUEST_CART_CAPABILITY_HEADER]: token },
+      })
+      const getRes = createMockResponse()
+      await getActiveCart(getReq as never, getRes as never)
+
+      expect(getRes.statusCode).toBe(200)
+    })
+
+    it("preserves fail-closed 404 security precedence when invalid guest capability is present without key", async () => {
+      const harness = createIdempotencyHarness()
+      const req = harness.createRequest({
+        method: "POST",
+        headers: { [GUEST_CART_CAPABILITY_HEADER]: "invalid_token_header" },
+        // missing idempotency-key
+      })
+      const res = createMockResponse()
+
+      // Actor resolution fails closed with 404 NOT_FOUND before validation
+      await expect(postActiveCart(req as never, res as never)).rejects.toMatchObject({
+        type: MedusaError.Types.NOT_FOUND,
+      })
+      expect(harness.db.carts.size).toBe(0)
+    })
   })
 
-  it("creates a new cart on a new key when token was lost (Q-11 Option A)", async () => {
-    const harness = createIdempotencyHarness()
+  describe("B15-04-HR-02: Partial Effect Preservation (result_id & result_type)", () => {
+    it("preserves exact result_id and result_type in reconciliation_required upon mint failure", async () => {
+      const harness = createIdempotencyHarness()
+      const idempotencyKey = "idem_partial_effect_mint_fail"
 
-    // First call: key 1
-    const req1 = harness.createRequest({
-      method: "POST",
-      headers: { "idempotency-key": "idem_lost_token_01" },
+      // Force mint failure after workflow runs
+      jest
+        .spyOn(harness.mockGuestCapService, "mintGuestCartCapability")
+        .mockRejectedValueOnce(new Error("MINT_FAILED_SIMULATED"))
+
+      const req1 = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": idempotencyKey },
+      })
+      const res1 = createMockResponse()
+
+      await expect(postActiveCart(req1 as never, res1 as never)).rejects.toThrow(
+        "MINT_FAILED_SIMULATED"
+      )
+
+      // 1 cart was created in DB
+      expect(harness.db.carts.size).toBe(1)
+      const createdCartId = Array.from(harness.db.carts.keys())[0]
+
+      // Check stored idempotency record
+      const storedRecord = Array.from(harness.db.idempotencyRecords.values())[0]
+      expect(storedRecord).toBeDefined()
+      expect(storedRecord.state).toBe("reconciliation_required")
+      expect(storedRecord.result_type).toBe("cart")
+      expect(storedRecord.result_id).toBe(createdCartId)
+      expect(storedRecord.failure_code).toBe("CAPABILITY_MINT_FAILED")
+
+      // Negative proof: no plaintext token or capability stored
+      expect(JSON.stringify(storedRecord)).not.toContain("x-indicio-guest-cart-token")
+      expect(JSON.stringify(storedRecord)).not.toContain("gccap_")
+
+      // Retry with same key fails closed (409 conflict) and does NOT create a second cart
+      const req2 = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": idempotencyKey },
+      })
+      const res2 = createMockResponse()
+
+      await expect(postActiveCart(req2 as never, res2 as never)).rejects.toThrow(MedusaError)
+      expect(harness.db.carts.size).toBe(1)
     })
-    const res1 = createMockResponse()
-    await postActiveCart(req1 as never, res1 as never)
-    expect(res1.statusCode).toBe(201)
-    const cart1Id = (res1.body as any).cart.id
 
-    // User loses token and presents a NEW Idempotency-Key
-    const req2 = harness.createRequest({
-      method: "POST",
-      headers: { "idempotency-key": "idem_lost_token_02" },
+    it("preserves exact result_id and result_type in reconciliation_required upon refetch failure", async () => {
+      const harness = createIdempotencyHarness()
+      const idempotencyKey = "idem_partial_effect_refetch_fail"
+
+      // Mock remoteQuery to fail when refetching cart by id
+      harness.mockRemoteQuery.mockRejectedValueOnce(new Error("DB_REFETCH_UNAVAILABLE"))
+
+      const req = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": idempotencyKey },
+      })
+      const res = createMockResponse()
+
+      await expect(postActiveCart(req as never, res as never)).rejects.toThrow(
+        "DB_REFETCH_UNAVAILABLE"
+      )
+
+      expect(harness.db.carts.size).toBe(1)
+      const createdCartId = Array.from(harness.db.carts.keys())[0]
+
+      const storedRecord = Array.from(harness.db.idempotencyRecords.values())[0]
+      expect(storedRecord).toBeDefined()
+      expect(storedRecord.state).toBe("reconciliation_required")
+      expect(storedRecord.result_type).toBe("cart")
+      expect(storedRecord.result_id).toBe(createdCartId)
+      expect(storedRecord.failure_code).toBe("CART_REFETCH_FAILED")
     })
-    const res2 = createMockResponse()
-    await postActiveCart(req2 as never, res2 as never)
-    expect(res2.statusCode).toBe(201)
-    const cart2Id = (res2.body as any).cart.id
-
-    expect(cart2Id).not.toBe(cart1Id)
-    expect(harness.db.carts.size).toBe(2)
   })
 
-  it("handles Customer POST active idempotency with 201 mint and 200 replay (never emitting guest token)", async () => {
-    const harness = createIdempotencyHarness()
-    const customerAuth = { customerId: "cus_01HAUTO" }
-    const idempotencyKey = "idem_customer_cart_01"
+  describe("B15-04-HR-03: Replay Canonical Refetch & Discriminating Proof", () => {
+    it("materializes current canonical DB cart and StoreResourceVersion on replay (discriminating proof)", async () => {
+      const harness = createIdempotencyHarness()
+      const idempotencyKey = "idem_discriminating_refetch_01"
 
-    // 1. First customer POST create
-    const req1 = harness.createRequest({
-      method: "POST",
-      headers: { "idempotency-key": idempotencyKey },
-      customerAuth,
+      // 1. First POST: mint success
+      const req1 = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": idempotencyKey },
+      })
+      const res1 = createMockResponse()
+      await postActiveCart(req1 as never, res1 as never)
+
+      expect(res1.statusCode).toBe(201)
+      const token = res1.headers[GUEST_CART_CAPABILITY_HEADER]
+      expect(token).toBeDefined()
+      expect(res1.headers["etag"]).toBe('"1"')
+
+      const cart1 = (res1.body as any).cart
+      const cartId = cart1.id
+      const initialUpdatedAt = cart1.updated_at
+
+      // 2. Server-side synthetic mutation:
+      // Change updated_at to value B and advance resource version to 2
+      const cartInDb = harness.db.carts.get(cartId)
+      const mutatedUpdatedAt = new Date(Date.now() + 120000).toISOString()
+      cartInDb.updated_at = mutatedUpdatedAt
+      harness.setResourceVersion("cart", cartId, 2)
+
+      // 3. Replay with SAME Idempotency-Key
+      const req2 = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": idempotencyKey },
+      })
+      const res2 = createMockResponse()
+      await postActiveCart(req2 as never, res2 as never)
+
+      // Discriminating assertions:
+      expect(res2.statusCode).toBe(200)
+      expect(res2.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
+      // Current ETag reflects version 2, NOT old snapshot "1"!
+      expect(res2.headers["etag"]).toBe('"2"')
+
+      const cart2 = (res2.body as any).cart
+      expect(cart2.id).toBe(cartId)
+      // updated_at reflects mutated state B, NOT old snapshot initialUpdatedAt!
+      expect(cart2.updated_at).toBe(mutatedUpdatedAt)
+      expect(cart2.updated_at).not.toBe(initialUpdatedAt)
+
+      // Exactly 1 cart in DB
+      expect(harness.db.carts.size).toBe(1)
+
+      // 4. Verify no full response DTO was stored in StoreIdempotencyRecord
+      const storedRecord = Array.from(harness.db.idempotencyRecords.values())[0]
+      expect(storedRecord.state).toBe("completed")
+      expect(storedRecord.result_id).toBe(cartId)
+      expect(storedRecord.result_type).toBe("cart")
+      expect(storedRecord.response_status).toBe(201)
+      expect(storedRecord.result_safe_metadata).toEqual({
+        operation: "store.carts.active.create",
+        result_type: "cart",
+        result_id: cartId,
+        response_status: 201,
+      })
+      expect((storedRecord as any).items).toBeUndefined()
+      expect((storedRecord as any).email).toBeUndefined()
+      expect((storedRecord as any).cart).toBeUndefined()
     })
-    const res1 = createMockResponse()
-    await postActiveCart(req1 as never, res1 as never)
 
-    expect(res1.statusCode).toBe(201)
-    expect(res1.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
-    expect(res1.headers["etag"]).toBe('"1"')
-    const cusCartId = (res1.body as any).cart.id
+    it("creates a new cart on a new key when token was lost (Q-11 Option A)", async () => {
+      const harness = createIdempotencyHarness()
 
-    // 2. Customer replay with same key
-    const req2 = harness.createRequest({
-      method: "POST",
-      headers: { "idempotency-key": idempotencyKey },
-      customerAuth,
+      // First call: key 1
+      const req1 = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": "idem_lost_token_01" },
+      })
+      const res1 = createMockResponse()
+      await postActiveCart(req1 as never, res1 as never)
+      expect(res1.statusCode).toBe(201)
+      const cart1Id = (res1.body as any).cart.id
+
+      // User loses token and presents a NEW Idempotency-Key
+      const req2 = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": "idem_lost_token_02" },
+      })
+      const res2 = createMockResponse()
+      await postActiveCart(req2 as never, res2 as never)
+      expect(res2.statusCode).toBe(201)
+      const cart2Id = (res2.body as any).cart.id
+
+      expect(cart2Id).not.toBe(cart1Id)
+      expect(harness.db.carts.size).toBe(2)
     })
-    const res2 = createMockResponse()
-    await postActiveCart(req2 as never, res2 as never)
 
-    expect(res2.statusCode).toBe(200)
-    expect(res2.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
-    expect(res2.headers["etag"]).toBe('"1"')
-    expect((res2.body as any).cart.id).toBe(cusCartId)
-  })
+    it("handles Customer POST active idempotency with 201 mint and 200 replay (never emitting guest token)", async () => {
+      const harness = createIdempotencyHarness()
+      const customerAuth = { customerId: "cus_01HAUTO" }
+      const idempotencyKey = "idem_customer_cart_01"
 
-  it("handles post-create capability failure without abandoning processing or creating a second cart", async () => {
-    const harness = createIdempotencyHarness()
-    const idempotencyKey = "idem_simulated_mint_failure_01"
+      // 1. First customer POST create
+      const req1 = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": idempotencyKey },
+        customerAuth,
+      })
+      const res1 = createMockResponse()
+      await postActiveCart(req1 as never, res1 as never)
 
-    // Force mint failure on guest capability service
-    jest
-      .spyOn(harness.mockGuestCapService, "mintGuestCartCapability")
-      .mockRejectedValueOnce(new Error("MINT_FAILED_SIMULATED"))
+      expect(res1.statusCode).toBe(201)
+      expect(res1.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
+      expect(res1.headers["etag"]).toBe('"1"')
+      const cusCartId = (res1.body as any).cart.id
 
-    const req1 = harness.createRequest({
-      method: "POST",
-      headers: { "idempotency-key": idempotencyKey },
+      // 2. Customer replay with same key
+      const req2 = harness.createRequest({
+        method: "POST",
+        headers: { "idempotency-key": idempotencyKey },
+        customerAuth,
+      })
+      const res2 = createMockResponse()
+      await postActiveCart(req2 as never, res2 as never)
+
+      expect(res2.statusCode).toBe(200)
+      expect(res2.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
+      expect(res2.headers["etag"]).toBe('"1"')
+      expect((res2.body as any).cart.id).toBe(cusCartId)
     })
-    const res1 = createMockResponse()
-
-    await expect(postActiveCart(req1 as never, res1 as never)).rejects.toThrow(
-      "MINT_FAILED_SIMULATED"
-    )
-
-    // In DB, the cart was created
-    expect(harness.db.carts.size).toBe(1)
-
-    // Idempotency record is in reconciliation_required (NOT abandoned in processing)
-    const storedRecord = Array.from(harness.db.idempotencyRecords.values())[0]
-    expect(storedRecord.state).toBe("reconciliation_required")
-    expect(storedRecord.failure_code).toBe("CAPABILITY_MINT_FAILED")
-
-    // Retry with SAME key returns 409 conflict, DOES NOT create a 2nd cart
-    const req2 = harness.createRequest({
-      method: "POST",
-      headers: { "idempotency-key": idempotencyKey },
-    })
-    const res2 = createMockResponse()
-    await expect(postActiveCart(req2 as never, res2 as never)).rejects.toThrow(
-      MedusaError
-    )
-
-    expect(harness.db.carts.size).toBe(1)
   })
 })
