@@ -23,6 +23,10 @@ import {
 import { env } from "../../../../config/env"
 import { storeCartPreOrderFields } from "../query-config"
 import type { StoreCartPreOrderRecord } from "../serializers"
+import {
+  formatCartEtag,
+  initializeCartResourceVersion,
+} from "../concurrency"
 
 type StoreCartRecord = StoreCartPreOrderRecord
 
@@ -187,6 +191,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
   assertNoPaymentOrOrderFields(cart)
 
+  const version = await initializeCartResourceVersion(req, cart.id)
+  res.setHeader("ETag", formatCartEtag(version))
+
   // GET never emits x-indicio-guest-cart-token header
   res.status(200).json({
     cart,
@@ -231,6 +238,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       )
     }
     assertNoPaymentOrOrderFields(cart)
+    const version = await initializeCartResourceVersion(req, cart.id)
+    res.setHeader("ETag", formatCartEtag(version))
     res.status(200).json({ cart })
     return
   }
@@ -242,6 +251,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     if (existingCart) {
       assertNoPaymentOrOrderFields(existingCart)
+      const version = await initializeCartResourceVersion(req, existingCart.id)
+      res.setHeader("ETag", formatCartEtag(version))
       res.status(200).json({ cart: existingCart })
       return
     }
@@ -254,6 +265,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
     const cart = await refetchActiveCart(req, result.id)
     assertNoPaymentOrOrderFields(cart)
+    const version = await initializeCartResourceVersion(req, cart.id)
+    res.setHeader("ETag", formatCartEtag(version))
     // Customer path never emits guest capability header
     res.status(201).json({ cart })
     return
@@ -268,6 +281,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   })
   const cart = await refetchActiveCart(req, result.id)
   assertNoPaymentOrOrderFields(cart)
+  const version = await initializeCartResourceVersion(req, cart.id)
+  res.setHeader("ETag", formatCartEtag(version))
 
   // Mint guest cart capability
   const guestCapService = req.scope.resolve<GuestCartCapabilityModuleService>(

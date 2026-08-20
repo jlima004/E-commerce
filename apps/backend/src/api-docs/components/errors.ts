@@ -71,14 +71,9 @@ export function registerStoreErrorSchemas(
         description: "Allowlisted public field names mapped to sanitized messages.",
       },
       cart: {
+        $ref: "#/components/schemas/PublicStoreCartPreOrder",
         description:
-          "Optional safe primitive cart reference. The canonical Cart snapshot belongs to Phase 15.",
-        oneOf: [
-          { type: "string" },
-          { type: "number" },
-          { type: "boolean" },
-          { type: "null" },
-        ],
+          "Current canonical Cart pre-order snapshot attached to version mismatch errors.",
       },
     },
   })
