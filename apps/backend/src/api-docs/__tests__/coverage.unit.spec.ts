@@ -36,7 +36,7 @@ import { buildContracts } from "../generation/build-documents"
 import { scanInstalledStoreSurface } from "../../../scripts/store-surface/scan-installed"
 import {
   STORE_SURFACE_MANIFEST,
-  STORE_SURFACE_M1_ENABLED_OPERATIONS,
+  STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
   type StoreSurfaceEntry,
 } from "../../api/store-surface/manifest"
 
@@ -369,13 +369,13 @@ describe("OpenAPI route coverage foundation", () => {
       extended: 15,
       blocked: 17,
       outsideFrontendM1: 31,
-      m1Enabled: 8,
+      m1Enabled: 6,
     })
     expect(evidence.executableStoreBusinessKeys).toEqual(
-      [...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()
+      [...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS].sort()
     )
     expect(evidence.documentStoreBusinessKeys).toEqual(
-      [...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()
+      [...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS].sort()
     )
     expect(evidence.healthSupportKeys).toEqual([
       "GET /health/live",
