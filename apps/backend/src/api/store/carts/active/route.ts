@@ -24,6 +24,7 @@ import { CUSTOMER_AUTH_BFF_AUTH_HEADER } from "../../../../modules/customer-auth
 import {
   STORE_IDEMPOTENCY_MODULE,
   assertValidRawIdempotencyKey,
+  type LifecycleClaimResult,
   type StoreIdempotencyModuleService,
 } from "../../../../modules/store-idempotency"
 import {
@@ -367,6 +368,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       )
     }
 
+    let currentStateVersion = claimResult.record.state_version
     let cartId: string | null = null
     try {
       const { result } = await createCartWorkflow(req.scope).run({
@@ -381,7 +383,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         await storeIdempotencyService.markFailedRetryable({
           id: claimResult.record.id,
           expectedState: "processing",
-          expectedStateVersion: claimResult.record.state_version,
+          expectedStateVersion: currentStateVersion,
           failure_code: "CART_CREATION_FAILED",
           next_retry_at: new Date(Date.now() + 5000),
           retry_attempt_count: 1,
@@ -392,6 +394,31 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       throw error
     }
 
+    // Immediately record confirmed result pointer before refetch
+    const partialResult = await storeIdempotencyService.recordProcessingResult({
+      id: claimResult.record.id,
+      expectedStateVersion: currentStateVersion,
+      result_type: "cart",
+      result_id: cartId,
+      result_safe_metadata: {
+        operation: "store.carts.active.create",
+        result_type: "cart",
+        result_id: cartId,
+      },
+    })
+
+    if (partialResult.type !== "claimed") {
+      throw Object.assign(
+        new MedusaError(
+          MedusaError.Types.CONFLICT,
+          "Operation currently in progress or ownership lost for this idempotency key"
+        ),
+        { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
+      )
+    }
+
+    currentStateVersion = partialResult.record.state_version
+
     let cart: StoreCartRecord
     try {
       cart = await refetchActiveCart(req, cartId)
@@ -401,7 +428,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         await storeIdempotencyService.markReconciliationRequired({
           id: claimResult.record.id,
           expectedState: "processing",
-          expectedStateVersion: claimResult.record.state_version,
+          expectedStateVersion: currentStateVersion,
           result_type: "cart",
           result_id: cartId,
           failure_code: "CART_REFETCH_FAILED",
@@ -410,11 +437,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       throw error
     }
 
+    let completion: LifecycleClaimResult
     try {
-      await storeIdempotencyService.markCompleted({
+      completion = await storeIdempotencyService.markCompleted({
         id: claimResult.record.id,
         expectedState: "processing",
-        expectedStateVersion: claimResult.record.state_version,
+        expectedStateVersion: currentStateVersion,
         result_type: "cart",
         result_id: cart.id,
         response_status: 201,
@@ -430,13 +458,23 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         await storeIdempotencyService.markReconciliationRequired({
           id: claimResult.record.id,
           expectedState: "processing",
-          expectedStateVersion: claimResult.record.state_version,
+          expectedStateVersion: currentStateVersion,
           result_type: "cart",
           result_id: cart.id,
           failure_code: "MARK_COMPLETED_FAILED",
         })
       } catch {}
       throw error
+    }
+
+    if (completion.type !== "claimed") {
+      throw Object.assign(
+        new MedusaError(
+          MedusaError.Types.CONFLICT,
+          "Operation currently in progress or ownership lost for this idempotency key"
+        ),
+        { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
+      )
     }
 
     const version = await initializeCartResourceVersion(req, cart.id)
@@ -505,6 +543,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     )
   }
 
+  let currentStateVersion = claimResult.record.state_version
   let cartId: string | null = null
   try {
     const { result } = await createCartWorkflow(req.scope).run({
@@ -518,7 +557,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       await storeIdempotencyService.markFailedRetryable({
         id: claimResult.record.id,
         expectedState: "processing",
-        expectedStateVersion: claimResult.record.state_version,
+        expectedStateVersion: currentStateVersion,
         failure_code: "CART_CREATION_FAILED",
         next_retry_at: new Date(Date.now() + 5000),
         retry_attempt_count: 1,
@@ -529,6 +568,31 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     throw error
   }
 
+  // Immediately record confirmed result pointer before refetch / capability mint
+  const partialResult = await storeIdempotencyService.recordProcessingResult({
+    id: claimResult.record.id,
+    expectedStateVersion: currentStateVersion,
+    result_type: "cart",
+    result_id: cartId,
+    result_safe_metadata: {
+      operation: "store.carts.active.create",
+      result_type: "cart",
+      result_id: cartId,
+    },
+  })
+
+  if (partialResult.type !== "claimed") {
+    throw Object.assign(
+      new MedusaError(
+        MedusaError.Types.CONFLICT,
+        "Operation currently in progress or ownership lost for this idempotency key"
+      ),
+      { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
+    )
+  }
+
+  currentStateVersion = partialResult.record.state_version
+
   let cart: StoreCartRecord
   try {
     cart = await refetchActiveCart(req, cartId)
@@ -538,7 +602,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       await storeIdempotencyService.markReconciliationRequired({
         id: claimResult.record.id,
         expectedState: "processing",
-        expectedStateVersion: claimResult.record.state_version,
+        expectedStateVersion: currentStateVersion,
         result_type: "cart",
         result_id: cartId,
         failure_code: "CART_REFETCH_FAILED",
@@ -562,7 +626,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       await storeIdempotencyService.markReconciliationRequired({
         id: claimResult.record.id,
         expectedState: "processing",
-        expectedStateVersion: claimResult.record.state_version,
+        expectedStateVersion: currentStateVersion,
         result_type: "cart",
         result_id: cart.id,
         failure_code: "CAPABILITY_MINT_FAILED",
@@ -571,11 +635,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     throw error
   }
 
+  let completion: LifecycleClaimResult
   try {
-    await storeIdempotencyService.markCompleted({
+    completion = await storeIdempotencyService.markCompleted({
       id: claimResult.record.id,
       expectedState: "processing",
-      expectedStateVersion: claimResult.record.state_version,
+      expectedStateVersion: currentStateVersion,
       result_type: "cart",
       result_id: cart.id,
       response_status: 201,
@@ -591,7 +656,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       await storeIdempotencyService.markReconciliationRequired({
         id: claimResult.record.id,
         expectedState: "processing",
-        expectedStateVersion: claimResult.record.state_version,
+        expectedStateVersion: currentStateVersion,
         result_type: "cart",
         result_id: cart.id,
         failure_code: "MARK_COMPLETED_FAILED",
@@ -600,10 +665,20 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     throw error
   }
 
+  if (completion.type !== "claimed") {
+    throw Object.assign(
+      new MedusaError(
+        MedusaError.Types.CONFLICT,
+        "Operation currently in progress or ownership lost for this idempotency key"
+      ),
+      { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
+    )
+  }
+
   const version = await initializeCartResourceVersion(req, cart.id)
   res.setHeader("ETag", formatCartEtag(version))
 
-  // Set header only on 201 guest create
+  // Set header only on 201 guest create after successful markCompleted
   res.setHeader(GUEST_CART_CAPABILITY_HEADER, mintResult.plaintext_token)
 
   // Dual-run session hint only (P15-D10)

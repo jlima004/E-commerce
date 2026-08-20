@@ -177,7 +177,26 @@ function createSyntheticHarness() {
         },
       }
     },
-    async markCompleted() {},
+    async recordProcessingResult() {
+      return {
+        type: "claimed",
+        record: {
+          id: `stidem_mock`,
+          state: "processing",
+          state_version: 2,
+        },
+      }
+    },
+    async markCompleted() {
+      return {
+        type: "claimed",
+        record: {
+          id: `stidem_mock`,
+          state: "completed",
+          state_version: 3,
+        },
+      }
+    },
     async markFailedRetryable() {},
     async markFailedTerminal() {},
     async markReconciliationRequired() {},
