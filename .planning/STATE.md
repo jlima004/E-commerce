@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
 status: in_progress
-last_updated: "2026-08-20T00:19:00.000Z"
+last_updated: "2026-08-20T01:06:00.000Z"
 progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 36
-  completed_plans: 31
+  completed_plans: 30
   percent: 25
-stopped_at: Task 15-03-04 Checkpoint de revisão humana (PAUSE) — gate interativo
+stopped_at: 15-03 human re-review checkpoint
 current_phase: 15
 current_phase_name: guest-cart-capability-concurrency
 current_plan: 15-03
@@ -35,7 +35,7 @@ Execution remains manual-review gated.
 - `workflow._auto_chain_active=false`
 - `parallelization=false`
 
-Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01, 15-02, and 15-03 are executed. Currently stopped at Task 15-03-04 human review checkpoint. Phase 16 and later gates remain separately unauthorized.
+Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01 and 15-02 are human-approved. Plan 15-03 is remediated and stopped at Task 15-03-04 human re-review checkpoint. Plan 15-04 and later plans remain unauthorized.
 
 ## Current Gate
 
@@ -55,9 +55,10 @@ B14-21-HR-04: CLOSED — PASS
 B14-21-HR-05: CLOSED — PASS
 
 Phase 15: IN PROGRESS
-Plan 15-01: COMPLETED — PASS
-Plan 15-02: COMPLETED — PASS
-Plan 15-03: COMPLETED — Task 15-03-04 Awaiting Human Review Checkpoint
+Plan 15-01: HUMAN APPROVED — PASS
+Plan 15-02: HUMAN APPROVED — PASS
+Plan 15-03: REMEDIATED — Task 15-03-04 Awaiting Human Re-Review Checkpoint
+Plan 15-04: NOT AUTHORIZED
 
 Deploy / release: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
@@ -73,8 +74,8 @@ Milestone v1.1:
 - requirements complete: **17/91**
 - Phase 13: FND-01..FND-08 = **8/8 COMPLETE**
 - Phase 14: AUTH-01..AUTH-09 = **9/9 COMPLETE**
-- known plans human-approved executed: **28/28** (Phase 13: 7; Phase 14: 21)
-- Phase 15: **PLAN HUMAN APPROVED — PASS / EXECUTION AUTHORIZED — NOT STARTED** (8 plans on disk; none executed yet)
+- known plans human-approved executed: **30/30** (Phase 13: 7; Phase 14: 21; Phase 15: 15-01, 15-02)
+- Phase 15: **IN PROGRESS** (Plans 15-01, 15-02 human approved; Plan 15-03 remediated awaiting human re-review; 15-04..15-08 unauthorized)
 - frontend: BLOCKED
 
 ## Accepted Evidence References
@@ -181,7 +182,7 @@ The approved backend boundary remains:
 
 Browser-direct Medusa remains forbidden. Backend access JWT, refresh credentials and internal auth/session capabilities do not cross the browser boundary except through the approved future BFF contract.
 
-## Phase 15 Authorization
+## Phase 15 Authorization & Execution Status
 
 By explicit human authorization after Phase-15 PLAN human re-review:
 
@@ -191,7 +192,11 @@ CONTEXT: HUMAN APPROVED — PASS
 RESEARCH: HUMAN APPROVED — PASS
 PLAN: HUMAN APPROVED — PASS
 8 plans / 8 serial waves
-EXECUTION: AUTHORIZED — NOT STARTED
+EXECUTION: IN PROGRESS
+Plan 15-01: HUMAN APPROVED — PASS
+Plan 15-02: HUMAN APPROVED — PASS
+Plan 15-03: REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-03-04 checkpoint)
+Plan 15-04: NOT AUTHORIZED
 ```
 
 Phase-15 RESEARCH is accepted at
@@ -228,7 +233,7 @@ This authorization does **not** extend to:
 
 No open Phase-14 blocker remains.
 
-Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Phase 15 EXECUTION is authorized but has not started. Deploy, real providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
+Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01 and 15-02 are human-approved. Plan 15-03 is executed and remediated; awaiting human re-review at Task 15-03-04 checkpoint. Plan 15-04..15-08, deploy, real providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
 
 Closed Phase-15 PLAN-review blockers:
 
@@ -245,9 +250,9 @@ Closed Phase-15 PLAN-review blockers:
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/15-guest-cart-capability-concurrency/15-01-PLAN.md
+**Resume file:** .planning/phases/15-guest-cart-capability-concurrency/15-03-PLAN.md
 
-Last session: 2026-08-19T19:39:00.000Z
+Last session: 2026-08-20T01:06:00.000Z
 
 Stopped at:
 
@@ -257,7 +262,10 @@ AUTH-01..AUTH-09: 9/9 COMPLETE
 PHASE 15 CONTEXT: HUMAN APPROVED — PASS
 PHASE 15 RESEARCH: HUMAN APPROVED — PASS
 PHASE 15 PLAN: HUMAN APPROVED — PASS (8 plans / 8 serial waves)
-PHASE 15 EXECUTION: AUTHORIZED — NOT STARTED
+Plan 15-01: HUMAN APPROVED — PASS
+Plan 15-02: HUMAN APPROVED — PASS
+Plan 15-03: REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-03-04 checkpoint)
+Plan 15-04: NOT AUTHORIZED
 FRONTEND: BLOCKED
 DEPLOY: NOT AUTHORIZED
 REAL PROVIDERS / REMOTE INFRA: NOT AUTHORIZED
@@ -270,8 +278,7 @@ Resume with:
 - `.planning/REQUIREMENTS.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-CONTEXT.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-RESEARCH.md`
-- `.planning/phases/15-guest-cart-capability-concurrency/15-01-PLAN.md`
-- `.planning/phases/14-customer-auth-verification/14-21-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-CLOSURE.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-03-PLAN.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-03-SUMMARY.md`
 
-**Next permitted step:** start Phase-15 execution at `15-01` under the approved sequential-subagent orchestration policy. The blocking human checkpoint in `15-01` must PASS before `15-02` can begin. Phase 16, deploy, real providers, remote infra and frontend remain unauthorized.
+**Next permitted step:** human review of Plan 15-03 remediation checkpoint. The blocking human checkpoint in `15-03` must PASS before `15-04` can begin. Phase 15 plans 15-04..15-08, Phase 16, deploy, real providers, remote infra and frontend remain unauthorized.
