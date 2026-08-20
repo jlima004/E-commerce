@@ -16,11 +16,22 @@ import {
 import {
   assertNoPaymentOrOrderFields,
 } from "../../src/modules/checkout/active-cart"
-import type { CustomerAuthAccessContext } from "../../src/modules/customer-auth/access-guard"
+import {
+  issueCustomerAuthAccessToken,
+} from "../../src/modules/customer-auth/jwt"
+import {
+  CUSTOMER_AUTH_BFF_AUTH_HEADER,
+} from "../../src/modules/customer-auth/bff-service-auth"
+import {
+  createCustomerAuthBffServiceGuardMiddleware,
+} from "../../src/api/middlewares"
+import { env } from "../../src/config/env"
 
 jest.mock("@medusajs/core-flows", () => ({
   createCartWorkflow: jest.fn(),
 }))
+
+const VALID_TEST_BFF_SECRET = "test_secret_must_be_at_least_32_characters_long_for_bff_auth"
 
 function createMockResponse() {
   const json = jest.fn().mockReturnThis()
@@ -52,18 +63,63 @@ function createMockResponse() {
   }
 }
 
+type SyntheticLineageRow = {
+  lineage_id: string
+  sid: string
+  auth_identity_id: string
+  customer_id: string
+  credential_version_snapshot: number
+  lineage_status: "active" | "revoked" | "expired"
+  original_authenticated_at: Date
+  absolute_expires_at: Date
+  deleted_at: Date | null
+}
+
+type SyntheticCredentialRow = {
+  auth_identity_id: string
+  customer_id: string
+  credential_version: number
+  operation_status: "stable" | "pending_password_change"
+  deleted_at: Date | null
+}
+
 type SyntheticCustomerHarness = {
   carts: Map<string, any>
+  lineages: Map<string, SyntheticLineageRow>
+  credentials: Map<string, SyntheticCredentialRow>
+  setDbUnavailable: (unavailable: boolean) => void
+  createCustomerSession: (
+    customerId: string,
+    options?: {
+      credentialVersion?: number
+      status?: "active" | "revoked" | "expired"
+      operationStatus?: "stable" | "pending_password_change"
+      originalAuthenticatedAt?: Date
+      absoluteExpiresAt?: Date
+    }
+  ) => {
+    token: string
+    sid: string
+    authIdentityId: string
+    customerId: string
+    credentialVersion: number
+    originalAuthenticatedAt: Date
+    absoluteExpiresAt: Date
+  }
   createRequest: (input: {
     method: "GET" | "POST"
     headers?: Record<string, string>
-    customerAuth?: CustomerAuthAccessContext
+    session?: any
   }) => any
 }
 
 function createCustomerHarness(): SyntheticCustomerHarness {
   const carts = new Map<string, any>()
+  const lineages = new Map<string, SyntheticLineageRow>()
+  const credentials = new Map<string, SyntheticCredentialRow>()
   let cartSequence = 1
+  let sessionSequence = 1
+  let isDbUnavailable = false
 
   const mockGuestCapService = {
     async lookupGuestCartCapabilityByPresentedToken(token: string) {
@@ -95,7 +151,43 @@ function createCustomerHarness(): SyntheticCustomerHarness {
   })
 
   const mockPgConnection = {
-    async raw() {
+    async raw(sql: string, bindings: any[] = []) {
+      if (isDbUnavailable) {
+        throw new Error("PG_CONNECTION_UNAVAILABLE")
+      }
+      if (sql.includes("auth_session_lineage")) {
+        const sid = bindings[0]
+        const lineage = Array.from(lineages.values()).find(
+          (l) => l.sid === sid && !l.deleted_at
+        )
+        if (!lineage) {
+          return { rows: [] }
+        }
+        const credential = Array.from(credentials.values()).find(
+          (c) => c.auth_identity_id === lineage.auth_identity_id && !c.deleted_at
+        )
+        if (!credential) {
+          return { rows: [] }
+        }
+        return {
+          rows: [
+            {
+              lineage_id: lineage.lineage_id,
+              sid: lineage.sid,
+              lineage_auth_identity_id: lineage.auth_identity_id,
+              lineage_customer_id: lineage.customer_id,
+              credential_version_snapshot: lineage.credential_version_snapshot,
+              lineage_status: lineage.lineage_status,
+              original_authenticated_at: lineage.original_authenticated_at,
+              absolute_expires_at: lineage.absolute_expires_at,
+              credential_auth_identity_id: credential.auth_identity_id,
+              credential_customer_id: credential.customer_id,
+              credential_version: credential.credential_version,
+              operation_status: credential.operation_status,
+            },
+          ],
+        }
+      }
       return { rows: [] }
     },
   }
@@ -118,17 +210,85 @@ function createCustomerHarness(): SyntheticCustomerHarness {
     },
   }))
 
+  function createCustomerSession(
+    customerId: string,
+    options: {
+      credentialVersion?: number
+      status?: "active" | "revoked" | "expired"
+      operationStatus?: "stable" | "pending_password_change"
+      originalAuthenticatedAt?: Date
+      absoluteExpiresAt?: Date
+    } = {}
+  ) {
+    const seq = sessionSequence++
+    const sid = `sid_${customerId}_${seq}`
+    const authIdentityId = `ident_${customerId}_${seq}`
+    const credentialVersion = options.credentialVersion ?? 1
+    const originalAuthenticatedAt =
+      options.originalAuthenticatedAt ??
+      new Date(Math.floor((Date.now() - 60000) / 1000) * 1000)
+    const absoluteExpiresAt =
+      options.absoluteExpiresAt ??
+      new Date(originalAuthenticatedAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+    const lineageRow: SyntheticLineageRow = {
+      lineage_id: `lin_${seq}`,
+      sid,
+      auth_identity_id: authIdentityId,
+      customer_id: customerId,
+      credential_version_snapshot: credentialVersion,
+      lineage_status: options.status ?? "active",
+      original_authenticated_at: originalAuthenticatedAt,
+      absolute_expires_at: absoluteExpiresAt,
+      deleted_at: null,
+    }
+    lineages.set(sid, lineageRow)
+
+    const credentialRow: SyntheticCredentialRow = {
+      auth_identity_id: authIdentityId,
+      customer_id: customerId,
+      credential_version: credentialVersion,
+      operation_status: options.operationStatus ?? "stable",
+      deleted_at: null,
+    }
+    credentials.set(authIdentityId, credentialRow)
+
+    const { token } = issueCustomerAuthAccessToken({
+      secret: env.JWT_SECRET,
+      authIdentityId,
+      customerId,
+      sid,
+      credentialVersion,
+      originalAuthenticatedAt,
+      absoluteExpiresAt,
+      now: new Date(),
+    })
+
+    return {
+      token,
+      sid,
+      authIdentityId,
+      customerId,
+      credentialVersion,
+      originalAuthenticatedAt,
+      absoluteExpiresAt,
+    }
+  }
+
   function createRequest(input: {
     method: "GET" | "POST"
     headers?: Record<string, string>
-    customerAuth?: CustomerAuthAccessContext
+    session?: any
   }) {
     return {
       method: input.method,
       url: "/store/carts/active",
       originalUrl: "/store/carts/active",
-      headers: input.headers ?? {},
-      customerAuth: input.customerAuth,
+      headers: {
+        [CUSTOMER_AUTH_BFF_AUTH_HEADER]: VALID_TEST_BFF_SECRET,
+        ...(input.headers ?? {}),
+      },
+      session: input.session,
       scope: {
         resolve: (key: any) => {
           if (key === GUEST_CART_CAPABILITY_MODULE) {
@@ -148,43 +308,27 @@ function createCustomerHarness(): SyntheticCustomerHarness {
 
   return {
     carts,
+    lineages,
+    credentials,
+    setDbUnavailable: (val: boolean) => {
+      isDbUnavailable = val
+    },
+    createCustomerSession,
     createRequest,
   }
 }
 
-function buildSyntheticCustomerAuth(customerId: string): CustomerAuthAccessContext {
-  return {
-    lineageId: "lin_test_01",
-    sid: "sid_test_01",
-    authIdentityId: "ident_test_01",
-    customerId,
-    credentialVersion: 1,
-    originalAuthenticatedAt: new Date(),
-    absoluteExpiresAt: new Date(Date.now() + 3600000),
-    claims: {
-      sub: customerId,
-      customer_id: customerId,
-      identity_id: "ident_test_01",
-      auth_identity_id: "ident_test_01",
-      sid: "sid_test_01",
-      cv: 1,
-      token_type: "access",
-      jti: "jti_test_01",
-      original_authenticated_at: Math.floor(Date.now() / 1000),
-      absolute_expires_at: Math.floor(Date.now() / 1000) + 3600,
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000),
-    },
-  }
-}
-
-describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — NO SKIP)", () => {
-  it("Customer autenticado cria cart 201 associado ao customer_id sem emitir x-indicio-guest-cart-token", async () => {
+describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — Real Authority & NO SKIP)", () => {
+  it("PROVA 1: Valid Customer — BFF + Authorization + PostgreSQL lineage cria cart 201 associado ao customer_id sem emitir x-indicio-guest-cart-token", async () => {
     const harness = createCustomerHarness()
-    const customerAuth = buildSyntheticCustomerAuth("cus_maria_123")
+    const session = harness.createCustomerSession("cus_maria_123")
+
+    // Request resolves Customer via Authorization header + PostgreSQL lineage
     const req = harness.createRequest({
       method: "POST",
-      customerAuth,
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
     })
     const res = createMockResponse()
 
@@ -201,19 +345,29 @@ describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — NO SKIP)", 
     expect(res.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
   })
 
-  it("Customer autenticado reaproveita cart existente (200) sem criar duplicatas", async () => {
+  it("PROVA 2: Customer Reuse — mesmo Customer reaproveita cart existente (200) sem criar duplicatas", async () => {
     const harness = createCustomerHarness()
-    const customerAuth = buildSyntheticCustomerAuth("cus_joao_456")
+    const session = harness.createCustomerSession("cus_joao_456")
 
     // 1. Criar primeiro cart
-    const req1 = harness.createRequest({ method: "POST", customerAuth })
+    const req1 = harness.createRequest({
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
+    })
     const res1 = createMockResponse()
     await postActiveCart(req1 as never, res1 as never)
     expect(res1.statusCode).toBe(201)
     const cartId = (res1.body as any).cart.id
 
-    // 2. Segundo POST com o mesmo customer
-    const req2 = harness.createRequest({ method: "POST", customerAuth })
+    // 2. Segundo POST com o mesmo customer token
+    const req2 = harness.createRequest({
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
+    })
     const res2 = createMockResponse()
     await postActiveCart(req2 as never, res2 as never)
 
@@ -223,18 +377,28 @@ describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — NO SKIP)", 
     expect(res2.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
   })
 
-  it("GET Customer devolve 200 com cart do Customer quando existente", async () => {
+  it("PROVA 3: Customer GET — valid authority devolve 200 com cart do Customer", async () => {
     const harness = createCustomerHarness()
-    const customerAuth = buildSyntheticCustomerAuth("cus_ana_789")
+    const session = harness.createCustomerSession("cus_ana_789")
 
-    // Criar cart
-    const postReq = harness.createRequest({ method: "POST", customerAuth })
+    // Criar cart via POST
+    const postReq = harness.createRequest({
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
+    })
     const postRes = createMockResponse()
     await postActiveCart(postReq as never, postRes as never)
     const cartId = (postRes.body as any).cart.id
 
     // GET cart
-    const getReq = harness.createRequest({ method: "GET", customerAuth })
+    const getReq = harness.createRequest({
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
+    })
     const getRes = createMockResponse()
     await getActiveCart(getReq as never, getRes as never)
 
@@ -244,36 +408,169 @@ describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — NO SKIP)", 
     expect(getRes.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
   })
 
-  it("GET Customer devolve 404 quando Customer nao possui cart ativo", async () => {
+  it("PROVA 4: Invalid Authorization — BFF valido + Authorization invalida/expirada/revogada retorna 401 e zero cart", async () => {
     const harness = createCustomerHarness()
-    const customerAuth = buildSyntheticCustomerAuth("cus_novo_sem_cart")
 
-    const req = harness.createRequest({ method: "GET", customerAuth })
-    const res = createMockResponse()
+    const origAuth = new Date(Math.floor((Date.now() - 60000) / 1000) * 1000)
+    const forgedToken = issueCustomerAuthAccessToken({
+      secret: "forged_secret_must_be_different_and_long_enough_for_test",
+      authIdentityId: "ident_forged",
+      customerId: "cus_forged",
+      sid: "sid_forged",
+      credentialVersion: 1,
+      originalAuthenticatedAt: origAuth,
+      absoluteExpiresAt: new Date(origAuth.getTime() + 30 * 24 * 60 * 60 * 1000),
+      now: new Date(),
+    }).token
 
-    await expect(getActiveCart(req as never, res as never)).rejects.toThrow()
+    const reqForged = harness.createRequest({
+      method: "POST",
+      headers: { authorization: `Bearer ${forgedToken}` },
+    })
+    const resForged = createMockResponse()
+    await expect(postActiveCart(reqForged as never, resForged as never)).rejects.toMatchObject({
+      type: MedusaError.Types.UNAUTHORIZED,
+    })
+    expect(harness.carts.size).toBe(0)
+    expect(resForged.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
+
+    // 4.2 Malformed token
+    const reqMalformed = harness.createRequest({
+      method: "POST",
+      headers: { authorization: "Bearer invalid.jwt.garbage" },
+    })
+    const resMalformed = createMockResponse()
+    await expect(postActiveCart(reqMalformed as never, resMalformed as never)).rejects.toMatchObject({
+      type: MedusaError.Types.UNAUTHORIZED,
+    })
+    expect(harness.carts.size).toBe(0)
+
+    // 4.3 Lineage revogada no PostgreSQL
+    const revokedSession = harness.createCustomerSession("cus_revoked", {
+      status: "revoked",
+    })
+    const reqRevoked = harness.createRequest({
+      method: "POST",
+      headers: { authorization: `Bearer ${revokedSession.token}` },
+    })
+    const resRevoked = createMockResponse()
+    await expect(postActiveCart(reqRevoked as never, resRevoked as never)).rejects.toMatchObject({
+      type: MedusaError.Types.UNAUTHORIZED,
+    })
+    expect(harness.carts.size).toBe(0)
+
+    // 4.4 Credential version desatualizada (token cv=1, db cv=2)
+    const staleSession = harness.createCustomerSession("cus_stale", {
+      credentialVersion: 1,
+    })
+    const cred = harness.credentials.get(staleSession.authIdentityId)!
+    cred.credential_version = 2 // DB avançou para 2
+
+    const reqStale = harness.createRequest({
+      method: "POST",
+      headers: { authorization: `Bearer ${staleSession.token}` },
+    })
+    const resStale = createMockResponse()
+    await expect(postActiveCart(reqStale as never, resStale as never)).rejects.toMatchObject({
+      type: MedusaError.Types.UNAUTHORIZED,
+    })
+    expect(harness.carts.size).toBe(0)
   })
 
-  it("XOR estrito: quando header de guest capability esta presente (mas invalido), NUNCA cai para Customer", async () => {
+  it("PROVA 5: Authority Unavailable — PostgreSQL indisponivel resulta em 503 e zero cart", async () => {
     const harness = createCustomerHarness()
-    const customerAuth = buildSyntheticCustomerAuth("cus_victor_999")
+    const session = harness.createCustomerSession("cus_unavail")
+
+    harness.setDbUnavailable(true)
+
+    const req = harness.createRequest({
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
+    })
+    const res = createMockResponse()
+
+    await expect(postActiveCart(req as never, res as never)).rejects.toMatchObject({
+      type: MedusaError.Types.UNEXPECTED_STATE,
+    })
+    expect(harness.carts.size).toBe(0)
+    expect(res.headers[GUEST_CART_CAPABILITY_HEADER]).toBeUndefined()
+  })
+
+  it("PROVA 6: XOR Guest Precedence — capability PRESENTE mas invalida + Authorization valida retorna 404 e nao cai para Customer", async () => {
+    const harness = createCustomerHarness()
+    const session = harness.createCustomerSession("cus_victor_999")
 
     // Cria um cart prévio para o customer
-    const postReq = harness.createRequest({ method: "POST", customerAuth })
+    const postReq = harness.createRequest({
+      method: "POST",
+      headers: { authorization: `Bearer ${session.token}` },
+    })
     const postRes = createMockResponse()
     await postActiveCart(postReq as never, postRes as never)
+    expect(postRes.statusCode).toBe(201)
 
-    // Request envia simultaneamente customerAuth E header de guest inválido
+    // Request envia simultaneamente Authorization Customer valida E header de guest invalido
     const req = harness.createRequest({
       method: "GET",
-      customerAuth,
       headers: {
+        authorization: `Bearer ${session.token}`,
         [GUEST_CART_CAPABILITY_HEADER]: "invalid_guest_token_xyz",
       },
     })
     const res = createMockResponse()
 
-    // O header de guest tem precedência e falha closed -> 404! Nunca devolve o cart do Customer!
-    await expect(getActiveCart(req as never, res as never)).rejects.toThrow()
+    // O branch Guest tem precedencia estrita e falha closed -> 404! Nunca devolve o cart do Customer!
+    await expect(getActiveCart(req as never, res as never)).rejects.toMatchObject({
+      type: MedusaError.Types.NOT_FOUND,
+    })
+  })
+
+  it("PROVA 7: GET Customer devolve 404 quando Customer nao possui cart ativo", async () => {
+    const harness = createCustomerHarness()
+    const session = harness.createCustomerSession("cus_novo_sem_cart")
+
+    const req = harness.createRequest({
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${session.token}`,
+      },
+    })
+    const res = createMockResponse()
+
+    await expect(getActiveCart(req as never, res as never)).rejects.toMatchObject({
+      type: MedusaError.Types.NOT_FOUND,
+    })
+    expect(harness.carts.size).toBe(0)
+  })
+
+  it("PROVA 8: BFF Pipeline Integration — requisicao sem credencial BFF e barrada no middleware antes do handler de active cart", () => {
+    const bffMiddleware = createCustomerAuthBffServiceGuardMiddleware({
+      expectedSecret: VALID_TEST_BFF_SECRET,
+    })
+
+    const reqMissingBff = {
+      method: "POST",
+      originalUrl: "/store/carts/active",
+      url: "/store/carts/active",
+      headers: {
+        // sem CUSTOMER_AUTH_BFF_AUTH_HEADER
+        authorization: "Bearer some_jwt_token",
+      },
+      params: {},
+      customerAuthBff: undefined,
+    }
+    const resMissingBff = createMockResponse()
+    const next = jest.fn()
+
+    bffMiddleware(reqMissingBff as never, resMissingBff as never, next)
+
+    expect(next).not.toHaveBeenCalled()
+    expect(resMissingBff.statusCode).toBe(404)
+    expect(resMissingBff.jsonMock).toHaveBeenCalledWith({
+      type: "not_found",
+      message: "Not Found",
+    })
   })
 })

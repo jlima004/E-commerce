@@ -8,6 +8,8 @@ import {
 import {
   STORE_SURFACE_MANIFEST,
   STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
+  STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS,
+  STORE_SURFACE_M1_ENABLED_OPERATIONS,
   storeSurfaceOperationKey,
   summarizeStoreSurfaceManifest,
   type StoreSurfaceEntry,
@@ -126,7 +128,7 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     const preserve = STORE_SURFACE_MANIFEST.filter(
       (entry) => entry.runtime_policy === "PRESERVE_LEGACY"
     )
-    expect(preserve).toHaveLength(7)
+    expect(preserve).toHaveLength(5)
 
     for (const entry of preserve) {
       expect(entry.m1_enablement).toBe("disabled")
@@ -149,16 +151,25 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     }
   })
 
-  it("allows exactly the Phase 14 M1_ENABLED exact-set without implicit authorization", () => {
+  it("allows exactly the Phase 15 M1_ENABLED exact-set without implicit authorization", () => {
     const m1Enabled = STORE_SURFACE_MANIFEST.filter(
       (entry) => entry.runtime_policy === "M1_ENABLED"
     )
-    expect(m1Enabled).toHaveLength(6)
+    expect(m1Enabled).toHaveLength(8)
     expect(
       m1Enabled.map((entry) =>
         storeSurfaceOperationKey(entry.method, entry.pathTemplate)
       )
-    ).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
+    ).toEqual([...STORE_SURFACE_M1_ENABLED_OPERATIONS])
+
+    // Proves Phase 14 Auth (6) is an intact subset of current M1 (8)
+    for (const p14Op of STORE_SURFACE_PHASE14_ENABLED_OPERATIONS) {
+      expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toContain(p14Op)
+    }
+    // Proves Phase 15 Cart (2) is part of current M1 (8)
+    for (const p15Op of STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS) {
+      expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toContain(p15Op)
+    }
 
     for (const entry of m1Enabled) {
       expect(entry.m1_enablement).toBe("enabled")
@@ -180,10 +191,10 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
       })
     }
 
-    const phase14Keys = new Set<string>(STORE_SURFACE_PHASE14_ENABLED_OPERATIONS)
+    const m1Keys = new Set<string>(STORE_SURFACE_M1_ENABLED_OPERATIONS)
     const outsideExactSet = STORE_SURFACE_MANIFEST.filter((entry) => {
       const key = storeSurfaceOperationKey(entry.method, entry.pathTemplate)
-      return !phase14Keys.has(key)
+      return !m1Keys.has(key)
     })
     for (const entry of outsideExactSet) {
       expect(entry.runtime_policy).not.toBe("M1_ENABLED")
