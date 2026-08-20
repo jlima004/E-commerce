@@ -916,6 +916,62 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     return { type: "claimed", record: mapRow(row) }
   }
 
+  async recordProcessingResult(input: {
+    id: string
+    expectedStateVersion: number
+    result_type?: string | null
+    result_id?: string | null
+    result_safe_metadata?: StoreIdempotencySafeMetadata | null
+    at?: Date
+  }): Promise<LifecycleClaimResult> {
+    const at = input.at ?? new Date()
+    const metadata = sanitizeStoreIdempotencySafeMetadata(
+      input.result_safe_metadata ?? null
+    )
+    assertSafeTransitionResultFields({
+      result_type: input.result_type,
+      result_id: input.result_id,
+    })
+
+    const result = await this.knex().raw(
+      `
+        update store_idempotency_record
+        set
+          state_version = state_version + 1,
+          result_type = ?,
+          result_id = ?,
+          result_safe_metadata = cast(? as jsonb),
+          updated_at = ?
+        where id = ?
+          and state = 'processing'
+          and state_version = ?
+        returning *
+      `,
+      [
+        input.result_type ?? null,
+        input.result_id ?? null,
+        metadata ? JSON.stringify(metadata) : null,
+        at.toISOString(),
+        input.id,
+        input.expectedStateVersion,
+      ]
+    )
+
+    const row = result.rows?.[0]
+    if (!row) {
+      const current = await this.knex().raw(
+        `select * from store_idempotency_record where id = ?`,
+        [input.id]
+      )
+      return {
+        type: "lost",
+        record: current.rows?.[0] ? mapRow(current.rows[0]) : null,
+      }
+    }
+
+    return { type: "claimed", record: mapRow(row) }
+  }
+
   async markCompleted(input: {
     id: string
     expectedState: StoreIdempotencyState
