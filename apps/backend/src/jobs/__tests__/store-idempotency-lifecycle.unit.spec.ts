@@ -5,6 +5,7 @@ import {
   STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION,
   STORE_IDEMPOTENCY_PHASE13_UNCERTAIN_EFFECT,
   STORE_IDEMPOTENCY_RETRY_WINDOW_MS,
+  STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
   type StoreIdempotencyRecordRow,
 } from "../../modules/store-idempotency"
 import {
@@ -710,5 +711,309 @@ describe("store-idempotency-lifecycle job", () => {
     expect(service.cleanupExpiredTerminals).toHaveBeenCalled()
 
     process.env.WORKER_MODE = previous
+  })
+
+  describe("store.carts.active.create lifecycle", () => {
+    const cartNow = new Date("2026-08-20T12:10:00.000Z")
+
+    function cartRow(
+      overrides: Partial<StoreIdempotencyRecordRow> = {}
+    ): StoreIdempotencyRecordRow {
+      return baseRow({
+        id: "stidem_cart_lifecycle_01",
+        operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
+        state: "processing",
+        state_version: 5,
+        state_deadline_at: "2026-08-20T12:00:00.000Z",
+        ...overrides,
+      })
+    }
+
+    it("L1 — known partial effect: processing + result_id → reconciliation_required, result_id preserved", async () => {
+      const row = cartRow({
+        result_type: "cart",
+        result_id: "cart_123",
+        state_version: 5,
+      })
+      const service = createServiceMock([row])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => cartNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.scanned).toBe(1)
+      expect(result.claimed).toBe(1)
+      expect(result.transitioned).toBe(1)
+
+      // claimLifecycleRow was called and produced state_version N+1=6
+      expect(service.claimLifecycleRow).toHaveBeenCalledTimes(1)
+      expect(service.claimLifecycleRow).toHaveBeenCalledWith({
+        id: "stidem_cart_lifecycle_01",
+        expectedState: "processing",
+        expectedStateVersion: 5,
+        at: cartNow,
+      })
+
+      // markReconciliationRequired was called with claimed version (6, not list version 5)
+      expect(service.markReconciliationRequired).toHaveBeenCalledTimes(1)
+      const recCall = service.markReconciliationRequired.mock.calls[0][0] as Record<string, unknown>
+      expect(recCall.expectedState).toBe("processing")
+      expect(recCall.expectedStateVersion).toBe(6) // claimed version, not listed version
+      expect(recCall.result_type).toBe("cart")
+      expect(recCall.result_id).toBe("cart_123")
+      expect(recCall.failure_code).toBe("stale_store_cart_create_partial_effect")
+
+      // NEGATIVE: no create, no mint, no provider
+      expect(service.markCompleted).not.toHaveBeenCalled()
+    })
+
+    it("L2 — uncertain effect / null pointer: processing + null result_id → reconciliation_required, NO create retry", async () => {
+      const row = cartRow({
+        result_type: null,
+        result_id: null,
+        state_version: 5,
+      })
+      const service = createServiceMock([row])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => cartNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.transitioned).toBe(1)
+
+      expect(service.markReconciliationRequired).toHaveBeenCalledTimes(1)
+      const recCall = service.markReconciliationRequired.mock.calls[0][0] as Record<string, unknown>
+      expect(recCall.expectedStateVersion).toBe(6) // claimed version
+      expect(recCall.failure_code).toBe("stale_store_cart_create_uncertain_effect")
+      // result_id remains null — no synthetic pointer
+      expect(recCall.result_id).toBeUndefined() // null ?? undefined = undefined
+
+      // NEGATIVE: no create, no mint, no markCompleted
+      expect(service.markCompleted).not.toHaveBeenCalled()
+    })
+
+    it("L3 — exact operation match: 'store.carts.active.create.fake' → skipped_unsupported_operation", async () => {
+      const row = cartRow({
+        operation: "store.carts.active.create.fake",
+        state_version: 5,
+      })
+      const service = createServiceMock([row])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => cartNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.skipped_unsupported_operation).toBe(1)
+      expect(result.transitioned).toBe(0)
+      expect(service.markReconciliationRequired).not.toHaveBeenCalled()
+      expect(service.markCompleted).not.toHaveBeenCalled()
+    })
+
+    it("L4 — transition CAS lost: markReconciliationRequired returns lost → failed_items incremented", async () => {
+      const row = cartRow({
+        result_type: "cart",
+        result_id: "cart_123",
+        state_version: 5,
+      })
+      const service = createServiceMock([row])
+      // Override markReconciliationRequired to simulate CAS loss
+      service.markReconciliationRequired.mockResolvedValueOnce({
+        type: "lost" as const,
+        record: { ...row, state_version: 99 },
+      })
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => cartNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      // The throw is caught and counted as failed_items
+      expect(result.failed_items).toBe(1)
+      expect(result.transitioned).toBe(0)
+    })
+
+    it("L5 — claim required: claimLifecycleRow returns lost → no transition, no markReconciliationRequired", async () => {
+      const row = cartRow({
+        result_type: "cart",
+        result_id: "cart_123",
+        state_version: 5,
+      })
+      const service = createServiceMock([row])
+      service.claimLifecycleRow.mockResolvedValueOnce({
+        type: "lost" as const,
+        record: { ...row },
+      })
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => cartNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.claim_lost).toBe(1)
+      expect(result.transitioned).toBe(0)
+      expect(service.markReconciliationRequired).not.toHaveBeenCalled()
+      expect(service.markReconciliationUnresolved).not.toHaveBeenCalled()
+    })
+
+    it("L6 — finite lifecycle: processing → reconciliation_required → reconciliation_unresolved", async () => {
+      // T0: stale processing with known result_id
+      const t0 = new Date("2026-08-20T12:10:00.000Z")
+      const row = cartRow({
+        result_type: "cart",
+        result_id: "cart_123",
+        state_version: 5,
+      })
+      const service = createServiceMock([row])
+
+      // Pass 1: processing → reconciliation_required
+      const pass1 = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => t0,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+      expect(pass1.transitioned).toBe(1)
+      expect(service.markReconciliationRequired).toHaveBeenCalledTimes(1)
+
+      // Simulate: the row is now reconciliation_required with bumped version
+      // The mock already updates state; make it due again by clearing locked_at
+      const updatedRow = service.rows[0]
+      expect(updatedRow.state).toBe("reconciliation_required")
+      updatedRow.locked_at = null // clear lifecycle lease so it's due again
+
+      // Pass 2: reconciliation_required → reconciliation_unresolved
+      const t1 = new Date("2026-08-27T12:15:00.000Z") // 7 days later
+      service.listDueLifecycleRows.mockResolvedValueOnce([{ ...updatedRow }])
+
+      const pass2 = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => t1,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+      expect(pass2.transitioned).toBe(1)
+      expect(service.markReconciliationUnresolved).toHaveBeenCalledTimes(1)
+
+      // Final state is terminal — row does NOT remain processing indefinitely
+      expect(service.rows[0].state).toBe("reconciliation_unresolved")
+    })
+
+    it("cart-create failed_retryable (within cap) → reconciliation_required (no blind retry)", async () => {
+      const row = cartRow({
+        state: "failed_retryable",
+        failure_code: "CART_CREATION_FAILED",
+        retry_attempt_count: 1,
+        retry_started_at: new Date("2026-08-20T11:00:00.000Z").toISOString(),
+        next_retry_at: new Date("2026-08-20T11:05:00.000Z").toISOString(),
+        state_deadline_at: new Date("2026-08-20T17:00:00.000Z").toISOString(),
+        result_type: null,
+        result_id: null,
+        state_version: 3,
+      })
+      const service = createServiceMock([row])
+      service.listDueLifecycleRows.mockResolvedValueOnce([{ ...row }])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => cartNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.transitioned).toBe(1)
+      expect(service.markReconciliationRequired).toHaveBeenCalledTimes(1)
+      const recCall = service.markReconciliationRequired.mock.calls[0][0] as Record<string, unknown>
+      expect(recCall.expectedState).toBe("failed_retryable")
+      expect(recCall.failure_code).toBe("CART_CREATION_FAILED")
+
+      // NEGATIVE: no create, no markCompleted, no provider
+      expect(service.markCompleted).not.toHaveBeenCalled()
+    })
+
+    it("cart-create failed_retryable (cap exceeded) → failed_terminal", async () => {
+      const row = cartRow({
+        state: "failed_retryable",
+        failure_code: "CART_CREATION_FAILED",
+        retry_attempt_count: STORE_IDEMPOTENCY_MAX_RETRY_ATTEMPTS,
+        retry_started_at: new Date("2026-08-19T12:00:00.000Z").toISOString(),
+        next_retry_at: new Date("2026-08-20T11:00:00.000Z").toISOString(),
+        state_deadline_at: cartNow.toISOString(),
+        result_type: null,
+        result_id: null,
+        state_version: 3,
+      })
+      const service = createServiceMock([row])
+      service.listDueLifecycleRows.mockResolvedValueOnce([{ ...row }])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => cartNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.transitioned).toBe(1)
+      expect(service.markFailedTerminal).toHaveBeenCalledTimes(1)
+      expect(service.markFailedTerminal.mock.calls[0][0]).toMatchObject({
+        expectedState: "failed_retryable",
+        failure_code: "CART_CREATION_FAILED",
+      })
+      expect(service.markCompleted).not.toHaveBeenCalled()
+      expect(service.markReconciliationRequired).not.toHaveBeenCalled()
+    })
+
+    it("NEGATIVE PROOF: worker never calls createCartWorkflow or mintGuestCartCapability", async () => {
+      // Prove that the lifecycle worker for cart-create never calls any creation or minting functions.
+      // The worker only has access to the storeIdempotency service methods — by design,
+      // createCartWorkflow and mintGuestCartCapability are not in StoreIdempotencyLifecycleDeps.
+      const row = cartRow({
+        result_type: "cart",
+        result_id: "cart_123",
+        state_version: 5,
+      })
+      const service = createServiceMock([row])
+
+      await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => cartNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      // The service mock only has the lifecycle methods. No createCartWorkflow,
+      // no mintGuestCartCapability, no provider calls exist in the deps interface.
+      // This is the structural proof that the worker cannot create carts.
+      const calledMethods = Object.keys(service).filter(
+        (key) =>
+          typeof (service as any)[key]?.mock?.calls?.length === "number" &&
+          (service as any)[key].mock.calls.length > 0
+      )
+      // Only lifecycle methods should have been called
+      for (const method of calledMethods) {
+        expect([
+          "listDueLifecycleRows",
+          "claimLifecycleRow",
+          "markCompleted",
+          "markFailedRetryable",
+          "markFailedTerminal",
+          "markReconciliationRequired",
+          "markReconciliationUnresolved",
+          "cleanupExpiredTerminals",
+        ]).toContain(method)
+      }
+    })
   })
 })

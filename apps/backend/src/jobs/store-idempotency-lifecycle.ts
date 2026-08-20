@@ -7,6 +7,7 @@ import {
   STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION,
   STORE_IDEMPOTENCY_PHASE13_UNCERTAIN_EFFECT,
   STORE_IDEMPOTENCY_RETRY_WINDOW_MS,
+  STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
   isStoreIdempotencyTerminalState,
   type StoreIdempotencyModuleService,
   type StoreIdempotencyRecordRow,
@@ -101,11 +102,88 @@ function retryCapExceeded(row: StoreIdempotencyRecordRow, at: Date): boolean {
   return at.getTime() - started >= STORE_IDEMPOTENCY_RETRY_WINDOW_MS
 }
 
+function isStoreCartActiveCreateOperation(operation: string): boolean {
+  return operation === STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE
+}
+
 async function actOnClaimedRow(
   deps: StoreIdempotencyLifecycleDeps,
   row: StoreIdempotencyRecordRow,
   at: Date
 ): Promise<"transitioned" | "skipped_unsupported_operation"> {
+  // --- store.carts.active.create lifecycle (exact match) ---
+  // Worker NEVER calls createCartWorkflow, mints capability, or calls any provider.
+  // It only classifies the stale row as reconciliation_required.
+  if (isStoreCartActiveCreateOperation(row.operation)) {
+    if (row.state === "processing") {
+      // Case A (result_id present): confirmed create, stale before completion
+      // Case B (result_id null): uncertain whether create committed
+      // Both cases → reconciliation_required, preserving factual result_id
+      const failureCode = row.result_id != null
+        ? "stale_store_cart_create_partial_effect"
+        : "stale_store_cart_create_uncertain_effect"
+      const result = await deps.storeIdempotency.markReconciliationRequired({
+        id: row.id,
+        expectedState: "processing",
+        expectedStateVersion: row.state_version,
+        result_type: row.result_type ?? undefined,
+        result_id: row.result_id ?? undefined,
+        failure_code: failureCode,
+        at,
+      })
+      if (result.type !== "claimed") {
+        throw new Error("STORE_IDEMPOTENCY_LIFECYCLE_TRANSITION_LOST")
+      }
+      return "transitioned"
+    }
+
+    if (row.state === "failed_retryable") {
+      // Cart-create failed_retryable: we cannot determine if createCartWorkflow
+      // partially committed. Worker MUST NOT retry create. Route to
+      // reconciliation_required if within retry cap, or failed_terminal if cap exceeded.
+      if (retryCapExceeded(row, at)) {
+        const result = await deps.storeIdempotency.markFailedTerminal({
+          id: row.id,
+          expectedState: "failed_retryable",
+          expectedStateVersion: row.state_version,
+          failure_code: row.failure_code ?? "retry_cap_exceeded",
+          at,
+        })
+        if (result.type !== "claimed") {
+          throw new Error("STORE_IDEMPOTENCY_LIFECYCLE_TRANSITION_LOST")
+        }
+        return "transitioned"
+      }
+      const result = await deps.storeIdempotency.markReconciliationRequired({
+        id: row.id,
+        expectedState: "failed_retryable",
+        expectedStateVersion: row.state_version,
+        failure_code: row.failure_code ?? "stale_store_cart_create_uncertain_effect",
+        at,
+      })
+      if (result.type !== "claimed") {
+        throw new Error("STORE_IDEMPOTENCY_LIFECYCLE_TRANSITION_LOST")
+      }
+      return "transitioned"
+    }
+
+    if (row.state === "reconciliation_required") {
+      const result = await deps.storeIdempotency.markReconciliationUnresolved({
+        id: row.id,
+        expectedState: "reconciliation_required",
+        expectedStateVersion: row.state_version,
+        at,
+      })
+      if (result.type !== "claimed") {
+        throw new Error("STORE_IDEMPOTENCY_LIFECYCLE_TRANSITION_LOST")
+      }
+      return "transitioned"
+    }
+
+    return "skipped_unsupported_operation"
+  }
+
+  // --- Phase 13 harness operations ---
   if (!isPhase13HarnessOperation(row.operation)) {
     return "skipped_unsupported_operation"
   }

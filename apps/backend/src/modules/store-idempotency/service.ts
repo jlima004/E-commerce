@@ -61,6 +61,10 @@ export const STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION =
 export const STORE_IDEMPOTENCY_PHASE13_UNCERTAIN_EFFECT =
   "phase13.uncertain-effect-simulation" as const
 
+/** Canonical operation label for POST /store/carts/active (get-or-create). */
+export const STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE =
+  "store.carts.active.create" as const
+
 export const STORE_IDEMPOTENCY_SAFE_METADATA_KEYS = [
   "operation",
   "result_type",
@@ -921,6 +925,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     expectedStateVersion: number
     result_type?: string | null
     result_id?: string | null
+    response_status?: number | null
     result_safe_metadata?: StoreIdempotencySafeMetadata | null
     at?: Date
   }): Promise<LifecycleClaimResult> {
@@ -932,6 +937,9 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       result_type: input.result_type,
       result_id: input.result_id,
     })
+    const responseStatus = assertValidStoreIdempotencyResponseStatus(
+      input.response_status
+    )
 
     const result = await this.knex().raw(
       `
@@ -940,6 +948,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
           state_version = state_version + 1,
           result_type = ?,
           result_id = ?,
+          response_status = ?,
           result_safe_metadata = cast(? as jsonb),
           updated_at = ?
         where id = ?
@@ -950,6 +959,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       [
         input.result_type ?? null,
         input.result_id ?? null,
+        responseStatus,
         metadata ? JSON.stringify(metadata) : null,
         at.toISOString(),
         input.id,
