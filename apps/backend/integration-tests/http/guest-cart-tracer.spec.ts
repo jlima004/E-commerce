@@ -133,7 +133,16 @@ function createSyntheticHarness() {
     return []
   })
 
+  const mockResourceVersionService = {
+    async initialize(type: string, id: string) {
+      return { id: `strver_${id}`, resource_type: type, resource_id: id, version: 1 }
+    },
+  }
+
   const mockPgConnection = {
+    async transaction(cb: any) {
+      return cb(this)
+    },
     async raw() {
       return { rows: [] }
     },
@@ -172,6 +181,9 @@ function createSyntheticHarness() {
         resolve: (key: any) => {
           if (key === GUEST_CART_CAPABILITY_MODULE) {
             return mockGuestCapService
+          }
+          if (key === "store_resource_version") {
+            return mockResourceVersionService
           }
           if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
             return mockRemoteQuery

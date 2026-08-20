@@ -94,10 +94,18 @@ async function refetchActiveCart(
 
 async function retrieveCartById(
   req: MedusaRequest,
-  cartId: string
+  cartId: string,
+  onCompleted?: () => Promise<void>
 ): Promise<StoreCartRecord | null> {
   try {
     const cart = await refetchActiveCart(req, cartId)
+
+    if (cart.completed_at) {
+      if (onCompleted) {
+        await onCompleted()
+      }
+      return null
+    }
 
     if (!isIncompleteCart(cart) || !isActiveMetadata(cart.metadata as Record<string, unknown>)) {
       return null
@@ -176,7 +184,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   let cart: StoreCartRecord | null = null
 
   if (actor.actorType === "guest") {
-    cart = await retrieveCartById(req, actor.cartId)
+    const guestCapService = req.scope.resolve<GuestCartCapabilityModuleService>(
+      GUEST_CART_CAPABILITY_MODULE
+    )
+    cart = await retrieveCartById(req, actor.cartId, async () => {
+      await guestCapService.consumeGuestCartCapability(actor.capabilityRecord.id)
+    })
   } else if (actor.actorType === "customer") {
     const carts = await listCustomerCarts(req, actor.customerId)
     cart = carts.sort(sortByUpdatedAtDesc)[0] ?? null
@@ -229,8 +242,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 
   if (actor.actorType === "guest") {
+    const guestCapService = req.scope.resolve<GuestCartCapabilityModuleService>(
+      GUEST_CART_CAPABILITY_MODULE
+    )
     // Valid existing guest capability -> reuse existing cart
-    const cart = await retrieveCartById(req, actor.cartId)
+    const cart = await retrieveCartById(req, actor.cartId, async () => {
+      await guestCapService.consumeGuestCartCapability(actor.capabilityRecord.id)
+    })
     if (!cart) {
       throw new MedusaError(
         MedusaError.Types.NOT_FOUND,
