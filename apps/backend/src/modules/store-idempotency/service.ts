@@ -1013,6 +1013,9 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     id: string
     expectedState: StoreIdempotencyState
     expectedStateVersion: number
+    result_type?: string | null
+    result_id?: string | null
+    result_safe_metadata?: StoreIdempotencySafeMetadata | null
     failure_code?: string | null
     at?: Date
   }): Promise<LifecycleClaimResult> {
@@ -1025,6 +1028,9 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       next: {
         state: "reconciliation_required",
         failure_code: input.failure_code ?? null,
+        result_type: input.result_type ?? null,
+        result_id: input.result_id ?? null,
+        result_safe_metadata: input.result_safe_metadata ?? null,
         state_deadline_at: addMs(
           at,
           STORE_IDEMPOTENCY_RECONCILIATION_REVIEW_MS
