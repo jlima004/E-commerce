@@ -101,6 +101,24 @@ describe("Store surface manifest (FND-01)", () => {
     expect(extraM1).toEqual([])
   })
 
+  it("keeps the Phase 14 Auth and Phase 15 Cart six-route sets explicit", () => {
+    expect(STORE_SURFACE_PHASE14_ENABLED_OPERATIONS).toHaveLength(6)
+    expect(STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS).toEqual([
+      "POST /store/carts/{id}/line-items",
+      "POST /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items",
+      "GET /store/carts/active",
+      "POST /store/carts/active",
+    ])
+    expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toHaveLength(12)
+    expect(
+      STORE_SURFACE_M1_ENABLED_OPERATIONS.filter((operation) =>
+        STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS.includes(operation as never)
+      )
+    ).toHaveLength(6)
+  })
+
   it("requires DENY 47 + PRESERVE_LEGACY 5 + M1_ENABLED 12 = 64 with BLOCKED always DENY", () => {
     expect(counts.deny).toBe(47)
     expect(counts.preserveLegacy).toBe(5)
