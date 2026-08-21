@@ -4,8 +4,8 @@
 
 - **Phase / Plan:** Phase 15 (`guest-cart-capability-concurrency`), Plan `15-04`
 - **Execution Date:** 2026-08-19 / 2026-08-20
-- **Status:** FINAL GOVERNANCE REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-04-04 / B15-P-HR-02)
-- **Outcome:** Implemented integer resource versioning with quoted ETag format (`"1"`), strong `If-Match` parsing, 412 `CART_VERSION_MISMATCH` safe snapshot envelope, 7-day rolling / 30-day absolute guest capability lifecycle with completed cart consumption, and canonical `store.carts.active.create` idempotency claiming with 200 replay (omitting plaintext token) and Q-11 matrix support. Final Crash/CAS remediation closed `B15-04-HR-05` and `B15-04-HR-06`. Cursor final governance validation round completed sequentially (Subagents A → B → C → D); `B15-04-HR-04` CLOSED — PASS for the current Cursor harness. Human approval not yet granted.
+- **Status:** HUMAN APPROVED — PASS (Task 15-04-04 / B15-P-HR-02 CLOSED)
+- **Outcome:** Implemented integer resource versioning with quoted ETag format (`"1"`), strong `If-Match` parsing, 412 `CART_VERSION_MISMATCH` safe snapshot envelope, 7-day rolling / 30-day absolute guest capability lifecycle with completed cart consumption, and canonical `store.carts.active.create` idempotency claiming with 200 replay (omitting plaintext token) and Q-11 matrix support. Final Crash/CAS remediation closed `B15-04-HR-05` and `B15-04-HR-06`. Cursor final governance validation round completed sequentially (Subagents A → B → C → D); `B15-04-HR-04` CLOSED — PASS for the current Cursor harness. Final documentation review closed `B15-04-HR-09`; Plan 15-04 is human-approved and Plan 15-05 is authorized for execution.
 
 ---
 
@@ -47,7 +47,7 @@
      - `cartResourceScope({ cartId, operation })`
    - Added `"guest_cart_token"`, `"guestcarttoken"`, and `"x-indicio-guest-cart-token"` to `forbiddenKeys` in `StoreIdempotencyModuleService`.
    - POST active cart idempotency execution in [apps/backend/src/api/store/carts/active/route.ts](file:///home/jlima/Projetos/ecommerce/Backend/apps/backend/src/api/store/carts/active/route.ts):
-     - Validates and requires `Idempotency-Key` header for cart creation.
+     - Requires and validates `Idempotency-Key` on every `POST /store/carts/active` branch; `GET /store/carts/active` does not require the header.
      - Claims idempotency under `operation: "store.carts.active.create"`.
      - **Mint Success (First Request):** Returns HTTP 201 Created with `x-indicio-guest-cart-token: <plaintext_token>` and `ETag: "1"`.
      - **Replay Contract (Second Request with SAME Idempotency-Key):** Returns HTTP 200 OK, **OMITS** `x-indicio-guest-cart-token` (plaintext token is never reconstructed/re-emitted), refetches canonical cart from DB with current ETag (`ETag: "1"`), and returns the identical cart ID.
@@ -63,7 +63,7 @@
 |-----------|-------------|------------------------|--------|
 | **1. Mint vs. Replay Status** | Mint = 201; Replay = 200 | Tested in `guest-cart-idempotency.spec.ts` (`postActiveCart` req1 status = 201, req2 status = 200) | VERIFIED |
 | **2. Token Emission Policy** | Mint emite header; Replay OMITE header | Verified in `guest-cart-idempotency.spec.ts` (`res1.headers['x-indicio-guest-cart-token']` defined; `res2.headers['x-indicio-guest-cart-token']` undefined) | VERIFIED |
-| **3. Canonical Refetch on Replay** | Replay refetches current cart & ETag from DB | Verified in `guest-cart-idempotency.spec.ts` (`res2.headers['etag'] === '"2"'`, `cart2.updated_at === mutatedUpdatedAt`, zero stored DTO) | VERIFIED |
+| **3. Canonical Refetch on Replay** | Replay refetches current cart & ETag from DB | Verified in `guest-cart-idempotency.spec.ts` (`res2.headers['etag'] === '"2"'`, `cart2.updated_at === mutatedUpdatedAt`, no full response DTO persistence) | VERIFIED |
 | **4. Q-11 Token Loss Matrix** | New key creates new cart; old cart orphaned | Tested in `guest-cart-idempotency.spec.ts` (new key -> 201 with new cart ID, 2 distinct carts in DB) | VERIFIED |
 | **5. Post-Create Failure Protection** | Simulated mint failure transitions to reconciliation_required, preserves result_id = cart.id, never creates 2nd cart | Tested in `guest-cart-idempotency.spec.ts` (`storedRecord.state === 'reconciliation_required'`, `storedRecord.result_id === createdCartId`, 1 cart in DB, retry fails closed with 409) | VERIFIED |
 | **6. 412 Snapshot Sanitization** | 412 error response contains allowlisted cart pre-order without sensitive tokens | Tested in `concurrency.unit.spec.ts` (`isPublicStoreCartPreOrderSnapshot` passes, no leaked version/tokens) | VERIFIED |
@@ -444,10 +444,12 @@ git diff --check
 - **B15-04-HR-06:** CLOSED — PASS *(technical; revalidated by Cursor Subagent B — no regression)*
 - **B15-04-HR-07:** CLOSED — PASS *(technical; revalidated by Cursor Subagent B — no regression)*
 - **B15-04-HR-08:** CLOSED — PASS *(technical; revalidated by Cursor Subagent B — no regression)*
+- **B15-04-HR-09:** CLOSED — PASS *(plan-prohibited replay-snapshot wording removed from this SUMMARY; POST active Idempotency-Key wording aligned to the implemented all-POST contract)*
 - **15-04 TECHNICAL:** FINAL REMEDIATION — PASS *(runtime revalidated by Cursor Subagent B; no regression)*
-- **Task 15-04-04 / B15-P-HR-02:** AWAITING HUMAN RE-REVIEW
-- **15-04 HUMAN CHECKPOINT:** AWAITING HUMAN RE-REVIEW
-- **Plan 15-05:** NOT AUTHORIZED
+- **Task 15-04-04 / B15-P-HR-02:** CLOSED — HUMAN APPROVED — PASS
+- **15-04 HUMAN CHECKPOINT:** HUMAN APPROVED — PASS
+- **Plan 15-05:** AUTHORIZED FOR EXECUTION
+- **Plans 15-06..15-08 / Phase 16:** NOT AUTHORIZED
 - **Remote Providers / Deploy / Push / PR:** NONE / NOT AUTHORIZED
 
 ---
@@ -526,3 +528,19 @@ Session: 25a33119-3f3b-4423-bcbd-d87d4a7a6719
    **Result:** Build PASS, `git diff --check` PASS.
 
 All 14 technical checks PASS (canonical constant, exact lifecycle match, processing+result_id and processing+null → reconciliation_required, no worker create retry, finite lifecycle, claimLifecycleRow, claimed state_version CAS, recordProcessingResult semantics, guest/customer 201 after markCompleted claimed, markCompleted lost fail-closed, replay canonical refetch / no token reissue, no new migration/state/package).
+
+---
+
+## Final Human Approval — 2026-08-21
+
+- **B15-04-HR-01..HR-09:** CLOSED — PASS
+- **STATE CONSISTENCY:** CLOSED — PASS
+- **15-04 RUNTIME:** PASS
+- **15-04 TECHNICAL:** PASS
+- **15-04 GOVERNANCE:** PASS
+- **Task 15-04-04 / B15-P-HR-02:** CLOSED — HUMAN APPROVED — PASS
+- **Plan 15-04:** HUMAN APPROVED — CLOSED
+- **Plan 15-05:** AUTHORIZED FOR EXECUTION
+- **Plans 15-06..15-08:** NOT AUTHORIZED FOR AUTO-START
+- **Phase 16:** NOT AUTHORIZED
+- **Push / PR / Deploy / real providers / remote infrastructure:** NOT AUTHORIZED by this gate.
