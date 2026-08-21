@@ -9,6 +9,8 @@ import { GUEST_CART_CAPABILITY_MODULE } from "../../src/modules/guest-cart-capab
 import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
 import { STORE_IDEMPOTENCY_MODULE } from "../../src/modules/store-idempotency"
 import { STORE_RESOURCE_VERSION_MODULE } from "../../src/modules/store-resource-version"
+import { issueCustomerAuthAccessToken } from "../../src/modules/customer-auth/jwt"
+import { env } from "../../src/config/env"
 
 jest.mock("@medusajs/core-flows", () => ({
   addToCartWorkflow: jest.fn(),
@@ -36,6 +38,26 @@ function response() {
   }
 }
 
+type SyntheticLineageRow = {
+  lineage_id: string
+  sid: string
+  auth_identity_id: string
+  customer_id: string
+  credential_version_snapshot: number
+  lineage_status: "active" | "revoked" | "expired"
+  original_authenticated_at: Date
+  absolute_expires_at: Date
+  deleted_at: Date | null
+}
+
+type SyntheticCredentialRow = {
+  auth_identity_id: string
+  customer_id: string
+  credential_version: number
+  operation_status: "stable" | "pending_password_change"
+  deleted_at: Date | null
+}
+
 function createHarness() {
   const cart = {
     id: "cart_customer_line_items_01",
@@ -61,9 +83,16 @@ function createHarness() {
   const attempts = [{ id: "pat_customer_line_items_01", cart_id: cart.id, status: "created" }]
   let lineSequence = 1
   let workflowCalls = 0
+  let claimCount = 0
+  let sessionSequence = 1
+  let isDbUnavailable = false
+  let authorityQueryCount = 0
+  const lineages = new Map<string, SyntheticLineageRow>()
+  const credentials = new Map<string, SyntheticCredentialRow>()
 
   const idempotency = {
     async claim(input: any) {
+      claimCount += 1
       const existing = records.get(input.rawIdempotencyKey)
       if (existing) {
         if (existing.state === "completed" || existing.state === "failed_terminal") {
@@ -143,6 +172,52 @@ function createHarness() {
     async transaction(callback: (trx: unknown) => Promise<unknown>) {
       return callback({ raw: async () => ({ rows: [] }) })
     },
+    async raw(sql: string, bindings: unknown[] = []) {
+      if (isDbUnavailable) {
+        throw new Error("PG_CONNECTION_UNAVAILABLE")
+      }
+
+      if (!sql.includes("auth_session_lineage")) {
+        return { rows: [] }
+      }
+
+      authorityQueryCount += 1
+      const sid = bindings[0]
+      const lineage = Array.from(lineages.values()).find(
+        (entry) => entry.sid === sid && !entry.deleted_at
+      )
+      if (!lineage) {
+        return { rows: [] }
+      }
+
+      const credential = Array.from(credentials.values()).find(
+        (entry) =>
+          entry.auth_identity_id === lineage.auth_identity_id &&
+          !entry.deleted_at
+      )
+      if (!credential) {
+        return { rows: [] }
+      }
+
+      return {
+        rows: [
+          {
+            lineage_id: lineage.lineage_id,
+            sid: lineage.sid,
+            lineage_auth_identity_id: lineage.auth_identity_id,
+            lineage_customer_id: lineage.customer_id,
+            credential_version_snapshot: lineage.credential_version_snapshot,
+            lineage_status: lineage.lineage_status,
+            original_authenticated_at: lineage.original_authenticated_at,
+            absolute_expires_at: lineage.absolute_expires_at,
+            credential_auth_identity_id: credential.auth_identity_id,
+            credential_customer_id: credential.customer_id,
+            credential_version: credential.credential_version,
+            operation_status: credential.operation_status,
+          },
+        ],
+      }
+    },
   }
   const addWorkflow = addToCartWorkflow as unknown as jest.Mock
   const updateWorkflow = updateLineItemInCartWorkflow as unknown as jest.Mock
@@ -173,26 +248,82 @@ function createHarness() {
     }),
   })
 
+  function createCustomerSession(customerId: string) {
+    const sequence = sessionSequence++
+    const sid = `sid_${customerId}_${sequence}`
+    const authIdentityId = `ident_${customerId}_${sequence}`
+    const credentialVersion = 1
+    const originalAuthenticatedAt = new Date(
+      Math.floor((Date.now() - 60_000) / 1000) * 1000
+    )
+    const absoluteExpiresAt = new Date(
+      originalAuthenticatedAt.getTime() + 30 * 24 * 60 * 60 * 1000
+    )
+
+    lineages.set(sid, {
+      lineage_id: `lin_${sequence}`,
+      sid,
+      auth_identity_id: authIdentityId,
+      customer_id: customerId,
+      credential_version_snapshot: credentialVersion,
+      lineage_status: "active",
+      original_authenticated_at: originalAuthenticatedAt,
+      absolute_expires_at: absoluteExpiresAt,
+      deleted_at: null,
+    })
+    credentials.set(authIdentityId, {
+      auth_identity_id: authIdentityId,
+      customer_id: customerId,
+      credential_version: credentialVersion,
+      operation_status: "stable",
+      deleted_at: null,
+    })
+
+    const { token } = issueCustomerAuthAccessToken({
+      secret: env.JWT_SECRET,
+      authIdentityId,
+      customerId,
+      sid,
+      credentialVersion,
+      originalAuthenticatedAt,
+      absoluteExpiresAt,
+      now: new Date(),
+    })
+
+    return { token, customerId }
+  }
+
   const request = (
     kind: "add" | "update",
     key: string,
     quantity: number,
-    ifMatch = '"1"'
+    ifMatch = '"1"',
+    options: {
+      authorization?: string
+      omitIdempotencyKey?: boolean
+      body?: unknown
+      lineId?: string
+    } = {}
   ) => ({
     method: "POST",
     params: {
       id: cart.id,
-      ...(kind === "update" ? { line_id: "li_customer_line_items_01" } : {}),
+      ...(kind === "update"
+        ? { line_id: options.lineId ?? "li_customer_line_items_01" }
+        : {}),
     },
     body:
-      kind === "add"
+      options.body ??
+      (kind === "add"
         ? { variant_id: "variant_customer_add_01", quantity }
-        : { quantity },
+        : { quantity }),
     headers: {
-      "idempotency-key": key,
+      ...(options.authorization
+        ? { authorization: options.authorization }
+        : {}),
+      ...(!options.omitIdempotencyKey ? { "idempotency-key": key } : {}),
       "if-match": ifMatch,
     },
-    customerAuth: { customerId: "cus_line_items_01" },
     scope: {
       resolve(key: unknown) {
         if (key === GUEST_CART_CAPABILITY_MODULE) return guestCapability
@@ -218,15 +349,34 @@ function createHarness() {
     get workflowCalls() {
       return workflowCalls
     },
+    get claimCount() {
+      return claimCount
+    },
+    get authorityQueryCount() {
+      return authorityQueryCount
+    },
+    createCustomerSession,
+    setDbUnavailable(value: boolean) {
+      isDbUnavailable = value
+    },
+    setCartCustomer(customerId: string | null) {
+      cart.customer = customerId ? { id: customerId } : null
+    },
   }
 }
 
 describe("Customer cart line-items M1", () => {
   it.each([1, 99])("adiciona quantity %s com Customer auth e sem capability guest", async (quantity) => {
     const harness = createHarness()
+    const session = harness.createCustomerSession("cus_line_items_01")
     const res = harness.response()
 
-    await addLineItem(harness.request("add", `customer-add-${quantity}`, quantity) as never, res as never)
+    await addLineItem(
+      harness.request("add", `customer-add-${quantity}`, quantity, '"1"', {
+        authorization: `Bearer ${session.token}`,
+      }) as never,
+      res as never
+    )
 
     expect(res.statusCode).toBe(200)
     expect(res.headers.etag).toBe('"2"')
@@ -234,13 +384,20 @@ describe("Customer cart line-items M1", () => {
     expect(harness.cart.items.at(-1)?.quantity).toBe(quantity)
     expect(harness.attempts[0].status).toBe("invalidated_by_cart_change")
     expect(harness.addWorkflow).toHaveBeenCalledTimes(1)
+    expect(harness.authorityQueryCount).toBeGreaterThan(0)
   })
 
   it("atualiza e remove quantity 0 no cart do Customer, usando o workflow nativo", async () => {
     const harness = createHarness()
+    const session = harness.createCustomerSession("cus_line_items_01")
     const res = harness.response()
 
-    await updateLineItem(harness.request("update", "customer-update-remove", 0) as never, res as never)
+    await updateLineItem(
+      harness.request("update", "customer-update-remove", 0, '"1"', {
+        authorization: `Bearer ${session.token}`,
+      }) as never,
+      res as never
+    )
 
     expect(res.statusCode).toBe(200)
     expect(res.headers.etag).toBe('"2"')
@@ -255,17 +412,130 @@ describe("Customer cart line-items M1", () => {
       })
     )
     expect(harness.workflowCalls).toBe(1)
+    expect(harness.authorityQueryCount).toBeGreaterThan(0)
   })
 
   it("não permite corpo de update com campo de autoridade e não cria claim", async () => {
     const harness = createHarness()
-    const req = harness.request("update", "customer-authority-field", 2) as any
-    req.body = { quantity: 2, cart_id: "cart_other" }
+    const session = harness.createCustomerSession("cus_line_items_01")
+    const req = harness.request("update", "customer-authority-field", 2, '"1"', {
+      authorization: `Bearer ${session.token}`,
+      body: { quantity: 2, cart_id: "cart_other" },
+    }) as any
 
     await expect(updateLineItem(req, harness.response() as never)).rejects.toMatchObject({
       type: MedusaError.Types.INVALID_DATA,
     })
     expect(harness.records.size).toBe(0)
+    expect(harness.claimCount).toBe(0)
+    expect(harness.workflowCalls).toBe(0)
+  })
+
+  it("rejeita Authorization inválida antes de claim e workflow", async () => {
+    const harness = createHarness()
+    const invalidAuthRequest = harness.request("add", "add-invalid-auth", 1, '"1"', {
+      authorization: "Bearer invalid.jwt.garbage",
+    })
+
+    await expect(
+      addLineItem(
+        invalidAuthRequest as never,
+        harness.response() as never
+      )
+    ).rejects.toMatchObject({ type: MedusaError.Types.UNAUTHORIZED })
+
+    expect(harness.claimCount).toBe(0)
+    expect(harness.workflowCalls).toBe(0)
+    expect(harness.authorityQueryCount).toBe(0)
+  })
+
+  it("preserva 503 quando a autoridade PostgreSQL está indisponível", async () => {
+    const harness = createHarness()
+    const session = harness.createCustomerSession("cus_line_items_01")
+    harness.setDbUnavailable(true)
+
+    const error = await addLineItem(
+      harness.request("add", "add-authority-unavailable", 1, '"1"', {
+        authorization: `Bearer ${session.token}`,
+      }) as never,
+      harness.response() as never
+    ).catch((caught) => caught)
+
+    expect(error).toMatchObject({ statusCode: 503 })
+    expect(harness.claimCount).toBe(0)
+    expect(harness.workflowCalls).toBe(0)
+    expect(harness.authorityQueryCount).toBe(0)
+  })
+
+  it("não permite Customer mutar cart de outro Customer", async () => {
+    const harness = createHarness()
+    const session = harness.createCustomerSession("cus_other")
+    harness.setCartCustomer("cus_line_items_01")
+
+    await expect(
+      addLineItem(
+        harness.request("add", "add-wrong-customer", 1, '"1"', {
+          authorization: `Bearer ${session.token}`,
+          body: { variant_id: "variant_customer_add_01", quantity: 1.5 },
+        }) as never,
+        harness.response() as never
+      )
+    ).rejects.toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+
+    expect(harness.claimCount).toBe(0)
+    expect(harness.workflowCalls).toBe(0)
+  })
+
+  it("não permite Customer mutar Guest cart e ownership precede line_id inválido", async () => {
+    const harness = createHarness()
+    const session = harness.createCustomerSession("cus_line_items_01")
+    harness.setCartCustomer(null)
+
+    await expect(
+      updateLineItem(
+        harness.request("update", "update-guest-cart", 1, '"1"', {
+          authorization: `Bearer ${session.token}`,
+          lineId: "",
+        }) as never,
+        harness.response() as never
+      )
+    ).rejects.toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+
+    expect(harness.claimCount).toBe(0)
+    expect(harness.workflowCalls).toBe(0)
+  })
+
+  it("não concede acesso somente com Idempotency-Key", async () => {
+    const harness = createHarness()
+
+    await expect(
+      addLineItem(
+        harness.request("add", "idempotency-only", 1) as never,
+        harness.response() as never
+      )
+    ).rejects.toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+
+    expect(harness.claimCount).toBe(0)
+    expect(harness.workflowCalls).toBe(0)
+  })
+
+  it("prioriza ownership sobre body inválido e Idempotency-Key ausente", async () => {
+    const harness = createHarness()
+    const session = harness.createCustomerSession("cus_other")
+    harness.setCartCustomer("cus_line_items_01")
+
+    await expect(
+      addLineItem(
+        harness.request("add", "wrong-owner-no-key", 1, '"1"', {
+          authorization: `Bearer ${session.token}`,
+          body: { variant_id: "variant_customer_add_01", quantity: 1.5 },
+          omitIdempotencyKey: true,
+        }) as never,
+        harness.response() as never
+      )
+    ).rejects.toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+
+    expect(harness.claimCount).toBe(0)
     expect(harness.workflowCalls).toBe(0)
   })
 })
