@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
 status: in_progress
-last_updated: "2026-08-20T03:55:00.000Z"
+last_updated: "2026-08-21"
 progress:
   total_phases: 10
   completed_phases: 2
@@ -30,12 +30,17 @@ See: `.planning/PROJECT.md`.
 
 Execution remains manual-review gated.
 
-- `mode=interactive`
-- `workflow.auto_advance=false`
-- `workflow._auto_chain_active=false`
-- `parallelization=false`
+**Current execution harness:** Cursor
 
-Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01, 15-02, 15-03 are human approved. Plan 15-04 is executed and remediated; stopped at Task 15-04-04 (Checkpoint B15-P-HR-02) awaiting human re-review. Plan 15-05 and later plans remain unauthorized.
+- **Harness:** Cursor
+- **Orchestrator:** Grok 4.6
+- **Subagents:** Grok 4.6 or Composer 2.5, selected explicitly per task by orchestrator
+- `mode=interactive`
+- `parallelization=false`
+- `auto-chain=false`
+- `auto_advance=false` (`workflow.auto_advance=false`; `workflow._auto_chain_active=false`)
+
+Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01, 15-02, 15-03 are human approved. Plan 15-04 is executed and final-governance remediated under the current Cursor harness; stopped at Task 15-04-04 (Checkpoint B15-P-HR-02) awaiting human re-review. Plan 15-05 and later plans remain unauthorized.
 
 ## Current Gate
 
@@ -58,7 +63,7 @@ Phase 15: IN PROGRESS
 Plan 15-01: HUMAN APPROVED — PASS
 Plan 15-02: HUMAN APPROVED — PASS
 Plan 15-03: HUMAN APPROVED — PASS
-Plan 15-04: REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-04-04 / Checkpoint B15-P-HR-02)
+Plan 15-04: FINAL GOVERNANCE REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-04-04 / Checkpoint B15-P-HR-02)
 Plan 15-05: NOT AUTHORIZED
 
 Deploy / release: NOT AUTHORIZED
@@ -76,7 +81,7 @@ Milestone v1.1:
 - Phase 13: FND-01..FND-08 = **8/8 COMPLETE**
 - Phase 14: AUTH-01..AUTH-09 = **9/9 COMPLETE**
 - known plans human-approved executed: **31/31** (Phase 13: 7; Phase 14: 21; Phase 15: 15-01, 15-02, 15-03)
-- Phase 15: **IN PROGRESS** (Plans 15-01, 15-02, 15-03 human approved; Plan 15-04 remediated awaiting human re-review; 15-05..15-08 unauthorized)
+- Phase 15: **IN PROGRESS** (Plans 15-01, 15-02, 15-03 human approved; Plan 15-04 final governance remediated awaiting human re-review; 15-05..15-08 unauthorized)
 - frontend: BLOCKED
 
 ## Accepted Evidence References
@@ -197,7 +202,7 @@ EXECUTION: IN PROGRESS
 Plan 15-01: HUMAN APPROVED — PASS
 Plan 15-02: HUMAN APPROVED — PASS
 Plan 15-03: HUMAN APPROVED — PASS
-Plan 15-04: REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-04-04 checkpoint / B15-P-HR-02)
+Plan 15-04: FINAL GOVERNANCE REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-04-04 checkpoint / B15-P-HR-02)
 Plan 15-05: NOT AUTHORIZED
 ```
 
@@ -205,8 +210,9 @@ Phase-15 RESEARCH is accepted at
 `.planning/phases/15-guest-cart-capability-concurrency/15-RESEARCH.md`.
 The approved 8-plan set at `15-01-PLAN.md` … `15-08-PLAN.md` replaces the superseded 18-plan decomposition. Execution is authorized only within those approved PLAN scopes and under the canonical `Phase 15 Execution Orchestration Policy` in `15-01-PLAN.md`:
 
+- **current execution harness:** Cursor
 - orchestrator: Grok 4.6;
-- sequential subagents chosen between Grok 4.6 and Composer 2.5;
+- sequential subagents chosen explicitly between Grok 4.6 and Composer 2.5;
 - `parallelization=false`;
 - `auto-chain=false`;
 - blocking human checkpoint between PLANs remains mandatory.
@@ -235,7 +241,7 @@ This authorization does **not** extend to:
 
 No open Phase-14 blocker remains.
 
-Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01, 15-02, 15-03 are human-approved. Plan 15-04 is executed and remediated; awaiting human re-review at Task 15-04-04 checkpoint (B15-P-HR-02). Plan 15-05..15-08, deploy, real providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
+Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01, 15-02, 15-03 are human-approved. Plan 15-04 is executed and final-governance remediated under the current Cursor harness (Subagents A → B → C → D complete; B15-04-HR-04 CLOSED — PASS); awaiting human re-review at Task 15-04-04 checkpoint (B15-P-HR-02). Plan 15-05..15-08, deploy, real providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
 
 Closed Phase-15 PLAN-review blockers:
 
@@ -254,7 +260,7 @@ Closed Phase-15 PLAN-review blockers:
 
 **Resume file:** .planning/phases/15-guest-cart-capability-concurrency/15-04-PLAN.md
 
-Last session: 2026-08-20T02:50:00.000Z
+Last session: 2026-08-21
 
 Stopped at:
 
@@ -267,7 +273,7 @@ PHASE 15 PLAN: HUMAN APPROVED — PASS (8 plans / 8 serial waves)
 Plan 15-01: HUMAN APPROVED — PASS
 Plan 15-02: HUMAN APPROVED — PASS
 Plan 15-03: HUMAN APPROVED — PASS
-Plan 15-04: REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-04-04 checkpoint / B15-P-HR-02)
+Plan 15-04: FINAL GOVERNANCE REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-04-04 checkpoint / B15-P-HR-02)
 Plan 15-05: NOT AUTHORIZED
 FRONTEND: BLOCKED
 DEPLOY: NOT AUTHORIZED
@@ -284,4 +290,4 @@ Resume with:
 - `.planning/phases/15-guest-cart-capability-concurrency/15-04-PLAN.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-04-SUMMARY.md`
 
-**Next permitted step:** human review of Plan 15-04 remediation checkpoint (B15-P-HR-02). The blocking human checkpoint in `15-04` must PASS before `15-05` can begin. Phase 15 plans 15-05..15-08, Phase 16, deploy, real providers, remote infra and frontend remain unauthorized.
+**Next permitted step:** human review of Plan 15-04 remediation checkpoint (B15-P-HR-02). Cursor final governance validation completed sequentially (Subagents A → B → C → D). The blocking human checkpoint in `15-04` must PASS before `15-05` can begin. Plan 15-05 and Phase 15 plans 15-05..15-08, Phase 16, deploy, real providers, remote infra and frontend remain unauthorized.
