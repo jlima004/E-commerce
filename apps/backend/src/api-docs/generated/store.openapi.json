@@ -28,6 +28,18 @@
         "schema": {
           "type": "string"
         }
+      },
+      "XIndicioGuestCartToken": {
+        "description": "Opaque guest cart capability returned only when a guest cart is minted. It is sensitive BFF-to-Medusa material, never a browser credential, and is never shown in examples.",
+        "schema": {
+          "maxLength": 512,
+          "minLength": 43,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "type": "string"
+        },
+        "x-bff-only": true,
+        "x-not-browser-credential": true,
+        "x-sensitive": true
       }
     },
     "parameters": {
@@ -63,6 +75,21 @@
           "pattern": "^[A-Za-z0-9._-]{1,128}$",
           "type": "string"
         }
+      },
+      "XIndicioGuestCartToken": {
+        "description": "Optional opaque guest cart capability presented only on the same-origin Next.js BFF to Medusa. It is not a user/browser credential, never appears in examples, and is omitted for Customer access. Swagger remains non-interactive.",
+        "in": "header",
+        "name": "x-indicio-guest-cart-token",
+        "required": false,
+        "schema": {
+          "maxLength": 512,
+          "minLength": 43,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "type": "string"
+        },
+        "x-bff-only": true,
+        "x-not-browser-credential": true,
+        "x-sensitive": true
       },
       "XIndicioRefreshToken": {
         "description": "Opaque refresh capability presented only on the same-origin Next.js BFF to Medusa hop. It is not a user/browser credential, never a Swagger Try-It-Out field, and not authorization for direct browser access to Medusa. Examples are omitted. Swagger remains non-interactive.",
@@ -497,6 +524,27 @@
           "item_labels",
           "updated_at",
           "message"
+        ],
+        "type": "object"
+      },
+      "StoreAddCartLineItemRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "quantity": {
+            "description": "Quantity to add; integer from 1 through 99.",
+            "maximum": 99,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "variant_id": {
+            "description": "Sellable catalog variant identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant_id",
+          "quantity"
         ],
         "type": "object"
       },
@@ -1052,21 +1100,8 @@
         "additionalProperties": false,
         "properties": {
           "cart": {
-            "description": "Optional safe primitive cart reference. The canonical Cart snapshot belongs to Phase 15.",
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/PublicStoreCartPreOrder",
+            "description": "Current canonical Cart pre-order snapshot attached to version mismatch errors."
           },
           "code": {
             "description": "Stable machine-readable public Store error code.",
@@ -1449,6 +1484,21 @@
         },
         "required": [
           "token"
+        ],
+        "type": "object"
+      },
+      "StoreUpdateCartLineItemRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "quantity": {
+            "description": "Replacement quantity; integer from 0 through 99. Zero removes the line item.",
+            "maximum": 99,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quantity"
         ],
         "type": "object"
       }
@@ -2227,6 +2277,1019 @@
         "summary": "Readiness probe",
         "tags": [
           "Infrastructure"
+        ]
+      }
+    },
+    "/store/carts/{id}/line-items": {
+      "post": {
+        "description": "Add a line item to a Store cart",
+        "operationId": "addCartLineItem",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cart identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/XIndicioGuestCartToken"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAddCartLineItemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCartResponse"
+                }
+              }
+            },
+            "description": "Cart mutation completed. Monetary totals are BRL major units.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid line-item payload or missing/malformed cart precondition header.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart or line item was not found for the current actor.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency key conflict or operation currently in progress.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "CART_VERSION_MISMATCH: the If-Match precondition is stale; the response cart is the current PublicStoreCartPreOrder snapshot.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart line-item workflow failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Customer authentication authority is temporarily unavailable.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Add a line item to a Store cart",
+        "tags": [
+          "Cart"
+        ]
+      },
+      "delete": {
+        "description": "Clear all line items from a Store cart",
+        "operationId": "clearCartLineItems",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cart identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/XIndicioGuestCartToken"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCartResponse"
+                }
+              }
+            },
+            "description": "Cart mutation completed. Monetary totals are BRL major units.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid line-item payload or missing/malformed cart precondition header.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart or line item was not found for the current actor.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency key conflict or operation currently in progress.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "CART_VERSION_MISMATCH: the If-Match precondition is stale; the response cart is the current PublicStoreCartPreOrder snapshot.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart line-item workflow failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Customer authentication authority is temporarily unavailable.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Clear all line items from a Store cart",
+        "tags": [
+          "Cart"
+        ]
+      }
+    },
+    "/store/carts/{id}/line-items/{line_id}": {
+      "post": {
+        "description": "Update a Store cart line item",
+        "operationId": "updateCartLineItem",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cart identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/XIndicioGuestCartToken"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "description": "Cart line-item identifier.",
+            "in": "path",
+            "name": "line_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreUpdateCartLineItemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCartResponse"
+                }
+              }
+            },
+            "description": "Cart mutation completed. Monetary totals are BRL major units.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid line-item payload or missing/malformed cart precondition header.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart or line item was not found for the current actor.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency key conflict or operation currently in progress.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "CART_VERSION_MISMATCH: the If-Match precondition is stale; the response cart is the current PublicStoreCartPreOrder snapshot.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart line-item workflow failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Customer authentication authority is temporarily unavailable.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Update a Store cart line item",
+        "tags": [
+          "Cart"
+        ]
+      },
+      "delete": {
+        "description": "Remove a line item from a Store cart",
+        "operationId": "removeCartLineItem",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cart identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/XIndicioGuestCartToken"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "description": "Cart line-item identifier.",
+            "in": "path",
+            "name": "line_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCartResponse"
+                }
+              }
+            },
+            "description": "Cart mutation completed. Monetary totals are BRL major units.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid line-item payload or missing/malformed cart precondition header.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart or line item was not found for the current actor.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Idempotency key conflict or operation currently in progress.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "CART_VERSION_MISMATCH: the If-Match precondition is stale; the response cart is the current PublicStoreCartPreOrder snapshot.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart line-item workflow failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Customer authentication authority is temporarily unavailable.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Remove a line item from a Store cart",
+        "tags": [
+          "Cart"
+        ]
+      }
+    },
+    "/store/carts/active": {
+      "get": {
+        "description": "Get the active Store cart",
+        "operationId": "getActiveStoreCart",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/XIndicioGuestCartToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCartResponse"
+                }
+              }
+            },
+            "description": "Active cart serialized as PublicStoreCartPreOrder. Monetary totals are BRL major units.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Current guest capability or authenticated customer has no active cart.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart retrieval failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Customer authentication authority is temporarily unavailable.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Get the active Store cart",
+        "tags": [
+          "Cart"
+        ]
+      },
+      "post": {
+        "description": "Create or reuse the active Store cart",
+        "operationId": "createActiveStoreCart",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/XIndicioGuestCartToken"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCartResponse"
+                }
+              }
+            },
+            "description": "Existing active cart reused or replayed. No guest capability response header is emitted. Monetary totals are BRL major units.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCartResponse"
+                }
+              }
+            },
+            "description": "New BRL cart created. ETag is returned; x-indicio-guest-cart-token is returned only for the guest capability mint path and is omitted for Customer creation.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              },
+              "x-indicio-guest-cart-token": {
+                "$ref": "#/components/headers/XIndicioGuestCartToken"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid Idempotency-Key header.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid publishable API key.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Presented guest capability is invalid, expired, revoked, consumed, or has no active cart.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Session, customer, capability, or cart workflow failure.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Customer authentication authority is temporarily unavailable.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableApiKey": []
+          },
+          {
+            "customerBearer": [],
+            "publishableApiKey": []
+          },
+          {
+            "customerSession": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Create or reuse the active Store cart",
+        "tags": [
+          "Cart"
         ]
       }
     },
