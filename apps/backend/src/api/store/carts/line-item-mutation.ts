@@ -33,6 +33,8 @@ import {
 } from "../../../modules/payment-attempt"
 import {
   STORE_IDEMPOTENCY_MODULE,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE,
   assertValidRawIdempotencyKey,
   type LifecycleClaimResult,
   type StoreIdempotencyModuleService,
@@ -61,11 +63,6 @@ import {
 } from "./line-items/validators"
 import { storeCartPreOrderFields } from "./query-config"
 import type { StoreCartPreOrderRecord } from "./serializers"
-
-export const STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD =
-  "store.carts.line-items.add" as const
-export const STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE =
-  "store.carts.line-items.update" as const
 
 export type LineItemMutationKind = "add" | "update"
 
@@ -195,6 +192,9 @@ function assertActorOwnsCart(
   }
 
   if (actor.actorType === "guest") {
+    if (cart.id !== actor.cartId) {
+      notFound()
+    }
     if (cart.customer?.id) {
       notFound()
     }

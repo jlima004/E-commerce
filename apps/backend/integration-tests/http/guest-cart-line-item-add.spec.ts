@@ -72,6 +72,7 @@ function createHarness() {
   let lineSequence = 1
   let mutationCount = 0
   let claimCount = 0
+  let paymentInvalidationCount = 0
   let terminalizeCasLost = false
 
   const idempotency = {
@@ -166,12 +167,17 @@ function createHarness() {
       return attempts
     },
     async updatePaymentAttempts(next: any) {
+      paymentInvalidationCount += 1
       const current = attempts.find((item) => item.id === next.id)
       Object.assign(current, next)
     },
   }
 
-  const remoteQuery = jest.fn(async () => [cart])
+  const carts = new Map<string, Cart>([[cart.id, cart]])
+  let requestedCartId = cart.id
+  const remoteQuery = jest.fn(async () =>
+    carts.has(requestedCartId) ? [carts.get(requestedCartId)] : []
+  )
   const versionService = {
     async initialize(_type: string, id: string) {
       return { id: `strver_${id}`, resource_type: "cart", resource_id: id, version: versions.get(id) ?? 1 }
@@ -213,8 +219,13 @@ function createHarness() {
     key: string,
     quantity: unknown,
     ifMatch = '"1"',
-    options: { body?: unknown; omitIdempotencyKey?: boolean } = {}
+    options: {
+      body?: unknown
+      omitIdempotencyKey?: boolean
+      cartId?: string
+    } = {}
   ) => {
+    requestedCartId = options.cartId ?? cart.id
     const headers: Record<string, string> = {
       [GUEST_CART_CAPABILITY_HEADER]: "guest-token-not-persisted",
       "idempotency-key": key,
@@ -226,7 +237,7 @@ function createHarness() {
 
     return {
       method: "POST",
-      params: { id: cart.id },
+      params: { id: options.cartId ?? cart.id },
       body: options.body ?? { variant_id: "variant_guest_add_01", quantity },
       headers,
       scope: {
@@ -258,6 +269,18 @@ function createHarness() {
     get mutationCount() {
       return mutationCount
     },
+    get paymentInvalidationCount() {
+      return paymentInvalidationCount
+    },
+    addGuestCart(cartId: string) {
+      carts.set(cartId, {
+        ...cart,
+        id: cartId,
+        customer: null,
+        items: [],
+      })
+      versions.set(cartId, 1)
+    },
     setVersion(version: number) {
       versions.set(cart.id, version)
     },
@@ -271,6 +294,40 @@ function createHarness() {
 }
 
 describe("Guest cart line-item add M1", () => {
+  it("capability do Guest cart A não autoriza POST no Guest cart B", async () => {
+    const harness = createHarness()
+    const cartA = harness.cart.id
+    const cartB = "cart_guest_add_02"
+    harness.addGuestCart(cartB)
+
+    await expect(
+      addLineItem(
+        harness.request("guest-add-cross-cart", 1, '"1"', { cartId: cartB }) as never,
+        response() as never
+      )
+    ).rejects.toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+
+    expect(cartA).not.toBe(cartB)
+    expect(harness.claimCount).toBe(0)
+    expect(harness.mutationCount).toBe(0)
+    expect(harness.addWorkflow).not.toHaveBeenCalled()
+    expect(harness.paymentInvalidationCount).toBe(0)
+    expect(harness.cart.items).toHaveLength(0)
+  })
+
+  it("capability do Guest cart A permite POST no próprio cart A", async () => {
+    const harness = createHarness()
+
+    await addLineItem(
+      harness.request("guest-add-same-cart", 1) as never,
+      response() as never
+    )
+
+    expect(harness.claimCount).toBe(1)
+    expect(harness.mutationCount).toBe(1)
+    expect(harness.addWorkflow).toHaveBeenCalledTimes(1)
+  })
+
   it("valida quantity antes do claim e não cria processing para entrada inválida", async () => {
     const harness = createHarness()
     const res = response()
