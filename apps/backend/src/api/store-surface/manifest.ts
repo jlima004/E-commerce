@@ -81,7 +81,7 @@ function entry(
 }
 
 /**
- * Closed 63-operation inventory. Order follows RESEARCH §5 row numbers,
+ * Closed 64-operation inventory. Order follows RESEARCH §5 row numbers,
  * followed by the Phase 14 verification contracts and password change.
  */
 export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
@@ -169,12 +169,26 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
   entry({
     method: "DELETE",
     pathTemplate: "/store/carts/{id}/line-items/{line_id}",
-    origin: "native",
+    origin: "native+local_extension",
     classification: "EXTENDED",
-    runtime_policy: "DENY",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
     openapi_m1_expectation: "include_executable_m1",
     rationale:
-      "Destructive cart M1 candidate without automatic retry contract; DENY until Phase 15.",
+      "Phase 15 guest/customer line delete wrapper preserves the native workflow while enforcing capability, idempotency, If-Match, CAS and DTO contracts.",
+    owner_phase: "15",
+    owner_domain: "cart",
+  }),
+  entry({
+    method: "DELETE",
+    pathTemplate: "/store/carts/{id}/line-items",
+    origin: "local",
+    classification: "EXTENDED",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
+    openapi_m1_expectation: "include_executable_m1",
+    rationale:
+      "Phase 15 local clear-all wrapper uses one native delete workflow with capability, idempotency, If-Match, CAS and empty-clear no-op semantics.",
     owner_phase: "15",
     owner_domain: "cart",
   }),
@@ -819,6 +833,10 @@ export const STORE_SURFACE_PHASE14_ENABLED_OPERATIONS = [
 ] as const
 
 export const STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS = [
+  "POST /store/carts/{id}/line-items",
+  "POST /store/carts/{id}/line-items/{line_id}",
+  "DELETE /store/carts/{id}/line-items/{line_id}",
+  "DELETE /store/carts/{id}/line-items",
   "GET /store/carts/active",
   "POST /store/carts/active",
 ] as const
@@ -826,8 +844,11 @@ export const STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS = [
 export const STORE_SURFACE_M1_ENABLED_OPERATIONS = [
   "POST /store/carts/{id}/line-items",
   "POST /store/carts/{id}/line-items/{line_id}",
+  "DELETE /store/carts/{id}/line-items/{line_id}",
+  "DELETE /store/carts/{id}/line-items",
   "GET /store/customers/me",
-  ...STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS,
+  "GET /store/carts/active",
+  "POST /store/carts/active",
   ...STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS,
   "POST /store/customers/me/password",
 ] as const
@@ -941,10 +962,10 @@ export function validateStoreSurfaceManifest(
   const violations: StoreSurfaceManifestViolation[] = []
   const counts = summarizeStoreSurfaceManifest(entries)
 
-  if (counts.total !== 63) {
+  if (counts.total !== 64) {
     violations.push({
       code: "COUNT_TOTAL",
-      message: `expected 63 entries, found ${counts.total}`,
+      message: `expected 64 entries, found ${counts.total}`,
     })
   }
   if (counts.authorized !== 0) {
@@ -953,10 +974,10 @@ export function validateStoreSurfaceManifest(
       message: `expected AUTHORIZED=0, found ${counts.authorized}`,
     })
   }
-  if (counts.extended !== 15) {
+  if (counts.extended !== 16) {
     violations.push({
       code: "COUNT_EXTENDED",
-      message: `expected EXTENDED=15, found ${counts.extended}`,
+      message: `expected EXTENDED=16, found ${counts.extended}`,
     })
   }
   if (counts.blocked !== 17) {
@@ -971,16 +992,16 @@ export function validateStoreSurfaceManifest(
       message: `expected OUTSIDE_FRONTEND_M1=31, found ${counts.outsideFrontendM1}`,
     })
   }
-  if (counts.m1EnabledPolicy !== 10) {
+  if (counts.m1EnabledPolicy !== 12) {
     violations.push({
       code: "M1_ENABLED_POLICY",
-      message: `Phase 15 requires exactly ten M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
+      message: `Phase 15 requires exactly twelve M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
     })
   }
-  if (counts.m1EnablementEnabled !== 10) {
+  if (counts.m1EnablementEnabled !== 12) {
     violations.push({
       code: "M1_ENABLEMENT_ENABLED",
-      message: `Phase 15 requires exactly ten enablements; found ${counts.m1EnablementEnabled}`,
+      message: `Phase 15 requires exactly twelve enablements; found ${counts.m1EnablementEnabled}`,
     })
   }
   if (counts.deny + counts.preserveLegacy + counts.m1EnabledPolicy !== counts.total) {

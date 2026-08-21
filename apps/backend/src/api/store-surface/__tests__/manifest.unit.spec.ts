@@ -24,9 +24,9 @@ describe("Store surface manifest (FND-01)", () => {
   const counts = summarizeStoreSurfaceManifest()
   const violations = validateStoreSurfaceManifest()
 
-  it("locks Medusa 2.16.0 and exact inventory 63 = 51 native identity + 12 local", () => {
+  it("locks Medusa 2.16.0 and exact inventory 64 = 51 native identity + 13 local", () => {
     expect(STORE_SURFACE_MEDUSA_VERSION).toBe("2.16.0")
-    expect(counts.total).toBe(63)
+    expect(counts.total).toBe(64)
     expect(counts.duplicates).toEqual([])
     expect(
       STORE_SURFACE_MANIFEST.every(
@@ -42,13 +42,13 @@ describe("Store surface manifest (FND-01)", () => {
       (entry) => entry.origin === "local"
     )
     expect(nativeLike).toHaveLength(51)
-    expect(localOnly).toHaveLength(12)
-    expect(counts.nativeLocalExtension).toBe(4)
+    expect(localOnly).toHaveLength(13)
+    expect(counts.nativeLocalExtension).toBe(5)
   })
 
-  it("locks classification distribution 0/15/17/31 with zero UNKNOWN", () => {
+  it("locks classification distribution 0/16/17/31 with zero UNKNOWN", () => {
     expect(counts.authorized).toBe(0)
-    expect(counts.extended).toBe(15)
+    expect(counts.extended).toBe(16)
     expect(counts.blocked).toBe(17)
     expect(counts.outsideFrontendM1).toBe(31)
     expect(
@@ -56,12 +56,12 @@ describe("Store surface manifest (FND-01)", () => {
         counts.extended +
         counts.blocked +
         counts.outsideFrontendM1
-    ).toBe(63)
+    ).toBe(64)
   })
 
-  it("locks M1_ENABLED exact-set to STORE_SURFACE_M1_ENABLED_OPERATIONS (Phase 14 Auth 6 + Phase 15 Cart 4 = 10)", () => {
-    expect(counts.m1EnabledPolicy).toBe(10)
-    expect(counts.m1EnablementEnabled).toBe(10)
+  it("locks M1_ENABLED exact-set to STORE_SURFACE_M1_ENABLED_OPERATIONS (Phase 14 Auth 6 + Phase 15 Cart 6 = 12)", () => {
+    expect(counts.m1EnabledPolicy).toBe(12)
+    expect(counts.m1EnablementEnabled).toBe(12)
     expect(counts.m1EnabledPolicy).toBe(
       STORE_SURFACE_M1_ENABLED_OPERATIONS.length
     )
@@ -75,7 +75,7 @@ describe("Store surface manifest (FND-01)", () => {
       storeSurfaceOperationKey(entry.method, entry.pathTemplate)
     )
 
-    expect(m1EnabledEntries).toHaveLength(10)
+    expect(m1EnabledEntries).toHaveLength(12)
     expect([...m1EnabledKeys].sort()).toEqual(
       [...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()
     )
@@ -101,14 +101,14 @@ describe("Store surface manifest (FND-01)", () => {
     expect(extraM1).toEqual([])
   })
 
-  it("requires DENY 48 + PRESERVE_LEGACY 5 + M1_ENABLED 10 = 63 with BLOCKED always DENY", () => {
-    expect(counts.deny).toBe(48)
+  it("requires DENY 47 + PRESERVE_LEGACY 5 + M1_ENABLED 12 = 64 with BLOCKED always DENY", () => {
+    expect(counts.deny).toBe(47)
     expect(counts.preserveLegacy).toBe(5)
     expect(counts.preserveLegacy).toBe(PRESERVE_LEGACY_KEYS.length)
-    expect(counts.m1EnabledPolicy).toBe(10)
+    expect(counts.m1EnabledPolicy).toBe(12)
     expect(
       counts.deny + counts.preserveLegacy + counts.m1EnabledPolicy
-    ).toBe(63)
+    ).toBe(64)
 
     for (const entry of STORE_SURFACE_MANIFEST) {
       if (entry.classification === "BLOCKED") {
@@ -163,6 +163,20 @@ describe("Store surface manifest (FND-01)", () => {
     expect(lineItems?.origin).toBe("native+local_extension")
     expect(lineItems?.runtime_policy).toBe("M1_ENABLED")
     expect(lineItems?.m1_enablement).toBe("enabled")
+
+    const deleteLineItems = lookupStoreSurfaceEntry(
+      "DELETE",
+      "/store/carts/{id}/line-items/{line_id}"
+    )
+    expect(deleteLineItems?.origin).toBe("native+local_extension")
+    expect(deleteLineItems?.runtime_policy).toBe("M1_ENABLED")
+
+    const clearLineItems = lookupStoreSurfaceEntry(
+      "DELETE",
+      "/store/carts/{id}/line-items"
+    )
+    expect(clearLineItems?.origin).toBe("local")
+    expect(clearLineItems?.runtime_policy).toBe("M1_ENABLED")
   })
 
   it("assigns catalog product routes owner_phase 21 (not Cart Merge 16)", () => {
@@ -198,14 +212,14 @@ describe("Store surface manifest (FND-01)", () => {
     expect(scan.errors).toEqual([])
     expect(scan.ok).toBe(true)
     expect(scan.medusaVersion).toBe("2.16.0")
-    expect(scan.discovered).toHaveLength(63)
+    expect(scan.discovered).toHaveLength(64)
     expect(scan.missingFromManifest).toEqual([])
     expect(scan.missingFromInstalled).toEqual([])
     expect(scan.duplicatesInstalled).toEqual([])
-    expect(scan.counts.extended).toBe(15)
+    expect(scan.counts.extended).toBe(16)
     expect(scan.counts.blocked).toBe(17)
     expect(scan.counts.outsideFrontendM1).toBe(31)
-    expect(scan.counts.m1EnabledPolicy).toBe(10)
+    expect(scan.counts.m1EnabledPolicy).toBe(12)
 
     const installedKeys = new Set(scan.discoveredKeys)
     for (const entry of STORE_SURFACE_MANIFEST) {

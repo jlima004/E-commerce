@@ -8,3 +8,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     "update"
   )
 }
+
+export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
+  await executeLineItemMutation(
+    req as Parameters<typeof executeLineItemMutation>[0],
+    res,
+    "delete"
+  )
+}

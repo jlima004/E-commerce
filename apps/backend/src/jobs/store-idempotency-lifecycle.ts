@@ -10,6 +10,8 @@ import {
   STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
   STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD,
   STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_DELETE,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_CLEAR,
   isStoreIdempotencyTerminalState,
   type StoreIdempotencyModuleService,
   type StoreIdempotencyRecordRow,
@@ -111,7 +113,9 @@ function isStoreCartActiveCreateOperation(operation: string): boolean {
 function isStoreCartLineItemOperation(operation: string): boolean {
   return (
     operation === STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD ||
-    operation === STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE
+    operation === STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE ||
+    operation === STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_DELETE ||
+    operation === STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_CLEAR
   )
 }
 

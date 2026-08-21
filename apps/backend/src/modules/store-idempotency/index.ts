@@ -6,6 +6,8 @@ export const STORE_IDEMPOTENCY_MODULE = "store_idempotency"
 export {
   STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD,
   STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_DELETE,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_CLEAR,
 } from "./operations"
 export type { StoreCartLineItemIdempotencyOperation } from "./operations"
 

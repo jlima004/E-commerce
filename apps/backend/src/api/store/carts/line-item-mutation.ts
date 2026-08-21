@@ -1,5 +1,6 @@
 import {
   addToCartWorkflow,
+  deleteLineItemsWorkflow,
   updateLineItemInCartWorkflow,
 } from "@medusajs/core-flows"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
@@ -34,6 +35,8 @@ import {
 import {
   STORE_IDEMPOTENCY_MODULE,
   STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_CLEAR,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_DELETE,
   STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE,
   assertValidRawIdempotencyKey,
   type LifecycleClaimResult,
@@ -65,7 +68,7 @@ import {
 import { storeCartPreOrderFields } from "./query-config"
 import type { StoreCartPreOrderRecord } from "./serializers"
 
-export type LineItemMutationKind = "add" | "update"
+export type LineItemMutationKind = "add" | "update" | "delete" | "clear"
 
 type RequestWithCustomerAuth = MedusaRequest & {
   customerAuth?: CustomerAuthAccessContext
@@ -208,18 +211,29 @@ function assertActorOwnsCart(
 }
 
 function lineItemOperation(kind: LineItemMutationKind): string {
-  return kind === "add"
-    ? STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD
-    : STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE
+  switch (kind) {
+    case "add":
+      return STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD
+    case "update":
+      return STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE
+    case "delete":
+      return STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_DELETE
+    case "clear":
+      return STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_CLEAR
+  }
 }
 
 function parseMutationBody(
   kind: LineItemMutationKind,
   body: unknown
-): AddCartLineItemBody | UpdateCartLineItemBody {
-  return kind === "add"
-    ? parseAddCartLineItemBody(body)
-    : parseUpdateCartLineItemBody(body)
+): AddCartLineItemBody | UpdateCartLineItemBody | undefined {
+  if (kind === "add") {
+    return parseAddCartLineItemBody(body)
+  }
+  if (kind === "update") {
+    return parseUpdateCartLineItemBody(body)
+  }
+  return undefined
 }
 
 function requireLineId(req: CartMutationRequest): string {
@@ -341,7 +355,8 @@ async function runWorkflowWithinCas(
   kind: LineItemMutationKind,
   cartId: string,
   expectedVersion: number,
-  body: AddCartLineItemBody | UpdateCartLineItemBody
+  body: AddCartLineItemBody | UpdateCartLineItemBody | undefined,
+  lineItemIds: string[] | undefined
 ) {
   const versionService = req.scope.resolve<StoreResourceVersionModuleService>(
     STORE_RESOURCE_VERSION_MODULE
@@ -363,6 +378,16 @@ async function runWorkflowWithinCas(
             input: {
               cart_id: cartId,
               items: [body as AddCartLineItemBody],
+            },
+            context: sharedContext,
+          })
+        }
+
+        if (kind === "delete" || kind === "clear") {
+          return deleteLineItemsWorkflow(req.scope).run({
+            input: {
+              cart_id: cartId,
+              ids: lineItemIds ?? [],
             },
             context: sharedContext,
           })
@@ -417,7 +442,8 @@ export async function executeLineItemMutation(
   const cart = await refetchCart(req, cartId)
   assertActorOwnsCart(actorWithOwnership, cart)
 
-  const lineId = kind === "update" ? requireLineId(req) : undefined
+  const lineId =
+    kind === "update" || kind === "delete" ? requireLineId(req) : undefined
   const body = parseMutationBody(kind, req.body)
   const rawIdempotencyKey = idempotencyKey(req)
   const operation = lineItemOperation(kind)
@@ -434,7 +460,7 @@ export async function executeLineItemMutation(
       operation,
       cart_id: cartId,
       ...(lineId ? { line_id: lineId } : {}),
-      ...body,
+      ...(body ?? {}),
     },
   })
 
@@ -481,6 +507,71 @@ export async function executeLineItemMutation(
     throw error
   }
 
+  let lineItemIds: string[] | undefined
+  if (kind === "delete") {
+    lineItemIds = [lineId as string]
+  } else if (kind === "clear") {
+    const currentCart = await refetchCart(req, cartId)
+    assertActorOwnsCart(actorWithOwnership, currentCart)
+    const items = currentCart.items ?? []
+    lineItemIds = items.map((item) => item.id).filter((id): id is string => Boolean(id))
+
+    if (lineItemIds.length !== items.length) {
+      throw new MedusaError(
+        MedusaError.Types.UNEXPECTED_STATE,
+        "Cart line-item identity is unavailable"
+      )
+    }
+
+    if (lineItemIds.length === 0) {
+      const currentVersion = await initializeCartResourceVersion(req, cartId)
+      if (currentVersion !== expectedVersion) {
+        const partialResult = await idempotencyService.recordProcessingResult({
+          id: claimResult.record.id,
+          expectedStateVersion: claimResult.record.state_version,
+          result_type: "cart",
+          result_id: cartId,
+        })
+        if (partialResult.type !== "claimed") {
+          throwIdempotencyOwnershipLost()
+        }
+        const terminal = await markTerminal(
+          idempotencyService,
+          partialResult.record,
+          "CART_VERSION_MISMATCH"
+        )
+        if (terminal.type !== "claimed") {
+          throwIdempotencyOwnershipLost()
+        }
+        throw new CartVersionMismatchError(currentCart, currentVersion)
+      }
+
+      const completion = await idempotencyService.markCompleted({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: claimResult.record.state_version,
+        result_type: "cart",
+        result_id: cartId,
+        response_status: 200,
+        result_safe_metadata: {
+          operation,
+          result_type: "cart",
+          result_id: cartId,
+          response_status: 200,
+        },
+      })
+      if (completion.type !== "claimed") {
+        throwIdempotencyOwnershipLost()
+      }
+
+      const replayCart = await refetchCart(req, cartId)
+      const replayVersion = await initializeCartResourceVersion(req, cartId)
+      res.setHeader("ETag", formatCartEtag(replayVersion))
+      res.status(200).json({ cart: replayCart })
+      return
+    }
+  }
+
   let casResult
   try {
     casResult = await runWorkflowWithinCas(
@@ -488,7 +579,8 @@ export async function executeLineItemMutation(
       kind,
       cartId,
       expectedVersion,
-      body
+      body,
+      lineItemIds
     )
   } catch (error) {
     const retryable = await markRetryable(
