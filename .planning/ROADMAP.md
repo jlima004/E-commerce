@@ -26,7 +26,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 15 CONTEXT está **HUMAN APPROVED — PASS**
 - Phase 15 RESEARCH está **HUMAN APPROVED — PASS**
 - Phase 15 PLAN está **HUMAN APPROVED — PASS** (8 plans / 8 serial waves)
-- Phase 15 EXECUTION está **AUTHORIZED — NOT STARTED**; a execução começa em `15-01` e cada checkpoint humano bloqueante entre PLANs continua obrigatório
+- Phase 15 EXECUTION está **IN PROGRESS** até o Plan `15-06`; Plans `15-01`..`15-06` estão HUMAN APPROVED — PASS, o checkpoint humano entre PLANs continua obrigatório e `15-07` permanece não iniciado/não autorizado
 - Phase 16 e gates posteriores permanecem não autorizados até revisão humana própria
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
@@ -45,7 +45,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
 | 14 | Customer Auth & Verification | 13 | 9 | **CLOSED — HUMAN APPROVED; 21/21 plans; 63/63 tasks; 9/9 requirements** |
-| 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN HUMAN APPROVED — PASS; EXECUTION AUTHORIZED — NOT STARTED (8 plans / 8 serial waves)** |
+| 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN HUMAN APPROVED — PASS; 15-01..15-06 HUMAN APPROVED — PASS; 15-07..15-08 NOT STARTED / NOT AUTHORIZED (8 plans / 8 serial waves)** |
 | 16 | Cart Merge & Review | 15 | 8 | Not started |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
 | 18 | Gelato Shipping Quote & Selection | 17 | 8 | Not started |
@@ -85,7 +85,7 @@ Closure authority: `.planning/phases/13-storefront-contract-foundation-surface-l
 - Phase 15 CONTEXT HUMAN APPROVED — PASS.
 - Phase 15 RESEARCH HUMAN APPROVED — PASS.
 - Phase 15 PLAN HUMAN APPROVED — PASS (8 plans / 8 serial waves).
-- Phase 15 EXECUTION AUTHORIZED — NOT STARTED.
+- Phase 15 EXECUTION IN PROGRESS; Plans 15-01..15-06 HUMAN APPROVED — PASS; Plans 15-07..15-08 NOT STARTED / NOT AUTHORIZED.
 - Deploy NOT AUTHORIZED.
 - Real Resend / real providers NOT AUTHORIZED.
 - Remote DB/Redis changes NOT AUTHORIZED.
@@ -197,34 +197,34 @@ Technical head consumed by closure:
 
 **Goal:** substituir a sessão como prova principal de posse por capability opaca e tornar mutações concorrentes seguras.
 
-**Status:** **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN HUMAN APPROVED — PASS; EXECUTION AUTHORIZED — NOT STARTED.** Depends on Phase 14 CLOSED.
+**Status:** **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN HUMAN APPROVED — PASS; EXECUTION IN PROGRESS (15-01..15-06 HUMAN APPROVED — PASS; 15-07..15-08 NOT STARTED / NOT AUTHORIZED).** Depends on Phase 14 CLOSED.
 
 **Plans:** 8 plans / 8 serial waves (replaces the superseded 18-plan set)
 
 Plans:
 **Wave 0**
 
-- [ ] 15-01-PLAN.md — Validation Foundation & PLAN locks P15-D01..P15-D10
+- [x] 15-01-PLAN.md — HUMAN APPROVED — PASS — Validation Foundation & PLAN locks P15-D01..P15-D10
 
 **Wave 1** *(blocked on Wave 0 completion)*
 
-- [ ] 15-02-PLAN.md — Guest Capability Domain & Persistence
+- [x] 15-02-PLAN.md — HUMAN APPROVED — PASS — Guest Capability Domain & Persistence
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 15-03-PLAN.md — Active Cart M1 Boundary & Tracer (Guest + Customer)
+- [x] 15-03-PLAN.md — HUMAN APPROVED — PASS — Active Cart M1 Boundary & Tracer (Guest + Customer)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 15-04-PLAN.md — Active Cart Lifecycle, Idempotency & Concurrency
+- [x] 15-04-PLAN.md — HUMAN APPROVED — PASS — Active Cart Lifecycle, Idempotency & Concurrency
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 15-05-PLAN.md — Line-Item Mutation Core: Add & Update
+- [x] 15-05-PLAN.md — HUMAN APPROVED — PASS — Line-Item Mutation Core: Add & Update
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 15-06-PLAN.md — Delete, Clear & Final Cart Surface
+- [x] 15-06-PLAN.md — HUMAN APPROVED — PASS — Delete, Clear & Final Cart Surface
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -234,7 +234,7 @@ Plans:
 
 - [ ] 15-08-PLAN.md — Final Phase Verification (mandatory ledger)
 
-The accepted Phase-15 CONTEXT, RESEARCH and human-approved PLAN are the authorities for execution. Human authorization now permits Phase-15 EXECUTION beginning at `15-01`, under the canonical sequential-subagent orchestration policy in `15-01-PLAN.md`. Each blocking human checkpoint between plans remains mandatory; no plan auto-starts its successor. Phase 16 and all later gates remain separately human-gated and unauthorized.
+The accepted Phase-15 CONTEXT, RESEARCH and human-approved PLAN are the authorities for execution. Plans `15-01` through `15-06` are human approved — PASS and documentally closed. Plan `15-07` remains not started and requires fresh human authorization; no plan auto-starts its successor. Phase 16 and all later gates remain separately human-gated and unauthorized.
 
 ## Phase 16: Cart Merge & Review
 
@@ -282,4 +282,4 @@ The accepted Phase-15 CONTEXT, RESEARCH and human-approved PLAN are the authorit
 
 O milestone só pode fechar quando houver evidência PASS para todos os gates previstos: contratos Store/OpenAPI, autenticação, capability/concorrência e merge de carrinho, checkout BR/privacidade, Gelato shipping, PaymentAttempt/confirmation, order/catalog handoff, kit types/Zod/fixtures/mocks, contract tests, suites backend, migrations/constraints, drift/lint/build, security negative proofs e release verification aplicável.
 
-Phase 15 CONTEXT, RESEARCH and PLAN are HUMAN APPROVED — PASS, and Phase 15 EXECUTION is AUTHORIZED — NOT STARTED (8 plans / 8 serial waves). Execution starts at 15-01 and remains subject to the blocking human checkpoint between each plan. No Phase 16 or later gate, provider real, infraestrutura remota, deploy ou frontend is authorized by this execution gate.
+Phase 15 CONTEXT, RESEARCH and PLAN are HUMAN APPROVED — PASS; Plans 15-01..15-06 are HUMAN APPROVED — PASS; Plan 15-07 is NOT STARTED / NOT AUTHORIZED (8 plans / 8 serial waves). Phase 15 execution remains subject to the blocking human checkpoint between each plan. No Phase 16 or later gate, provider real, infraestrutura remota, deploy ou frontend is authorized by this execution gate.
