@@ -169,8 +169,10 @@ export type LifecycleClaimResult =
 
 const SAFE_METADATA_KEYS = new Set<string>(STORE_IDEMPOTENCY_SAFE_METADATA_KEYS)
 const OPERATION_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/
-/** Closed label vocabulary for operation/result_type/failure_code/harness. */
+/** Closed lowercase label vocabulary for operation/result_type/harness. */
 const SAFE_LABEL_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/
+/** Structured failure codes may preserve the public Cart vocabulary casing. */
+const SAFE_FAILURE_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/
 /**
  * Closed safe reference ids (result_id / correlation_ref).
  * Requires prefix_value shape so JWT/pepper/Pix blobs cannot hide in allowlisted keys.
@@ -179,7 +181,6 @@ const SAFE_REF_PATTERN = /^[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_-]{1,80}$/
 const LABEL_METADATA_KEYS = new Set<SafeMetadataKey>([
   "operation",
   "result_type",
-  "failure_code",
   "harness",
 ])
 const REF_METADATA_KEYS = new Set<SafeMetadataKey>([
@@ -341,6 +342,14 @@ function assertSafeLabelValue(value: string, code: string): void {
   }
 }
 
+function assertSafeFailureCodeValue(value: string, code: string): void {
+  if (!SAFE_FAILURE_CODE_PATTERN.test(value)) {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, code)
+  }
+
+  assertNoSensitiveStoreIdempotencyPersistence({ failure_code: value })
+}
+
 function assertSafeRefValue(value: string, code: string): void {
   if (!SAFE_REF_PATTERN.test(value)) {
     throw new MedusaError(MedusaError.Types.INVALID_DATA, code)
@@ -355,9 +364,12 @@ function assertSafePersistableString(
     assertSafeRefValue(value, "STORE_IDEMPOTENCY_SAFE_VALUE_INVALID")
     return
   }
+  if (key === "failure_code") {
+    assertSafeFailureCodeValue(value, "STORE_IDEMPOTENCY_SAFE_VALUE_INVALID")
+    return
+  }
   if (
     key === "result_type" ||
-    key === "failure_code" ||
     LABEL_METADATA_KEYS.has(key as SafeMetadataKey)
   ) {
     assertSafeLabelValue(value, "STORE_IDEMPOTENCY_SAFE_VALUE_INVALID")
@@ -636,6 +648,13 @@ function mapRow(row: Record<string, unknown>): StoreIdempotencyRecordRow {
     throw new MedusaError(
       MedusaError.Types.INVALID_DATA,
       "STORE_IDEMPOTENCY_STATE_INVALID"
+    )
+  }
+
+  if (mapped.failure_code != null) {
+    assertSafeFailureCodeValue(
+      mapped.failure_code,
+      "STORE_IDEMPOTENCY_SAFE_VALUE_INVALID"
     )
   }
 
