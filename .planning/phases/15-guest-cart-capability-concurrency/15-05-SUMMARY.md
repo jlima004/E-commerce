@@ -165,3 +165,63 @@ Root cause: the Customer HTTP harness injected `req.customerAuth` directly inste
 `15-06: NOT AUTHORIZED`
 
 Technical remediation is complete, but no human re-review or approval is implied by this record.
+
+## Second Human Re-Review Findings
+
+### B15-05-HR-05 — Guest capability is not bound to target cart ID
+
+Root cause: `resolveM1CartActor` correctly derived `actor.cartId` from
+`capabilityRecord.cart_id`, but `assertActorOwnsCart` only rejected a Guest cart
+owned by a Customer. A valid capability for Guest Cart A could therefore reach
+Guest Cart B supplied by the path. The `{id}` path and `Idempotency-Key` are not
+ownership authorities.
+
+### B15-05-HR-06 — Line-item idempotency operations have no finite lifecycle executor
+
+Root cause: the lifecycle worker had exact handling for
+`store.carts.active.create` and the Phase-13 harness operations only. The
+line-item operations `store.carts.line-items.add` and
+`store.carts.line-items.update` were classified as unsupported, leaving stale
+`processing` or `failed_retryable` rows without a finite, operation-specific
+disposition.
+
+### B15-05-HR-07 — Shipping invalidation no-op seams are not invoked by default runtime
+
+Root cause: quote and selection hooks used optional chaining. The real mutation
+runtime injects only `paymentAttemptModule`, so both Phase-15 shipping no-op seams
+were skipped instead of being traversed after PaymentAttempt invalidation.
+
+## Second Human Re-Review Remediation
+
+- Harness/model: Codex / GPT-5. No subagents were used or invented; A → B → C → D ran sequentially with `parallelization=false`, `auto-chain=false` and `auto_advance=false`.
+- Authorized base: `PLAN15_05_REMEDIATION2_BASE_SHA=e8f8c53c5e9179522e8228d24d58f260d1e7a2f9` on `gsd/phase-15-guest-cart-capability-concurrency`, with clean initial worktree.
+- Guest authority: `assertActorOwnsCart` now requires `cart.id === actor.cartId` and still rejects Customer-owned carts. The discriminating HTTP tests use distinct carts A and B, prove A != B, return uniform 404 for capability A → path B, and observe zero claim, zero CAS, zero workflow, zero CART-09 and zero mutation. Positive A → A remains allowed for add and update.
+- Canonical operations: the two line-item operation constants now belong to the narrow StoreIdempotency `operations.ts` owner and are consumed by both the API mutation pipeline and lifecycle worker. No API→job dependency was introduced.
+- `processing`: stale exact add/update rows transition only after `listDue → claimLifecycleRow`; known cart pointers are preserved and null pointers remain null. Both dispositions become `reconciliation_required` with `stale_store_cart_line_item_partial_effect` or `stale_store_cart_line_item_uncertain_effect`.
+- `failed_retryable`: below the existing attempts/time caps, exact add/update rows become `reconciliation_required`; at or above a cap they become `failed_terminal`. The worker never returns them to `processing` and never retries a Medusa mutation workflow.
+- Finite lifecycle: add is explicitly proven as `processing → reconciliation_required → reconciliation_unresolved`; the same exact dispatcher covers update. Claim loss performs no transition; transition loss increments `failed_items` and is not counted as transitioned. The transition uses the claimed N+1 `state_version`, never the listed N.
+- Negative lifecycle proof: fake suffixes and the bare prefix remain unsupported; the worker has zero `addToCartWorkflow` calls, zero `updateLineItemInCartWorkflow` calls, zero provider calls and zero network calls. Existing `store.carts.active.create` behavior remains unchanged and green.
+- CART-09: production defaults now contain real local no-op functions for shipping quote and selection. The shared runner always executes PaymentAttempt → quote → selection; injected overrides remain supported. The testable default resolver uses no global mutable counter. Network and Gelato remain absent.
+- Regression status: HR-01 uppercase-safe failure codes PASS; HR-02 ownership-before-validation PASS; HR-03 terminal CAS-lost fail-closed PASS; HR-04 Customer Authorization → PostgreSQL authority PASS. Success replay, stale 412 replay, quantity rules, quantity 0 removal and the native workflows-inside-CAS contract remain green.
+- Manifest remains total 63, native identity 51, local-only 12, EXTENDED 15, DENY 48, PRESERVE_LEGACY 5, M1_ENABLED 10 and nativeLocalExtension 4. DELETE line item remains DENY; DELETE collection remains not implemented.
+- RED evidence: capability A → cart B resolved instead of returning 404; lifecycle constants/dispatcher were absent; shipping default runner was absent. GREEN evidence followed without broad refactor.
+- Lifecycle unit: **1 suite / 42 tests PASS**.
+- Shipping unit: **1 suite / 3 tests PASS**.
+- StoreIdempotency failure-code: **1 suite / 16 tests PASS**.
+- 15-05 focused units: **4 suites / 33 tests PASS**.
+- Line-item HTTP: **3 suites / 30 tests PASS**.
+- Active-cart regressions: **3 suites / 31 tests PASS**.
+- Build: **PASS** (backend and frontend). Lint: **PASS, 0 errors / 439 repository warnings**. `git diff --check`: **PASS**. New `.skip`, `.todo` or `.only`: **NONE**.
+- `B15-05 SECOND REMEDIATION ADVERSARIAL REVIEW`: **PASS**. The review found no prefix match, blind retry, heuristic cart lookup, lost-pointer synthesis, listed-version reuse, workflow/provider/network dependency, CART-09 order regression, HR-01..04 regression or scope expansion.
+- Scope proof: no migration, new state, schema change, package/lockfile change, DELETE implementation, 15-06 execution, OpenAPI generation/artifact change, remote PostgreSQL/Redis, Stripe, Gelato, Resend, network, Order, deploy, push or PR.
+
+`15-05 TECHNICAL: SECOND REMEDIATION — PASS`
+
+`Task 15-05-04: AWAITING HUMAN RE-REVIEW`
+
+`Plan 15-05: REMEDIATED — AWAITING HUMAN RE-REVIEW`
+
+`15-06: NOT AUTHORIZED`
+
+This technical PASS stops at the named human re-review checkpoint and does not
+constitute human approval or authorization for any later plan.
