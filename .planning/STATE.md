@@ -8,12 +8,12 @@ progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 36
-  completed_plans: 34
+  completed_plans: 35
   percent: 25
-stopped_at: 15-06 closed; 15-07 NOT STARTED
+stopped_at: 15-07 HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED; 15-08 EXECUTION AUTHORIZED — NOT STARTED
 current_phase: 15
 current_phase_name: guest-cart-capability-concurrency
-current_plan: 15-07
+current_plan: 15-08
 ---
 
 # Project State
@@ -40,7 +40,7 @@ Execution remains manual-review gated.
 - `auto-chain=false`
 - `auto_advance=false` (`workflow.auto_advance=false`; `workflow._auto_chain_active=false`)
 
-Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01, 15-02, 15-03, 15-04, 15-05 and 15-06 are human approved. Task 15-04-04 (Checkpoint B15-P-HR-02), Task 15-05-04 and the Plan 15-06 human checkpoint are CLOSED — HUMAN APPROVED — PASS. Plans 15-07 and later remain unauthorized.
+Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01 through 15-07 are HUMAN APPROVED — PASS; B15-07-HR-01 is CLOSED — PASS and Plan 15-07 is documentally closed. Plan 15-08 execution is explicitly HUMAN AUTHORIZED but remains NOT STARTED. Phase 16 and later gates remain separately unauthorized.
 
 ## Current Gate
 
@@ -66,7 +66,8 @@ Plan 15-03: HUMAN APPROVED — PASS
 Plan 15-04: HUMAN APPROVED — PASS (Task 15-04-04 / Checkpoint B15-P-HR-02 CLOSED)
 Plan 15-05: HUMAN APPROVED — PASS (Task 15-05-04 CLOSED)
 Plan 15-06: HUMAN APPROVED — PASS
-Plan 15-07..15-08: NOT AUTHORIZED
+Plan 15-07: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED (B15-07-HR-01 CLOSED — PASS)
+Plan 15-08: EXECUTION HUMAN AUTHORIZED — NOT STARTED
 
 Deploy / release: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
@@ -82,8 +83,8 @@ Milestone v1.1:
 - requirements complete: **17/91**
 - Phase 13: FND-01..FND-08 = **8/8 COMPLETE**
 - Phase 14: AUTH-01..AUTH-09 = **9/9 COMPLETE**
-- known plans human-approved executed: **34/34** (Phase 13: 7; Phase 14: 21; Phase 15: 15-01, 15-02, 15-03, 15-04, 15-05, 15-06)
-- Phase 15: **IN PROGRESS** (Plans 15-01..15-06 human approved; 15-07..15-08 unauthorized and not started)
+- known plans human-approved executed: **35/35** (Phase 13: 7; Phase 14: 21; Phase 15: 15-01, 15-02, 15-03, 15-04, 15-05, 15-06, 15-07)
+- Phase 15: **IN PROGRESS** (Plans 15-01..15-07 HUMAN APPROVED — PASS; 15-07 documentally closed; 15-08 execution HUMAN AUTHORIZED — NOT STARTED)
 - frontend: BLOCKED
 
 ## Accepted Evidence References
@@ -96,6 +97,7 @@ Phase 15 accepted evidence is preserved in:
 - `.planning/phases/15-guest-cart-capability-concurrency/15-04-SUMMARY.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-05-SUMMARY.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-06-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-07-SUMMARY.md`
 
 Phase 14 accepted evidence is preserved in:
 
@@ -216,7 +218,8 @@ Plan 15-03: HUMAN APPROVED — PASS
 Plan 15-04: HUMAN APPROVED — PASS (Task 15-04-04 / B15-P-HR-02 CLOSED)
 Plan 15-05: HUMAN APPROVED — PASS (Task 15-05-04 CLOSED)
 Plan 15-06: HUMAN APPROVED — PASS
-Plan 15-07..15-08: NOT AUTHORIZED
+Plan 15-07: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED (B15-07-HR-01 CLOSED — PASS)
+Plan 15-08: EXECUTION HUMAN AUTHORIZED — NOT STARTED
 ```
 
 Phase-15 RESEARCH is accepted at
@@ -232,7 +235,6 @@ The approved 8-plan set at `15-01-PLAN.md` … `15-08-PLAN.md` replaces the supe
 
 This authorization does **not** extend to:
 
-- Plan 15-07 or later Plans;
 - Phase 16 or later phases;
 - frontend;
 - deploy/release;
@@ -250,7 +252,9 @@ Plan 15-05 final checkpoint:
 - Task 15-05-04: **CLOSED — HUMAN APPROVED — PASS**.
 - Plan 15-05: **HUMAN APPROVED — CLOSED** and counted in `completed_plans`.
 - Plan 15-06: **HUMAN APPROVED — PASS** and documentally closed.
-- Summary: `.planning/phases/15-guest-cart-capability-concurrency/15-05-SUMMARY.md`.
+- Plan 15-07: **HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**; `B15-07-HR-01` is **CLOSED — PASS**.
+- Plan 15-08: **EXECUTION HUMAN AUTHORIZED — NOT STARTED**.
+- Accepted summaries: `.planning/phases/15-guest-cart-capability-concurrency/15-05-SUMMARY.md`, `15-06-SUMMARY.md` and `15-07-SUMMARY.md`.
 
 ## Hard Invariants Still in Force
 
@@ -267,7 +271,7 @@ Plan 15-05 final checkpoint:
 
 No open Phase-14 blocker remains.
 
-No open Plan 15-05 blocker remains. Plan 15-06 is human approved — PASS and documentally closed. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01..15-06 are human-approved. Plans 15-07..15-08, deploy, real providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
+No open Plan 15-05/15-06/15-07 blocker remains. Plan 15-07 is HUMAN APPROVED — PASS and documentally closed; `B15-07-HR-01` is CLOSED — PASS. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01..15-07 are human-approved. Plan 15-08 execution is HUMAN AUTHORIZED — NOT STARTED. Deploy, real providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
 
 Plan 15-04 final human review:
 
@@ -288,7 +292,18 @@ Plan 15-06 final human review:
 - Task 15-06-01..03 — PASS
 - Plan 15-06 — HUMAN APPROVED — PASS
 - `.planning/phases/15-guest-cart-capability-concurrency/15-06-SUMMARY.md` — accepted evidence
-- Plan 15-07..15-08 — NOT AUTHORIZED / NOT STARTED
+
+Plan 15-07 final human review:
+
+- Task 15-07-01..02 — PASS
+- B15-07-HR-01 — CLOSED — PASS — Cart OpenAPI requires BFF service authority in every Cart M1 security alternative
+- Store contract unit — 23/23 PASS
+- `openapi:lint` — PASS
+- Admin/Webhooks artifacts — unchanged
+- `openapi:check` — NOT RUN during 15-07 by plan contract
+- Plan 15-07 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+- `.planning/phases/15-guest-cart-capability-concurrency/15-07-SUMMARY.md` — accepted evidence
+- Plan 15-08 — EXECUTION HUMAN AUTHORIZED / NOT STARTED
 
 Closed Phase-15 PLAN-review blockers:
 
@@ -329,8 +344,9 @@ Plan 15-03: HUMAN APPROVED — PASS
 Plan 15-04: HUMAN APPROVED — PASS (Task 15-04-04 / B15-P-HR-02 CLOSED)
 Plan 15-05: HUMAN APPROVED — PASS (Task 15-05-04 CLOSED)
 Plan 15-06: HUMAN APPROVED — PASS
-Plan 15-07: NOT STARTED / NOT AUTHORIZED
-Plan 15-08: NOT STARTED / NOT AUTHORIZED
+Plan 15-07: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+B15-07-HR-01: CLOSED — PASS
+Plan 15-08: EXECUTION HUMAN AUTHORIZED — NOT STARTED
 FRONTEND: BLOCKED
 DEPLOY: NOT AUTHORIZED
 REAL PROVIDERS / REMOTE INFRA: NOT AUTHORIZED
@@ -345,5 +361,6 @@ Resume with:
 - `.planning/phases/15-guest-cart-capability-concurrency/15-RESEARCH.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-05-SUMMARY.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-06-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-07-SUMMARY.md`
 
-**Next permitted step:** obtain fresh human authorization for Plan 15-07. Do not execute Plan 15-07. Plans 15-07..15-08, Phase 16, deploy, real providers, remote infra and frontend remain unauthorized.
+**Next permitted step:** execute Plan 15-08 exactly within `15-08-PLAN.md`. The mandatory 15-08 ledger, including `openapi:check` on a clean checkout, is authorized. Do not start Phase 16. Deploy, real providers, remote infra and frontend remain unauthorized.
