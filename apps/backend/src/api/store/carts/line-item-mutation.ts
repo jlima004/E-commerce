@@ -496,31 +496,48 @@ export async function executeLineItemMutation(
       paymentAttemptModule,
     })
   } catch (error) {
-    await idempotencyService.markReconciliationRequired({
+    try {
+      await idempotencyService.markReconciliationRequired({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: claimResult.record.state_version,
+        result_type: "cart",
+        result_id: cartId,
+        failure_code: "CART_INVALIDATION_FAILED",
+      })
+    } catch {}
+    throw error
+  }
+
+  let completion: LifecycleClaimResult
+  try {
+    completion = await idempotencyService.markCompleted({
       id: claimResult.record.id,
       expectedState: "processing",
       expectedStateVersion: claimResult.record.state_version,
       result_type: "cart",
       result_id: cartId,
-      failure_code: "CART_INVALIDATION_FAILED",
+      response_status: 200,
+      result_safe_metadata: {
+        operation,
+        result_type: "cart",
+        result_id: cartId,
+        response_status: 200,
+      },
     })
+  } catch (error) {
+    try {
+      await idempotencyService.markReconciliationRequired({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: claimResult.record.state_version,
+        result_type: "cart",
+        result_id: cartId,
+        failure_code: "MARK_COMPLETED_FAILED",
+      })
+    } catch {}
     throw error
   }
-
-  const completion = await idempotencyService.markCompleted({
-    id: claimResult.record.id,
-    expectedState: "processing",
-    expectedStateVersion: claimResult.record.state_version,
-    result_type: "cart",
-    result_id: cartId,
-    response_status: 200,
-    result_safe_metadata: {
-      operation,
-      result_type: "cart",
-      result_id: cartId,
-      response_status: 200,
-    },
-  })
 
   if (completion.type !== "claimed") {
     throw Object.assign(
