@@ -4,8 +4,8 @@
 
 - **Phase / Plan:** Phase 15 (`guest-cart-capability-concurrency`), Plan `15-04`
 - **Execution Date:** 2026-08-19 / 2026-08-20
-- **Status:** REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-04-04 / B15-P-HR-02)
-- **Outcome:** Implemented integer resource versioning with quoted ETag format (`"1"`), strong `If-Match` parsing, 412 `CART_VERSION_MISMATCH` safe snapshot envelope, 7-day rolling / 30-day absolute guest capability lifecycle with completed cart consumption, and canonical `store.carts.active.create` idempotency claiming with 200 replay (omitting plaintext token) and Q-11 matrix support. Final Crash/CAS remediation closed `B15-04-HR-04`, `B15-04-HR-05`, and `B15-04-HR-06`.
+- **Status:** FINAL GOVERNANCE REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-04-04 / B15-P-HR-02)
+- **Outcome:** Implemented integer resource versioning with quoted ETag format (`"1"`), strong `If-Match` parsing, 412 `CART_VERSION_MISMATCH` safe snapshot envelope, 7-day rolling / 30-day absolute guest capability lifecycle with completed cart consumption, and canonical `store.carts.active.create` idempotency claiming with 200 replay (omitting plaintext token) and Q-11 matrix support. Final Crash/CAS remediation closed `B15-04-HR-05` and `B15-04-HR-06`. Cursor final governance validation round completed sequentially (Subagents A → B → C → D); `B15-04-HR-04` CLOSED — PASS for the current Cursor harness. Human approval not yet granted.
 
 ---
 
@@ -158,7 +158,7 @@ Implemented in [apps/backend/src/modules/store-idempotency/service.ts](file:///h
 
 ## Subagent Execution Evidence
 
-### Remediation Round 1 (Session 8b56b018-f85f-4ab0-b55b-7fa7ef120665)
+### Remediation Round 1 (Session 8b56b018-f85f-4ab0-b55b-7fa7ef120665) — HISTORICAL (Antigravity harness; not current Cursor execution policy)
 
 #### Subagent A (R1)
 - **ID:** NOT EXPOSED BY ANTIGRAVITY
@@ -198,7 +198,7 @@ Implemented in [apps/backend/src/modules/store-idempotency/service.ts](file:///h
 
 ---
 
-### Final Crash/CAS Remediation Round (Session 90bbbb30-d483-4efb-b981-5c50d1169e1c)
+### Final Crash/CAS Remediation Round (Session 90bbbb30-d483-4efb-b981-5c50d1169e1c) — HISTORICAL (Antigravity harness; not current Cursor execution policy)
 
 #### Subagent A (Crash/CAS Contract Audit)
 - **ID:** NOT EXPOSED BY ANTIGRAVITY
@@ -279,7 +279,9 @@ git diff --check
 
 ## Final Remediated Status
 
-- **B15-04-HR-04:** CLOSED — PASS (Subagent factual model evidence recorded; unverifiable entries marked accurately per runtime facts)
+> **Note:** The HR-04 closure below reflects the **HISTORICAL** Antigravity/Gemini Final Lifecycle Remediation round (session `f096fbd8-9110-4b2f-b172-1405ecadf1f6`). It is **not** current-Cursor proof. Current harness status for HR-04 is documented under **Cursor Final Governance Validation Round** below.
+
+- **B15-04-HR-04:** CLOSED — PASS *(historical Antigravity/Gemini lifecycle round; not current-Cursor proof)*
 - **B15-04-HR-05:** CLOSED — PASS (Confirmed cart `result_id` is durably persisted via `recordProcessingResult` before refetch and capability minting)
 - **B15-04-HR-06:** CLOSED — PASS (`markCompleted` CAS lost fails closed immediately with 409 conflict without emitting token or returning 201)
 
@@ -356,7 +358,7 @@ git diff --check
 
 ---
 
-## Subagent Evidence (Final Lifecycle Remediation Round)
+## Subagent Evidence (Final Lifecycle Remediation Round) — HISTORICAL (Antigravity harness; not current Cursor execution policy)
 
 ### Session Information
 - **Session ID:** `f096fbd8-9110-4b2f-b172-1405ecadf1f6`
@@ -432,12 +434,95 @@ git diff --check
 
 ## Final Gate Status
 
-- **B15-04-HR-04:** CLOSED — PASS
-- **B15-04-HR-07:** CLOSED — PASS
-- **B15-04-HR-08:** CLOSED — PASS
-- **B15-04-HR-01..08:** ALL CLOSED — PASS
-- **15-04 TECHNICAL:** FINAL REMEDIATION — PASS
+> **Note:** The historical HR-04 closure below reflects the Antigravity/Gemini Final Lifecycle Remediation round only. Current-Cursor HR-04 is **CLOSED — PASS** after the Cursor Final Governance Validation Round (Subagents A → B → C → D). Do not treat the Antigravity/Gemini round as the current harness proof.
+
+- **B15-04-HR-04:** CLOSED — PASS *(current Cursor round: sequential Grok 4.6 orchestrator with explicitly selected Grok 4.6 or Composer 2.5 subagents; historical Antigravity/Gemini records preserved factually)*
+- **B15-04-HR-01:** CLOSED — PASS *(technical; revalidated by Cursor Subagent B — no regression)*
+- **B15-04-HR-02:** CLOSED — PASS *(technical; revalidated by Cursor Subagent B — no regression)*
+- **B15-04-HR-03:** CLOSED — PASS *(technical; revalidated by Cursor Subagent B — no regression)*
+- **B15-04-HR-05:** CLOSED — PASS *(technical; revalidated by Cursor Subagent B — no regression)*
+- **B15-04-HR-06:** CLOSED — PASS *(technical; revalidated by Cursor Subagent B — no regression)*
+- **B15-04-HR-07:** CLOSED — PASS *(technical; revalidated by Cursor Subagent B — no regression)*
+- **B15-04-HR-08:** CLOSED — PASS *(technical; revalidated by Cursor Subagent B — no regression)*
+- **15-04 TECHNICAL:** FINAL REMEDIATION — PASS *(runtime revalidated by Cursor Subagent B; no regression)*
 - **Task 15-04-04 / B15-P-HR-02:** AWAITING HUMAN RE-REVIEW
 - **15-04 HUMAN CHECKPOINT:** AWAITING HUMAN RE-REVIEW
 - **Plan 15-05:** NOT AUTHORIZED
 - **Remote Providers / Deploy / Push / PR:** NONE / NOT AUTHORIZED
+
+---
+
+## Cursor Final Governance Validation Round
+
+Harness: Cursor
+Orchestrator: Grok 4.6
+parallelization: false
+auto-chain: false
+Session: 25a33119-3f3b-4423-bcbd-d87d4a7a6719
+
+### Subagent A
+- **ID:** e59459ae-88c8-4f51-afa2-48fd599b20f7
+- **Session / Task reference:** 25a33119-3f3b-4423-bcbd-d87d4a7a6719 / e59459ae-88c8-4f51-afa2-48fd599b20f7
+- **Requested Model:** Grok 4.6
+- **Actual Model:** NOT EXPOSED BY CURSOR
+- **Selection Mode:** EXPLICIT
+- **Role:** As-Built / Governance Audit
+- **Mode:** READ-ONLY
+- **Verdict:** B15-04 CURSOR GOVERNANCE PREFLIGHT: BLOCKED
+- **Note:** BLOCKED was the expected starting gap (HR-04 closed on Antigravity/Gemini evidence, not current Cursor). No runtime regression. Worktree CLEAN, HEAD 9bc376a, 15-05 not started.
+
+### Subagent B
+- **ID:** e11c8541-e6db-4642-89fd-7ffce0c1b2e5
+- **Session / Task reference:** 25a33119-3f3b-4423-bcbd-d87d4a7a6719 / e11c8541-e6db-4642-89fd-7ffce0c1b2e5
+- **Requested Model:** Composer 2.5
+- **Actual Model:** NOT EXPOSED BY CURSOR
+- **Selection Mode:** EXPLICIT
+- **Role:** Focused Technical Validation
+- **Mode:** READ + EXECUTE
+- **Verdict:** B15-04 FOCUSED TECHNICAL VALIDATION: PASS
+- **Regression found:** NO
+- **B-FIX:** N/A
+
+### Subagent C
+- **ID:** 2de95702-33e6-4ca8-9d33-fa7f41c83340
+- **Session / Task reference:** 25a33119-3f3b-4423-bcbd-d87d4a7a6719 / 2de95702-33e6-4ca8-9d33-fa7f41c83340
+- **Requested Model:** Composer 2.5
+- **Actual Model:** NOT EXPOSED BY CURSOR
+- **Selection Mode:** EXPLICIT
+- **Role:** Documentation Remediation
+- **Mode:** WRITE
+- **Verdict:** B15-04 DOCUMENTATION REMEDIATION: PASS
+
+### Subagent D
+- **ID:** bea97b5d-4b2a-484e-90ce-34a4f5ef59db
+- **Session / Task reference:** 25a33119-3f3b-4423-bcbd-d87d4a7a6719 / bea97b5d-4b2a-484e-90ce-34a4f5ef59db
+- **Requested Model:** Grok 4.6
+- **Actual Model:** NOT EXPOSED BY CURSOR
+- **Selection Mode:** EXPLICIT
+- **Role:** Adversarial Final Review
+- **Mode:** READ-ONLY
+- **Verdict:** B15-04 CURSOR FINAL ADVERSARIAL REVIEW: PASS
+- **Attack claims:** 0 PROVED / 23 NOT PROVED. Remaining D-start gaps were documentation follow-ups only (D ID, HR-04 OPEN pending this PASS, STATE not yet FINAL GOVERNANCE REMEDIATED). No runtime regression. No 15-05 start. Historical Antigravity/Gemini records not falsified.
+- **Close-out re-review (same ID, after orchestrator documentation follow-ups):** PASS — HR-04 CLOSED with this Cursor A→B→C→D evidence; STATE aligned to FINAL GOVERNANCE REMEDIATED — AWAITING HUMAN RE-REVIEW; completed_plans 31; 15-05 NOT AUTHORIZED.
+
+### Current HR-04 Status (post Subagent A → B → C → D)
+
+- **B15-04-HR-04:** CLOSED — PASS
+- **Reason:** Current Cursor validation round executed sequentially with Grok 4.6 orchestrator and explicitly selected Grok 4.6 / Composer 2.5 subagents; historical Antigravity model records preserved factually.
+- **Note:** The slash in the reason is policy language (two allowed models, selected explicitly per task). It is not a single-subagent Actual Model. Per-subagent Requested Models in this round: A Grok 4.6; B Composer 2.5; C Composer 2.5; D Grok 4.6.
+
+### Cursor Round Automated Verification
+
+1. **StoreIdempotency recordProcessingResult & Lifecycle Unit Tests:**
+   **Result:** 2 test suites passed, 38 tests passed (0 skipped, 0 failed).
+
+2. **Concurrency, Errors, Capability Lifecycle & Idempotency Scope Unit Tests:**
+   **Result:** 4 test suites passed, 53 tests passed (0 skipped, 0 failed).
+
+3. **Guest & Customer Active Cart HTTP Integration Tests:**
+   **Result:** 4 test suites passed, 34 tests passed (0 skipped, 0 failed).
+
+4. **Build & Whitespace Check:**
+   **Result:** Build PASS, `git diff --check` PASS.
+
+All 14 technical checks PASS (canonical constant, exact lifecycle match, processing+result_id and processing+null → reconciliation_required, no worker create retry, finite lifecycle, claimLifecycleRow, claimed state_version CAS, recordProcessingResult semantics, guest/customer 201 after markCompleted claimed, markCompleted lost fail-closed, replay canonical refetch / no token reissue, no new migration/state/package).
