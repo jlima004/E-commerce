@@ -143,24 +143,26 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
   entry({
     method: "POST",
     pathTemplate: "/store/carts/{id}/line-items",
-    origin: "native",
+    origin: "native+local_extension",
     classification: "EXTENDED",
-    runtime_policy: "DENY",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
     openapi_m1_expectation: "include_executable_m1",
     rationale:
-      "Cart M1 candidate requiring capability, idempotency key, If-Match and DTO; not v1.0 Store OpenAPI accepted — DENY until owner phase enables.",
+      "Phase 15 guest/customer line add wrapper preserves the native workflow while enforcing capability, idempotency, If-Match, CAS and DTO contracts.",
     owner_phase: "15",
     owner_domain: "cart",
   }),
   entry({
     method: "POST",
     pathTemplate: "/store/carts/{id}/line-items/{line_id}",
-    origin: "native",
+    origin: "native+local_extension",
     classification: "EXTENDED",
-    runtime_policy: "DENY",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
     openapi_m1_expectation: "include_executable_m1",
     rationale:
-      "Cart M1 line update candidate; no v1.0 Store OpenAPI acceptance — DENY pending Phase 15 hardening.",
+      "Phase 15 guest/customer line update wrapper preserves the native workflow and adds quantity-zero removal, capability, idempotency, If-Match and CAS contracts.",
     owner_phase: "15",
     owner_domain: "cart",
   }),
@@ -822,6 +824,8 @@ export const STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS = [
 ] as const
 
 export const STORE_SURFACE_M1_ENABLED_OPERATIONS = [
+  "POST /store/carts/{id}/line-items",
+  "POST /store/carts/{id}/line-items/{line_id}",
   "GET /store/customers/me",
   ...STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS,
   ...STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS,
@@ -967,16 +971,16 @@ export function validateStoreSurfaceManifest(
       message: `expected OUTSIDE_FRONTEND_M1=31, found ${counts.outsideFrontendM1}`,
     })
   }
-  if (counts.m1EnabledPolicy !== 8) {
+  if (counts.m1EnabledPolicy !== 10) {
     violations.push({
       code: "M1_ENABLED_POLICY",
-      message: `Phase 15 requires exactly eight M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
+      message: `Phase 15 requires exactly ten M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
     })
   }
-  if (counts.m1EnablementEnabled !== 8) {
+  if (counts.m1EnablementEnabled !== 10) {
     violations.push({
       code: "M1_ENABLEMENT_ENABLED",
-      message: `Phase 15 requires exactly eight enablements; found ${counts.m1EnablementEnabled}`,
+      message: `Phase 15 requires exactly ten enablements; found ${counts.m1EnablementEnabled}`,
     })
   }
   if (counts.deny + counts.preserveLegacy + counts.m1EnabledPolicy !== counts.total) {
@@ -1096,7 +1100,7 @@ export function validateStoreSurfaceManifest(
     violations.push({
       code: "PHASE15_EXACT_SURFACE",
       message:
-        "M1_ENABLED must contain exactly Phase 14 six operations plus Phase 15 GET/POST /store/carts/active",
+        "M1_ENABLED must contain exactly Phase 14 six operations plus Phase 15 cart active and line-item operations",
     })
   }
 

@@ -669,6 +669,22 @@ export default defineMiddlewares({
     // BFF service guard only; access guard is never mounted unconditionally.
     ...storeCartBffProtectedRouteEntries(),
     {
+      method: ["POST"],
+      matcher: "/store/carts/:id/line-items",
+      middlewares: [
+        storeCartPreOrderQueryConfigMiddleware,
+        storeCartPreOrderResponseMiddleware,
+      ],
+    },
+    {
+      method: ["POST"],
+      matcher: "/store/carts/:id/line-items/:line_id",
+      middlewares: [
+        storeCartPreOrderQueryConfigMiddleware,
+        storeCartPreOrderResponseMiddleware,
+      ],
+    },
+    {
       method: ["GET"],
       matcher: "/store/products",
       middlewares: [
