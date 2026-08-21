@@ -230,9 +230,9 @@ This authorization does **not** extend to:
 
 Plan 15-05 remediation checkpoint:
 
-- Tasks 15-05-01..03 and both authorized narrow remediations have focused implementation/test evidence: **15-05 TECHNICAL: SECOND REMEDIATION — PASS**.
-- B15-05-HR-01..HR-07 were remediated within the explicitly authorized mutation, StoreIdempotency lifecycle, shipping invalidation, test and documentary allowlist.
-- The second remediation binds Guest capability cart A to target cart A, adds exact finite lifecycle classification for line-item add/update, and invokes the default CART-09 shipping no-op seams after PaymentAttempt invalidation.
+- Tasks 15-05-01..03 and the three authorized narrow remediations have focused implementation/test evidence: **15-05 TECHNICAL: THIRD REMEDIATION — PASS**.
+- B15-05-HR-01..HR-08 were remediated within the explicitly authorized mutation, StoreIdempotency lifecycle, shipping invalidation, test and documentary allowlist.
+- The second remediation remains recorded below as historical evidence. The third remediation binds Customer line-item ADD/UPDATE to the same canonical active-cart selector already used by `/store/carts/active`, while preserving Guest capability-to-target authority.
 - Task 15-05-04 is **AWAITING HUMAN RE-REVIEW**; the Plan is not counted as human-approved.
 - Summary: `.planning/phases/15-guest-cart-capability-concurrency/15-05-SUMMARY.md`.
 
@@ -251,7 +251,7 @@ Plan 15-05 remediation checkpoint:
 
 No open Phase-14 blocker remains.
 
-Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01..15-04 are human-approved. Plan 15-04 closed its Task 15-04-04 checkpoint (B15-P-HR-02) with B15-04-HR-01..HR-09 CLOSED — PASS. Plan 15-05 has a technical SECOND REMEDIATION — PASS for B15-05-HR-01..HR-07 and awaits human re-review at Task 15-05-04. Plans 15-06..15-08, deploy, real providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
+Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01..15-04 are human-approved. Plan 15-04 closed its Task 15-04-04 checkpoint (B15-P-HR-02) with B15-04-HR-01..HR-09 CLOSED — PASS. Plan 15-05 has a technical THIRD REMEDIATION — PASS for B15-05-HR-01..HR-08 and awaits human re-review at Task 15-05-04. Plans 15-06..15-08, deploy, real providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
 
 Plan 15-04 final human review:
 

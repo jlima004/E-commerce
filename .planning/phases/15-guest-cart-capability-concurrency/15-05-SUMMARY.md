@@ -225,3 +225,74 @@ were skipped instead of being traversed after PaymentAttempt invalidation.
 
 This technical PASS stops at the named human re-review checkpoint and does not
 constitute human approval or authorization for any later plan.
+
+## Third Human Re-Review Finding
+
+### B15-05-HR-08
+
+Root cause: the shared line-item mutation pipeline proved only generic Customer
+ownership (`cart.customer.id === actor.customerId`). A Customer could therefore
+mutate an older valid cart even when `/store/carts/active` selected a newer cart
+for the same Customer. The path `{id}` was being treated as a free target rather
+than being compared with the canonical active Customer cart.
+
+The existing active-cart rule is: query carts for the authorized Customer with
+`completed_at: null`, retain incomplete carts whose
+`active_for_checkout !== false`, and select the first cart after
+`updated_at DESC` sorting. No additional tie-break was introduced; equal
+timestamps retain the existing returned order.
+
+## Third Human Re-Review Remediation
+
+- `selectCanonicalCustomerActiveCart` and
+  `resolveCanonicalCustomerActiveCart` were extracted into the narrow Store
+  carts helper `apps/backend/src/api/store/carts/customer-active-cart.ts`.
+- `GET /store/carts/active` and the Customer branch of `POST /store/carts/active`
+  now use that helper; the existing Guest capability path remains unchanged.
+- Customer line-item ADD and UPDATE now resolve the canonical active cart first
+  and return uniform 404 when `{id}` is not that cart. Body/path validation,
+  `Idempotency-Key`, claim, replay, `If-Match`, CAS/workflow, CART-09 and
+  terminalization remain after canonical authority resolution.
+- Same-Customer A/B proof: Customer `cus_line_items_01`, Cart A is older and
+  Cart B is newer, both incomplete and active. The active route selected B.
+- Negative ADD proof: target A returned 404 with claim 0, CAS 0, native workflow
+  0, CART-09 0 and no mutation.
+- Positive ADD proof: target B returned 200 with claim 1, CAS 1, native workflow
+  1 and CART-09 1.
+- Negative UPDATE proof: target A returned 404 with claim 0, CAS 0, native
+  workflow 0, CART-09 0 and no mutation.
+- Positive UPDATE proof: target B returned 200 with claim 1, CAS 1, native
+  workflow 1 and CART-09 1.
+- Active-route regression: Customer A/B ordering and the existing no-cart,
+  Guest, BFF and Customer Authorization→PostgreSQL paths remained green.
+- Guest regression: Guest line-item ADD/UPDATE and Guest idempotency/tracer
+  suites remained green; capability authority was not changed.
+- Focused verification: customer active/line-item **23/23**; Guest+Customer
+  line-item regressions **34/34**; active-cart regressions **32/32**; lifecycle
+  **42/42**; shipping **3/3**; structured failure-code **16/16**; manifest
+  **8/8**.
+- Build: **PASS** (backend and frontend). Lint: **PASS**, 0 errors and 439
+  repository warnings. `git diff --check`: **PASS**. No new `.skip`, `.todo`
+  or `.only` markers.
+- Adversarial review: **PASS**. No target-selected authority, validation-before-
+  ownership, Guest cross-cart access, auth regression, replay/claim ordering
+  regression or scope expansion was found.
+- Scope remained narrow: one new factual helper plus the two authorized route
+  sources and the two authorized Customer HTTP test surfaces. No migration,
+  schema, package/lockfile, manifest, DELETE, OpenAPI, provider/network, Order,
+  15-06, push, PR or deploy action occurred.
+
+`PLAN15_05_REMEDIATION3_BASE_SHA=19927cc54ce1c2a02d7968930cd4683b8ab33ea4`
+
+`B15-05-HR-08: CLOSED — PASS`
+
+`15-05 TECHNICAL: THIRD REMEDIATION — PASS`
+
+`Task 15-05-04: AWAITING HUMAN RE-REVIEW`
+
+`Plan 15-05: REMEDIATED — AWAITING HUMAN RE-REVIEW`
+
+`15-06: NOT AUTHORIZED`
+
+This technical PASS stops at the named human re-review checkpoint and does not
+constitute human approval or authorization for any later plan.
