@@ -303,6 +303,12 @@ Closed Phase-15 PLAN-review blockers:
 - B15-P-RP-HR-03 — CLOSED — PASS — post-create/mint partial-effect policy
 - Stale If-Match contract — CLOSED — PASS — failed_terminal deterministic replay
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 260821-r4s | B15-07-HR-01: alinhar security contract do Cart M1 ao runtime BFF | 2026-08-21 | 637f19d | Verified | [260821-r4s-b15-07-hr-01-alinhar-security-contract-d](./quick/260821-r4s-b15-07-hr-01-alinhar-security-contract-d/) |
+
 ## Session Continuity
 
 **Resume file:** .planning/STATE.md
