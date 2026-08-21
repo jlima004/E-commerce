@@ -124,3 +124,44 @@ The two promoted line-item operations remain EXTENDED; EXTENDED was not incremen
 `15-06: NOT AUTHORIZED`
 
 No further implementation, service-scope expansion, push, PR, deploy or 15-06 execution was performed.
+
+## Human Review Findings — Remediation
+
+The original blocked execution report above is preserved. The following findings were remediated under the explicit 15-05 remediation authorization, starting from blocked HEAD `ba9885051880586ce1ce5146484cbe716c14e4cb` on the same branch.
+
+### B15-05-HR-01 — failure_code vocabulary
+
+Root cause: the existing lowercase label validator was also applied to the canonical Cart failure codes, rejecting required values such as `CART_VERSION_MISMATCH` and `CART_MUTATION_FAILED`. The authorized `store-idempotency/service.ts` correction now uses a dedicated structured `failure_code` validator, preserves the approved casing, rejects spaces/separators/control characters/oversized values and continues the sensitive-value sink checks. `operation`, `result_type` and `harness` retain the lowercase contract.
+
+### B15-05-HR-02 — ownership precedence
+
+Root cause: line-item body, path and idempotency-key validation occurred before the canonical cart ownership check. The mutation pipeline now resolves the actor, validates the minimum cart identity, refetches the active cart and enforces ownership before validating `line_id`, body or `Idempotency-Key`. Wrong-owner requests therefore fail closed without a claim or workflow invocation.
+
+### B15-05-HR-03 — terminal CAS lost
+
+Root cause: the `markFailedTerminal` result was ignored on terminal error exits. The mutation pipeline now checks every lifecycle result, including retryable failure, stale-result recording, terminalization, reconciliation and completion. A lost CAS returns the canonical retryable 409 `IDEMPOTENCY_KEY_IN_PROGRESS`; it never fabricates a 412 or success response. The stale path passes the state-version returned by `recordProcessingResult` into terminalization.
+
+### B15-05-HR-04 — Customer authority evidence
+
+Root cause: the Customer HTTP harness injected `req.customerAuth` directly instead of exercising the approved Authorization-to-PostgreSQL authority path. The harness now issues a real customer access JWT, creates synthetic lineage/credential rows, passes `Authorization: Bearer ...`, and resolves authority through the PostgreSQL-backed query seam. Positive, invalid-Authorization, unavailable-authority and wrong-owner negative paths assert claim/workflow suppression.
+
+## Human Review Remediation
+
+- Scope expansion used: only the authorized `store-idempotency/service.ts`, canonical StoreIdempotency test, line-item mutation source and the three 15-05 HTTP test surfaces were changed. No migration or schema change was made.
+- Harness/model: Codex / GPT-5; no subagents exposed; A → B → C → D executed sequentially with `parallelization=false`, `auto-chain=false` and `auto_advance=false`.
+- Remediation commits: `0ca6337` (`failure_code` contract), `350abe9` (ownership/lifecycle fail-closed behavior), `10b2e0e` (Customer PostgreSQL authority evidence).
+- Evidence: failure-code unit **16/16 PASS**; altered/service focused units **6 suites / 134 tests PASS**; 15-05 focused units **4 suites / 31 tests PASS**; line-item HTTP **3 suites / 26 tests PASS**; active-cart regressions **3 suites / 31 tests PASS**; canonical disposable-PostgreSQL StoreIdempotency **1 suite / 18 tests PASS**.
+- Build and lint: **PASS** with zero lint errors (repository warnings retained); `git diff --check`: **PASS**; no new `.skip`, `.todo` or `.only`.
+- Negative scope proof: Plan 15-06 was not executed; no OpenAPI generation, Order, provider/network, migration, package/lockfile, push, PR or deploy action occurred.
+
+## Remediation Gate
+
+`15-05 TECHNICAL: REMEDIATED — PASS`
+
+`Task 15-05-04: AWAITING HUMAN RE-REVIEW`
+
+`Plan 15-05: REMEDIATED — AWAITING HUMAN RE-REVIEW`
+
+`15-06: NOT AUTHORIZED`
+
+Technical remediation is complete, but no human re-review or approval is implied by this record.

@@ -10,7 +10,7 @@ progress:
   total_plans: 36
   completed_plans: 32
   percent: 25
-stopped_at: 15-05 human review checkpoint — Task 15-05-04 (BLOCKED: idempotency label compatibility)
+stopped_at: 15-05 human re-review checkpoint — Task 15-05-04
 current_phase: 15
 current_phase_name: guest-cart-capability-concurrency
 current_plan: 15-05
@@ -40,7 +40,7 @@ Execution remains manual-review gated.
 - `auto-chain=false`
 - `auto_advance=false` (`workflow.auto_advance=false`; `workflow._auto_chain_active=false`)
 
-Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01, 15-02, 15-03 and 15-04 are human approved. Task 15-04-04 (Checkpoint B15-P-HR-02) is CLOSED — HUMAN APPROVED — PASS. Plan 15-05 is executed but BLOCKED pending human review. Plans 15-06 and later remain unauthorized.
+Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01, 15-02, 15-03 and 15-04 are human approved. Task 15-04-04 (Checkpoint B15-P-HR-02) is CLOSED — HUMAN APPROVED — PASS. Plan 15-05 is technically remediated but awaits human re-review. Plans 15-06 and later remain unauthorized.
 
 ## Current Gate
 
@@ -64,7 +64,7 @@ Plan 15-01: HUMAN APPROVED — PASS
 Plan 15-02: HUMAN APPROVED — PASS
 Plan 15-03: HUMAN APPROVED — PASS
 Plan 15-04: HUMAN APPROVED — PASS (Task 15-04-04 / Checkpoint B15-P-HR-02 CLOSED)
-Plan 15-05: EXECUTED — BLOCKED — AWAITING HUMAN REVIEW (Task 15-05-04)
+Plan 15-05: REMEDIATED — AWAITING HUMAN RE-REVIEW (Task 15-05-04)
 Plan 15-06: NOT AUTHORIZED
 
 Deploy / release: NOT AUTHORIZED
@@ -82,7 +82,7 @@ Milestone v1.1:
 - Phase 13: FND-01..FND-08 = **8/8 COMPLETE**
 - Phase 14: AUTH-01..AUTH-09 = **9/9 COMPLETE**
 - known plans human-approved executed: **32/32** (Phase 13: 7; Phase 14: 21; Phase 15: 15-01, 15-02, 15-03, 15-04)
-- Phase 15: **IN PROGRESS** (Plans 15-01..15-04 human approved; Plan 15-05 executed but blocked at human review; 15-06..15-08 unauthorized)
+- Phase 15: **IN PROGRESS** (Plans 15-01..15-04 human approved; Plan 15-05 technically remediated and awaiting human re-review; 15-06..15-08 unauthorized)
 - frontend: BLOCKED
 
 ## Accepted Evidence References
@@ -204,7 +204,7 @@ Plan 15-01: HUMAN APPROVED — PASS
 Plan 15-02: HUMAN APPROVED — PASS
 Plan 15-03: HUMAN APPROVED — PASS
 Plan 15-04: HUMAN APPROVED — PASS (Task 15-04-04 / B15-P-HR-02 CLOSED)
-Plan 15-05: EXECUTED — BLOCKED — AWAITING HUMAN REVIEW
+Plan 15-05: REMEDIATED — AWAITING HUMAN RE-REVIEW
 Plan 15-06: NOT AUTHORIZED
 ```
 
@@ -228,11 +228,11 @@ This authorization does **not** extend to:
 - remote infrastructure;
 - bypassing a blocking human checkpoint between Phase-15 PLANs.
 
-Plan 15-05 execution checkpoint:
+Plan 15-05 remediation checkpoint:
 
-- Tasks 15-05-01..03 have focused implementation/test evidence, but the Plan is BLOCKED.
-- The existing `store-idempotency` label validator rejects uppercase `CART_VERSION_MISMATCH` and `CART_MUTATION_FAILED` with `invalid_data`.
-- Fixing that service is outside the explicit Plan 15-05 allowlist and was not authorized.
+- Tasks 15-05-01..03 and the authorized remediation have focused implementation/test evidence: **15-05 TECHNICAL: REMEDIATED — PASS**.
+- B15-05-HR-01..HR-04 were remediated within the explicitly authorized service, mutation and test allowlist.
+- Task 15-05-04 is **AWAITING HUMAN RE-REVIEW**; the Plan is not counted as human-approved.
 - Summary: `.planning/phases/15-guest-cart-capability-concurrency/15-05-SUMMARY.md`.
 
 ## Hard Invariants Still in Force
@@ -250,13 +250,13 @@ Plan 15-05 execution checkpoint:
 
 No open Phase-14 blocker remains.
 
-Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01..15-04 are human-approved. Plan 15-04 closed its Task 15-04-04 checkpoint (B15-P-HR-02) with B15-04-HR-01..HR-09 CLOSED — PASS. Plan 15-05 was executed through Tasks 15-05-01..03, but is BLOCKED pending human review because the existing idempotency service rejects the required uppercase `CART_VERSION_MISMATCH` label. Plans 15-06..15-08, deploy, real providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
+Phase 15 CONTEXT, RESEARCH and PLAN are human-approved. Plans 15-01..15-04 are human-approved. Plan 15-04 closed its Task 15-04-04 checkpoint (B15-P-HR-02) with B15-04-HR-01..HR-09 CLOSED — PASS. Plan 15-05 is technically remediated with focused PASS evidence and awaits human re-review at Task 15-05-04. Plans 15-06..15-08, deploy, real providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
 
 Plan 15-04 final human review:
 
 - B15-04-HR-01..HR-09 — CLOSED — PASS
 - Task 15-04-04 / B15-P-HR-02 — CLOSED — HUMAN APPROVED — PASS
-- Plan 15-05 — EXECUTED — BLOCKED — AWAITING HUMAN REVIEW
+- Plan 15-05 — REMEDIATED — AWAITING HUMAN RE-REVIEW
 
 Closed Phase-15 PLAN-review blockers:
 
@@ -289,7 +289,7 @@ Plan 15-01: HUMAN APPROVED — PASS
 Plan 15-02: HUMAN APPROVED — PASS
 Plan 15-03: HUMAN APPROVED — PASS
 Plan 15-04: HUMAN APPROVED — PASS (Task 15-04-04 / B15-P-HR-02 CLOSED)
-Plan 15-05: EXECUTED — BLOCKED — AWAITING HUMAN REVIEW
+Plan 15-05: REMEDIATED — AWAITING HUMAN RE-REVIEW
 Plan 15-06: NOT AUTHORIZED
 FRONTEND: BLOCKED
 DEPLOY: NOT AUTHORIZED
@@ -306,4 +306,4 @@ Resume with:
 - `.planning/phases/15-guest-cart-capability-concurrency/15-04-SUMMARY.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-05-PLAN.md`
 
-**Next permitted step:** human review of Plan 15-05 checkpoint and the recorded idempotency-service compatibility blocker. Do not execute Plan 15-06. Plan 15-04 is HUMAN APPROVED — PASS and its blocking checkpoint is closed. Plans 15-06..15-08, Phase 16, deploy, real providers, remote infra and frontend remain unauthorized.
+**Next permitted step:** human re-review of the remediated Plan 15-05 checkpoint. Do not execute Plan 15-06. Plan 15-04 is HUMAN APPROVED — PASS and its blocking checkpoint is closed. Plans 15-06..15-08, Phase 16, deploy, real providers, remote infra and frontend remain unauthorized.
