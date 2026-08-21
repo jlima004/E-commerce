@@ -1,7 +1,14 @@
-import { POST as addLineItem } from "../../src/api/store/carts/[id]/line-items/route"
-import { POST as updateLineItem } from "../../src/api/store/carts/[id]/line-items/[line_id]/route"
+import {
+  DELETE as clearLineItems,
+  POST as addLineItem,
+} from "../../src/api/store/carts/[id]/line-items/route"
+import {
+  DELETE as deleteLineItem,
+  POST as updateLineItem,
+} from "../../src/api/store/carts/[id]/line-items/[line_id]/route"
 import {
   addToCartWorkflow,
+  deleteLineItemsWorkflow,
   updateLineItemInCartWorkflow,
 } from "@medusajs/core-flows"
 import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
@@ -14,6 +21,7 @@ import { env } from "../../src/config/env"
 
 jest.mock("@medusajs/core-flows", () => ({
   addToCartWorkflow: jest.fn(),
+  deleteLineItemsWorkflow: jest.fn(),
   updateLineItemInCartWorkflow: jest.fn(),
 }))
 
@@ -224,9 +232,12 @@ function createHarness() {
     },
   }
   const addWorkflow = addToCartWorkflow as unknown as jest.Mock
+  const deleteWorkflow = deleteLineItemsWorkflow as unknown as jest.Mock
+  const deleteRun = jest.fn()
   const updateWorkflow = updateLineItemInCartWorkflow as unknown as jest.Mock
   const updateRun = jest.fn()
   addWorkflow.mockReset()
+  deleteWorkflow.mockReset()
   updateWorkflow.mockReset()
   addWorkflow.mockReturnValue({
     run: async ({ input }: any) => {
@@ -255,6 +266,13 @@ function createHarness() {
       return { result: { cart_id: targetCart.id } }
     }),
   })
+  deleteRun.mockImplementation(async ({ input }: any) => {
+      nativeWorkflowCalls += 1
+      const targetCart = carts.get(input.cart_id)
+      targetCart.items = targetCart.items.filter((item: any) => !input.ids.includes(item.id))
+      return { result: { cart_id: targetCart.id } }
+  })
+  deleteWorkflow.mockReturnValue({ run: deleteRun })
 
   const remoteQuery = jest.fn(async (queryObj: any) => {
     const queryEntry = queryObj?.__value
@@ -328,9 +346,9 @@ function createHarness() {
   }
 
   const request = (
-    kind: "add" | "update",
+    kind: "add" | "update" | "delete" | "clear",
     key: string,
-    quantity: number,
+    quantity = 0,
     ifMatch = '"1"',
     options: {
       authorization?: string
@@ -343,10 +361,10 @@ function createHarness() {
     const targetCart = carts.get(options.cartId ?? cart.id) ?? cart
 
     return {
-    method: "POST",
+    method: kind === "add" || kind === "update" ? "POST" : "DELETE",
     params: {
       id: targetCart.id,
-      ...(kind === "update"
+      ...(kind === "update" || kind === "delete"
         ? { line_id: options.lineId ?? targetCart.items[0]?.id }
         : {}),
     },
@@ -354,7 +372,9 @@ function createHarness() {
       options.body ??
       (kind === "add"
         ? { variant_id: "variant_customer_add_01", quantity }
-        : { quantity }),
+        : kind === "update"
+          ? { quantity }
+          : undefined),
     headers: {
       ...(options.authorization
         ? { authorization: options.authorization }
@@ -414,6 +434,8 @@ function createHarness() {
     request,
     response,
     addWorkflow,
+    deleteWorkflow,
+    deleteRun,
     updateWorkflow,
     updateRun,
     get workflowCalls() {
@@ -602,6 +624,51 @@ describe("Customer cart line-items M1", () => {
       })
     )
     expect(harness.workflowCalls).toBe(1)
+    expect(harness.authorityQueryCount).toBeGreaterThan(0)
+  })
+
+  it("permite DELETE by line_id no cart canônico do Customer", async () => {
+    const harness = createHarness()
+    const session = harness.createCustomerSession("cus_line_items_01")
+    const res = harness.response()
+
+    await deleteLineItem(
+      harness.request("delete", "customer-delete-line", 0, '"1"', {
+        authorization: `Bearer ${session.token}`,
+      }) as never,
+      res as never
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(res.headers.etag).toBe('"2"')
+    expect(harness.cart.items).toHaveLength(0)
+    expect(harness.deleteRun).toHaveBeenCalledWith(expect.objectContaining({
+      input: {
+        cart_id: harness.cart.id,
+        ids: ["li_customer_line_items_01"],
+      },
+    }))
+    expect(harness.nativeWorkflowCalls).toBe(1)
+    expect(harness.authorityQueryCount).toBeGreaterThan(0)
+  })
+
+  it("permite clear-all no cart do Customer com uma única chamada nativa", async () => {
+    const harness = createHarness()
+    const session = harness.createCustomerSession("cus_line_items_01")
+    const res = harness.response()
+
+    await clearLineItems(
+      harness.request("clear", "customer-clear-all", 0, '"1"', {
+        authorization: `Bearer ${session.token}`,
+      }) as never,
+      res as never
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(res.headers.etag).toBe('"2"')
+    expect(harness.cart.items).toHaveLength(0)
+    expect(harness.deleteWorkflow).toHaveBeenCalledTimes(1)
+    expect(harness.nativeWorkflowCalls).toBe(1)
     expect(harness.authorityQueryCount).toBeGreaterThan(0)
   })
 
