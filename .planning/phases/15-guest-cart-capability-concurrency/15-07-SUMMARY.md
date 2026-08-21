@@ -42,7 +42,7 @@ requirements-completed: [CART-02, CART-04, CART-08]
 
 duration: "~20 min"
 completed: 2026-08-21
-status: technical-pass-human-review-pending
+status: human-approved-pass
 ---
 
 # Phase 15 Plan 15-07 Summary
@@ -52,8 +52,9 @@ status: technical-pass-human-review-pending
 ## Status
 
 - `15-07 TECHNICAL EXECUTION: PASS`
-- `15-07 HUMAN REVIEW: PENDING`
-- `15-08: NOT STARTED / NOT AUTHORIZED`
+- `15-07 HUMAN APPROVED — PASS`
+- `15-07 DOCUMENTALLY CLOSED`
+- `15-08 EXECUTION: HUMAN AUTHORIZED — NOT STARTED`
 - `DEPLOY: NOT AUTHORIZED`
 
 ## Accomplishments
@@ -83,7 +84,7 @@ status: technical-pass-human-review-pending
 1. Task 15-07-01 TDD RED: `9a69854` — `test(15-07): add Store cart contract assertions`.
 2. Task 15-07-01 GREEN: `0783550` — `feat(15-07): materialize Store cart M1 contract`.
 3. Task 15-07-02: `636fb5b` — `feat(15-07): generate Store OpenAPI cart contract`.
-4. Task 15-07-03: human checkpoint — pending review; no implementation commit.
+4. Task 15-07-03: human checkpoint — HUMAN APPROVED — PASS; no implementation commit.
 
 ## Files Modified
 
@@ -152,12 +153,18 @@ Remediation evidence:
 - Remediation commit: `637f19d` — `fix(15-07): require BFF authority in cart OpenAPI`.
 - `openapi:check`: **NOT RUN** by explicit scope restriction.
 
-The human review remains pending. Plan 15-08 remains not started and not
-authorized.
+Human review is **CLOSED — PASS**. `B15-07-HR-01` is **CLOSED — PASS**.
+Plan 15-08 execution was explicitly human-authorized on 2026-08-21 and remains
+**NOT STARTED**.
 
 ## Human Checkpoint
 
-Review the registry and generated Store artifact. Confirm the evidence above, then explicitly record PASS or BLOCKED. Do not start Plan 15-08 or run `openapi:check` from this checkpoint.
+- Human decision: **PASS**.
+- `B15-07-HR-01`: **CLOSED — PASS**.
+- Plan 15-07: **HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**.
+- Plan 15-08 execution: **HUMAN AUTHORIZED — NOT STARTED**.
+- `openapi:check` remained **NOT RUN** during Plan 15-07 and is now permitted only inside the mandatory Plan 15-08 ledger.
+- Phase 16, frontend, deploy, real providers and remote infrastructure remain unauthorized.
 
 ---
 *Phase: 15-guest-cart-capability-concurrency*
