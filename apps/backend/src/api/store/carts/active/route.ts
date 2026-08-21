@@ -40,48 +40,14 @@ import {
   formatCartEtag,
   initializeCartResourceVersion,
 } from "../concurrency"
+import {
+  isActiveCartForCheckout,
+  resolveCanonicalCustomerActiveCart,
+} from "../customer-active-cart"
 
 type StoreCartRecord = StoreCartPreOrderRecord
 
 const ACTIVE_CART_QUERY_FIELDS = storeCartPreOrderFields
-
-function isActiveMetadata(metadata: Record<string, unknown> | null | undefined): boolean {
-  return metadata?.active_for_checkout !== false
-}
-
-function isIncompleteCart(cart: StoreCartRecord): boolean {
-  return !cart.completed_at
-}
-
-function sortByUpdatedAtDesc(a: StoreCartRecord, b: StoreCartRecord): number {
-  return new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime()
-}
-
-async function listCustomerCarts(
-  req: MedusaRequest,
-  customerId: string
-): Promise<StoreCartRecord[]> {
-  const remoteQuery = req.scope.resolve(ContainerRegistrationKeys.REMOTE_QUERY)
-
-  const queryObject = remoteQueryObjectFromString({
-    entryPoint: "cart",
-    variables: {
-      filters: {
-        customer_id: customerId,
-        completed_at: null,
-      },
-    },
-    fields: [...ACTIVE_CART_QUERY_FIELDS],
-  })
-
-  const results = (await remoteQuery(queryObject)) as StoreCartRecord[]
-
-  return results.filter(
-    (cart) =>
-      isIncompleteCart(cart) &&
-      isActiveMetadata(cart.metadata as Record<string, unknown>)
-  )
-}
 
 async function refetchActiveCart(
   req: MedusaRequest,
@@ -126,7 +92,7 @@ async function retrieveCartById(
       return null
     }
 
-    if (!isActiveMetadata(cart.metadata as Record<string, unknown>)) {
+    if (!isActiveCartForCheckout(cart)) {
       return null
     }
 
@@ -213,8 +179,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       await guestCapService.consumeGuestCartCapability(actor.capabilityRecord.id)
     })
   } else if (actor.actorType === "customer") {
-    const carts = await listCustomerCarts(req, actor.customerId)
-    cart = carts.sort(sortByUpdatedAtDesc)[0] ?? null
+    cart = await resolveCanonicalCustomerActiveCart(req, actor.customerId)
   }
 
   if (!cart) {
@@ -301,8 +266,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   if (actor.actorType === "customer") {
     // Valid Customer context -> find existing active cart or create new cart
-    const customerCarts = await listCustomerCarts(req, actor.customerId)
-    const existingCart = customerCarts.sort(sortByUpdatedAtDesc)[0] ?? null
+    const existingCart = await resolveCanonicalCustomerActiveCart(req, actor.customerId)
 
     if (existingCart) {
       assertNoPaymentOrOrderFields(existingCart)

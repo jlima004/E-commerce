@@ -55,6 +55,7 @@ import {
   initializeCartResourceVersion,
   requireIfMatch,
 } from "./concurrency"
+import { resolveCanonicalCustomerActiveCart } from "./customer-active-cart"
 import {
   parseAddCartLineItemBody,
   parseUpdateCartLineItemBody,
@@ -404,6 +405,15 @@ export async function executeLineItemMutation(
     M1CartActorDecision,
     { actorType: "guest" | "customer" }
   >
+  if (actorWithOwnership.actorType === "customer") {
+    const canonicalCart = await resolveCanonicalCustomerActiveCart(
+      req,
+      actorWithOwnership.customerId
+    )
+    if (!canonicalCart || canonicalCart.id !== cartId) {
+      notFound()
+    }
+  }
   const cart = await refetchCart(req, cartId)
   assertActorOwnsCart(actorWithOwnership, cart)
 
