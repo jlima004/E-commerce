@@ -27,11 +27,37 @@ export function registerStoreResponseHeaders(
     description:
       "Conditional retry delay emitted only when retryability is factual and no external effect is uncertain.",
   })
+
+  registry.registerComponent("store", "headers", "XIndicioGuestCartToken", {
+    schema: {
+      type: "string",
+      minLength: 43,
+      maxLength: 512,
+      pattern: "^[A-Za-z0-9_-]+$",
+    },
+    description:
+      "Opaque guest cart capability returned only when a guest cart is minted. It is sensitive BFF-to-Medusa material, never a browser credential, and is never shown in examples.",
+    "x-bff-only": true,
+    "x-not-browser-credential": true,
+    "x-sensitive": true,
+  })
 }
 
 export const STORE_X_CORRELATION_ID_RESPONSE_HEADERS = {
   "x-correlation-id": {
     $ref: "#/components/headers/XCorrelationId",
+  },
+} as const
+
+export const STORE_ETAG_RESPONSE_HEADERS = {
+  ETag: {
+    $ref: "#/components/headers/ETag",
+  },
+} as const
+
+export const STORE_GUEST_CART_TOKEN_RESPONSE_HEADERS = {
+  "x-indicio-guest-cart-token": {
+    $ref: "#/components/headers/XIndicioGuestCartToken",
   },
 } as const
 
