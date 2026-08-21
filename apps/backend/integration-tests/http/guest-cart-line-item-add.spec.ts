@@ -72,6 +72,7 @@ function createHarness() {
   let lineSequence = 1
   let mutationCount = 0
   let claimCount = 0
+  let terminalizeCasLost = false
 
   const idempotency = {
     async claim(input: any) {
@@ -115,6 +116,11 @@ function createHarness() {
     },
     async markFailedTerminal(input: any) {
       const record = [...records.values()].find((item) => item.id === input.id)
+      if (terminalizeCasLost) {
+        record.state = "completed"
+        record.state_version += 1
+        return { type: "lost", record }
+      }
       record.state = "failed_terminal"
       record.state_version += 1
       record.failure_code = input.failure_code
@@ -203,27 +209,39 @@ function createHarness() {
     },
   })
 
-  const request = (key: string, quantity: unknown, ifMatch = '"1"') => ({
-    method: "POST",
-    params: { id: cart.id },
-    body: { variant_id: "variant_guest_add_01", quantity },
-    headers: {
+  const request = (
+    key: string,
+    quantity: unknown,
+    ifMatch = '"1"',
+    options: { body?: unknown; omitIdempotencyKey?: boolean } = {}
+  ) => {
+    const headers: Record<string, string> = {
       [GUEST_CART_CAPABILITY_HEADER]: "guest-token-not-persisted",
       "idempotency-key": key,
       "if-match": ifMatch,
-    },
-    scope: {
-      resolve(key: unknown) {
-        if (key === GUEST_CART_CAPABILITY_MODULE) return guestCapability
-        if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
-        if (key === STORE_IDEMPOTENCY_MODULE) return idempotency
-        if (key === STORE_RESOURCE_VERSION_MODULE) return versionService
-        if (key === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
-        if (key === ContainerRegistrationKeys.PG_CONNECTION) return pg
-        throw new Error(`unrecognized scope key ${String(key)}`)
+    }
+    if (options.omitIdempotencyKey) {
+      delete headers["idempotency-key"]
+    }
+
+    return {
+      method: "POST",
+      params: { id: cart.id },
+      body: options.body ?? { variant_id: "variant_guest_add_01", quantity },
+      headers,
+      scope: {
+        resolve(key: unknown) {
+          if (key === GUEST_CART_CAPABILITY_MODULE) return guestCapability
+          if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
+          if (key === STORE_IDEMPOTENCY_MODULE) return idempotency
+          if (key === STORE_RESOURCE_VERSION_MODULE) return versionService
+          if (key === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
+          if (key === ContainerRegistrationKeys.PG_CONNECTION) return pg
+          throw new Error(`unrecognized scope key ${String(key)}`)
+        },
       },
-    },
-  })
+    }
+  }
 
   return {
     cart,
@@ -243,6 +261,12 @@ function createHarness() {
     setVersion(version: number) {
       versions.set(cart.id, version)
     },
+    setCartCustomer(customerId: string | null) {
+      cart.customer = customerId ? { id: customerId } : null
+    },
+    setTerminalizeCasLost(value: boolean) {
+      terminalizeCasLost = value
+    },
   }
 }
 
@@ -258,6 +282,65 @@ describe("Guest cart line-item add M1", () => {
     expect(harness.claimCount).toBe(0)
     expect(harness.records.size).toBe(0)
     expect(harness.cart.items).toHaveLength(0)
+  })
+
+  it("prioriza ownership sobre body inválido e não cria claim para cart de outro ator", async () => {
+    const harness = createHarness()
+    harness.setCartCustomer("cus_other")
+
+    await expect(
+      addLineItem(
+        harness.request("guest-add-wrong-owner-body", 1.5) as never,
+        response() as never
+      )
+    ).rejects.toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+
+    expect(harness.claimCount).toBe(0)
+    expect(harness.mutationCount).toBe(0)
+  })
+
+  it("prioriza ownership sobre Idempotency-Key ausente", async () => {
+    const harness = createHarness()
+    harness.setCartCustomer("cus_other")
+
+    await expect(
+      addLineItem(
+        harness.request("guest-add-wrong-owner-no-key", 1, '"1"', {
+          omitIdempotencyKey: true,
+        }) as never,
+        response() as never
+      )
+    ).rejects.toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+
+    expect(harness.claimCount).toBe(0)
+    expect(harness.mutationCount).toBe(0)
+  })
+
+  it("retorna 400 para body inválido de cart próprio sem criar claim", async () => {
+    const harness = createHarness()
+
+    await expect(
+      addLineItem(harness.request("guest-add-owned-body", 1.5) as never, response() as never)
+    ).rejects.toMatchObject({ type: MedusaError.Types.INVALID_DATA })
+
+    expect(harness.claimCount).toBe(0)
+    expect(harness.mutationCount).toBe(0)
+  })
+
+  it("retorna 400 para Idempotency-Key ausente de cart próprio sem criar claim", async () => {
+    const harness = createHarness()
+
+    await expect(
+      addLineItem(
+        harness.request("guest-add-owned-no-key", 1, '"1"', {
+          omitIdempotencyKey: true,
+        }) as never,
+        response() as never
+      )
+    ).rejects.toMatchObject({ type: MedusaError.Types.INVALID_DATA })
+
+    expect(harness.claimCount).toBe(0)
+    expect(harness.mutationCount).toBe(0)
   })
 
   it.each([1, 99])("aceita quantity %s, invalida PaymentAttempt e responde com ETag atual", async (quantity) => {
@@ -316,5 +399,65 @@ describe("Guest cart line-item add M1", () => {
     expect(replayError).toMatchObject({ code: "CART_VERSION_MISMATCH", statusCode: 412 })
     expect(harness.mutationCount).toBe(before)
     expect(harness.addWorkflow).not.toHaveBeenCalled()
+  })
+
+  it("não fabrica 412 quando a terminalização stale perde o CAS", async () => {
+    const harness = createHarness()
+    harness.setVersion(2)
+    harness.setTerminalizeCasLost(true)
+
+    const error = await addLineItem(
+      harness.request("guest-add-stale-terminal-lost", 1, '"1"') as never,
+      response() as never
+    ).catch((caught) => caught)
+
+    expect(error).toMatchObject({
+      type: MedusaError.Types.CONFLICT,
+      code: "IDEMPOTENCY_KEY_IN_PROGRESS",
+      statusCode: 409,
+    })
+    expect(error).not.toMatchObject({ code: "CART_VERSION_MISMATCH" })
+    expect(harness.records.get("guest-add-stale-terminal-lost").state).toBe(
+      "completed"
+    )
+    expect(harness.cart.items).toHaveLength(0)
+    expect(harness.mutationCount).toBe(0)
+  })
+
+  it("falha fechado quando If-Match ausente perde o CAS de terminalização", async () => {
+    const harness = createHarness()
+    harness.setTerminalizeCasLost(true)
+
+    const error = await addLineItem(
+      harness.request("guest-add-missing-if-match-lost", 1, "") as never,
+      response() as never
+    ).catch((caught) => caught)
+
+    expect(error).toMatchObject({
+      type: MedusaError.Types.CONFLICT,
+      code: "IDEMPOTENCY_KEY_IN_PROGRESS",
+      statusCode: 409,
+    })
+    expect(error).not.toMatchObject({ type: MedusaError.Types.INVALID_DATA })
+    expect(harness.records.get("guest-add-missing-if-match-lost").state).toBe(
+      "completed"
+    )
+    expect(harness.mutationCount).toBe(0)
+  })
+
+  it("terminaliza If-Match ausente como falha terminal quando o CAS é confirmado", async () => {
+    const harness = createHarness()
+
+    const error = await addLineItem(
+      harness.request("guest-add-missing-if-match", 1, "") as never,
+      response() as never
+    ).catch((caught) => caught)
+
+    expect(error).toMatchObject({ type: MedusaError.Types.INVALID_DATA })
+    expect(harness.records.get("guest-add-missing-if-match")).toMatchObject({
+      state: "failed_terminal",
+      failure_code: "VALIDATION_ERROR",
+    })
+    expect(harness.mutationCount).toBe(0)
   })
 })

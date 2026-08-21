@@ -271,8 +271,8 @@ async function markRetryable(
     retry_attempt_count: number
   },
   failureCode: string
-): Promise<void> {
-  await service.markFailedRetryable({
+): Promise<LifecycleClaimResult> {
+  return service.markFailedRetryable({
     id: record.id,
     expectedState: "processing",
     expectedStateVersion: record.state_version,
@@ -282,6 +282,21 @@ async function markRetryable(
     retry_started_at: new Date(),
     state_deadline_at: new Date(Date.now() + 5 * 60 * 1000),
   })
+}
+
+function throwIdempotencyOwnershipLost(): never {
+  throw Object.assign(
+    new MedusaError(
+      MedusaError.Types.CONFLICT,
+      "Operation currently in progress or ownership lost for this idempotency key"
+    ),
+    {
+      code: "IDEMPOTENCY_KEY_IN_PROGRESS",
+      statusCode: 409,
+      status: 409,
+      retryable: true,
+    }
+  )
 }
 
 async function markTerminal(
@@ -367,7 +382,8 @@ async function runWorkflowWithinCas(
 
 /**
  * Shared M1 mutation pipeline. The ordering is contractual:
- * validate -> Idempotency-Key claim -> replay short-circuit -> If-Match ->
+ * actor -> cart ownership -> input validation -> Idempotency-Key claim ->
+ * replay short-circuit -> If-Match ->
  * PostgreSQL CAS wrapping the native Medusa workflow -> CART-09 invalidation ->
  * terminalize claim -> canonical refetch/DTO/current ETag.
  */
@@ -384,16 +400,17 @@ export async function executeLineItemMutation(
     notFound()
   }
 
-  const lineId = kind === "update" ? requireLineId(req) : undefined
-  const body = parseMutationBody(kind, req.body)
-  const rawIdempotencyKey = idempotencyKey(req)
-  const operation = lineItemOperation(kind)
   const actorWithOwnership = actor as Extract<
     M1CartActorDecision,
     { actorType: "guest" | "customer" }
   >
   const cart = await refetchCart(req, cartId)
   assertActorOwnsCart(actorWithOwnership, cart)
+
+  const lineId = kind === "update" ? requireLineId(req) : undefined
+  const body = parseMutationBody(kind, req.body)
+  const rawIdempotencyKey = idempotencyKey(req)
+  const operation = lineItemOperation(kind)
 
   const idempotencyService = req.scope.resolve<StoreIdempotencyModuleService>(
     STORE_IDEMPOTENCY_MODULE
@@ -443,7 +460,14 @@ export async function executeLineItemMutation(
   try {
     expectedVersion = requireIfMatch(req)
   } catch (error) {
-    await markTerminal(idempotencyService, claimResult.record, "VALIDATION_ERROR")
+    const terminal = await markTerminal(
+      idempotencyService,
+      claimResult.record,
+      "VALIDATION_ERROR"
+    )
+    if (terminal.type !== "claimed") {
+      throwIdempotencyOwnershipLost()
+    }
     throw error
   }
 
@@ -457,7 +481,14 @@ export async function executeLineItemMutation(
       body
     )
   } catch (error) {
-    await markRetryable(idempotencyService, claimResult.record, "CART_MUTATION_FAILED")
+    const retryable = await markRetryable(
+      idempotencyService,
+      claimResult.record,
+      "CART_MUTATION_FAILED"
+    )
+    if (retryable.type !== "claimed") {
+      throwIdempotencyOwnershipLost()
+    }
     throw error
   }
 
@@ -479,11 +510,14 @@ export async function executeLineItemMutation(
       )
     }
 
-    await markTerminal(
+    const terminal = await markTerminal(
       idempotencyService,
       partialResult.record,
       "CART_VERSION_MISMATCH"
     )
+    if (terminal.type !== "claimed") {
+      throwIdempotencyOwnershipLost()
+    }
     const currentCart = await refetchCart(req, cartId)
     throw new CartVersionMismatchError(currentCart, casResult.actualVersion)
   }
@@ -496,16 +530,17 @@ export async function executeLineItemMutation(
       paymentAttemptModule,
     })
   } catch (error) {
-    try {
-      await idempotencyService.markReconciliationRequired({
-        id: claimResult.record.id,
-        expectedState: "processing",
-        expectedStateVersion: claimResult.record.state_version,
-        result_type: "cart",
-        result_id: cartId,
-        failure_code: "CART_INVALIDATION_FAILED",
-      })
-    } catch {}
+    const reconciliation = await idempotencyService.markReconciliationRequired({
+      id: claimResult.record.id,
+      expectedState: "processing",
+      expectedStateVersion: claimResult.record.state_version,
+      result_type: "cart",
+      result_id: cartId,
+      failure_code: "CART_INVALIDATION_FAILED",
+    })
+    if (reconciliation.type !== "claimed") {
+      throwIdempotencyOwnershipLost()
+    }
     throw error
   }
 
@@ -526,27 +561,22 @@ export async function executeLineItemMutation(
       },
     })
   } catch (error) {
-    try {
-      await idempotencyService.markReconciliationRequired({
-        id: claimResult.record.id,
-        expectedState: "processing",
-        expectedStateVersion: claimResult.record.state_version,
-        result_type: "cart",
-        result_id: cartId,
-        failure_code: "MARK_COMPLETED_FAILED",
-      })
-    } catch {}
+    const reconciliation = await idempotencyService.markReconciliationRequired({
+      id: claimResult.record.id,
+      expectedState: "processing",
+      expectedStateVersion: claimResult.record.state_version,
+      result_type: "cart",
+      result_id: cartId,
+      failure_code: "MARK_COMPLETED_FAILED",
+    })
+    if (reconciliation.type !== "claimed") {
+      throwIdempotencyOwnershipLost()
+    }
     throw error
   }
 
   if (completion.type !== "claimed") {
-    throw Object.assign(
-      new MedusaError(
-        MedusaError.Types.CONFLICT,
-        "Operation currently in progress or ownership lost for this idempotency key"
-      ),
-      { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
-    )
+    throwIdempotencyOwnershipLost()
   }
 
   const currentCart = await refetchCart(req, cartId)
