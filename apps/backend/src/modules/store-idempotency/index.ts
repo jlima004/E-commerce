@@ -4,6 +4,12 @@ import StoreIdempotencyModuleService from "./service"
 export const STORE_IDEMPOTENCY_MODULE = "store_idempotency"
 
 export {
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE,
+} from "./operations"
+export type { StoreCartLineItemIdempotencyOperation } from "./operations"
+
+export {
   STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS,
   STORE_IDEMPOTENCY_DEFAULT_TERMINAL_RETENTION_MS,
   STORE_IDEMPOTENCY_MAX_RETRY_ATTEMPTS,

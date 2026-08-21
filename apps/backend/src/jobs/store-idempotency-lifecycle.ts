@@ -8,6 +8,8 @@ import {
   STORE_IDEMPOTENCY_PHASE13_UNCERTAIN_EFFECT,
   STORE_IDEMPOTENCY_RETRY_WINDOW_MS,
   STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE,
   isStoreIdempotencyTerminalState,
   type StoreIdempotencyModuleService,
   type StoreIdempotencyRecordRow,
@@ -106,11 +108,87 @@ function isStoreCartActiveCreateOperation(operation: string): boolean {
   return operation === STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE
 }
 
+function isStoreCartLineItemOperation(operation: string): boolean {
+  return (
+    operation === STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD ||
+    operation === STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE
+  )
+}
+
 async function actOnClaimedRow(
   deps: StoreIdempotencyLifecycleDeps,
   row: StoreIdempotencyRecordRow,
   at: Date
 ): Promise<"transitioned" | "skipped_unsupported_operation"> {
+  // --- store.carts.line-items.add/update lifecycle (exact match) ---
+  // The worker only classifies state. It never retries a Medusa cart workflow.
+  if (isStoreCartLineItemOperation(row.operation)) {
+    if (row.state === "processing") {
+      const failureCode = row.result_id != null
+        ? "stale_store_cart_line_item_partial_effect"
+        : "stale_store_cart_line_item_uncertain_effect"
+      const result = await deps.storeIdempotency.markReconciliationRequired({
+        id: row.id,
+        expectedState: "processing",
+        expectedStateVersion: row.state_version,
+        result_type: row.result_type ?? undefined,
+        result_id: row.result_id ?? undefined,
+        failure_code: failureCode,
+        at,
+      })
+      if (result.type !== "claimed") {
+        throw new Error("STORE_IDEMPOTENCY_LIFECYCLE_TRANSITION_LOST")
+      }
+      return "transitioned"
+    }
+
+    if (row.state === "failed_retryable") {
+      if (retryCapExceeded(row, at)) {
+        const result = await deps.storeIdempotency.markFailedTerminal({
+          id: row.id,
+          expectedState: "failed_retryable",
+          expectedStateVersion: row.state_version,
+          failure_code: row.failure_code ?? "retry_cap_exceeded",
+          at,
+        })
+        if (result.type !== "claimed") {
+          throw new Error("STORE_IDEMPOTENCY_LIFECYCLE_TRANSITION_LOST")
+        }
+        return "transitioned"
+      }
+
+      const result = await deps.storeIdempotency.markReconciliationRequired({
+        id: row.id,
+        expectedState: "failed_retryable",
+        expectedStateVersion: row.state_version,
+        result_type: row.result_type ?? undefined,
+        result_id: row.result_id ?? undefined,
+        failure_code:
+          row.failure_code ?? "stale_store_cart_line_item_uncertain_effect",
+        at,
+      })
+      if (result.type !== "claimed") {
+        throw new Error("STORE_IDEMPOTENCY_LIFECYCLE_TRANSITION_LOST")
+      }
+      return "transitioned"
+    }
+
+    if (row.state === "reconciliation_required") {
+      const result = await deps.storeIdempotency.markReconciliationUnresolved({
+        id: row.id,
+        expectedState: "reconciliation_required",
+        expectedStateVersion: row.state_version,
+        at,
+      })
+      if (result.type !== "claimed") {
+        throw new Error("STORE_IDEMPOTENCY_LIFECYCLE_TRANSITION_LOST")
+      }
+      return "transitioned"
+    }
+
+    return "skipped_unsupported_operation"
+  }
+
   // --- store.carts.active.create lifecycle (exact match) ---
   // Worker NEVER calls createCartWorkflow, mints capability, or calls any provider.
   // It only classifies the stale row as reconciliation_required.

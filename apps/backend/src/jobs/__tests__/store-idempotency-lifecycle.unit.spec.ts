@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import type { MedusaContainer } from "@medusajs/framework/types"
 import {
   STORE_IDEMPOTENCY_MAX_RETRY_ATTEMPTS,
@@ -6,6 +8,8 @@ import {
   STORE_IDEMPOTENCY_PHASE13_UNCERTAIN_EFFECT,
   STORE_IDEMPOTENCY_RETRY_WINDOW_MS,
   STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD,
+  STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE,
   type StoreIdempotencyRecordRow,
 } from "../../modules/store-idempotency"
 import {
@@ -1014,6 +1018,215 @@ describe("store-idempotency-lifecycle job", () => {
           "cleanupExpiredTerminals",
         ]).toContain(method)
       }
+    })
+  })
+
+  describe("store.carts.line-items add/update lifecycle", () => {
+    const lineItemNow = new Date("2026-08-21T15:00:00.000Z")
+
+    function lineItemRow(
+      operation: string,
+      overrides: Partial<StoreIdempotencyRecordRow> = {}
+    ): StoreIdempotencyRecordRow {
+      return baseRow({
+        id: `stidem_${operation.replaceAll(".", "_")}`,
+        operation,
+        state: "processing",
+        state_version: 11,
+        state_deadline_at: "2026-08-21T14:55:00.000Z",
+        ...overrides,
+      })
+    }
+
+    it.each([
+      [STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD, "cart_123"],
+      [STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD, null],
+      [STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE, "cart_123"],
+      [STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE, null],
+    ])("processing %s preserva pointer %s e vai para reconciliation_required", async (operation, resultId) => {
+      const row = lineItemRow(operation, {
+        result_type: resultId ? "cart" : null,
+        result_id: resultId,
+      })
+      const service = createServiceMock([row])
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => lineItemNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.transitioned).toBe(1)
+      expect(service.claimLifecycleRow).toHaveBeenCalledWith({
+        id: row.id,
+        expectedState: "processing",
+        expectedStateVersion: 11,
+        at: lineItemNow,
+      })
+      expect(service.markReconciliationRequired).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedState: "processing",
+          expectedStateVersion: 12,
+          result_type: resultId ? "cart" : undefined,
+          result_id: resultId ?? undefined,
+          failure_code: resultId
+            ? "stale_store_cart_line_item_partial_effect"
+            : "stale_store_cart_line_item_uncertain_effect",
+        })
+      )
+      expect(service.markCompleted).not.toHaveBeenCalled()
+      expect(service.markFailedRetryable).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      "store.carts.line-items.add.fake",
+      "store.carts.line-items.update.fake",
+      "store.carts.line-items",
+    ])("mantém operação não exata %s como unsupported", async (operation) => {
+      const service = createServiceMock([lineItemRow(operation)])
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => lineItemNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.skipped_unsupported_operation).toBe(1)
+      expect(result.transitioned).toBe(0)
+      expect(service.markReconciliationRequired).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD,
+      STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE,
+    ])("failed_retryable %s abaixo do cap vai para reconciliation_required sem retry", async (operation) => {
+      const row = lineItemRow(operation, {
+        state: "failed_retryable",
+        failure_code: "CART_MUTATION_FAILED",
+        retry_attempt_count: 1,
+        retry_started_at: "2026-08-21T14:00:00.000Z",
+        next_retry_at: "2026-08-21T14:05:00.000Z",
+      })
+      const service = createServiceMock([row])
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => lineItemNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.transitioned).toBe(1)
+      expect(service.markReconciliationRequired).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedState: "failed_retryable",
+          expectedStateVersion: 12,
+          failure_code: "CART_MUTATION_FAILED",
+        })
+      )
+      expect(service.markCompleted).not.toHaveBeenCalled()
+      expect(service.markFailedRetryable).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD,
+      STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE,
+    ])("failed_retryable %s acima do cap vai para failed_terminal", async (operation) => {
+      const row = lineItemRow(operation, {
+        state: "failed_retryable",
+        failure_code: "CART_MUTATION_FAILED",
+        retry_attempt_count: STORE_IDEMPOTENCY_MAX_RETRY_ATTEMPTS,
+        retry_started_at: "2026-08-20T14:00:00.000Z",
+        next_retry_at: "2026-08-21T14:05:00.000Z",
+      })
+      const service = createServiceMock([row])
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => lineItemNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.transitioned).toBe(1)
+      expect(service.markFailedTerminal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedState: "failed_retryable",
+          expectedStateVersion: 12,
+        })
+      )
+      expect(service.markCompleted).not.toHaveBeenCalled()
+    })
+
+    it("claim lost não transiciona line-item", async () => {
+      const row = lineItemRow(STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD)
+      const service = createServiceMock([row])
+      service.claimLifecycleRow.mockResolvedValueOnce({ type: "lost", record: row })
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => lineItemNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.claim_lost).toBe(1)
+      expect(result.transitioned).toBe(0)
+      expect(service.markReconciliationRequired).not.toHaveBeenCalled()
+    })
+
+    it("transition lost conta failed_items e não conta transitioned", async () => {
+      const row = lineItemRow(STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE)
+      const service = createServiceMock([row])
+      service.markReconciliationRequired.mockResolvedValueOnce({ type: "lost", record: row })
+
+      const result = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => lineItemNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(result.failed_items).toBe(1)
+      expect(result.transitioned).toBe(0)
+    })
+
+    it("finite lifecycle: processing → reconciliation_required → reconciliation_unresolved", async () => {
+      const row = lineItemRow(STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_ADD)
+      const service = createServiceMock([row])
+
+      const first = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => lineItemNow,
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+      expect(first.transitioned).toBe(1)
+      expect(service.rows[0].state).toBe("reconciliation_required")
+
+      service.rows[0].locked_at = null
+      service.listDueLifecycleRows.mockResolvedValueOnce([{ ...service.rows[0] }])
+      const second = await runStoreIdempotencyLifecycle({
+        storeIdempotency: service,
+        now: () => new Date("2026-08-28T15:05:00.000Z"),
+        isWorker: () => true,
+        isReleaseMigration: () => false,
+      })
+
+      expect(second.transitioned).toBe(1)
+      expect(service.markReconciliationUnresolved).toHaveBeenCalledTimes(1)
+      expect(service.rows[0].state).toBe("reconciliation_unresolved")
+    })
+
+    it("não importa nem chama workflows de line-item ou network/provider", () => {
+      const source = readFileSync(
+        resolve(__dirname, "../store-idempotency-lifecycle.ts"),
+        "utf8"
+      )
+
+      expect(source).not.toContain("@medusajs/core-flows")
+      expect(source).not.toContain("addToCartWorkflow(")
+      expect(source).not.toContain("updateLineItemInCartWorkflow(")
+      expect(source).not.toMatch(/\bfetch\s*\(/)
     })
   })
 })
