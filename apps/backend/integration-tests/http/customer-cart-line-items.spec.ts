@@ -78,12 +78,15 @@ function createHarness() {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }
+  const carts = new Map<string, any>([[cart.id, cart]])
   const versions = new Map([[cart.id, 1]])
   const records = new Map<string, any>()
   const attempts = [{ id: "pat_customer_line_items_01", cart_id: cart.id, status: "created" }]
   let lineSequence = 1
   let workflowCalls = 0
+  let nativeWorkflowCalls = 0
   let claimCount = 0
+  let cart09Calls = 0
   let sessionSequence = 1
   let isDbUnavailable = false
   let authorityQueryCount = 0
@@ -147,6 +150,7 @@ function createHarness() {
   }
   const paymentAttempt = {
     async listPaymentAttempts() {
+      cart09Calls += 1
       return attempts
     },
     async updatePaymentAttempts(next: any) {
@@ -226,26 +230,56 @@ function createHarness() {
   updateWorkflow.mockReset()
   addWorkflow.mockReturnValue({
     run: async ({ input }: any) => {
-      cart.items.push({
+      nativeWorkflowCalls += 1
+      const targetCart = carts.get(input.cart_id)
+      targetCart.items.push({
         id: `li_customer_added_${lineSequence++}`,
         variant_id: input.items[0].variant_id,
         quantity: input.items[0].quantity,
         title: "Camiseta adicionada",
         unit_price: 3990,
       })
-      return { result: { cart_id: cart.id } }
+      return { result: { cart_id: targetCart.id } }
     },
   })
   updateWorkflow.mockReturnValue({
     run: updateRun.mockImplementation(async ({ input }: any) => {
-      const item = cart.items.find((entry) => entry.id === input.item_id)
+      nativeWorkflowCalls += 1
+      const targetCart = carts.get(input.cart_id)
+      const item = targetCart.items.find((entry) => entry.id === input.item_id)
       if (input.update.quantity === 0) {
-        cart.items = cart.items.filter((entry) => entry.id !== input.item_id)
+        targetCart.items = targetCart.items.filter((entry) => entry.id !== input.item_id)
       } else {
         item.quantity = input.update.quantity
       }
-      return { result: { cart_id: cart.id } }
+      return { result: { cart_id: targetCart.id } }
     }),
+  })
+
+  const remoteQuery = jest.fn(async (queryObj: any) => {
+    const queryEntry = queryObj?.__value
+      ? Object.values(queryObj.__value)[0] as any
+      : undefined
+    const filters =
+      queryEntry?.__args?.filters ??
+      queryObj?.variables?.filters ??
+      queryObj?.filters ??
+      {}
+
+    if (filters.id) {
+      const target = carts.get(filters.id)
+      return target ? [target] : []
+    }
+
+    if (filters.customer_id) {
+      return Array.from(carts.values()).filter(
+        (candidate) =>
+          !candidate.completed_at &&
+          (candidate.customer?.id ?? candidate.customer_id) === filters.customer_id
+      )
+    }
+
+    return [cart]
   })
 
   function createCustomerSession(customerId: string) {
@@ -303,13 +337,17 @@ function createHarness() {
       omitIdempotencyKey?: boolean
       body?: unknown
       lineId?: string
+      cartId?: string
     } = {}
-  ) => ({
+  ) => {
+    const targetCart = carts.get(options.cartId ?? cart.id) ?? cart
+
+    return {
     method: "POST",
     params: {
-      id: cart.id,
+      id: targetCart.id,
       ...(kind === "update"
-        ? { line_id: options.lineId ?? "li_customer_line_items_01" }
+        ? { line_id: options.lineId ?? targetCart.items[0]?.id }
         : {}),
     },
     body:
@@ -330,15 +368,47 @@ function createHarness() {
         if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
         if (key === STORE_IDEMPOTENCY_MODULE) return idempotency
         if (key === STORE_RESOURCE_VERSION_MODULE) return versionService
-        if (key === ContainerRegistrationKeys.REMOTE_QUERY) return jest.fn(async () => [cart])
+        if (key === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
         if (key === ContainerRegistrationKeys.PG_CONNECTION) return pg
         throw new Error(`unrecognized scope key ${String(key)}`)
       },
     },
-  })
+    }
+  }
+
+  function addCustomerCart(input: {
+    id: string
+    updatedAt: string
+    lineId?: string
+  }) {
+    const customerCart = {
+      id: input.id,
+      customer: { id: cart.customer.id, email: cart.customer.email },
+      items: [
+        {
+          id: input.lineId ?? `${input.id}_line_01`,
+          variant_id: "variant_customer_existing_01",
+          quantity: 1,
+          title: "Camiseta",
+          unit_price: 3990,
+        },
+      ],
+      currency_code: "brl",
+      region_id: "reg_br",
+      metadata: { active_for_checkout: true },
+      completed_at: null,
+      created_at: input.updatedAt,
+      updated_at: input.updatedAt,
+    }
+    carts.set(customerCart.id, customerCart)
+    versions.set(customerCart.id, 1)
+    return customerCart
+  }
 
   return {
     cart,
+    carts,
+    addCustomerCart,
     attempts,
     records,
     request,
@@ -349,8 +419,17 @@ function createHarness() {
     get workflowCalls() {
       return workflowCalls
     },
+    get nativeWorkflowCalls() {
+      return nativeWorkflowCalls
+    },
     get claimCount() {
       return claimCount
+    },
+    get casCalls() {
+      return workflowCalls
+    },
+    get cart09Calls() {
+      return cart09Calls
     },
     get authorityQueryCount() {
       return authorityQueryCount
@@ -362,10 +441,121 @@ function createHarness() {
     setCartCustomer(customerId: string | null) {
       cart.customer = customerId ? { id: customerId } : null
     },
+    setCartUpdatedAt(updatedAt: string) {
+      cart.updated_at = updatedAt
+    },
   }
 }
 
 describe("Customer cart line-items M1", () => {
+  it("nega ADD no cart A antigo quando o mesmo Customer tem cart B canônico mais novo", async () => {
+    const harness = createHarness()
+    const session = harness.createCustomerSession("cus_line_items_01")
+    harness.setCartUpdatedAt("2026-08-20T00:00:00.000Z")
+    const canonicalCart = harness.addCustomerCart({
+      id: "cart_customer_canonical_b",
+      updatedAt: "2026-08-21T00:00:00.000Z",
+    })
+
+    await expect(
+      addLineItem(
+        harness.request("add", "customer-noncanonical-add", 1, '"1"', {
+          authorization: `Bearer ${session.token}`,
+          cartId: harness.cart.id,
+        }) as never,
+        harness.response() as never
+      )
+    ).rejects.toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+
+    expect(canonicalCart.id).not.toBe(harness.cart.id)
+    expect(harness.claimCount).toBe(0)
+    expect(harness.casCalls).toBe(0)
+    expect(harness.nativeWorkflowCalls).toBe(0)
+    expect(harness.cart09Calls).toBe(0)
+    expect(harness.cart.items).toHaveLength(1)
+  })
+
+  it("permite ADD no cart B canônico mais novo e executa claim, CAS, workflow e CART-09", async () => {
+    const harness = createHarness()
+    const session = harness.createCustomerSession("cus_line_items_01")
+    harness.setCartUpdatedAt("2026-08-20T00:00:00.000Z")
+    const canonicalCart = harness.addCustomerCart({
+      id: "cart_customer_canonical_b",
+      updatedAt: "2026-08-21T00:00:00.000Z",
+    })
+
+    const res = harness.response()
+    await addLineItem(
+      harness.request("add", "customer-canonical-add", 1, '"1"', {
+        authorization: `Bearer ${session.token}`,
+        cartId: canonicalCart.id,
+      }) as never,
+      res as never
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(canonicalCart.items.at(-1)?.quantity).toBe(1)
+    expect(harness.claimCount).toBe(1)
+    expect(harness.casCalls).toBe(1)
+    expect(harness.nativeWorkflowCalls).toBe(1)
+    expect(harness.cart09Calls).toBe(1)
+  })
+
+  it("nega UPDATE no cart A antigo quando o mesmo Customer tem cart B canônico mais novo", async () => {
+    const harness = createHarness()
+    const session = harness.createCustomerSession("cus_line_items_01")
+    harness.setCartUpdatedAt("2026-08-20T00:00:00.000Z")
+    const canonicalCart = harness.addCustomerCart({
+      id: "cart_customer_canonical_b",
+      updatedAt: "2026-08-21T00:00:00.000Z",
+    })
+
+    await expect(
+      updateLineItem(
+        harness.request("update", "customer-noncanonical-update", 2, '"1"', {
+          authorization: `Bearer ${session.token}`,
+          cartId: harness.cart.id,
+          lineId: harness.cart.items[0].id,
+        }) as never,
+        harness.response() as never
+      )
+    ).rejects.toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+
+    expect(canonicalCart.id).not.toBe(harness.cart.id)
+    expect(harness.claimCount).toBe(0)
+    expect(harness.casCalls).toBe(0)
+    expect(harness.nativeWorkflowCalls).toBe(0)
+    expect(harness.cart09Calls).toBe(0)
+    expect(harness.cart.items[0].quantity).toBe(1)
+  })
+
+  it("permite UPDATE no cart B canônico mais novo e executa workflow nativo, CAS e CART-09", async () => {
+    const harness = createHarness()
+    const session = harness.createCustomerSession("cus_line_items_01")
+    harness.setCartUpdatedAt("2026-08-20T00:00:00.000Z")
+    const canonicalCart = harness.addCustomerCart({
+      id: "cart_customer_canonical_b",
+      updatedAt: "2026-08-21T00:00:00.000Z",
+    })
+
+    const res = harness.response()
+    await updateLineItem(
+      harness.request("update", "customer-canonical-update", 2, '"1"', {
+        authorization: `Bearer ${session.token}`,
+        cartId: canonicalCart.id,
+        lineId: canonicalCart.items[0].id,
+      }) as never,
+      res as never
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(canonicalCart.items[0].quantity).toBe(2)
+    expect(harness.claimCount).toBe(1)
+    expect(harness.casCalls).toBe(1)
+    expect(harness.nativeWorkflowCalls).toBe(1)
+    expect(harness.cart09Calls).toBe(1)
+  })
+
   it.each([1, 99])("adiciona quantity %s com Customer auth e sem capability guest", async (quantity) => {
     const harness = createHarness()
     const session = harness.createCustomerSession("cus_line_items_01")

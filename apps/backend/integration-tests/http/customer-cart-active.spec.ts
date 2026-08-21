@@ -670,6 +670,44 @@ describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — Real Author
     expect(harness.carts.size).toBe(0)
   })
 
+  it("PROVA 7.1: GET Customer escolhe o cart ativo incompleto mais novo entre dois carts do mesmo Customer", async () => {
+    const harness = createCustomerHarness()
+    const customerId = "cus_same_01"
+    const olderCart = {
+      id: "cart_same_older",
+      customer_id: customerId,
+      customer: { id: customerId },
+      metadata: { active_for_checkout: true },
+      completed_at: null,
+      updated_at: "2026-08-20T00:00:00.000Z",
+      items: [],
+    }
+    const newerCart = {
+      id: "cart_same_newer",
+      customer_id: customerId,
+      customer: { id: customerId },
+      metadata: { active_for_checkout: true },
+      completed_at: null,
+      updated_at: "2026-08-21T00:00:00.000Z",
+      items: [],
+    }
+    harness.carts.set(olderCart.id, olderCart)
+    harness.carts.set(newerCart.id, newerCart)
+
+    const session = harness.createCustomerSession(customerId)
+    const req = harness.createRequest({
+      method: "GET",
+      headers: { authorization: `Bearer ${session.token}` },
+    })
+    const res = createMockResponse()
+
+    await getActiveCart(req as never, res as never)
+
+    expect(res.statusCode).toBe(200)
+    expect((res.body as any).cart.id).toBe(newerCart.id)
+    expect((res.body as any).cart.id).not.toBe(olderCart.id)
+  })
+
   it("PROVA 8: BFF Pipeline Integration — requisicao sem credencial BFF e barrada no middleware antes do handler de active cart", () => {
     const bffMiddleware = createCustomerAuthBffServiceGuardMiddleware({
       expectedSecret: VALID_TEST_BFF_SECRET,
