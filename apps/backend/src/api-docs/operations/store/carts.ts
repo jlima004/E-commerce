@@ -1,8 +1,8 @@
 import {
   CORRELATION_ID_HEADER,
-  STORE_OPTIONAL_CUSTOMER,
   storeErrorResponse,
 } from "../../components"
+import { STORE_CART_M1_BFF_OPTIONAL_CUSTOMER } from "../../components/security-schemes"
 import {
   STORE_ETAG_RESPONSE_HEADERS,
   STORE_GUEST_CART_TOKEN_RESPONSE_HEADERS,
@@ -87,7 +87,7 @@ function registerLineItemOperation(
     operationId: config.operationId,
     summary: config.summary,
     tags: ["Cart"],
-    security: [...STORE_OPTIONAL_CUSTOMER],
+    security: [...STORE_CART_M1_BFF_OPTIONAL_CUSTOMER],
     parameters: [
       CORRELATION_ID_HEADER,
       STORE_CART_ID_PATH,
@@ -128,7 +128,7 @@ export function registerStoreCartOperations(
     operationId: "getActiveStoreCart",
     summary: "Get the active Store cart",
     tags: ["Cart"],
-    security: [...STORE_OPTIONAL_CUSTOMER],
+    security: [...STORE_CART_M1_BFF_OPTIONAL_CUSTOMER],
     parameters: [CORRELATION_ID_HEADER, STORE_GUEST_CART_TOKEN_HEADER_REF],
     requestBody: null,
     responses: {
@@ -169,7 +169,7 @@ export function registerStoreCartOperations(
     operationId: "createActiveStoreCart",
     summary: "Create or reuse the active Store cart",
     tags: ["Cart"],
-    security: [...STORE_OPTIONAL_CUSTOMER],
+    security: [...STORE_CART_M1_BFF_OPTIONAL_CUSTOMER],
     parameters: [
       CORRELATION_ID_HEADER,
       STORE_GUEST_CART_TOKEN_HEADER_REF,

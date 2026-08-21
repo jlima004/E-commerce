@@ -2450,13 +2450,16 @@
         },
         "security": [
           {
+            "bffServiceCredential": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerBearer": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerSession": [],
             "publishableApiKey": []
           }
@@ -2625,13 +2628,16 @@
         },
         "security": [
           {
+            "bffServiceCredential": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerBearer": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerSession": [],
             "publishableApiKey": []
           }
@@ -2821,13 +2827,16 @@
         },
         "security": [
           {
+            "bffServiceCredential": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerBearer": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerSession": [],
             "publishableApiKey": []
           }
@@ -3005,13 +3014,16 @@
         },
         "security": [
           {
+            "bffServiceCredential": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerBearer": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerSession": [],
             "publishableApiKey": []
           }
@@ -3122,13 +3134,16 @@
         },
         "security": [
           {
+            "bffServiceCredential": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerBearer": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerSession": [],
             "publishableApiKey": []
           }
@@ -3276,13 +3291,16 @@
         },
         "security": [
           {
+            "bffServiceCredential": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerBearer": [],
             "publishableApiKey": []
           },
           {
+            "bffServiceCredential": [],
             "customerSession": [],
             "publishableApiKey": []
           }

@@ -100,6 +100,73 @@ describe("OpenAPI Store contract wave", () => {
     expect(cartM1.every((operation) => operation.nonInteractive === true)).toBe(true)
   })
 
+  it("requires BFF authority on every Cart M1 security alternative", () => {
+    const cartM1Keys = new Set([
+      "GET /store/carts/active",
+      "POST /store/carts/active",
+      "POST /store/carts/{id}/line-items",
+      "POST /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items",
+    ])
+    const cartM1 = storeOperations.filter((operation) =>
+      cartM1Keys.has(`${operation.method} ${operation.path}`)
+    )
+    const expectedSecurity = [
+      { bffServiceCredential: [], publishableApiKey: [] },
+      {
+        bffServiceCredential: [],
+        publishableApiKey: [],
+        customerBearer: [],
+      },
+      {
+        bffServiceCredential: [],
+        publishableApiKey: [],
+        customerSession: [],
+      },
+    ]
+
+    expect(cartM1).toHaveLength(6)
+    for (const operation of cartM1) {
+      expect(operation.security).toHaveLength(3)
+      expect(operation.security).toEqual(expectedSecurity)
+
+      for (const requirement of operation.security) {
+        expect(requirement).toHaveProperty("bffServiceCredential")
+        expect(requirement).toHaveProperty("publishableApiKey")
+        expect(
+          Object.hasOwn(requirement, "publishableApiKey") &&
+            !Object.hasOwn(requirement, "bffServiceCredential")
+        ).toBe(false)
+        expect(
+          Object.hasOwn(requirement, "customerBearer") &&
+            Object.hasOwn(requirement, "customerSession")
+        ).toBe(false)
+      }
+    }
+
+    expect(cartM1[0]?.security[0]).toEqual({
+      bffServiceCredential: [],
+      publishableApiKey: [],
+    })
+    expect(cartM1[0]?.security[0]).not.toEqual(
+      expect.objectContaining({
+        customerBearer: expect.anything(),
+        customerSession: expect.anything(),
+      })
+    )
+    expect(cartM1[0]?.security[1]).toEqual({
+      bffServiceCredential: [],
+      publishableApiKey: [],
+      customerBearer: [],
+    })
+    expect(cartM1[0]?.security[2]).toEqual({
+      bffServiceCredential: [],
+      publishableApiKey: [],
+      customerSession: [],
+    })
+  })
+
   it("requires the optional guest capability request header on every Cart M1 operation", () => {
     const cartM1Keys = new Set([
       "GET /store/carts/active",
