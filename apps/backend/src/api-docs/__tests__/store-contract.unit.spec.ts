@@ -135,12 +135,18 @@ describe("OpenAPI Store contract wave", () => {
         expect(requirement).toHaveProperty("bffServiceCredential")
         expect(requirement).toHaveProperty("publishableApiKey")
         expect(
-          Object.hasOwn(requirement, "publishableApiKey") &&
-            !Object.hasOwn(requirement, "bffServiceCredential")
+          Object.prototype.hasOwnProperty.call(
+            requirement,
+            "publishableApiKey"
+          ) &&
+            !Object.prototype.hasOwnProperty.call(
+              requirement,
+              "bffServiceCredential"
+            )
         ).toBe(false)
         expect(
-          Object.hasOwn(requirement, "customerBearer") &&
-            Object.hasOwn(requirement, "customerSession")
+          Object.prototype.hasOwnProperty.call(requirement, "customerBearer") &&
+            Object.prototype.hasOwnProperty.call(requirement, "customerSession")
         ).toBe(false)
       }
     }

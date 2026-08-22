@@ -122,14 +122,14 @@ describe("Guest Cart Validation Foundation (Wave 0 - Plan 15-01)", () => {
   })
 
   describe("Negative Proofs & Anti-pattern verification", () => {
-    it("keeps production crypto out of the deterministic test harness", async () => {
+    it("keeps production crypto out of the deterministic test harness", () => {
       const helper = require("./support/deterministic-guest-cart")
 
       expect(helper.generateGuestCartCapability).toBeUndefined()
       expect(helper.hashGuestCartCapability).toBeUndefined()
       expect(helper.compareGuestCartCapabilityHash).toBeUndefined()
 
-      const productionHash = await import("../hash")
+      const productionHash = require("../hash")
       expect(productionHash.generateGuestCartCapability).toEqual(
         expect.any(Function)
       )
