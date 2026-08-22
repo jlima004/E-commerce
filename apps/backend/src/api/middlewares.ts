@@ -228,6 +228,31 @@ function resolveErrorStatusCode(error: unknown): number {
   }
 }
 
+function resolveCartVersionMismatchEtag(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined
+  }
+
+  const candidate = error as {
+    code?: unknown
+    name?: unknown
+    currentEtag?: unknown
+  }
+  const isCartVersionMismatch =
+    candidate.code === "CART_VERSION_MISMATCH" ||
+    candidate.name === "CartVersionMismatchError"
+
+  if (
+    !isCartVersionMismatch ||
+    typeof candidate.currentEtag !== "string" ||
+    !/^"[1-9]\d*"$/.test(candidate.currentEtag)
+  ) {
+    return undefined
+  }
+
+  return candidate.currentEtag
+}
+
 function buildSentryOperation(
   error: unknown,
   req: MedusaRequest
@@ -422,6 +447,10 @@ export function createSentryErrorHandler(
       })
 
       res.setHeader(CORRELATION_HEADER, correlationId)
+      const currentCartEtag = resolveCartVersionMismatchEtag(formattedError)
+      if (currentCartEtag !== undefined) {
+        res.setHeader("ETag", currentCartEtag)
+      }
       if (normalized.retryAfterSeconds !== undefined) {
         res.setHeader("Retry-After", String(normalized.retryAfterSeconds))
       }
