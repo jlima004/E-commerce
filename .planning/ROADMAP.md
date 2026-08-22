@@ -8,7 +8,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 
 ## Milestone v1.1: Backend Storefront Readiness
 
-**Status:** OPEN — **2/10 phases closed**, **17/91 requirements complete**.
+**Status:** OPEN — **3/10 phases closed**, **26/91 requirements complete**.
 
 ## Governança
 
@@ -26,7 +26,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 15 CONTEXT está **HUMAN APPROVED — PASS**
 - Phase 15 RESEARCH está **HUMAN APPROVED — PASS**
 - Phase 15 PLAN está **HUMAN APPROVED — PASS** (8 plans / 8 serial waves)
-- Phase 15 EXECUTION está **IN PROGRESS**; Plans `15-01`..`15-08` estão **8/8 HUMAN APPROVED — PASS**, `15-07` e `15-08` estão documentally closed; o fechamento da Phase 15 permanece pendente de gate humano separado
+- Phase 15 está **CLOSED — HUMAN APPROVED**; Plans `15-01`..`15-08` estão **8/8 HUMAN APPROVED — PASS**, `15-07` e `15-08` estão documentally closed, e CART-01..CART-09 estão **9/9 COMPLETE**
 - Phase 16 e gates posteriores permanecem não autorizados até revisão humana própria
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
@@ -35,7 +35,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 | Milestone | Status | Phases | Requirements |
 |---|---|---:|---:|
 | v1.0 — Backend MVP | COMPLETE / CLOSED / ARCHIVED / IMMUTABLE | 13/13 | 45/45 |
-| v1.1 — Backend Storefront Readiness | OPEN | **2/10 closed** | **17/91** |
+| v1.1 — Backend Storefront Readiness | OPEN | **3/10 closed** | **26/91** |
 
 O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e a GitHub Release `v1.0` são imutáveis e não participam deste milestone.
 
@@ -45,8 +45,8 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 |---:|---|---|---:|---|
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
 | 14 | Customer Auth & Verification | 13 | 9 | **CLOSED — HUMAN APPROVED; 21/21 plans; 63/63 tasks; 9/9 requirements** |
-| 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN HUMAN APPROVED — PASS; 15-01..15-08 HUMAN APPROVED — PASS (8/8); 15-07 e 15-08 DOCUMENTALLY CLOSED; Phase-15 closure pending (8 plans / 8 serial waves)** |
-| 16 | Cart Merge & Review | 15 | 8 | Not started |
+| 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CLOSED — HUMAN APPROVED; 8/8 plans; CART-01..CART-09 = 9/9 COMPLETE** |
+| 16 | Cart Merge & Review | 15 | 8 | Not started — **NOT AUTHORIZED** |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
 | 18 | Gelato Shipping Quote & Selection | 17 | 8 | Not started |
 | 19 | Storefront PaymentAttempt Hardening | 18 | 9 | Not started |
@@ -85,7 +85,7 @@ Closure authority: `.planning/phases/13-storefront-contract-foundation-surface-l
 - Phase 15 CONTEXT HUMAN APPROVED — PASS.
 - Phase 15 RESEARCH HUMAN APPROVED — PASS.
 - Phase 15 PLAN HUMAN APPROVED — PASS (8 plans / 8 serial waves).
-- Phase 15 EXECUTION IN PROGRESS; Plans 15-01..15-08 HUMAN APPROVED — PASS (8/8); 15-07 e 15-08 DOCUMENTALLY CLOSED; Phase-15 closure pending / not authorized by this step.
+- Phase 15 CLOSED — HUMAN APPROVED; Plans 15-01..15-08 HUMAN APPROVED — PASS (8/8); 15-07 e 15-08 DOCUMENTALLY CLOSED; CART-01..CART-09 = 9/9 COMPLETE.
 - Deploy NOT AUTHORIZED.
 - Real Resend / real providers NOT AUTHORIZED.
 - Remote DB/Redis changes NOT AUTHORIZED.
@@ -197,7 +197,7 @@ Technical head consumed by closure:
 
 **Goal:** substituir a sessão como prova principal de posse por capability opaca e tornar mutações concorrentes seguras.
 
-**Status:** **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN HUMAN APPROVED — PASS; EXECUTION IN PROGRESS (15-01..15-08 HUMAN APPROVED — PASS, 8/8; 15-07 e 15-08 DOCUMENTALLY CLOSED; Phase-15 closure pending / not authorized by this step).** Depends on Phase 14 CLOSED.
+**Status:** **CLOSED — HUMAN APPROVED (CONTEXT, RESEARCH, PLAN and EXECUTION PASS; 15-01..15-08 HUMAN APPROVED — PASS, 8/8; 15-07 e 15-08 DOCUMENTALLY CLOSED; CART-01..CART-09 = 9/9 COMPLETE).** Depends on Phase 14 CLOSED.
 
 **Plans:** 8 plans / 8 serial waves (replaces the superseded 18-plan set)
 
@@ -234,11 +234,22 @@ Plans:
 
 - [x] 15-08-PLAN.md — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED — Final Phase Verification (mandatory ledger)
 
-The accepted Phase-15 CONTEXT, RESEARCH and human-approved PLAN are the authorities for execution. Plans `15-01` through `15-08` are **8/8 HUMAN APPROVED — PASS**; Plans `15-07` and `15-08` are documentally closed, with `B15-07-HR-01` CLOSED — PASS. Plan `15-08` technical ledger 01–17 and final human checkpoint are PASS. Phase-15 closure remains pending a separate human-authorized gate. Phase 16 and all later gates remain separately human-gated and unauthorized.
+The accepted Phase-15 CONTEXT, RESEARCH, human-approved PLAN and closure
+artifact are the authorities for this phase. Plans `15-01` through `15-08`
+are **8/8 HUMAN APPROVED — PASS**; Plans `15-07` and `15-08` are documentally
+closed, with `B15-07-HR-01` CLOSED — PASS. Plan `15-08` technical ledger 01–17
+and final human checkpoint are PASS. The final Store authority is
+`64/51/13/16/47/5/12`, with Auth M1 6 intact, Cart M1 6 and Global M1 12. Cart
+Store/BFF synchronous Order birth is zero, the canonical
+`payment_intent.succeeded` webhook remains the only accepted Order-birth
+authority, and capability leakage is ZERO. No deploy, provider or remote
+infrastructure action is authorized. Phase 16 and all later gates remain
+separately human-gated and unauthorized.
 
 ### Accepted Phase-15 evidence
 
 - `15-08-SUMMARY.md` — final CART/Order/regression/leakage ledger and human verify
+- `15-CLOSURE.md` — human-approved Phase-15 closure authority
 
 ## Phase 16: Cart Merge & Review
 
@@ -286,4 +297,8 @@ The accepted Phase-15 CONTEXT, RESEARCH and human-approved PLAN are the authorit
 
 O milestone só pode fechar quando houver evidência PASS para todos os gates previstos: contratos Store/OpenAPI, autenticação, capability/concorrência e merge de carrinho, checkout BR/privacidade, Gelato shipping, PaymentAttempt/confirmation, order/catalog handoff, kit types/Zod/fixtures/mocks, contract tests, suites backend, migrations/constraints, drift/lint/build, security negative proofs e release verification aplicável.
 
-Phase 15 CONTEXT, RESEARCH and PLAN are HUMAN APPROVED — PASS; Plans 15-01..15-08 are **8/8 HUMAN APPROVED — PASS** and Plans 15-07 and 15-08 are DOCUMENTALLY CLOSED. Plan 15-08 technical ledger 01–17 and final human checkpoint are PASS. Phase-15 closure remains pending a separate human-authorized gate (8 plans / 8 serial waves). No Phase 16 or later gate, provider real, infraestrutura remota, deploy ou frontend is authorized by this execution gate.
+Phase 15 CONTEXT, RESEARCH, PLAN and closure are HUMAN APPROVED — PASS;
+Plans 15-01..15-08 are **8/8 HUMAN APPROVED — PASS** and Plans 15-07 and
+15-08 are DOCUMENTALLY CLOSED. CART-01..CART-09 are 9/9 COMPLETE. Phase 16
+remains NOT AUTHORIZED; no later gate, provider real, infraestrutura remota,
+deploy ou frontend is authorized by this execution gate.
