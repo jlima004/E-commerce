@@ -35,6 +35,7 @@ import {
 import {
   STORE_SURFACE_MANIFEST,
   STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
+  STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS,
   type StoreSurfaceEntry,
 } from "../../../api/store-surface/manifest"
 
@@ -121,16 +122,23 @@ describe("Guest Cart Validation Foundation (Wave 0 - Plan 15-01)", () => {
   })
 
   describe("Negative Proofs & Anti-pattern verification", () => {
-    it("confirms production generate/hash/compare symbols are NOT implemented in 15-01", async () => {
-      // In 15-01, production hash.ts does NOT exist yet.
-      let hashModuleLoaded = false
-      try {
-        await import("../hash" as string)
-        hashModuleLoaded = true
-      } catch {
-        hashModuleLoaded = false
-      }
-      expect(hashModuleLoaded).toBe(false)
+    it("keeps production crypto out of the deterministic test harness", async () => {
+      const helper = require("./support/deterministic-guest-cart")
+
+      expect(helper.generateGuestCartCapability).toBeUndefined()
+      expect(helper.hashGuestCartCapability).toBeUndefined()
+      expect(helper.compareGuestCartCapabilityHash).toBeUndefined()
+
+      const productionHash = await import("../hash")
+      expect(productionHash.generateGuestCartCapability).toEqual(
+        expect.any(Function)
+      )
+      expect(productionHash.hashGuestCartCapability).toEqual(
+        expect.any(Function)
+      )
+      expect(productionHash.compareGuestCartCapabilityHash).toEqual(
+        expect.any(Function)
+      )
     })
 
     it("confirms no HKDF, nonce, or 45s recovery primitives exist in deterministic-guest-cart", () => {
@@ -285,38 +293,44 @@ describe("Guest Cart Validation Foundation (Wave 0 - Plan 15-01)", () => {
       )
     })
 
-    it("proves no unapproved cart route promotions exist in 15-01", () => {
-      expect(() => assertGuestCartPromotionsExplicit()).not.toThrow()
+    it("proves final Cart M1 promotions are explicit", () => {
+      expect(STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS).toHaveLength(6)
+      expect(() =>
+        assertGuestCartPromotionsExplicit(
+          STORE_SURFACE_MANIFEST,
+          STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS
+        )
+      ).not.toThrow()
 
       const mockMutatedManifest: StoreSurfaceEntry[] = [
         ...STORE_SURFACE_MANIFEST,
         {
           method: "POST",
-          pathTemplate: "/store/carts/active",
+          pathTemplate: "/store/carts/{id}/complete",
           origin: "local",
           medusaVersion: "2.16.0",
           classification: "EXTENDED",
           runtime_policy: "M1_ENABLED",
           m1_enablement: "enabled",
           openapi_m1_expectation: "include_executable_m1",
-          rationale: "premature promotion probe",
+          rationale: "unauthorized promotion probe",
           owner_domain: "cart",
         },
       ]
 
       expect(() =>
-        assertGuestCartPromotionsExplicit(mockMutatedManifest, [])
+        assertGuestCartPromotionsExplicit(
+          mockMutatedManifest,
+          STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS
+        )
       ).toThrow("GUEST_CART_UNAPPROVED_PROMOTION_DETECTED")
-
-      expect(() =>
-        assertGuestCartPromotionsExplicit(mockMutatedManifest, [
-          "POST /store/carts/active",
-        ])
-      ).not.toThrow()
     })
 
     it("executes validateGuestCartSurfaceExactSet successfully", () => {
-      const result = validateGuestCartSurfaceExactSet()
+      const result = validateGuestCartSurfaceExactSet(
+        STORE_SURFACE_MANIFEST,
+        STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS
+      )
       expect(result.authM1Count).toBe(6)
       expect(result.nativeIdentityCount).toBeGreaterThanOrEqual(51)
       expect(result.deniedCount).toBe(7)
