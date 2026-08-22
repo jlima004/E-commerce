@@ -8,6 +8,7 @@ import {
   STORE_AUTH_ACCESS_BEARER,
   STORE_AUTH_PUBLIC_BFF,
   STORE_AUTH_SECURITY_BY_REQUIREMENT,
+  STORE_CART_M1_BFF_OPTIONAL_CUSTOMER,
   STORE_OPTIONAL_CUSTOMER,
   STORE_PUBLISHABLE_ONLY,
   STORE_REQUIRED_CUSTOMER,
@@ -111,7 +112,7 @@ describe("OpenAPI Store security contract and surface isolation", () => {
   })
 
   it("registers populated and isolated Store, Admin, and Webhooks surfaces", () => {
-    expect(storeOperations).toHaveLength(21)
+    expect(storeOperations).toHaveLength(25)
     expect(registry.getOperations("admin")).toHaveLength(9)
     expect(registry.getOperations("webhooks")).toHaveLength(2)
 
@@ -180,7 +181,7 @@ describe("OpenAPI Store security contract and surface isolation", () => {
     }
   })
 
-  it("omits public cart attach and keeps optional customer auth on remaining business routes", () => {
+  it("omits public cart attach and keeps optional customer auth on legacy business routes", () => {
     expect(
       storeOperations.some(
         (operation) =>
@@ -193,7 +194,6 @@ describe("OpenAPI Store security contract and surface isolation", () => {
       [
         "/store/products",
         "/store/products/{id}",
-        "/store/carts/active",
         "/store/carts/{id}/payment-attempts/card",
         "/store/carts/{id}/payment-attempts/pix",
       ].includes(operation.path)
@@ -203,6 +203,30 @@ describe("OpenAPI Store security contract and surface isolation", () => {
         expect.arrayContaining([{ publishableApiKey: [] }])
       )
       expect(operation.security.length).toBeGreaterThan(1)
+    }
+  })
+
+  it("requires mandatory BFF authority on every Cart M1 security alternative", () => {
+    const cartM1Keys = new Set([
+      "GET /store/carts/active",
+      "POST /store/carts/active",
+      "POST /store/carts/{id}/line-items",
+      "POST /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items",
+    ])
+    const cartM1 = storeOperations.filter((operation) =>
+      cartM1Keys.has(`${operation.method} ${operation.path}`)
+    )
+
+    expect(cartM1).toHaveLength(6)
+    for (const operation of cartM1) {
+      expect(operation.security).toEqual([...STORE_CART_M1_BFF_OPTIONAL_CUSTOMER])
+      expect(operation.security).not.toEqual([{ publishableApiKey: [] }])
+      for (const requirement of operation.security) {
+        expect(requirement).toHaveProperty("bffServiceCredential")
+        expect(requirement).toHaveProperty("publishableApiKey")
+      }
     }
   })
 
@@ -499,11 +523,11 @@ describe("OpenAPI Store security contract and surface isolation", () => {
           responseCount += 1
           expect(response).toEqual(
             expect.objectContaining({
-              headers: {
+              headers: expect.objectContaining({
                 "x-correlation-id": {
                   $ref: X_CORRELATION_ID_HEADER_REF,
                 },
-              },
+              }),
             })
           )
         }
