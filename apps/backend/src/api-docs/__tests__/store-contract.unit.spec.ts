@@ -275,6 +275,14 @@ describe("OpenAPI Store contract wave", () => {
       expect(operation.responses["412"]).toEqual(
         expect.objectContaining({
           description: expect.stringMatching(/CART_VERSION_MISMATCH/),
+          headers: {
+            "x-correlation-id": {
+              $ref: "#/components/headers/XCorrelationId",
+            },
+            ETag: {
+              $ref: "#/components/headers/ETag",
+            },
+          },
           content: {
             "application/json": {
               schema: { $ref: "#/components/schemas/StoreErrorResponse" },
@@ -292,6 +300,35 @@ describe("OpenAPI Store contract wave", () => {
           }),
         }),
       })
+    )
+  })
+
+  it("documents the active-cart 409 categories as public CONFLICT", () => {
+    const activePost = storeOperations.find(
+      (operation) =>
+        operation.method === "POST" && operation.path === "/store/carts/active"
+    )
+    const conflict = activePost?.responses["409"]
+
+    expect(conflict).toEqual(
+      expect.objectContaining({
+        description: expect.stringMatching(
+          /CONFLICT.*semantic Idempotency-Key conflict.*operation currently in progress.*terminal replay\/reconciliation conflict/i
+        ),
+        headers: {
+          "x-correlation-id": {
+            $ref: "#/components/headers/XCorrelationId",
+          },
+        },
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/StoreErrorResponse" },
+          },
+        },
+      })
+    )
+    expect(JSON.stringify(conflict)).not.toMatch(
+      /IDEMPOTENCY_KEY_REUSE_CONFLICT|IDEMPOTENCY_KEY_IN_PROGRESS/
     )
   })
 

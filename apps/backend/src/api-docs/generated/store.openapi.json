@@ -2412,6 +2412,9 @@
             },
             "description": "CART_VERSION_MISMATCH: the If-Match precondition is stale; the response cart is the current PublicStoreCartPreOrder snapshot.",
             "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"
               }
@@ -2590,6 +2593,9 @@
             },
             "description": "CART_VERSION_MISMATCH: the If-Match precondition is stale; the response cart is the current PublicStoreCartPreOrder snapshot.",
             "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"
               }
@@ -2789,6 +2795,9 @@
             },
             "description": "CART_VERSION_MISMATCH: the If-Match precondition is stale; the response cart is the current PublicStoreCartPreOrder snapshot.",
             "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"
               }
@@ -2976,6 +2985,9 @@
             },
             "description": "CART_VERSION_MISMATCH: the If-Match precondition is stale; the response cart is the current PublicStoreCartPreOrder snapshot.",
             "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"
               }
@@ -3252,6 +3264,21 @@
               }
             },
             "description": "Presented guest capability is invalid, expired, revoked, consumed, or has no active cart.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict in the public CONFLICT category: semantic Idempotency-Key conflict, operation currently in progress, or terminal replay/reconciliation conflict.",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"

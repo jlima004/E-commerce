@@ -54,9 +54,15 @@ function cartMutationErrorResponses() {
     "409": storeErrorResponse(
       "Idempotency key conflict or operation currently in progress."
     ),
-    "412": storeErrorResponse(
-      "CART_VERSION_MISMATCH: the If-Match precondition is stale; the response cart is the current PublicStoreCartPreOrder snapshot."
-    ),
+    "412": {
+      ...storeErrorResponse(
+        "CART_VERSION_MISMATCH: the If-Match precondition is stale; the response cart is the current PublicStoreCartPreOrder snapshot."
+      ),
+      headers: {
+        ...STORE_X_CORRELATION_ID_RESPONSE_HEADERS,
+        ...STORE_ETAG_RESPONSE_HEADERS,
+      },
+    },
     "500": storeErrorResponse("Cart line-item workflow failure."),
     "503": storeErrorResponse(
       "Customer authentication authority is temporarily unavailable."
@@ -190,6 +196,9 @@ export function registerStoreCartOperations(
       "401": storeErrorResponse("Missing or invalid publishable API key."),
       "404": storeErrorResponse(
         "Presented guest capability is invalid, expired, revoked, consumed, or has no active cart."
+      ),
+      "409": storeErrorResponse(
+        "Conflict in the public CONFLICT category: semantic Idempotency-Key conflict, operation currently in progress, or terminal replay/reconciliation conflict."
       ),
       "500": storeErrorResponse(
         "Session, customer, capability, or cart workflow failure."
