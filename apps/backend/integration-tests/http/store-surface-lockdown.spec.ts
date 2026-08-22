@@ -92,16 +92,16 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     )
   })
 
-  it("denies all 50 DENY operations before scope/handler side effects", () => {
-    expect(counts.total).toBe(63)
-    expect(counts.deny).toBe(50)
+  it("denies all 47 DENY operations before scope/handler side effects", () => {
+    expect(counts.total).toBe(64)
+    expect(counts.deny).toBe(47)
     expect(counts.preserveLegacy).toBe(5)
-    expect(counts.m1EnabledPolicy).toBe(8)
+    expect(counts.m1EnabledPolicy).toBe(12)
 
     const denyEntries = STORE_SURFACE_MANIFEST.filter(
       (entry) => entry.runtime_policy === "DENY"
     )
-    expect(denyEntries).toHaveLength(50)
+    expect(denyEntries).toHaveLength(47)
 
     for (const entry of denyEntries) {
       const next = jest.fn()
@@ -155,18 +155,18 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     const m1Enabled = STORE_SURFACE_MANIFEST.filter(
       (entry) => entry.runtime_policy === "M1_ENABLED"
     )
-    expect(m1Enabled).toHaveLength(8)
+    expect(m1Enabled).toHaveLength(12)
     expect(
       m1Enabled.map((entry) =>
         storeSurfaceOperationKey(entry.method, entry.pathTemplate)
       )
     ).toEqual([...STORE_SURFACE_M1_ENABLED_OPERATIONS])
 
-    // Proves Phase 14 Auth (6) is an intact subset of current M1 (8)
+    // Proves Phase 14 Auth (6) is an intact subset of current M1 (12)
     for (const p14Op of STORE_SURFACE_PHASE14_ENABLED_OPERATIONS) {
       expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toContain(p14Op)
     }
-    // Proves Phase 15 Cart (2) is part of current M1 (8)
+    // Proves Phase 15 Cart (6) is part of current M1 (12)
     for (const p15Op of STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS) {
       expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toContain(p15Op)
     }
@@ -334,10 +334,10 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
 
   it("keeps classification distribution and Phase 15 M1_ENABLED exact-set at enforcement time", () => {
     expect(counts.authorized).toBe(0)
-    expect(counts.extended).toBe(15)
+    expect(counts.extended).toBe(16)
     expect(counts.blocked).toBe(17)
     expect(counts.outsideFrontendM1).toBe(31)
-    expect(counts.m1EnabledPolicy).toBe(8)
-    expect(counts.m1EnablementEnabled).toBe(8)
+    expect(counts.m1EnabledPolicy).toBe(12)
+    expect(counts.m1EnablementEnabled).toBe(12)
   })
 })
