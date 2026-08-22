@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
-status: in_progress
-last_updated: "2026-08-22T16:12:22.000Z"
+status: ready
+last_updated: "2026-08-22T13:20:00-03:00"
 progress:
   total_phases: 10
   completed_phases: 3
   total_plans: 36
   completed_plans: 36
   percent: 30
-stopped_at: Phase 15 HUMAN APPROVED — CLOSED; CART-01..CART-09 9/9 COMPLETE; Phase 16 NOT AUTHORIZED
-current_phase: 15
-current_phase_name: guest-cart-capability-concurrency
-current_plan: 15-08
+stopped_at: PHASE 15 HUMAN APPROVED — CLOSED; PHASE 16 CONTEXT AUTHORIZED — NOT STARTED
+current_phase: 16
+current_phase_name: cart-merge-review
+current_plan: null
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: `.planning/PROJECT.md`.
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, duplicate order or improper fulfillment.
 
-**Current focus:** Phase 15 — guest-cart-capability-concurrency
+**Current focus:** Phase 16 — `Cart Merge & Review`, with **CONTEXT AUTHORIZED / NOT STARTED**.
 
 ## Execution Policy
 
@@ -43,8 +43,9 @@ Execution remains manual-review gated.
 Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH,
 PLAN and closure are human-approved. Plans 15-01 through 15-08 are HUMAN
 APPROVED — PASS; B15-07-HR-01 is CLOSED — PASS, Plan 15-07 and Plan 15-08
-are documentally closed, and CART-01..CART-09 are 9/9 COMPLETE. Phase 16
-and later gates remain separately unauthorized.
+are documentally closed, and CART-01..CART-09 are 9/9 COMPLETE. Phase 16 is
+authorized only to begin CONTEXT; Phase-16 RESEARCH and all subsequent gates
+remain separately unauthorized.
 
 ## Current Gate
 
@@ -78,6 +79,9 @@ Plan 15-08: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 Phase 15 closure: HUMAN APPROVED — CLOSED
 Phase 15 active blockers: 0
 
+Phase 16 CONTEXT: AUTHORIZED — NOT STARTED
+Phase 16 RESEARCH+: NOT AUTHORIZED
+
 Deploy / release: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
 REMOTE DB / REDIS: NOT AUTHORIZED
@@ -94,6 +98,7 @@ Milestone v1.1:
 - Phase 14: AUTH-01..AUTH-09 = **9/9 COMPLETE**
 - known plans human-approved executed: **36/36** (Phase 13: 7; Phase 14: 21; Phase 15: 15-01, 15-02, 15-03, 15-04, 15-05, 15-06, 15-07, 15-08)
 - Phase 15: **CLOSED — HUMAN APPROVED** (Plans 15-01..15-08 HUMAN APPROVED — PASS; 15-07 and 15-08 documentally closed; CART-01..CART-09 9/9 COMPLETE)
+- Phase 16: **CONTEXT AUTHORIZED / NOT STARTED**; RESEARCH and later gates remain unauthorized
 - frontend: BLOCKED
 
 ## Accepted Evidence References
@@ -130,7 +135,7 @@ Documentary ancestry before closure: fbc1182efa8a82ae5c37ce85176dd5b022459085
 Closure artifact commit: 049848feef2abcc5f92a0b265a445a10a3cc57cc
 ```
 
-No open Phase-15 blocker remains. Phase 16 remains NOT AUTHORIZED.
+No open Phase-15 blocker remains. Phase 16 CONTEXT is separately AUTHORIZED — NOT STARTED; Phase-16 RESEARCH and later gates remain NOT AUTHORIZED.
 
 Phase 14 accepted evidence is preserved in:
 
@@ -273,7 +278,7 @@ The approved 8-plan set at `15-01-PLAN.md` … `15-08-PLAN.md` replaces the supe
 - `auto-chain=false`;
 - blocking human checkpoint between PLANs remains mandatory.
 
-This authorization does **not** extend to:
+This historical Phase-15 execution authorization did **not** extend to:
 
 - Phase 16 or later phases;
 - frontend;
@@ -281,6 +286,8 @@ This authorization does **not** extend to:
 - real providers;
 - remote infrastructure;
 - bypassing the blocking human checkpoint after Plan 15-06.
+
+A separate human decision on 2026-08-22 now authorizes **Phase 16 CONTEXT only**. Phase-16 RESEARCH, PLAN and later gates remain separately unauthorized.
 
 Plan 15-05 final checkpoint:
 
@@ -315,8 +322,9 @@ No open Phase-15 blocker remains. Plan 15-07 is HUMAN APPROVED — PASS and
 documentally closed; `B15-07-HR-01` is CLOSED — PASS. Plan 15-08 is HUMAN
 APPROVED — PASS and documentally closed after Ledgers 01–17 and the final
 human checkpoint. Phase 15 CONTEXT, RESEARCH, PLAN and closure are
-human-approved. Plans 15-01..15-08 are human-approved. Deploy, real
-providers, remote infrastructure, frontend and Phase 16 remain unauthorized.
+human-approved. Plans 15-01..15-08 are human-approved. Phase 16 CONTEXT is
+AUTHORIZED — NOT STARTED; Phase-16 RESEARCH and later gates, deploy, real
+providers, remote infrastructure and frontend remain unauthorized.
 
 Plan 15-04 final human review:
 
@@ -404,7 +412,8 @@ Plan 15-08: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
 15-08 final human checkpoint: PASS
 PHASE 15: HUMAN APPROVED — CLOSED
 CART-01..CART-09: 9/9 COMPLETE
-PHASE 16: NOT AUTHORIZED
+PHASE 16 CONTEXT: AUTHORIZED — NOT STARTED
+PHASE 16 RESEARCH+: NOT AUTHORIZED
 FRONTEND: BLOCKED
 DEPLOY: NOT AUTHORIZED
 REAL PROVIDERS / REMOTE INFRA: NOT AUTHORIZED
@@ -423,6 +432,4 @@ Resume with:
 - `.planning/phases/15-guest-cart-capability-concurrency/15-08-SUMMARY.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-CLOSURE.md`
 
-**Next permitted step:** a separate human authorization decision for the
-Phase-16 CONTEXT gate. Do not start Phase 16. Deploy, real providers, remote
-infra and frontend remain unauthorized.
+**Next permitted step:** execute **Phase 16 — CONTEXT** only. After CONTEXT is produced, stop for human review. Phase-16 RESEARCH and subsequent gates, deploy, real providers, remote infra and frontend remain unauthorized.
