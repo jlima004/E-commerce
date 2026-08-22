@@ -68,9 +68,9 @@ Phase 15: **CLOSED — HUMAN APPROVED**.
 Phase 15 closure artifact: `.planning/phases/15-guest-cart-capability-concurrency/15-CLOSURE.md` — CLOSED — HUMAN APPROVED.
 
 Documentary post-closure note: PR #27 required implementation remediation for
-B15-PR27-HR-01..HR-06. The remediation is technically PASS and remains
-`REMEDIATED — AWAITING HUMAN RE-REVIEW`; CART-01..CART-09 remain 9/9 COMPLETE
-and no requirement count changes.
+B15-PR27-HR-01..HR-06. Human re-review accepted the remediation: all six findings
+are `CLOSED — PASS`; CART-01..CART-09 remain 9/9 COMPLETE and no requirement
+count changes.
 
 Phase 16: **AUTHORIZED — CONTEXT NOT STARTED**. Phase-16 RESEARCH and subsequent gates remain separately human-gated; MRG-01..MRG-08 requirement statuses remain unchanged.
 
