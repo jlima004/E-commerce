@@ -8,6 +8,11 @@
 
 import { randomUUID } from "crypto"
 import { MedusaError } from "@medusajs/utils"
+import {
+  serializeStoreCartPreOrder,
+  type PublicStoreCartPreOrder,
+  type StoreCartPreOrderRecord,
+} from "../store/carts/serializers"
 
 export const STORE_CORRELATION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
 
@@ -17,6 +22,7 @@ export const STORE_ERROR_CODES = {
   NOT_FOUND: "NOT_FOUND",
   CONFLICT: "CONFLICT",
   PRECONDITION_FAILED: "PRECONDITION_FAILED",
+  CART_VERSION_MISMATCH: "CART_VERSION_MISMATCH",
   DOMAIN_ERROR: "DOMAIN_ERROR",
   RATE_LIMITED: "RATE_LIMITED",
   INTERNAL_ERROR: "INTERNAL_ERROR",
@@ -60,12 +66,134 @@ export const STORE_PUBLIC_FIELD_ALLOWLIST = new Set<string>([
   "order_id",
 ])
 
+export const PUBLIC_STORE_CART_ALLOWED_KEYS = new Set<string>([
+  "id",
+  "email",
+  "currency_code",
+  "locale",
+  "total",
+  "subtotal",
+  "item_total",
+  "shipping_total",
+  "tax_total",
+  "discount_total",
+  "region_id",
+  "created_at",
+  "updated_at",
+  "checkout_data_complete",
+  "customer",
+  "items",
+  "shipping_address",
+])
+
+export const FORBIDDEN_CART_SNAPSHOT_KEYS = new Set<string>([
+  "guest_cart_token",
+  "guestCartToken",
+  "version",
+  "capability",
+  "token",
+  "secret",
+  "client_secret",
+  "payment_attempts",
+  "payment_collection",
+  "orders",
+  "order",
+])
+
+export function isPublicStoreCartPreOrderSnapshot(
+  value: unknown
+): value is PublicStoreCartPreOrder {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false
+  }
+  const cart = value as Record<string, unknown>
+  if (typeof cart.id !== "string" || cart.id.length === 0) {
+    return false
+  }
+  if (typeof cart.checkout_data_complete !== "boolean") {
+    return false
+  }
+  for (const key of Object.keys(cart)) {
+    if (
+      FORBIDDEN_CART_SNAPSHOT_KEYS.has(key) ||
+      !PUBLIC_STORE_CART_ALLOWED_KEYS.has(key)
+    ) {
+      return false
+    }
+  }
+  if (cart.customer !== null && cart.customer !== undefined) {
+    if (typeof cart.customer !== "object" || Array.isArray(cart.customer)) {
+      return false
+    }
+    const customer = cart.customer as Record<string, unknown>
+    for (const key of Object.keys(customer)) {
+      if (key !== "id" && key !== "email") {
+        return false
+      }
+    }
+  }
+  if (cart.shipping_address !== null && cart.shipping_address !== undefined) {
+    if (
+      typeof cart.shipping_address !== "object" ||
+      Array.isArray(cart.shipping_address)
+    ) {
+      return false
+    }
+    const addr = cart.shipping_address as Record<string, unknown>
+    for (const key of Object.keys(addr)) {
+      if (
+        ![
+          "first_name",
+          "last_name",
+          "company",
+          "address_1",
+          "address_2",
+          "city",
+          "postal_code",
+          "country_code",
+          "province",
+          "phone",
+          "masked_federal_tax_id",
+        ].includes(key)
+      ) {
+        return false
+      }
+    }
+  }
+  if (cart.items !== null && cart.items !== undefined) {
+    if (!Array.isArray(cart.items)) {
+      return false
+    }
+    for (const item of cart.items) {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) {
+        return false
+      }
+      for (const key of Object.keys(item)) {
+        if (
+          ![
+            "id",
+            "quantity",
+            "title",
+            "variant_id",
+            "variant_title",
+            "unit_price",
+          ].includes(key)
+        ) {
+          return false
+        }
+      }
+    }
+  }
+  return true
+}
+
 export type StoreErrorResponse = {
   code: StoreErrorCode
   message: string
   retryable: boolean
   correlationId?: string
   fieldErrors?: Record<string, string>
+  cart?: PublicStoreCartPreOrder | null
 }
 
 export type StoreErrorNormalizationResult = {
@@ -80,10 +208,10 @@ export type ToStoreErrorResponseOptions = {
   /** HTTP status already chosen by the writer (e.g. early DENY). */
   statusCode?: number
   /**
-   * Ignored in Phase 13 R1. Concrete Cart DTO is Phase 15; unknown cart
-   * input must never be exposed on the public Store error envelope.
+   * Safe canonical cart pre-order snapshot. When passed, must pass
+   * isPublicStoreCartPreOrderSnapshot or be a serializable store cart record.
    */
-  cart?: Record<string, unknown>
+  cart?: unknown
 }
 
 type ErrorLike = {
@@ -99,6 +227,8 @@ type ErrorLike = {
   retryAfterSeconds?: unknown
   retryable?: unknown
   fieldErrors?: unknown
+  cart?: unknown
+  currentEtag?: unknown
 }
 
 const SAFE_MESSAGES: Record<StoreErrorCode, string> = {
@@ -107,6 +237,7 @@ const SAFE_MESSAGES: Record<StoreErrorCode, string> = {
   NOT_FOUND: "Not Found",
   CONFLICT: "Conflict",
   PRECONDITION_FAILED: "Precondition Failed",
+  CART_VERSION_MISMATCH: "Cart version conflict",
   DOMAIN_ERROR: "Request could not be processed",
   RATE_LIMITED: "Too Many Requests",
   INTERNAL_ERROR: "Internal Server Error",
@@ -181,7 +312,7 @@ export function filterStoreFieldErrors(
 
 /**
  * Structural + catalog check for a fully rebuilt public Store error body.
- * Presence of `cart` or unknown keys fails closed.
+ * Presence of unallowlisted keys or unsafe cart fails closed.
  */
 export function isStoreErrorResponse(value: unknown): value is StoreErrorResponse {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -203,7 +334,8 @@ export function isStoreErrorResponse(value: unknown): value is StoreErrorRespons
       key !== "message" &&
       key !== "retryable" &&
       key !== "correlationId" &&
-      key !== "fieldErrors"
+      key !== "fieldErrors" &&
+      key !== "cart"
     ) {
       return false
     }
@@ -233,6 +365,11 @@ export function isStoreErrorResponse(value: unknown): value is StoreErrorRespons
       if (fieldMessage !== STORE_PUBLIC_FIELD_ERROR_MESSAGE) {
         return false
       }
+    }
+  }
+  if (body.cart !== undefined) {
+    if (body.cart !== null && !isPublicStoreCartPreOrderSnapshot(body.cart)) {
+      return false
     }
   }
   return true
@@ -287,6 +424,24 @@ function isRateLimit(error: ErrorLike, type: string, statusHint?: number): boole
   )
 }
 
+function isCartVersionMismatch(
+  err: ErrorLike,
+  type: string,
+  statusHint?: number
+): boolean {
+  const code = readString(err.code)
+  const name = readString(err.name)
+  if (
+    code === STORE_ERROR_CODES.CART_VERSION_MISMATCH ||
+    name === "CartVersionMismatchError" ||
+    type === "cart_version_mismatch" ||
+    type === "cartversionmismatcherror"
+  ) {
+    return true
+  }
+  return statusHint === 412 && (type.includes("cart_version") || code === "CART_VERSION_MISMATCH")
+}
+
 function isPreconditionFailed(
   error: ErrorLike,
   type: string,
@@ -332,6 +487,14 @@ function classify(
       // Known RATE_LIMITED category: retry is safe unless side effect is uncertain.
       retryable: !uncertainSideEffect && !explicitlyNonRetryable,
       ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
+    }
+  }
+
+  if (isCartVersionMismatch(err, type, statusHint)) {
+    return {
+      statusCode: 412,
+      code: STORE_ERROR_CODES.CART_VERSION_MISMATCH,
+      retryable: false,
     }
   }
 
@@ -462,7 +625,8 @@ function buildBody(
   code: StoreErrorCode,
   correlationId: string,
   retryable: boolean,
-  fieldErrors?: Record<string, string>
+  fieldErrors?: Record<string, string>,
+  cart?: PublicStoreCartPreOrder | null
 ): StoreErrorResponse {
   const body: StoreErrorResponse = {
     code,
@@ -473,6 +637,9 @@ function buildBody(
 
   if (fieldErrors) {
     body.fieldErrors = fieldErrors
+  }
+  if (cart !== undefined) {
+    body.cart = cart
   }
   return body
 }
@@ -522,14 +689,38 @@ export function toStoreErrorResponse(
     options.fieldErrors ?? extractFieldErrorsFromUnknown(error)
   )
 
-  // options.cart is intentionally ignored — Phase 13 has no approved Cart DTO.
-  void options.cart
+  let cartSnapshot: PublicStoreCartPreOrder | null | undefined = undefined
+  const cartCandidate =
+    options.cart ??
+    (typeof error === "object" && error !== null
+      ? (error as ErrorLike).cart
+      : undefined)
+
+  if (cartCandidate !== undefined) {
+    if (cartCandidate === null) {
+      cartSnapshot = null
+    } else if (isPublicStoreCartPreOrderSnapshot(cartCandidate)) {
+      cartSnapshot = cartCandidate
+    } else if (typeof cartCandidate === "object" && !Array.isArray(cartCandidate)) {
+      try {
+        const serialized = serializeStoreCartPreOrder(
+          cartCandidate as StoreCartPreOrderRecord
+        )
+        if (isPublicStoreCartPreOrderSnapshot(serialized)) {
+          cartSnapshot = serialized
+        }
+      } catch {
+        cartSnapshot = undefined
+      }
+    }
+  }
 
   const body = buildBody(
     classification.code,
     correlationId,
     classification.retryable,
-    fieldErrors
+    fieldErrors,
+    cartSnapshot
   )
 
   return {
@@ -577,9 +768,20 @@ export function attachStoreErrorEnvelope(
       correlationId,
       statusCode,
       fieldErrors: extractFieldErrorsFromUnknown(body),
+      cart:
+        typeof body === "object" && body !== null
+          ? (body as ErrorLike).cart
+          : undefined,
     })
 
     res.setHeader?.("x-correlation-id", correlationId)
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      typeof (body as ErrorLike).currentEtag === "string"
+    ) {
+      res.setHeader?.("ETag", (body as ErrorLike).currentEtag as string)
+    }
     if (normalized.retryAfterSeconds !== undefined) {
       res.setHeader?.("Retry-After", String(normalized.retryAfterSeconds))
     }

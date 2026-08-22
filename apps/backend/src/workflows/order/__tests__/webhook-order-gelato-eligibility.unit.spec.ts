@@ -30,7 +30,7 @@ function buildAttempt(
     currency_code: "brl",
     expires_at: null,
     order_id: null,
-    metadata: null,
+    metadata: { cart_resource_version: 1 },
     client_confirmed_at: null,
     instructions_displayed_at: null,
     awaiting_webhook_since: "2026-07-01T10:00:00.000Z",
@@ -102,6 +102,30 @@ function createPaymentAttemptModule(attempt: PaymentAttemptRecord) {
       return rows
     }),
     store,
+  }
+}
+
+function createOrderAuthorityConnection(attempt: PaymentAttemptRecord) {
+  return {
+    transaction: jest.fn(async (callback: (transaction: { raw: (sql: string) => Promise<{ rows: Array<Record<string, unknown>> }> }) => Promise<unknown>) =>
+      callback({
+        raw: jest.fn(async (sql: string) => {
+          if (sql.includes("select cart_id from payment_attempt")) {
+            return { rows: [{ cart_id: attempt.cart_id }] }
+          }
+          if (sql.includes("pg_advisory_xact_lock")) {
+            return { rows: [] }
+          }
+          if (sql.includes("from payment_attempt")) {
+            return { rows: [{ ...attempt, metadata: attempt.metadata ?? { cart_resource_version: 1 } }] }
+          }
+          if (sql.includes("from store_resource_version")) {
+            return { rows: [{ version: 1 }] }
+          }
+          throw new Error(`Unexpected Order authority SQL: ${sql}`)
+        }),
+      })
+    ),
   }
 }
 
@@ -365,6 +389,9 @@ function createContainer(input: {
           updateLineItems: jest.fn(async (rows) => rows),
         }
       }
+      if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+        return createOrderAuthorityConnection(input.paymentAttemptModule.store[0]!)
+      }
       if (key === ContainerRegistrationKeys.QUERY) {
         return {
           graph: jest.fn(async () => ({
@@ -604,11 +631,12 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint gelato eligibility
 
   it("tolera alias legado ausente quando a key canonica gelato_fulfillment ja resolve", async () => {
     const gelatoFulfillmentModule = createGelatoFulfillmentModule()
+    const paymentAttemptModule = createPaymentAttemptModule(buildAttempt())
 
     const container = {
       resolve: jest.fn((key: string) => {
         if (key === PAYMENT_ATTEMPT_MODULE) {
-          return createPaymentAttemptModule(buildAttempt())
+          return paymentAttemptModule
         }
         if (key === CHECKOUT_COMPLETION_MODULE) {
           return createCheckoutCompletionModule()
@@ -639,6 +667,9 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint gelato eligibility
               data: [buildCart()],
             })),
           }
+        }
+        if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+          return createOrderAuthorityConnection(paymentAttemptModule.store[0]!)
         }
 
         return undefined

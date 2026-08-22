@@ -57,6 +57,9 @@ import {
   CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS,
   authenticateBffServiceRequest,
 } from "../modules/customer-auth/bff-service-auth"
+import {
+  STORE_CART_BFF_PROTECTED_OPERATIONS,
+} from "./store/carts/bff-protected-operations"
 
 const CORRELATION_HEADER = "x-correlation-id"
 const CORRELATION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
@@ -223,6 +226,31 @@ function resolveErrorStatusCode(error: unknown): number {
     default:
       return 500
   }
+}
+
+function resolveCartVersionMismatchEtag(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined
+  }
+
+  const candidate = error as {
+    code?: unknown
+    name?: unknown
+    currentEtag?: unknown
+  }
+  const isCartVersionMismatch =
+    candidate.code === "CART_VERSION_MISMATCH" ||
+    candidate.name === "CartVersionMismatchError"
+
+  if (
+    !isCartVersionMismatch ||
+    typeof candidate.currentEtag !== "string" ||
+    !/^"[1-9]\d*"$/.test(candidate.currentEtag)
+  ) {
+    return undefined
+  }
+
+  return candidate.currentEtag
 }
 
 function buildSentryOperation(
@@ -419,6 +447,10 @@ export function createSentryErrorHandler(
       })
 
       res.setHeader(CORRELATION_HEADER, correlationId)
+      const currentCartEtag = resolveCartVersionMismatchEtag(formattedError)
+      if (currentCartEtag !== undefined) {
+        res.setHeader("ETag", currentCartEtag)
+      }
       if (normalized.retryAfterSeconds !== undefined) {
         res.setHeader("Retry-After", String(normalized.retryAfterSeconds))
       }
@@ -622,6 +654,22 @@ function customerAuthBffProtectedRouteEntries(): Array<{
   })
 }
 
+function storeCartBffProtectedRouteEntries(): Array<{
+  method: Array<"GET" | "POST" | "DELETE">
+  matcher: string
+  middlewares: Array<typeof customerAuthBffServiceGuardMiddleware>
+}> {
+  return STORE_CART_BFF_PROTECTED_OPERATIONS.map((operation) => {
+    const [rawMethod, path] = operation.split(" ")
+    const method = rawMethod as "GET" | "POST" | "DELETE"
+    return {
+      method: [method],
+      matcher: path,
+      middlewares: [customerAuthBffServiceGuardMiddleware],
+    }
+  })
+}
+
 export default defineMiddlewares({
   errorHandler: sentryErrorMiddleware,
   routes: [
@@ -646,6 +694,25 @@ export default defineMiddlewares({
     // Exact Phase 14 BFF contracts only. Surface guards stay on /auth* and
     // /store*. BFF service auth is caller authority, not method/path policy.
     ...customerAuthBffProtectedRouteEntries(),
+    // Exact Phase 15 Store Cart BFF contracts. Mixed Guest+Customer routes:
+    // BFF service guard only; access guard is never mounted unconditionally.
+    ...storeCartBffProtectedRouteEntries(),
+    {
+      method: ["POST", "DELETE"],
+      matcher: "/store/carts/:id/line-items",
+      middlewares: [
+        storeCartPreOrderQueryConfigMiddleware,
+        storeCartPreOrderResponseMiddleware,
+      ],
+    },
+    {
+      method: ["POST", "DELETE"],
+      matcher: "/store/carts/:id/line-items/:line_id",
+      middlewares: [
+        storeCartPreOrderQueryConfigMiddleware,
+        storeCartPreOrderResponseMiddleware,
+      ],
+    },
     {
       method: ["GET"],
       matcher: "/store/products",
@@ -666,9 +733,6 @@ export default defineMiddlewares({
       method: ["GET", "POST"],
       matcher: "/store/carts/active",
       middlewares: [
-        authenticate("customer", ["session", "bearer"], {
-          allowUnauthenticated: true,
-        }),
         storeCartPreOrderQueryConfigMiddleware,
         storeCartPreOrderResponseMiddleware,
       ],

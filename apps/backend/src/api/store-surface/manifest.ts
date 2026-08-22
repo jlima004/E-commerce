@@ -81,7 +81,7 @@ function entry(
 }
 
 /**
- * Closed 63-operation inventory. Order follows RESEARCH §5 row numbers,
+ * Closed 64-operation inventory. Order follows RESEARCH §5 row numbers,
  * followed by the Phase 14 verification contracts and password change.
  */
 export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
@@ -143,36 +143,52 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
   entry({
     method: "POST",
     pathTemplate: "/store/carts/{id}/line-items",
-    origin: "native",
+    origin: "native+local_extension",
     classification: "EXTENDED",
-    runtime_policy: "DENY",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
     openapi_m1_expectation: "include_executable_m1",
     rationale:
-      "Cart M1 candidate requiring capability, idempotency key, If-Match and DTO; not v1.0 Store OpenAPI accepted — DENY until owner phase enables.",
+      "Phase 15 guest/customer line add wrapper preserves the native workflow while enforcing capability, idempotency, If-Match, CAS and DTO contracts.",
     owner_phase: "15",
     owner_domain: "cart",
   }),
   entry({
     method: "POST",
     pathTemplate: "/store/carts/{id}/line-items/{line_id}",
-    origin: "native",
+    origin: "native+local_extension",
     classification: "EXTENDED",
-    runtime_policy: "DENY",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
     openapi_m1_expectation: "include_executable_m1",
     rationale:
-      "Cart M1 line update candidate; no v1.0 Store OpenAPI acceptance — DENY pending Phase 15 hardening.",
+      "Phase 15 guest/customer line update wrapper preserves the native workflow and adds quantity-zero removal, capability, idempotency, If-Match and CAS contracts.",
     owner_phase: "15",
     owner_domain: "cart",
   }),
   entry({
     method: "DELETE",
     pathTemplate: "/store/carts/{id}/line-items/{line_id}",
-    origin: "native",
+    origin: "native+local_extension",
     classification: "EXTENDED",
-    runtime_policy: "DENY",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
     openapi_m1_expectation: "include_executable_m1",
     rationale:
-      "Destructive cart M1 candidate without automatic retry contract; DENY until Phase 15.",
+      "Phase 15 guest/customer line delete wrapper preserves the native workflow while enforcing capability, idempotency, If-Match, CAS and DTO contracts.",
+    owner_phase: "15",
+    owner_domain: "cart",
+  }),
+  entry({
+    method: "DELETE",
+    pathTemplate: "/store/carts/{id}/line-items",
+    origin: "local",
+    classification: "EXTENDED",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
+    openapi_m1_expectation: "include_executable_m1",
+    rationale:
+      "Phase 15 local clear-all wrapper uses one native delete workflow with capability, idempotency, If-Match, CAS and empty-clear no-op semantics.",
     owner_phase: "15",
     owner_domain: "cart",
   }),
@@ -659,10 +675,11 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
     pathTemplate: "/store/carts/active",
     origin: "local",
     classification: "EXTENDED",
-    runtime_policy: "PRESERVE_LEGACY",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
     openapi_m1_expectation: "include_executable_m1",
     rationale:
-      "Store 1.0.0 accepted active cart read; preserve v1.0 only until Phase 15 capability/version hardening.",
+      "Store 1.0.0 active cart read promoted to M1 with guest capability and Customer access.",
     owner_phase: "15",
     owner_domain: "cart",
   }),
@@ -671,10 +688,11 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
     pathTemplate: "/store/carts/active",
     origin: "local",
     classification: "EXTENDED",
-    runtime_policy: "PRESERVE_LEGACY",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
     openapi_m1_expectation: "include_executable_m1",
     rationale:
-      "Store 1.0.0 accepted active cart create/resolve; preserve v1.0 only (no M1 capability upgrade).",
+      "Store 1.0.0 active cart create/resolve promoted to M1 with guest capability minting and Customer access.",
     owner_phase: "15",
     owner_domain: "cart",
   }),
@@ -814,6 +832,27 @@ export const STORE_SURFACE_PHASE14_ENABLED_OPERATIONS = [
   "POST /store/customers/me/password",
 ] as const
 
+export const STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS = [
+  "POST /store/carts/{id}/line-items",
+  "POST /store/carts/{id}/line-items/{line_id}",
+  "DELETE /store/carts/{id}/line-items/{line_id}",
+  "DELETE /store/carts/{id}/line-items",
+  "GET /store/carts/active",
+  "POST /store/carts/active",
+] as const
+
+export const STORE_SURFACE_M1_ENABLED_OPERATIONS = [
+  "POST /store/carts/{id}/line-items",
+  "POST /store/carts/{id}/line-items/{line_id}",
+  "DELETE /store/carts/{id}/line-items/{line_id}",
+  "DELETE /store/carts/{id}/line-items",
+  "GET /store/customers/me",
+  "GET /store/carts/active",
+  "POST /store/carts/active",
+  ...STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS,
+  "POST /store/customers/me/password",
+] as const
+
 export function storeSurfaceOperationKey(
   method: string,
   pathTemplate: string
@@ -863,20 +902,35 @@ export function summarizeStoreSurfaceManifest(
       duplicates.push(key)
     }
 
-    if (item.origin === "native") native += 1
-    else if (item.origin === "local") local += 1
-    else nativeLocalExtension += 1
+    if (item.origin === "native") {
+      native += 1
+    } else if (item.origin === "local") {
+      local += 1
+    } else if (item.origin === "native+local_extension") {
+      nativeLocalExtension += 1
+    }
 
-    if (item.classification === "AUTHORIZED") authorized += 1
-    else if (item.classification === "EXTENDED") extended += 1
-    else if (item.classification === "BLOCKED") blocked += 1
-    else outsideFrontendM1 += 1
+    if (item.classification === "AUTHORIZED") {
+      authorized += 1
+    } else if (item.classification === "EXTENDED") {
+      extended += 1
+    } else if (item.classification === "BLOCKED") {
+      blocked += 1
+    } else if (item.classification === "OUTSIDE_FRONTEND_M1") {
+      outsideFrontendM1 += 1
+    }
 
-    if (item.runtime_policy === "DENY") deny += 1
-    else if (item.runtime_policy === "PRESERVE_LEGACY") preserveLegacy += 1
-    else m1EnabledPolicy += 1
+    if (item.runtime_policy === "DENY") {
+      deny += 1
+    } else if (item.runtime_policy === "PRESERVE_LEGACY") {
+      preserveLegacy += 1
+    } else if (item.runtime_policy === "M1_ENABLED") {
+      m1EnabledPolicy += 1
+    }
 
-    if (item.m1_enablement === "enabled") m1EnablementEnabled += 1
+    if (item.m1_enablement === "enabled") {
+      m1EnablementEnabled += 1
+    }
   }
 
   return {
@@ -908,10 +962,10 @@ export function validateStoreSurfaceManifest(
   const violations: StoreSurfaceManifestViolation[] = []
   const counts = summarizeStoreSurfaceManifest(entries)
 
-  if (counts.total !== 63) {
+  if (counts.total !== 64) {
     violations.push({
       code: "COUNT_TOTAL",
-      message: `expected 63 entries, found ${counts.total}`,
+      message: `expected 64 entries, found ${counts.total}`,
     })
   }
   if (counts.authorized !== 0) {
@@ -920,10 +974,10 @@ export function validateStoreSurfaceManifest(
       message: `expected AUTHORIZED=0, found ${counts.authorized}`,
     })
   }
-  if (counts.extended !== 15) {
+  if (counts.extended !== 16) {
     violations.push({
       code: "COUNT_EXTENDED",
-      message: `expected EXTENDED=15, found ${counts.extended}`,
+      message: `expected EXTENDED=16, found ${counts.extended}`,
     })
   }
   if (counts.blocked !== 17) {
@@ -938,16 +992,16 @@ export function validateStoreSurfaceManifest(
       message: `expected OUTSIDE_FRONTEND_M1=31, found ${counts.outsideFrontendM1}`,
     })
   }
-  if (counts.m1EnabledPolicy !== 6) {
+  if (counts.m1EnabledPolicy !== 12) {
     violations.push({
       code: "M1_ENABLED_POLICY",
-      message: `Phase 14 requires exactly six M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
+      message: `Phase 15 requires exactly twelve M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
     })
   }
-  if (counts.m1EnablementEnabled !== 6) {
+  if (counts.m1EnablementEnabled !== 12) {
     violations.push({
       code: "M1_ENABLEMENT_ENABLED",
-      message: `Phase 14 requires exactly six enablements; found ${counts.m1EnablementEnabled}`,
+      message: `Phase 15 requires exactly twelve enablements; found ${counts.m1EnablementEnabled}`,
     })
   }
   if (counts.deny + counts.preserveLegacy + counts.m1EnabledPolicy !== counts.total) {
@@ -1058,16 +1112,16 @@ export function validateStoreSurfaceManifest(
     .map((item) => storeSurfaceOperationKey(item.method, item.pathTemplate))
   if (
     enabledOperations.length !==
-      STORE_SURFACE_PHASE14_ENABLED_OPERATIONS.length ||
+      STORE_SURFACE_M1_ENABLED_OPERATIONS.length ||
     enabledOperations.some(
       (operation, index) =>
-        operation !== STORE_SURFACE_PHASE14_ENABLED_OPERATIONS[index]
+        operation !== STORE_SURFACE_M1_ENABLED_OPERATIONS[index]
     )
   ) {
     violations.push({
-      code: "PHASE14_EXACT_SURFACE",
+      code: "PHASE15_EXACT_SURFACE",
       message:
-        "M1_ENABLED must contain exactly GET /store/customers/me, the four Phase 14 verification operations, and POST /store/customers/me/password",
+        "M1_ENABLED must contain exactly Phase 14 six operations plus Phase 15 cart active and line-item operations",
     })
   }
 

@@ -36,7 +36,7 @@ import { buildContracts } from "../generation/build-documents"
 import { scanInstalledStoreSurface } from "../../../scripts/store-surface/scan-installed"
 import {
   STORE_SURFACE_MANIFEST,
-  STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
+  STORE_SURFACE_M1_ENABLED_OPERATIONS,
   type StoreSurfaceEntry,
 } from "../../api/store-surface/manifest"
 
@@ -186,7 +186,7 @@ const UNSUPPORTED_AUTH_ROUTES: DiscoveredRoute[] = [
 describe("OpenAPI route coverage foundation", () => {
   it("discovers all current route files and bracket segments through the TypeScript AST", () => {
     const routes = discoverRoutes()
-    expect(routes).toHaveLength(35)
+    expect(routes).toHaveLength(39)
     expect(routes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -336,7 +336,7 @@ describe("OpenAPI route coverage foundation", () => {
     expect(() => verifyCoverage("global", registry)).not.toThrow()
   })
 
-  it("locks installed Store runtime inventory at 63 = 51 native + 12 local", () => {
+  it("locks installed Store runtime inventory at 64 = 51 native + 13 local", () => {
     const scan = scanInstalledStoreSurface()
     const native = scan.discovered.filter(
       (operation) => operation.source === "native"
@@ -364,18 +364,18 @@ describe("OpenAPI route coverage foundation", () => {
 
     expect(evidence.runtime).toEqual({ ...STORE_RUNTIME_EXACT_SET })
     expect(evidence.manifest).toEqual({
-      total: 63,
+      total: 64,
       authorized: 0,
-      extended: 15,
+      extended: 16,
       blocked: 17,
       outsideFrontendM1: 31,
-      m1Enabled: 6,
+      m1Enabled: 12,
     })
     expect(evidence.executableStoreBusinessKeys).toEqual(
-      [...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS].sort()
+      [...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()
     )
     expect(evidence.documentStoreBusinessKeys).toEqual(
-      [...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS].sort()
+      [...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()
     )
     expect(evidence.healthSupportKeys).toEqual([
       "GET /health/live",
@@ -383,7 +383,9 @@ describe("OpenAPI route coverage foundation", () => {
     ])
     expect(
       evidence.executableStoreBusinessKeys.every((key) =>
-        key.startsWith("GET /store/") || key.startsWith("POST /store/")
+        key.startsWith("GET /store/") ||
+        key.startsWith("POST /store/") ||
+        key.startsWith("DELETE /store/")
       )
     ).toBe(true)
     expect(

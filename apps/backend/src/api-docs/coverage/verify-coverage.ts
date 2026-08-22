@@ -31,8 +31,8 @@ export type CoverageScope = ContractSurface | "foundation" | "global"
 /** Installed Store runtime inventory (scan source after native/local dedupe). */
 export const STORE_RUNTIME_EXACT_SET = {
   native: 51,
-  local: 12,
-  total: 63,
+  local: 13,
+  total: 64,
 } as const
 
 type InstalledStoreOperation = {

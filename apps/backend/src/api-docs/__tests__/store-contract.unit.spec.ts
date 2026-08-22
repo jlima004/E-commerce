@@ -6,6 +6,7 @@ import { ROUTE_EXCLUSIONS } from "../coverage/exclusions"
 import { buildContracts } from "../generation/build-documents"
 import { STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS } from "../operations/store/schemas"
 import { createFoundationRegistry } from "../registry"
+import { assertSafeExamples } from "../safe-examples"
 
 const LEGACY_STORE_DOCUMENTATION_KEYS = [
   "GET /health/live",
@@ -14,6 +15,10 @@ const LEGACY_STORE_DOCUMENTATION_KEYS = [
   "GET /store/products",
   "GET /store/products/{id}",
   "POST /store/carts/active",
+  "POST /store/carts/{id}/line-items",
+  "POST /store/carts/{id}/line-items/{line_id}",
+  "DELETE /store/carts/{id}/line-items/{line_id}",
+  "DELETE /store/carts/{id}/line-items",
   "POST /store/carts/{id}/payment-attempts/card",
   "POST /store/carts/{id}/payment-attempts/pix",
   "POST /store/tracking/lookup",
@@ -31,6 +36,9 @@ const STORE_DOCUMENTATION_OPERATION_KEYS = [
 const STORE_DOCUMENT_PATHS = [
   "/health/live",
   "/health/ready",
+  "/store/carts/active",
+  "/store/carts/{id}/line-items",
+  "/store/carts/{id}/line-items/{line_id}",
   ...AUTH_HTTP_CONTRACT.map((entry) => entry.path),
 ].sort()
 
@@ -42,7 +50,7 @@ describe("OpenAPI Store contract wave", () => {
 
   it("covers every included Store route and both native catalog extensions", () => {
     expect(() => verifyCoverage("store", registry)).not.toThrow()
-    expect(storeOperations).toHaveLength(21)
+    expect(storeOperations).toHaveLength(25)
     expect(
       storeOperations.map((operation) => `${operation.method} ${operation.path}`).sort()
     ).toEqual(STORE_DOCUMENTATION_OPERATION_KEYS)
@@ -63,6 +71,275 @@ describe("OpenAPI Store contract wave", () => {
     )
     expect(storeOperations.some((operation) => operation.path.startsWith("/store/")))
       .toBe(true)
+  })
+
+  it("documents exactly the six executable Cart M1 operations", () => {
+    const cartM1 = storeOperations.filter((operation) =>
+      [
+        "GET /store/carts/active",
+        "POST /store/carts/active",
+        "POST /store/carts/{id}/line-items",
+        "POST /store/carts/{id}/line-items/{line_id}",
+        "DELETE /store/carts/{id}/line-items/{line_id}",
+        "DELETE /store/carts/{id}/line-items",
+      ].includes(`${operation.method} ${operation.path}`)
+    )
+
+    expect(cartM1).toHaveLength(6)
+    expect(cartM1.map((operation) => operation.operationId).sort()).toEqual([
+      "addCartLineItem",
+      "clearCartLineItems",
+      "createActiveStoreCart",
+      "getActiveStoreCart",
+      "removeCartLineItem",
+      "updateCartLineItem",
+    ])
+    expect(cartM1.every((operation) => operation.interactiveCandidate === false)).toBe(
+      true
+    )
+    expect(cartM1.every((operation) => operation.nonInteractive === true)).toBe(true)
+  })
+
+  it("requires BFF authority on every Cart M1 security alternative", () => {
+    const cartM1Keys = new Set([
+      "GET /store/carts/active",
+      "POST /store/carts/active",
+      "POST /store/carts/{id}/line-items",
+      "POST /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items",
+    ])
+    const cartM1 = storeOperations.filter((operation) =>
+      cartM1Keys.has(`${operation.method} ${operation.path}`)
+    )
+    const expectedSecurity = [
+      { bffServiceCredential: [], publishableApiKey: [] },
+      {
+        bffServiceCredential: [],
+        publishableApiKey: [],
+        customerBearer: [],
+      },
+      {
+        bffServiceCredential: [],
+        publishableApiKey: [],
+        customerSession: [],
+      },
+    ]
+
+    expect(cartM1).toHaveLength(6)
+    for (const operation of cartM1) {
+      expect(operation.security).toHaveLength(3)
+      expect(operation.security).toEqual(expectedSecurity)
+
+      for (const requirement of operation.security) {
+        expect(requirement).toHaveProperty("bffServiceCredential")
+        expect(requirement).toHaveProperty("publishableApiKey")
+        expect(
+          Object.prototype.hasOwnProperty.call(
+            requirement,
+            "publishableApiKey"
+          ) &&
+            !Object.prototype.hasOwnProperty.call(
+              requirement,
+              "bffServiceCredential"
+            )
+        ).toBe(false)
+        expect(
+          Object.prototype.hasOwnProperty.call(requirement, "customerBearer") &&
+            Object.prototype.hasOwnProperty.call(requirement, "customerSession")
+        ).toBe(false)
+      }
+    }
+
+    expect(cartM1[0]?.security[0]).toEqual({
+      bffServiceCredential: [],
+      publishableApiKey: [],
+    })
+    expect(cartM1[0]?.security[0]).not.toEqual(
+      expect.objectContaining({
+        customerBearer: expect.anything(),
+        customerSession: expect.anything(),
+      })
+    )
+    expect(cartM1[0]?.security[1]).toEqual({
+      bffServiceCredential: [],
+      publishableApiKey: [],
+      customerBearer: [],
+    })
+    expect(cartM1[0]?.security[2]).toEqual({
+      bffServiceCredential: [],
+      publishableApiKey: [],
+      customerSession: [],
+    })
+  })
+
+  it("requires the optional guest capability request header on every Cart M1 operation", () => {
+    const cartM1Keys = new Set([
+      "GET /store/carts/active",
+      "POST /store/carts/active",
+      "POST /store/carts/{id}/line-items",
+      "POST /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items",
+    ])
+    const cartM1 = storeOperations.filter((operation) =>
+      cartM1Keys.has(`${operation.method} ${operation.path}`)
+    )
+    const guestParameterRef = {
+      $ref: "#/components/parameters/XIndicioGuestCartToken",
+    }
+
+    expect(cartM1).toHaveLength(6)
+    for (const operation of cartM1) {
+      expect(operation.parameters).toEqual(
+        expect.arrayContaining([guestParameterRef])
+      )
+    }
+
+    const parameter = store?.document.components.parameters
+      .XIndicioGuestCartToken as Record<string, unknown>
+    expect(parameter).toEqual(
+      expect.objectContaining({
+        name: "x-indicio-guest-cart-token",
+        in: "header",
+        required: false,
+        "x-bff-only": true,
+        "x-not-browser-credential": true,
+        "x-sensitive": true,
+      })
+    )
+    expect(parameter).not.toHaveProperty("example")
+    expect(parameter).not.toHaveProperty("examples")
+  })
+
+  it("emits the capability response header only for guest mint 201", () => {
+    const activeGet = storeOperations.find(
+      (operation) => operation.method === "GET" && operation.path === "/store/carts/active"
+    )
+    const activePost = storeOperations.find(
+      (operation) => operation.method === "POST" && operation.path === "/store/carts/active"
+    )
+    const mutations = storeOperations.filter((operation) =>
+      [
+        "/store/carts/{id}/line-items",
+        "/store/carts/{id}/line-items/{line_id}",
+      ].includes(operation.path)
+    )
+    const capabilityHeader = "x-indicio-guest-cart-token"
+
+    expect(activePost?.responses["201"]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          [capabilityHeader]: expect.any(Object),
+        }),
+      })
+    )
+    expect(activePost?.responses["200"]).not.toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ [capabilityHeader]: expect.anything() }),
+      })
+    )
+    expect(activeGet?.responses["200"]).not.toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ [capabilityHeader]: expect.anything() }),
+      })
+    )
+    for (const operation of mutations) {
+      for (const response of Object.values(operation.responses)) {
+        expect(response).not.toEqual(
+          expect.objectContaining({
+            headers: expect.objectContaining({ [capabilityHeader]: expect.anything() }),
+          })
+        )
+      }
+    }
+  })
+
+  it("documents mutation preconditions and the approved cart snapshot on 412", () => {
+    const mutations = storeOperations.filter((operation) =>
+      [
+        "POST /store/carts/{id}/line-items",
+        "POST /store/carts/{id}/line-items/{line_id}",
+        "DELETE /store/carts/{id}/line-items/{line_id}",
+        "DELETE /store/carts/{id}/line-items",
+      ].includes(`${operation.method} ${operation.path}`)
+    )
+
+    for (const operation of mutations) {
+      expect(operation.parameters).toEqual(
+        expect.arrayContaining([
+          { $ref: "#/components/parameters/IfMatch" },
+          { $ref: "#/components/parameters/IdempotencyKey" },
+        ])
+      )
+      expect(operation.responses["412"]).toEqual(
+        expect.objectContaining({
+          description: expect.stringMatching(/CART_VERSION_MISMATCH/),
+          headers: {
+            "x-correlation-id": {
+              $ref: "#/components/headers/XCorrelationId",
+            },
+            ETag: {
+              $ref: "#/components/headers/ETag",
+            },
+          },
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/StoreErrorResponse" },
+            },
+          },
+        })
+      )
+    }
+
+    expect(store?.document.components.schemas.StoreErrorResponse).toEqual(
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          cart: expect.objectContaining({
+            $ref: "#/components/schemas/PublicStoreCartPreOrder",
+          }),
+        }),
+      })
+    )
+  })
+
+  it("documents the active-cart 409 categories as public CONFLICT", () => {
+    const activePost = storeOperations.find(
+      (operation) =>
+        operation.method === "POST" && operation.path === "/store/carts/active"
+    )
+    const conflict = activePost?.responses["409"]
+
+    expect(conflict).toEqual(
+      expect.objectContaining({
+        description: expect.stringMatching(
+          /CONFLICT.*semantic Idempotency-Key conflict.*operation currently in progress.*terminal replay\/reconciliation conflict/i
+        ),
+        headers: {
+          "x-correlation-id": {
+            $ref: "#/components/headers/XCorrelationId",
+          },
+        },
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/StoreErrorResponse" },
+          },
+        },
+      })
+    )
+    expect(JSON.stringify(conflict)).not.toMatch(
+      /IDEMPOTENCY_KEY_REUSE_CONFLICT|IDEMPOTENCY_KEY_IN_PROGRESS/
+    )
+  })
+
+  it("passes the sensitive example walker without capability or token examples", () => {
+    expect(() =>
+      assertSafeExamples(store?.document, {
+        isUnsafeExampleValue: (value) => /token|capability|pix|credential/i.test(value),
+        errorMessage: "Sensitive OpenAPI example detected",
+        rootLocation: "document",
+      })
+    ).not.toThrow()
   })
 
   it("omits ambiguous object and recursive catalog query parameters", () => {
@@ -152,7 +429,9 @@ describe("OpenAPI Store contract wave", () => {
 
   it("registers complete provenance metadata on every Store operation", () => {
     for (const operation of storeOperations) {
-      expect(operation.operationId).toMatch(/^store[A-Z]/)
+      expect(operation.operationId).toMatch(
+        /^(?:store[A-Z].*|getActiveStoreCart|createActiveStoreCart|addCartLineItem|updateCartLineItem|removeCartLineItem|clearCartLineItems)$/
+      )
       expect(operation.summary.trim().length).toBeGreaterThan(0)
       expect(operation.tags.length).toBeGreaterThan(0)
       expect(operation.sourceFiles.length).toBeGreaterThan(0)

@@ -2,6 +2,8 @@ import path from "path"
 import {
   STORE_SURFACE_MANIFEST,
   STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
+  STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS,
+  STORE_SURFACE_M1_ENABLED_OPERATIONS,
   storeSurfaceOperationKey,
   summarizeStoreSurfaceManifest,
 } from "../manifest"
@@ -330,7 +332,7 @@ describe("Store surface guard (FND-02)", () => {
     })
 
     it("denies every runtime_policy DENY and BLOCKED entry", () => {
-      expect(counts.deny).toBe(50)
+      expect(counts.deny).toBe(47)
       expect(counts.blocked).toBe(17)
 
       for (const entry of STORE_SURFACE_MANIFEST) {
@@ -345,7 +347,7 @@ describe("Store surface guard (FND-02)", () => {
     })
 
     it("allows PRESERVE_LEGACY only as inherited v1.0 pass-through without M1 enablement", () => {
-      expect(counts.preserveLegacy).toBe(7)
+      expect(counts.preserveLegacy).toBe(5)
 
       for (const entry of STORE_SURFACE_MANIFEST) {
         if (entry.runtime_policy !== "PRESERVE_LEGACY") {
@@ -363,11 +365,25 @@ describe("Store surface guard (FND-02)", () => {
       }
     })
 
-    it("allows exactly the Phase 14 M1_ENABLED exact-set as m1_enabled", () => {
-      expect(counts.m1EnabledPolicy).toBe(6)
+    it("allows exactly the final Store M1_ENABLED exact-set as m1_enabled", () => {
+      expect(counts.m1EnabledPolicy).toBe(12)
       expect(counts.m1EnabledPolicy).toBe(
-        STORE_SURFACE_PHASE14_ENABLED_OPERATIONS.length
+        STORE_SURFACE_M1_ENABLED_OPERATIONS.length
       )
+
+      expect(STORE_SURFACE_PHASE14_ENABLED_OPERATIONS).toHaveLength(6)
+      expect(STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS).toHaveLength(6)
+      const finalM1Keys = new Set<string>(STORE_SURFACE_M1_ENABLED_OPERATIONS)
+      expect(
+        STORE_SURFACE_PHASE14_ENABLED_OPERATIONS.every((operation) =>
+          finalM1Keys.has(operation)
+        )
+      ).toBe(true)
+      expect(
+        STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS.every((operation) =>
+          finalM1Keys.has(operation)
+        )
+      ).toBe(true)
 
       const m1EnabledEntries = STORE_SURFACE_MANIFEST.filter(
         (entry) => entry.runtime_policy === "M1_ENABLED"
@@ -375,8 +391,8 @@ describe("Store surface guard (FND-02)", () => {
       const m1EnabledKeys = m1EnabledEntries.map((entry) =>
         storeSurfaceOperationKey(entry.method, entry.pathTemplate)
       )
-      expect(m1EnabledEntries).toHaveLength(6)
-      expect(m1EnabledKeys).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
+      expect(m1EnabledEntries).toHaveLength(12)
+      expect(m1EnabledKeys).toEqual([...STORE_SURFACE_M1_ENABLED_OPERATIONS])
 
       for (const entry of m1EnabledEntries) {
         expect(entry.m1_enablement).toBe("enabled")
@@ -395,11 +411,15 @@ describe("Store surface guard (FND-02)", () => {
           entry.pathTemplate === "/store/carts/{id}/line-items"
       )
       expect(lineItems?.classification).toBe("EXTENDED")
-      expect(lineItems?.runtime_policy).toBe("DENY")
+      expect(lineItems?.runtime_policy).toBe("M1_ENABLED")
+      expect(lineItems?.m1_enablement).toBe("enabled")
       expect(
         decideStoreSurfaceAccess("POST", "/store/carts/synth_id_01/line-items")
-          .action
-      ).toBe("deny")
+      ).toEqual({
+        action: "allow",
+        entry: lineItems,
+        mode: "m1_enabled",
+      })
     })
   })
 
@@ -449,10 +469,10 @@ describe("Store surface guard (FND-02)", () => {
       expect(res.status).not.toHaveBeenCalled()
     })
 
-    it("calls next for the Phase 14 M1_ENABLED exact-set", () => {
+    it("calls next for the final Store M1_ENABLED exact-set", () => {
       const middleware = createStoreSurfaceGuardMiddleware()
 
-      for (const key of STORE_SURFACE_PHASE14_ENABLED_OPERATIONS) {
+      for (const key of STORE_SURFACE_M1_ENABLED_OPERATIONS) {
         const [method, pathTemplate] = key.split(" ")
         const next = jest.fn()
         const req = {

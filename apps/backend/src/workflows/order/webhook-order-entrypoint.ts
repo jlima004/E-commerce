@@ -25,6 +25,11 @@ import { PAYMENT_ATTEMPT_MODULE } from "../../modules/payment-attempt"
 import { assertPaymentAttemptEligibleForOrderCreation } from "../../modules/payment-attempt/state-machine"
 import type { PaymentAttemptRecord } from "../../modules/payment-attempt/types"
 import {
+  assertPaymentAttemptCartResourceVersion,
+  withCartOrderAuthorityLock,
+  type PaymentAttemptSqlConnection,
+} from "../../modules/payment-attempt/transactional-authority"
+import {
   assertConfirmedAttemptCartMatchesPaymentAttempt,
   buildConfirmedOrderStateMetadata,
   describeOrderCreationFailure,
@@ -1704,7 +1709,7 @@ function normalizeExistingPaymentAttemptOrderId(
   return orderId && orderId.length > 0 ? orderId : null
 }
 
-export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
   container: MedusaContainer,
   input: CreateOrderFromConfirmedPaymentAttemptInput,
   overrides: WorkflowRuntimeOverrides = {}
@@ -1926,6 +1931,51 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
     )
     throw failure
   }
+}
+
+export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+  container: MedusaContainer,
+  input: CreateOrderFromConfirmedPaymentAttemptInput,
+  overrides: WorkflowRuntimeOverrides = {}
+): Promise<CreateOrderFromConfirmedPaymentAttemptResult> {
+  let connection: PaymentAttemptSqlConnection
+
+  try {
+    connection = container.resolve(
+      ContainerRegistrationKeys.PG_CONNECTION
+    ) as PaymentAttemptSqlConnection
+  } catch {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_AUTHORITY_UNAVAILABLE",
+      "Autoridade transacional de Order indisponivel."
+    )
+  }
+
+  if (!connection || typeof connection.transaction !== "function") {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_AUTHORITY_UNAVAILABLE",
+      "Autoridade transacional de Order indisponivel."
+    )
+  }
+
+  return withCartOrderAuthorityLock(
+    connection,
+    input.payment_attempt_id,
+    async ({ attempt, currentCartResourceVersion }) => {
+      if (attempt.order_id == null) {
+        assertPaymentAttemptCartResourceVersion(
+          attempt,
+          currentCartResourceVersion
+        )
+      }
+
+      return runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
+        container,
+        input,
+        overrides
+      )
+    }
+  )
 }
 
 const createOrderFromConfirmedPaymentAttemptStep = createStep(

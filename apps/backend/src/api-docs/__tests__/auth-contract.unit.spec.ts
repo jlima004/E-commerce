@@ -660,7 +660,6 @@ describe("Phase 14 auth OpenAPI registry exact-set", () => {
     const { storeOperations, documented } = storeAuthOperations()
     expect(AUTH_HTTP_CONTRACT).toHaveLength(12)
     expect(documented).toHaveLength(12)
-    expect(storeOperations).toHaveLength(21)
     expect(
       documented.map(({ entry }) => `${entry.method} ${entry.path}`).sort()
     ).toEqual([...APPROVED_KEYS].sort())

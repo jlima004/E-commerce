@@ -1,4 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { PAYMENT_ATTEMPT_MODULE } from "../../../../modules/payment-attempt"
 import { WEBHOOKS_MODULE } from "../../../../modules/webhooks"
 import { createStripeWebhookPostHandler } from "../route"
@@ -126,6 +127,43 @@ function createPaymentAttemptService(orderId: string | null = null) {
     }),
     records,
   }
+}
+
+function addPaymentAttemptAuthority(
+  req: RequestWithRawBody,
+  service: ReturnType<typeof createPaymentAttemptService>
+) {
+  const previousResolve = req.scope.resolve
+  req.scope.resolve = jest.fn((key: string) => {
+    if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+      return {
+        transaction: async (callback: (transaction: {
+          raw: (sql: string, bindings?: unknown[]) => Promise<{ rows?: unknown[] }>
+        }) => Promise<unknown>) =>
+          callback({
+            raw: async (sql: string, bindings: unknown[] = []) => {
+              const attempt = service.records[0]
+              if (sql.includes("select cart_id from payment_attempt")) {
+                return { rows: attempt ? [{ cart_id: attempt.cart_id }] : [] }
+              }
+              if (sql.includes("from payment_attempt") && sql.trimStart().startsWith("select")) {
+                return { rows: attempt ? [attempt] : [] }
+              }
+              if (sql.trimStart().startsWith("update payment_attempt")) {
+                if (attempt) {
+                  attempt.status = String(bindings[0])
+                  attempt.updated_at = bindings[1] as string
+                  attempt.order_id = null
+                }
+                return { rows: attempt ? [attempt] : [] }
+              }
+              return { rows: [] }
+            },
+          }),
+      }
+    }
+    return previousResolve(key)
+  })
 }
 
 function createSucceededPaymentIntentEvent() {
@@ -424,6 +462,7 @@ describe("stripe webhook route", () => {
 
       return undefined
     })
+    addPaymentAttemptAuthority(req, paymentAttempts)
     const runOrderEntrypoint = jest.fn(async () => ({
       status: "already_processing" as const,
       payment_attempt_id: "payatt_route_01",
@@ -489,6 +528,7 @@ describe("stripe webhook route", () => {
 
       return undefined
     })
+    addPaymentAttemptAuthority(req, paymentAttempts)
     const orderError = new OrderCreationEntrypointError(
       "ORDER_ENTRYPOINT_COMPLETE_CART_FAILED",
       "completeCart rejected missing shipping method",
@@ -594,6 +634,7 @@ describe("stripe webhook route", () => {
 
       return undefined
     })
+    addPaymentAttemptAuthority(req, paymentAttempts)
     const runOrderEntrypoint = jest.fn()
 
     const handler = createStripeWebhookPostHandler({

@@ -29,10 +29,11 @@ import {
 } from "../../src/api/auth-surface/guard"
 import {
   STORE_SURFACE_MANIFEST,
-  STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
+  STORE_SURFACE_M1_ENABLED_OPERATIONS,
   storeSurfaceOperationKey,
   validateStoreSurfaceManifest,
 } from "../../src/api/store-surface/manifest"
+import { STORE_CART_BFF_PROTECTED_OPERATIONS } from "../../src/api/store/carts/bff-protected-operations"
 import { decideStoreSurfaceAccess } from "../../src/api/store-surface/guard"
 import defaultMiddlewares, {
   createCustomerAuthAccessGuardMiddleware,
@@ -1271,7 +1272,7 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       STORE_SURFACE_MANIFEST.filter(
         (entry) => entry.runtime_policy === "M1_ENABLED"
       ).map((entry) => storeSurfaceOperationKey(entry.method, entry.pathTemplate))
-    ).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
+    ).toEqual([...STORE_SURFACE_M1_ENABLED_OPERATIONS])
   })
 
   it("binds GET /store/customers/me to the BFF service guard then the access guard", () => {
@@ -1648,7 +1649,7 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
     assertNoBffSecretLeak(rejectedBearer.state.body)
   })
 
-  it("mounts the BFF service guard on the exact Phase 14 set after surface guards and before access guards", () => {
+  it("mounts the BFF service guard on the exact Auth + Cart set after surface guards and before access guards", () => {
     const routes = defaultMiddlewares.routes ?? []
     const authSurface = routes.find((route) => String(route.matcher) === "/auth*")
     const storeSurface = routes.find(
@@ -1662,9 +1663,10 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       customerAuthBffServiceGuardMiddleware
     )
 
-    const protectedMatchers = CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS.map(
-      (operation) => operation.split(" ")[1]
-    )
+    const protectedMatchers = [
+      ...CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS,
+      ...STORE_CART_BFF_PROTECTED_OPERATIONS,
+    ].map((operation) => operation.split(" ")[1])
     for (const operation of CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS) {
       const [, path] = operation.split(" ")
       const route = routes.find(

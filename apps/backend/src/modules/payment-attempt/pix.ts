@@ -60,6 +60,7 @@ export type StartPixPaymentAttemptInput = {
   stripeLayer: StripePixInitiationLayer
   generateId: () => string
   generatePaymentCollectionId: () => string
+  cartResourceVersion?: number | null
   at?: Date
 }
 
@@ -212,7 +213,8 @@ export async function startPixPaymentAttempt(
       expires_at: persistable.expires_at,
       metadata: withPaymentAttemptCartFingerprintMetadata(
         persistable.metadata,
-        cartFingerprint
+        cartFingerprint,
+        input.cartResourceVersion
       ),
     },
     newAttemptId,
