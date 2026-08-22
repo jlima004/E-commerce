@@ -246,6 +246,9 @@ authority, and capability leakage is ZERO. No deploy, provider or remote
 infrastructure action is authorized. Phase 16 and all later gates remain
 separately human-gated and unauthorized.
 
+Milestone counters: phases closed `3/10`; requirements `26/91`; open
+requirements `65`; plans `36/36`; percent `30`.
+
 ### Accepted Phase-15 evidence
 
 - `15-08-SUMMARY.md` — final CART/Order/regression/leakage ledger and human verify

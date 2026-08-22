@@ -45,6 +45,12 @@ Phases closed:
 Requirements complete:
 26/91
 
+Requirements open:
+65
+
+Percent:
+30
+
 Phase 16:
 NOT AUTHORIZED
 
@@ -81,7 +87,10 @@ The current accepted planning state records all Plans 15-01..15-08 as
 HUMAN APPROVED — PASS. Interim `awaiting human review` wording preserved in
 earlier summaries is historical checkpoint state and is not modified here;
 the current STATE/ROADMAP approval record is the documentary authority used
-by this closure.
+by this closure. The Plan-15-08 summary also intentionally retains its
+plan-local `Phase 15: IN PROGRESS / PHASE CLOSURE PENDING` wording; that
+summary is immutable under this gate and is superseded for milestone state by
+this separately authorized closure artifact.
 
 ## Scope closed
 
@@ -281,6 +290,9 @@ Requirements complete:
 
 Requirements open:
 65
+
+Percent:
+30
 
 Total plans:
 36

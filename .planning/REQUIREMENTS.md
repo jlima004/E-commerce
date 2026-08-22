@@ -260,7 +260,7 @@ Phase 16: **NOT AUTHORIZED**. Phase-16 requirement statuses remain unchanged.
 
 ## Coverage
 
-- Requisitos v1.1: **74 abertos, 17 concluídos** (FND-01..FND-08, AUTH-01..AUTH-09).
+- Requisitos v1.1: **65 abertos, 26 concluídos** (FND-01..FND-08, AUTH-01..AUTH-09, CART-01..CART-09).
 - Mapeados a exatamente uma phase: 91.
 - FE requirements com responsabilidade explícita: 54/54.
 - Phases: 13–22, lineares.
