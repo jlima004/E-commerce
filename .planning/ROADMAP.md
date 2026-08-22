@@ -27,7 +27,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 15 RESEARCH está **HUMAN APPROVED — PASS**
 - Phase 15 PLAN está **HUMAN APPROVED — PASS** (8 plans / 8 serial waves)
 - Phase 15 está **CLOSED — HUMAN APPROVED**; Plans `15-01`..`15-08` estão **8/8 HUMAN APPROVED — PASS**, `15-07` e `15-08` estão documentally closed, e CART-01..CART-09 estão **9/9 COMPLETE**
-- Phase 16 e gates posteriores permanecem não autorizados até revisão humana própria
+- Phase 16 está **AUTHORIZED — CONTEXT NOT STARTED**; RESEARCH e gates posteriores da Phase 16 permanecem não autorizados até revisão humana própria; Phase 17+ permanecem não autorizadas
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
 ## Milestones
@@ -46,7 +46,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
 | 14 | Customer Auth & Verification | 13 | 9 | **CLOSED — HUMAN APPROVED; 21/21 plans; 63/63 tasks; 9/9 requirements** |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CLOSED — HUMAN APPROVED; 8/8 plans; CART-01..CART-09 = 9/9 COMPLETE** |
-| 16 | Cart Merge & Review | 15 | 8 | Not started — **NOT AUTHORIZED** |
+| 16 | Cart Merge & Review | 15 | 8 | **AUTHORIZED — CONTEXT NOT STARTED** |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
 | 18 | Gelato Shipping Quote & Selection | 17 | 8 | Not started |
 | 19 | Storefront PaymentAttempt Hardening | 18 | 9 | Not started |
@@ -243,7 +243,8 @@ and final human checkpoint are PASS. The final Store authority is
 Store/BFF synchronous Order birth is zero, the canonical
 `payment_intent.succeeded` webhook remains the only accepted Order-birth
 authority, and capability leakage is ZERO. No deploy, provider or remote
-infrastructure action is authorized. Phase 16 and all later gates remain
+infrastructure action is authorized. A separate human decision authorizes
+**Phase 16 CONTEXT only**; Phase-16 RESEARCH and all later gates remain
 separately human-gated and unauthorized.
 
 Milestone counters: phases closed `3/10`; requirements `26/91`; open
@@ -258,7 +259,7 @@ requirements `65`; plans `36/36`; percent `30`.
 
 **Goal:** substituir attach simples por merge transacional, idempotente, parcial e revisável.
 
-**Status:** Not started. Depends on Phase 15.
+**Status:** **AUTHORIZED — CONTEXT NOT STARTED.** Depends on Phase 15 CLOSED. Phase-16 RESEARCH and later gates remain separately unauthorized.
 
 ## Phase 17: Authenticated BR Checkout & Privacy
 
@@ -303,5 +304,5 @@ O milestone só pode fechar quando houver evidência PASS para todos os gates pr
 Phase 15 CONTEXT, RESEARCH, PLAN and closure are HUMAN APPROVED — PASS;
 Plans 15-01..15-08 are **8/8 HUMAN APPROVED — PASS** and Plans 15-07 and
 15-08 are DOCUMENTALLY CLOSED. CART-01..CART-09 are 9/9 COMPLETE. Phase 16
-remains NOT AUTHORIZED; no later gate, provider real, infraestrutura remota,
-deploy ou frontend is authorized by this execution gate.
+CONTEXT is **AUTHORIZED — NOT STARTED**; Phase-16 RESEARCH and later gates,
+provider real, infraestrutura remota, deploy and frontend remain unauthorized.
