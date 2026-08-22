@@ -154,8 +154,11 @@ import {
   GUEST_CART_CAPABILITY_HEADER,
   GUEST_CART_CAPABILITY_MODULE,
 } from "../../src/modules/guest-cart-capability/types"
+import { STORE_IDEMPOTENCY_MODULE } from "../../src/modules/store-idempotency"
+import { STORE_RESOURCE_VERSION_MODULE } from "../../src/modules/store-resource-version"
 
 type SessionCapableRequest = MedusaRequest & {
+  method?: "GET" | "POST"
   auth_context?: {
     actor_id?: string
     actor_type?: string
@@ -271,7 +274,19 @@ function createRemoteQueryResolver(input: {
   })
 }
 
-function createRequest(overrides: Partial<SessionCapableRequest> = {}) {
+type CreateRequestOptions = Partial<SessionCapableRequest> & {
+  omitDefaultIdempotencyKey?: boolean
+}
+
+function createRequest(overrides: CreateRequestOptions = {}) {
+  const { omitDefaultIdempotencyKey, ...requestOverrides } = overrides
+  const headers = {
+    ...(requestOverrides.method === "POST" && !omitDefaultIdempotencyKey
+      ? { "idempotency-key": "idem_cart_checkout_store" }
+      : {}),
+    ...(requestOverrides.headers ?? {}),
+  }
+
   return {
     headers: {},
     query: {},
@@ -284,7 +299,8 @@ function createRequest(overrides: Partial<SessionCapableRequest> = {}) {
     scope: {
       resolve: jest.fn(),
     },
-    ...overrides,
+    ...requestOverrides,
+    headers,
   } as SessionCapableRequest
 }
 
@@ -318,6 +334,67 @@ function wireScope(
   }
   const pgConnection = options.pgConnection ?? {
     raw: jest.fn(async () => ({ rows: [] })),
+    transaction: jest.fn(async (callback: (trx: unknown) => unknown) =>
+      callback({
+        raw: jest.fn(async () => ({ rows: [] })),
+      })
+    ),
+  }
+  const storeResourceVersionService = {
+    initialize: jest.fn(async (resourceType: string, resourceId: string) => ({
+      id: `strver_${resourceId}`,
+      resource_type: resourceType,
+      resource_id: resourceId,
+      version: 1,
+      created_at: "2026-06-27T10:00:00.000Z",
+      updated_at: "2026-06-27T10:00:00.000Z",
+    })),
+  }
+  let idempotencyStateVersion = 1
+  let idempotencyResultId: string | null = null
+  let idempotencyState: "processing" | "completed" = "processing"
+  const storeIdempotencyService = {
+    claim: jest.fn(async () => ({
+      type: "claimed" as const,
+      record: {
+        id: "stidem_synth",
+        state: idempotencyState,
+        state_version: idempotencyStateVersion,
+        result_id: idempotencyResultId,
+      },
+    })),
+    recordProcessingResult: jest.fn(
+      async ({ result_id }: { result_id: string }) => {
+        idempotencyStateVersion += 1
+        idempotencyResultId = result_id
+        return {
+          type: "claimed" as const,
+          record: {
+            id: "stidem_synth",
+            state: "processing" as const,
+            state_version: idempotencyStateVersion,
+            result_id,
+          },
+        }
+      }
+    ),
+    markCompleted: jest.fn(async ({ result_id }: { result_id: string }) => {
+      idempotencyState = "completed"
+      idempotencyStateVersion += 1
+      idempotencyResultId = result_id
+      return {
+        type: "claimed" as const,
+        record: {
+          id: "stidem_synth",
+          state: "completed" as const,
+          state_version: idempotencyStateVersion,
+          result_id,
+        },
+      }
+    }),
+    markFailedRetryable: jest.fn(async () => undefined),
+    markFailedTerminal: jest.fn(async () => undefined),
+    markReconciliationRequired: jest.fn(async () => undefined),
   }
 
   req.scope.resolve = jest.fn((key: string) => {
@@ -335,6 +412,14 @@ function wireScope(
 
     if (key === ContainerRegistrationKeys.PG_CONNECTION) {
       return pgConnection
+    }
+
+    if (key === STORE_RESOURCE_VERSION_MODULE) {
+      return storeResourceVersionService
+    }
+
+    if (key === STORE_IDEMPOTENCY_MODULE) {
+      return storeIdempotencyService
     }
 
     return undefined
@@ -396,6 +481,7 @@ describe("cart checkout store contract", () => {
       })
 
       const req = createRequest({
+        method: "POST",
         session: {
           id: "sess_guest_01",
         },
@@ -469,6 +555,7 @@ describe("cart checkout store contract", () => {
       })
 
       const req = createRequest({
+        method: "POST",
         customerAuth: {
           customerId: "cus_123",
         },
