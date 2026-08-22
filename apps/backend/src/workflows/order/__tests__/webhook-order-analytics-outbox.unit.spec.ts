@@ -1,5 +1,5 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
-import { Modules } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { ANALYTICS_EVENT_LOG_MODULE } from "../../../modules/analytics-event-log"
 import { CHECKOUT_COMPLETION_MODULE } from "../../../modules/checkout-completion"
 import { EMAIL_DELIVERY_LOG_MODULE } from "../../../modules/email-delivery-log"
@@ -40,7 +40,7 @@ function buildAttempt(
     currency_code: "brl",
     expires_at: null,
     order_id: null,
-    metadata: null,
+    metadata: { cart_resource_version: 1 },
     client_confirmed_at: null,
     instructions_displayed_at: null,
     awaiting_webhook_since: "2026-07-01T10:00:00.000Z",
@@ -126,6 +126,30 @@ function createPaymentAttemptModule(attempt: PaymentAttemptRecord) {
       return rows
     }),
     store,
+  }
+}
+
+function createOrderAuthorityConnection(attempt: PaymentAttemptRecord) {
+  return {
+    transaction: jest.fn(async (callback: (transaction: { raw: (sql: string) => Promise<{ rows: Array<Record<string, unknown>> }> }) => Promise<unknown>) =>
+      callback({
+        raw: jest.fn(async (sql: string) => {
+          if (sql.includes("select cart_id from payment_attempt")) {
+            return { rows: [{ cart_id: attempt.cart_id }] }
+          }
+          if (sql.includes("pg_advisory_xact_lock")) {
+            return { rows: [] }
+          }
+          if (sql.includes("from payment_attempt")) {
+            return { rows: [{ ...attempt, metadata: attempt.metadata ?? { cart_resource_version: 1 } }] }
+          }
+          if (sql.includes("from store_resource_version")) {
+            return { rows: [{ version: 1 }] }
+          }
+          throw new Error(`Unexpected Order authority SQL: ${sql}`)
+        }),
+      })
+    ),
   }
 }
 
@@ -340,6 +364,10 @@ function createContainer(input: {
 
       if (key === Modules.ORDER) {
         return input.orderModule ?? createOrderModule()
+      }
+
+      if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+        return createOrderAuthorityConnection(input.paymentAttemptModule.store[0]!)
       }
 
       return undefined
@@ -710,6 +738,10 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint analytics outbox",
 
         if (key === Modules.ORDER) {
           return orderModule
+        }
+
+        if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+          return createOrderAuthorityConnection(paymentAttemptModule.store[0]!)
         }
 
         return undefined
