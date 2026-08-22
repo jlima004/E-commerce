@@ -3,6 +3,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import {
   ContainerRegistrationKeys,
   MedusaError,
+  Modules,
   remoteQueryObjectFromString,
 } from "@medusajs/framework/utils"
 import {
@@ -47,6 +48,10 @@ import {
 
 type StoreCartRecord = StoreCartPreOrderRecord
 
+type LinkService = {
+  create(input: Record<string, unknown>): Promise<unknown>
+}
+
 const ACTIVE_CART_QUERY_FIELDS = storeCartPreOrderFields
 
 async function refetchActiveCart(
@@ -75,6 +80,44 @@ async function refetchActiveCart(
   }
 
   return cart
+}
+
+async function createGuestCartCapabilityLink(
+  req: MedusaRequest,
+  cartId: string,
+  capabilityId: string
+): Promise<void> {
+  const link = req.scope.resolve(
+    ContainerRegistrationKeys.LINK
+  ) as LinkService | undefined
+
+  if (!link || typeof link.create !== "function") {
+    throw new Error("GUEST_CART_CAPABILITY_LINK_UNAVAILABLE")
+  }
+
+  // Only opaque record identifiers cross the module-link boundary. The
+  // one-time plaintext token is intentionally never part of link storage.
+  await link.create({
+    [Modules.CART]: { cart_id: cartId },
+    [GUEST_CART_CAPABILITY_MODULE]: {
+      guest_cart_capability_id: capabilityId,
+    },
+  })
+}
+
+async function compensateGuestCartCapabilityMint(
+  req: MedusaRequest,
+  capabilityId: string
+): Promise<void> {
+  const guestCapService = req.scope.resolve<GuestCartCapabilityModuleService>(
+    GUEST_CART_CAPABILITY_MODULE
+  )
+
+  if (typeof guestCapService.revokeGuestCartCapability !== "function") {
+    throw new Error("GUEST_CART_CAPABILITY_COMPENSATION_UNAVAILABLE")
+  }
+
+  await guestCapService.revokeGuestCartCapability(capabilityId)
 }
 
 async function retrieveCartById(
@@ -580,7 +623,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     throw error
   }
 
-  let mintResult: { plaintext_token: string }
+  let mintResult: {
+    plaintext_token: string
+    record: { id: string; cart_id: string }
+  }
   try {
     const guestCapService = req.scope.resolve<GuestCartCapabilityModuleService>(
       GUEST_CART_CAPABILITY_MODULE
@@ -602,6 +648,42 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
     } catch {}
     throw error
+  }
+
+  try {
+    await createGuestCartCapabilityLink(
+      req,
+      cart.id,
+      mintResult.record.id
+    )
+  } catch (linkError) {
+    try {
+      await compensateGuestCartCapabilityMint(req, mintResult.record.id)
+    } catch {
+      try {
+        await storeIdempotencyService.markReconciliationRequired({
+          id: claimResult.record.id,
+          expectedState: "processing",
+          expectedStateVersion: currentStateVersion,
+          result_type: "cart",
+          result_id: cart.id,
+          failure_code: "CAPABILITY_LINK_COMPENSATION_FAILED",
+        })
+      } catch {}
+      throw linkError
+    }
+
+    try {
+      await storeIdempotencyService.markReconciliationRequired({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: currentStateVersion,
+        result_type: "cart",
+        result_id: cart.id,
+        failure_code: "CAPABILITY_LINK_FAILED",
+      })
+    } catch {}
+    throw linkError
   }
 
   let completion: LifecycleClaimResult

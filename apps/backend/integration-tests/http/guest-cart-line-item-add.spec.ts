@@ -1,6 +1,6 @@
 import { POST as addLineItem } from "../../src/api/store/carts/[id]/line-items/route"
 import { addToCartWorkflow } from "@medusajs/core-flows"
-import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, MedusaError, Modules } from "@medusajs/framework/utils"
 import {
   GUEST_CART_CAPABILITY_HEADER,
   GUEST_CART_CAPABILITY_MODULE,
@@ -160,6 +160,9 @@ function createHarness() {
         deleted_at: null,
       }
     },
+    async authorizeGuestCartCapabilityForMutation() {
+      return this.lookupGuestCartCapabilityByPresentedToken()
+    },
   }
 
   const paymentAttempt = {
@@ -194,8 +197,18 @@ function createHarness() {
     },
   }
   const pg = {
+    async raw(sql: string) {
+      if (sql.includes("from payment_attempt")) {
+        return { rows: attempts.map((attempt) => ({ id: attempt.id, status: attempt.status, order_id: null })) }
+      }
+      if (sql.includes("update payment_attempt")) {
+        attempts[0].status = "invalidated_by_cart_change"
+        return { rows: [{ id: attempts[0].id }] }
+      }
+      return { rows: [] }
+    },
     async transaction(callback: (trx: unknown) => Promise<unknown>) {
-      return callback({ raw: async () => ({ rows: [] }) })
+      return callback({ getTransactionContext: () => ({ raw: pg.raw }) })
     },
   }
 
@@ -248,6 +261,18 @@ function createHarness() {
           if (key === STORE_RESOURCE_VERSION_MODULE) return versionService
           if (key === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
           if (key === ContainerRegistrationKeys.PG_CONNECTION) return pg
+          if (key === Modules.CART) {
+            return {
+              retrieveCart: async (id: string) =>
+                JSON.parse(JSON.stringify(carts.get(id))),
+              baseRepository_: {
+                transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
+                  callback({
+                    getTransactionContext: () => ({ raw: pg.raw }),
+                  }),
+              },
+            }
+          }
           throw new Error(`unrecognized scope key ${String(key)}`)
         },
       },
@@ -441,6 +466,8 @@ describe("Guest cart line-item add M1", () => {
 
     const staleError = await addLineItem(staleRequest as never, staleResponse as never).catch((error) => error)
     expect(staleError).toMatchObject({ code: "CART_VERSION_MISMATCH", statusCode: 412 })
+    expect(staleError.currentEtag).toBe('"2"')
+    expect(staleError.cart).toMatchObject({ id: harness.cart.id, items: [] })
     expect(harness.records.get("guest-add-stale")).toMatchObject({
       state: "failed_terminal",
       failure_code: "CART_VERSION_MISMATCH",

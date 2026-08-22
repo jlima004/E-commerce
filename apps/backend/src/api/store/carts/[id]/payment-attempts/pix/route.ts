@@ -17,6 +17,7 @@ import {
 import { resolveActiveCartIdentity } from "../../../../../../modules/checkout/active-cart"
 import { PAYMENT_ATTEMPT_MODULE } from "../../../../../../modules/payment-attempt"
 import type { PaymentAttemptRecord } from "../../../../../../modules/payment-attempt/types"
+import { initializeCartResourceVersion } from "../../../concurrency"
 
 type SessionCapableRequest = MedusaRequest & {
   auth_context?: {
@@ -112,6 +113,19 @@ async function fetchCartById(
   }
 
   return cart
+}
+
+async function readCartResourceVersion(
+  req: SessionCapableRequest,
+  cartId: string
+): Promise<number | null> {
+  try {
+    return await initializeCartResourceVersion(req, cartId)
+  } catch {
+    // A missing binding is safe only because Order authority rejects it
+    // fail-closed. Production wiring supplies the resource-version module.
+    return null
+  }
 }
 
 async function listExistingAttemptsForCart(
@@ -240,6 +254,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const cart = await fetchCartById(request, cartId)
   const actor = resolvePaymentStartActor(request)
   const existingAttempts = await listExistingAttemptsForCart(request, cartId)
+  const cartResourceVersion = await readCartResourceVersion(request, cartId)
   const stripeLayer = await resolveStripePixInitiationLayer(request)
 
   const result = await startPixPaymentAttempt({
@@ -249,6 +264,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     existingAttempts,
     stripeLayer,
     generateId: () => `payatt_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
+    cartResourceVersion,
     generatePaymentCollectionId: () =>
       `paycol_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
   })

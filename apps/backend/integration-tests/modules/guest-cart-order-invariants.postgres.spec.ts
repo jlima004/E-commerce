@@ -306,6 +306,19 @@ if (!requestedDatabaseName) {
             async mintGuestCartCapability() {
               return { record: capability, plaintext_token: token }
             },
+            async authorizeGuestCartCapabilityForMutation(
+              presentedToken: string,
+              cartId: string
+            ) {
+              if (
+                presentedToken !== token ||
+                cartId !== capability.cart_id ||
+                capability.status !== "active"
+              ) {
+                throw new Error("GUEST_CART_CAPABILITY_LOOKUP_INVALID")
+              }
+              return capability
+            },
           }
         }
         if (key === STORE_IDEMPOTENCY_MODULE) return idempotency
@@ -319,6 +332,32 @@ if (!requestedDatabaseName) {
             },
             async raw() {
               return { rows: [] }
+            },
+          }
+        }
+        if (key === Modules.CART) {
+          const transaction = { raw: async () => ({ rows: [] }) }
+          return {
+            baseRepository_: {
+              async transaction(callback: (manager: unknown) => Promise<unknown>) {
+                return callback({
+                  getTransactionContext: () => transaction,
+                })
+              },
+            },
+            async retrieveCart(id: string) {
+              return carts.get(id)
+            },
+          }
+        }
+        if (key === ContainerRegistrationKeys.LINK) {
+          return {
+            async create(input: Record<string, unknown>) {
+              expect(JSON.stringify(input)).not.toContain(token)
+              return undefined
+            },
+            async dismiss() {
+              return undefined
             },
           }
         }
@@ -394,35 +433,6 @@ if (!requestedDatabaseName) {
       scope,
     })
     return { cart, attempts, versions, request, activeRequest, response, token }
-  }
-
-  function paymentAttempt(identity: string, prerequisites: CartPrerequisites): PaymentAttemptRecord {
-    return {
-      id: `payatt_${identity}`,
-      cart_id: prerequisites.cartId,
-      payment_collection_id: prerequisites.paymentCollectionId,
-      payment_session_id: `ps_${identity}`,
-      provider: "stripe",
-      provider_payment_intent_id: `pi_${identity}`,
-      provider_payment_session_id: `ps_${identity}`,
-      payment_method_type: "card",
-      status: "awaiting_webhook_confirmation",
-      amount: 9900,
-      currency_code: "brl",
-      expires_at: null,
-      order_id: null,
-      metadata: null,
-      client_confirmed_at: null,
-      instructions_displayed_at: null,
-      awaiting_webhook_since: "2026-08-21T12:00:00.000Z",
-      superseded_at: null,
-      invalidated_at: null,
-      canceled_at: null,
-      failed_at: null,
-      expired_at: null,
-      created_at: "2026-08-21T12:00:00.000Z",
-      updated_at: "2026-08-21T12:00:00.000Z",
-    }
   }
 
   medusaIntegrationTestRunner({
@@ -503,24 +513,59 @@ if (!requestedDatabaseName) {
           data: {},
         })
         await paymentModule.authorizePaymentSession(paymentSession.id, {})
+
+        const resourceVersionModule = realContainer.resolve(
+          STORE_RESOURCE_VERSION_MODULE
+        ) as {
+          baseRepository_: {
+            transaction<T>(
+              callback: (transactionManager: unknown) => Promise<T>
+            ): Promise<T>
+          }
+          initialize(
+            resourceType: string,
+            resourceId: string,
+            sharedContext: unknown
+          ): Promise<{ version: number }>
+        }
+        const cartResourceVersion =
+          await resourceVersionModule.baseRepository_.transaction(
+            async (transactionManager) =>
+              resourceVersionModule.initialize("cart", cart.id, {
+                __type: "MedusaContext",
+                transactionManager,
+                manager: transactionManager,
+              })
+          )
+
+        const paymentAttemptModule = realContainer.resolve(
+          PAYMENT_ATTEMPT_MODULE
+        ) as {
+          createPaymentAttempts(input: Record<string, unknown>): Promise<unknown>
+        }
+        await paymentAttemptModule.createPaymentAttempts({
+          id: `payatt_${identity}`,
+          cart_id: cart.id,
+          payment_collection_id: paymentCollection.id,
+          payment_session_id: paymentSession.id,
+          provider: "stripe",
+          provider_payment_intent_id: `pi_${identity}`,
+          provider_payment_session_id: `ps_${identity}`,
+          payment_method_type: "card",
+          status: "awaiting_webhook_confirmation",
+          amount: 9900,
+          currency_code: "brl",
+          metadata: { cart_resource_version: cartResourceVersion.version },
+          awaiting_webhook_since: new Date("2026-08-21T12:00:00.000Z"),
+        })
+
         return { cartId: cart.id, paymentCollectionId: paymentCollection.id, email }
       }
 
       function canonicalHarness(identity: string, prerequisites: CartPrerequisites) {
         const realContainer = getContainer()
-        const paymentRows = [paymentAttempt(identity, prerequisites)]
         const webhookRows: Array<Record<string, unknown>> = []
         const analyticsRows: Array<Record<string, unknown>> = []
-        const payment = {
-          rows: paymentRows,
-          listPaymentAttempts: jest.fn(async (filters?: Record<string, unknown>) =>
-            paymentRows.filter((row) => !filters?.provider_payment_intent_id || row.provider_payment_intent_id === filters.provider_payment_intent_id)
-          ),
-          updatePaymentAttempts: jest.fn(async (input: any) => {
-            Object.assign(paymentRows[0], Array.isArray(input) ? input[0] : input)
-            return paymentRows
-          }),
-        }
         const webhooks = {
           listWebhookEventLogs: jest.fn(async (filters?: Record<string, unknown>) =>
             webhookRows.filter((row) => !filters?.deduplication_key || row.deduplication_key === filters.deduplication_key)
@@ -550,7 +595,6 @@ if (!requestedDatabaseName) {
         const realCheckout = realContainer.resolve(CHECKOUT_COMPLETION_MODULE)
         const container = {
           resolve(key: string) {
-            if (key === PAYMENT_ATTEMPT_MODULE) return payment
             if (key === WEBHOOKS_MODULE) return webhooks
             if (key === ANALYTICS_EVENT_LOG_MODULE || key === "analytics_event_log") return analytics
             if (key === CHECKOUT_COMPLETION_MODULE) return realCheckout
@@ -605,7 +649,7 @@ if (!requestedDatabaseName) {
           } as unknown as MedusaRequest, res as unknown as MedusaResponse)
           return res
         }
-        return { payment, post }
+        return { post }
       }
 
       it("keeps every Store/BFF Cart M1 operation at zero persisted Orders", async () => {

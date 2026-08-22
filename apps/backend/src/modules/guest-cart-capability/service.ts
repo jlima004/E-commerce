@@ -1,5 +1,6 @@
 import { MedusaService } from "@medusajs/framework/utils"
 import type { Context } from "@medusajs/framework/types"
+import { lockCartOrderAuthority } from "../payment-attempt/transactional-authority"
 import GuestCartCapability from "./models/guest-cart-capability"
 import {
   compareGuestCartCapabilityHash,
@@ -9,14 +10,92 @@ import {
 } from "./hash"
 import {
   GUEST_CART_CAPABILITY_LOOKUP_INVALID,
+  GUEST_CART_CAPABILITY_LIFECYCLE_INVALID,
   GUEST_CART_CAPABILITY_PLAINTEXT_FORBIDDEN,
+  GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED,
   GUEST_CART_CAPABILITY_STATUS,
+  type GuestCartCapabilityMutationContext,
   type GuestCartCapabilityRecord,
+  type GuestCartCapabilitySqlTransaction,
   type GuestCartCapabilityStatus,
   type LookupGuestCartCapabilityOptions,
   type MintGuestCartCapabilityInput,
   type MintGuestCartCapabilityResult,
 } from "./types"
+
+const GUEST_CART_CAPABILITY_COLUMNS = [
+  "id",
+  "cart_id",
+  "token_hash",
+  "status",
+  "expires_at",
+  "consumed_at",
+  "revoked_at",
+  "last_used_at",
+  "created_at",
+  "updated_at",
+  "deleted_at",
+] as const
+
+type CapabilityQueryResult = {
+  rows?: Array<Record<string, unknown>>
+}
+
+function capabilityColumns(): string {
+  return GUEST_CART_CAPABILITY_COLUMNS.join(", ")
+}
+
+async function capabilityRows(
+  transaction: GuestCartCapabilitySqlTransaction,
+  sql: string,
+  bindings: unknown[] = []
+): Promise<Array<Record<string, unknown>>> {
+  const result = (await transaction.raw(sql, bindings)) as CapabilityQueryResult
+  return result.rows ?? []
+}
+
+function requireCapabilityTransaction(
+  sharedContext?: GuestCartCapabilityMutationContext
+): GuestCartCapabilitySqlTransaction {
+  const manager = sharedContext?.transactionManager
+  if (
+    sharedContext?.__type !== "MedusaContext" ||
+    !manager
+  ) {
+    throw new Error(GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED)
+  }
+
+  const transaction = manager.getTransactionContext?.()
+  if (!transaction) {
+    throw new Error(GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED)
+  }
+
+  return transaction
+}
+
+function mapCapabilityRow(row: Record<string, unknown>): GuestCartCapabilityRecord {
+  return {
+    id: String(row.id),
+    cart_id: String(row.cart_id),
+    token_hash: String(row.token_hash),
+    status: row.status as GuestCartCapabilityRecord["status"],
+    expires_at: row.expires_at as string | Date,
+    consumed_at: (row.consumed_at ?? null) as string | Date | null,
+    revoked_at: (row.revoked_at ?? null) as string | Date | null,
+    last_used_at: (row.last_used_at ?? null) as string | Date | null,
+    created_at: row.created_at as string | Date,
+    updated_at: row.updated_at as string | Date,
+    deleted_at: (row.deleted_at ?? null) as string | Date | null,
+  }
+}
+
+function lookupInvalid(): never {
+  throw new Error(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
+}
+
+function lifecycleInvalid(): never {
+  throw new Error(GUEST_CART_CAPABILITY_LIFECYCLE_INVALID)
+}
 
 export const GUEST_CART_CAPABILITY_TTL_ROLLING_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 export const GUEST_CART_CAPABILITY_TTL_MAX_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -223,6 +302,31 @@ export function buildGuestCartCapabilityTouchRollingUpdate(
 export class GuestCartCapabilityModuleService extends MedusaService({
   GuestCartCapability,
 }) {
+  private async withCapabilityTransaction<T>(
+    sharedContext: GuestCartCapabilityMutationContext | undefined,
+    callback: (transaction: GuestCartCapabilitySqlTransaction) => Promise<T>
+  ): Promise<T> {
+    if (sharedContext) {
+      return callback(requireCapabilityTransaction(sharedContext))
+    }
+
+    const repository = (this as any).baseRepository_
+    const transaction = repository?.transaction
+    if (typeof transaction !== "function") {
+      throw new Error(GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED)
+    }
+
+    return transaction.call(repository, async (transactionManager: {
+      getTransactionContext?: () => GuestCartCapabilitySqlTransaction | null
+    }) => {
+      const transactionContext = transactionManager.getTransactionContext?.()
+      if (!transactionContext) {
+        throw new Error(GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED)
+      }
+      return callback(transactionContext)
+    })
+  }
+
   /**
    * Mint a new guest cart capability.
    * Generates a CSPRNG token, persists its SHA-256 hash in PostgreSQL, and returns
@@ -277,7 +381,7 @@ export class GuestCartCapabilityModuleService extends MedusaService({
   async lookupGuestCartCapabilityByPresentedToken(
     presentedToken: string,
     options?: LookupGuestCartCapabilityOptions,
-    sharedContext?: Context
+    sharedContext?: GuestCartCapabilityMutationContext
   ): Promise<GuestCartCapabilityRecord> {
     // Exact token semantics: no .trim() normalization, token is exact secret string
     if (typeof presentedToken !== "string" || presentedToken.length === 0) {
@@ -296,61 +400,123 @@ export class GuestCartCapabilityModuleService extends MedusaService({
     const now = options?.now instanceof Date ? options.now : new Date()
     const shouldTouch = options?.touch !== false
 
-    const candidates = await (this as any).listGuestCartCapabilities(
-      { token_hash: presentedHash },
-      { take: 1 },
-      sharedContext
-    )
-
-    const candidate = (candidates?.[0] ?? null) as GuestCartCapabilityRecord | null
-
-    if (!candidate) {
-      performDummyGuestCartCapabilityHashComparison()
-      throw new Error(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
-    }
-
-    const isMatch = compareGuestCartCapabilityHash(presentedHash, candidate.token_hash)
-    if (!isMatch) {
-      throw new Error(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
-    }
-
-    if (candidate.status !== GUEST_CART_CAPABILITY_STATUS.ACTIVE) {
-      throw new Error(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
-    }
-
-    if (candidate.consumed_at || candidate.revoked_at) {
-      throw new Error(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
-    }
-
-    if (isGuestCartCapabilityExpired(candidate, now)) {
-      await (this as any).updateGuestCartCapabilities(
-        {
-          id: candidate.id,
-          status: GUEST_CART_CAPABILITY_STATUS.EXPIRED,
-        },
-        sharedContext
+    return this.withCapabilityTransaction(sharedContext, async (transaction) => {
+      const unlocked = await capabilityRows(
+        transaction,
+        `select cart_id from guest_cart_capability where token_hash = ? and deleted_at is null`,
+        [presentedHash]
       )
-      throw new Error(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
+
+      if (unlocked.length !== 1) {
+        performDummyGuestCartCapabilityHashComparison()
+        return lookupInvalid()
+      }
+
+      const cartId = String(unlocked[0].cart_id)
+      if (options?.cart_id && options.cart_id !== cartId) {
+        performDummyGuestCartCapabilityHashComparison()
+        return lookupInvalid()
+      }
+
+      // Every capability lifecycle path takes the cart authority advisory lock
+      // before the capability row lock. This is the same order used by the
+      // cart mutation and webhook authorities, preventing lock inversion.
+      await lockCartOrderAuthority(transaction as never, cartId)
+
+      const lockedRows = await capabilityRows(
+        transaction,
+        `select ${capabilityColumns()} from guest_cart_capability where token_hash = ? and deleted_at is null for update`,
+        [presentedHash]
+      )
+      const candidate = lockedRows[0] ? mapCapabilityRow(lockedRows[0]) : null
+
+      if (!candidate) {
+        performDummyGuestCartCapabilityHashComparison()
+        return lookupInvalid()
+      }
+
+      const isMatch = compareGuestCartCapabilityHash(presentedHash, candidate.token_hash)
+      if (!isMatch) {
+        return lookupInvalid()
+      }
+
+      if (
+        candidate.status !== GUEST_CART_CAPABILITY_STATUS.ACTIVE ||
+        candidate.consumed_at ||
+        candidate.revoked_at
+      ) {
+        return lookupInvalid()
+      }
+
+      if (isGuestCartCapabilityExpired(candidate, now)) {
+        await capabilityRows(
+          transaction,
+          `update guest_cart_capability
+              set status = 'expired', updated_at = ?
+            where id = ? and status = 'active'
+              and consumed_at is null and revoked_at is null
+              and expires_at <= ? and deleted_at is null
+            returning ${capabilityColumns()}`,
+          [now.toISOString(), candidate.id, now.toISOString()]
+        )
+        return lookupInvalid()
+      }
+
+      if (!shouldTouch) {
+        assertRecordHasNoPlaintext(candidate)
+        return candidate
+      }
+
+      // The authorization and rolling touch are one conditional write under
+      // the capability row lock. A terminal lifecycle update cannot be
+      // overwritten or extended by a stale lookup.
+      const newExpiresAt = computeRollingExpiresAt(candidate.created_at, now)
+      const touchedRows = await capabilityRows(
+        transaction,
+        `update guest_cart_capability
+            set last_used_at = ?, expires_at = ?, updated_at = ?
+          where id = ? and status = 'active'
+            and consumed_at is null and revoked_at is null
+            and expires_at > ? and deleted_at is null
+          returning ${capabilityColumns()}`,
+        [
+          now.toISOString(),
+          newExpiresAt.toISOString(),
+          now.toISOString(),
+          candidate.id,
+          now.toISOString(),
+        ]
+      )
+      if (touchedRows.length !== 1) {
+        return lookupInvalid()
+      }
+
+      const touchedRecord = mapCapabilityRow(touchedRows[0])
+      assertRecordHasNoPlaintext(touchedRecord)
+      return touchedRecord
+    })
+  }
+
+  /**
+   * Final Guest authorization for a cart mutation. The caller must provide
+   * the mutation transaction; this prevents a preflight lookup from being
+   * mistaken for authority after a concurrent revoke/consume/expire.
+   */
+  async authorizeGuestCartCapabilityForMutation(
+    presentedToken: string,
+    cartId: string,
+    options?: { now?: Date },
+    sharedContext?: GuestCartCapabilityMutationContext
+  ): Promise<GuestCartCapabilityRecord> {
+    if (!sharedContext) {
+      throw new Error(GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED)
     }
 
-    if (!shouldTouch) {
-      return candidate
-    }
-
-    // Touch: rolling 7d TTL capped at 30d from created_at
-    const newExpiresAt = computeRollingExpiresAt(candidate.created_at, now)
-    const updated = await (this as any).updateGuestCartCapabilities(
-      {
-        id: candidate.id,
-        last_used_at: now,
-        expires_at: newExpiresAt,
-      },
+    return this.lookupGuestCartCapabilityByPresentedToken(
+      presentedToken,
+      { ...options, touch: true, cart_id: cartId },
       sharedContext
     )
-
-    const touchedRecord = Array.isArray(updated) ? updated[0] : updated
-    assertRecordHasNoPlaintext(touchedRecord)
-    return touchedRecord as GuestCartCapabilityRecord
   }
 
   /**
@@ -359,25 +525,14 @@ export class GuestCartCapabilityModuleService extends MedusaService({
   async consumeGuestCartCapability(
     id: string,
     options?: { now?: Date },
-    sharedContext?: Context
+    sharedContext?: GuestCartCapabilityMutationContext
   ): Promise<GuestCartCapabilityRecord> {
     if (!id || typeof id !== "string") {
       throw new Error("GUEST_CART_CAPABILITY_ID_REQUIRED")
     }
 
     const now = options?.now instanceof Date ? options.now : new Date()
-    const updated = await (this as any).updateGuestCartCapabilities(
-      {
-        id,
-        status: GUEST_CART_CAPABILITY_STATUS.CONSUMED,
-        consumed_at: now,
-      },
-      sharedContext
-    )
-
-    const record = Array.isArray(updated) ? updated[0] : updated
-    assertRecordHasNoPlaintext(record)
-    return record as GuestCartCapabilityRecord
+    return this.mutateActiveCapability(id, "consumed", now, sharedContext)
   }
 
   /**
@@ -386,25 +541,14 @@ export class GuestCartCapabilityModuleService extends MedusaService({
   async revokeGuestCartCapability(
     id: string,
     options?: { now?: Date },
-    sharedContext?: Context
+    sharedContext?: GuestCartCapabilityMutationContext
   ): Promise<GuestCartCapabilityRecord> {
     if (!id || typeof id !== "string") {
       throw new Error("GUEST_CART_CAPABILITY_ID_REQUIRED")
     }
 
     const now = options?.now instanceof Date ? options.now : new Date()
-    const updated = await (this as any).updateGuestCartCapabilities(
-      {
-        id,
-        status: GUEST_CART_CAPABILITY_STATUS.REVOKED,
-        revoked_at: now,
-      },
-      sharedContext
-    )
-
-    const record = Array.isArray(updated) ? updated[0] : updated
-    assertRecordHasNoPlaintext(record)
-    return record as GuestCartCapabilityRecord
+    return this.mutateActiveCapability(id, "revoked", now, sharedContext)
   }
 
   /**
@@ -413,23 +557,110 @@ export class GuestCartCapabilityModuleService extends MedusaService({
   async expireGuestCartCapability(
     id: string,
     options?: { now?: Date },
-    sharedContext?: Context
+    sharedContext?: GuestCartCapabilityMutationContext
   ): Promise<GuestCartCapabilityRecord> {
     if (!id || typeof id !== "string") {
       throw new Error("GUEST_CART_CAPABILITY_ID_REQUIRED")
     }
 
-    const updated = await (this as any).updateGuestCartCapabilities(
-      {
-        id,
-        status: GUEST_CART_CAPABILITY_STATUS.EXPIRED,
-      },
-      sharedContext
-    )
+    const now = options?.now instanceof Date ? options.now : new Date()
+    return this.mutateActiveCapability(id, "expired", now, sharedContext)
+  }
 
-    const record = Array.isArray(updated) ? updated[0] : updated
-    assertRecordHasNoPlaintext(record)
-    return record as GuestCartCapabilityRecord
+  private async mutateActiveCapability(
+    id: string,
+    target: "consumed" | "revoked" | "expired",
+    now: Date,
+    sharedContext?: GuestCartCapabilityMutationContext
+  ): Promise<GuestCartCapabilityRecord> {
+    return this.withCapabilityTransaction(sharedContext, async (transaction) => {
+      const unlocked = await capabilityRows(
+        transaction,
+        `select cart_id from guest_cart_capability where id = ? and deleted_at is null`,
+        [id]
+      )
+      if (unlocked.length !== 1) {
+        return lifecycleInvalid()
+      }
+
+      const cartId = String(unlocked[0].cart_id)
+      await lockCartOrderAuthority(transaction as never, cartId)
+      const lockedRows = await capabilityRows(
+        transaction,
+        `select ${capabilityColumns()} from guest_cart_capability where id = ? and deleted_at is null for update`,
+        [id]
+      )
+      const current = lockedRows[0] ? mapCapabilityRow(lockedRows[0]) : null
+      if (
+        !current ||
+        current.status !== GUEST_CART_CAPABILITY_STATUS.ACTIVE ||
+        current.consumed_at ||
+        current.revoked_at
+      ) {
+        return lifecycleInvalid()
+      }
+
+      if (
+        target !== "expired" &&
+        isGuestCartCapabilityExpired(current, now)
+      ) {
+        await capabilityRows(
+          transaction,
+          `update guest_cart_capability
+              set status = 'expired', updated_at = ?
+            where id = ? and status = 'active'
+              and consumed_at is null and revoked_at is null
+              and expires_at <= ? and deleted_at is null
+            returning ${capabilityColumns()}`,
+          [now.toISOString(), id, now.toISOString()]
+        )
+        return lifecycleInvalid()
+      }
+
+      const update =
+        target === "consumed"
+          ? {
+              sql: `update guest_cart_capability
+                       set status = 'consumed', consumed_at = ?, updated_at = ?
+                     where id = ? and status = 'active'
+                       and consumed_at is null and revoked_at is null
+                       and expires_at > ? and deleted_at is null
+                     returning ${capabilityColumns()}`,
+              bindings: [now.toISOString(), now.toISOString(), id, now.toISOString()],
+            }
+          : target === "revoked"
+            ? {
+                sql: `update guest_cart_capability
+                         set status = 'revoked', revoked_at = ?, updated_at = ?
+                       where id = ? and status = 'active'
+                         and consumed_at is null and revoked_at is null
+                         and expires_at > ? and deleted_at is null
+                       returning ${capabilityColumns()}`,
+                bindings: [now.toISOString(), now.toISOString(), id, now.toISOString()],
+              }
+            : {
+                sql: `update guest_cart_capability
+                         set status = 'expired', updated_at = ?
+                       where id = ? and status = 'active'
+                         and consumed_at is null and revoked_at is null
+                         and deleted_at is null
+                       returning ${capabilityColumns()}`,
+                bindings: [now.toISOString(), id],
+              }
+
+      const updatedRows = await capabilityRows(
+        transaction,
+        update.sql,
+        update.bindings
+      )
+      if (updatedRows.length !== 1) {
+        return lifecycleInvalid()
+      }
+
+      const record = mapCapabilityRow(updatedRows[0])
+      assertRecordHasNoPlaintext(record)
+      return record
+    })
   }
 }
 

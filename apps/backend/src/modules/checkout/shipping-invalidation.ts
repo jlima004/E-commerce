@@ -2,6 +2,74 @@ import {
   invalidateActivePaymentAttemptForCartChange,
 } from "../payment-attempt/cart-invalidation"
 import type { PaymentAttemptRecord } from "../payment-attempt/types"
+import { ACTIVE_PAYMENT_ATTEMPT_STATUSES } from "../payment-attempt/state-machine"
+import type { PaymentAttemptSqlTransaction } from "../payment-attempt/transactional-authority"
+
+const ACTIVE_STATUS_BINDINGS = ACTIVE_PAYMENT_ATTEMPT_STATUSES.map(() => "?").join(
+  ", "
+)
+
+async function invalidatePaymentAttemptsForCartChangeInTransaction(
+  transaction: PaymentAttemptSqlTransaction,
+  cartId: string,
+  at: Date
+): Promise<void> {
+  // This exact lock statement is also used by webhook and Order authority.
+  await transaction.raw(
+    "select pg_advisory_xact_lock(hashtextextended(?, 1515))",
+    [cartId]
+  )
+  const locked = await transaction.raw(
+    `
+      select id, status, order_id
+      from payment_attempt
+      where cart_id = ? and deleted_at is null
+      order by id
+      for update
+    `,
+    [cartId]
+  )
+  const rows = locked.rows ?? []
+  const active = rows.filter((row) =>
+    ACTIVE_PAYMENT_ATTEMPT_STATUSES.includes(
+      row.status as (typeof ACTIVE_PAYMENT_ATTEMPT_STATUSES)[number]
+    )
+  )
+
+  if (active.some((row) => row.order_id !== null && row.order_id !== undefined)) {
+    throw new Error("PAYMENT_ATTEMPT_ORDER_AUTHORITY_EXISTS")
+  }
+  if (active.length > 1) {
+    throw new Error("PAYMENT_ATTEMPT_MULTIPLE_ACTIVE")
+  }
+  if (active.length === 0) {
+    return
+  }
+
+  const updated = await transaction.raw(
+    `
+      update payment_attempt
+      set status = 'invalidated_by_cart_change',
+          invalidated_at = ?,
+          order_id = null,
+          updated_at = ?
+      where id = ? and cart_id = ? and deleted_at is null
+        and order_id is null
+        and status in (${ACTIVE_STATUS_BINDINGS})
+      returning id
+    `,
+    [
+      at.toISOString(),
+      at.toISOString(),
+      active[0].id,
+      cartId,
+      ...ACTIVE_PAYMENT_ATTEMPT_STATUSES,
+    ]
+  )
+  if ((updated.rows ?? []).length !== 1) {
+    throw new Error("PAYMENT_ATTEMPT_INVALIDATION_CAS_FAILED")
+  }
+}
 
 export type PaymentAttemptModuleForCartInvalidation = {
   listPaymentAttempts?: (filters?: { cart_id?: string }) => Promise<PaymentAttemptRecord[]>
@@ -10,6 +78,7 @@ export type PaymentAttemptModuleForCartInvalidation = {
 
 export type StructuralCartInvalidationDependencies = {
   paymentAttemptModule?: PaymentAttemptModuleForCartInvalidation
+  transaction?: PaymentAttemptSqlTransaction
   invalidateActivePaymentAttemptForCartChange?: (
     cartId: string,
     at: Date
@@ -67,7 +136,13 @@ export function createStructuralCartInvalidationRunner(
     at: Date = new Date(),
     dependencies: StructuralCartInvalidationDependencies = {}
   ): Promise<void> {
-    if (dependencies.invalidateActivePaymentAttemptForCartChange) {
+    if (dependencies.transaction) {
+      await invalidatePaymentAttemptsForCartChangeInTransaction(
+        dependencies.transaction,
+        cartId,
+        at
+      )
+    } else if (dependencies.invalidateActivePaymentAttemptForCartChange) {
       await dependencies.invalidateActivePaymentAttemptForCartChange(cartId, at)
     } else if (dependencies.paymentAttemptModule) {
       await persistPaymentAttemptInvalidation(

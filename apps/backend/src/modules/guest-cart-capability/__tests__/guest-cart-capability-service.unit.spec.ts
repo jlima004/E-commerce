@@ -338,6 +338,18 @@ describe("Guest Cart Capability Service & Lookup Unit Suite (Task 15-02-02)", ()
       return service
     }
 
+    function installTransactionalRaw(
+      service: GuestCartCapabilityModuleService,
+      responses: Array<{ rows?: Array<Record<string, unknown>> }>
+    ): jest.Mock {
+      const raw = jest.fn(async () => responses.shift() ?? { rows: [] })
+      ;(service as any).baseRepository_ = {
+        transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
+          callback({ getTransactionContext: () => ({ raw }) }),
+      }
+      return raw
+    }
+
     it("mintGuestCartCapability delegates to createGuestCartCapabilities and returns plaintextToken", async () => {
       const service = createServiceInstance()
       const mockCreated = {
@@ -380,8 +392,12 @@ describe("Guest Cart Capability Service & Lookup Unit Suite (Task 15-02-02)", ()
         expires_at: computeRollingExpiresAt(validMint.record.created_at, clock.now()).toISOString(),
       }
 
-      ;(service as any).listGuestCartCapabilities = jest.fn().mockResolvedValue([validMint.record])
-      ;(service as any).updateGuestCartCapabilities = jest.fn().mockResolvedValue([touchedRecord])
+      const raw = installTransactionalRaw(service, [
+        { rows: [{ cart_id: validMint.record.cart_id }] },
+        { rows: [] },
+        { rows: [validMint.record] },
+        { rows: [touchedRecord] },
+      ])
 
       const result = await service.lookupGuestCartCapabilityByPresentedToken(
         validMint.plaintext_token,
@@ -389,57 +405,81 @@ describe("Guest Cart Capability Service & Lookup Unit Suite (Task 15-02-02)", ()
       )
 
       expect(result.id).toBe(validMint.record.id)
-      expect((service as any).updateGuestCartCapabilities).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: validMint.record.id,
-          last_used_at: clock.now(),
-        }),
-        undefined
-      )
+      expect(raw).toHaveBeenCalledTimes(4)
+      expect(raw.mock.calls[3][0]).toContain("status = 'active'")
+      expect(raw.mock.calls[3][0]).toContain("consumed_at is null")
+      expect(raw.mock.calls[3][0]).toContain("revoked_at is null")
+      expect(raw.mock.calls[3][0]).toContain("expires_at > ?")
     })
 
     it("consumeGuestCartCapability updates status to consumed and records consumed_at", async () => {
       const service = createServiceInstance()
-      const consumedRecord = {
+      const activeRecord = {
         id: "gccap_c1",
+        cart_id: "cart_c1",
+        token_hash: "hash_c1",
+        expires_at: new Date(clock.now().getTime() + 86400000),
+        revoked_at: null,
+        last_used_at: null,
+        created_at: clock.now(),
+        updated_at: clock.now(),
+        deleted_at: null,
+        consumed_at: null,
+        status: GUEST_CART_CAPABILITY_STATUS.ACTIVE,
+      }
+      const consumedRecord = {
+        ...activeRecord,
         status: GUEST_CART_CAPABILITY_STATUS.CONSUMED,
         consumed_at: clock.now(),
       }
 
-      ;(service as any).updateGuestCartCapabilities = jest.fn().mockResolvedValue([consumedRecord])
+      const raw = installTransactionalRaw(service, [
+        { rows: [{ cart_id: activeRecord.cart_id }] },
+        { rows: [] },
+        { rows: [activeRecord] },
+        { rows: [consumedRecord] },
+      ])
 
       const result = await service.consumeGuestCartCapability("gccap_c1", { now: clock.now() })
       expect(result.status).toBe(GUEST_CART_CAPABILITY_STATUS.CONSUMED)
-      expect((service as any).updateGuestCartCapabilities).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: "gccap_c1",
-          status: GUEST_CART_CAPABILITY_STATUS.CONSUMED,
-          consumed_at: clock.now(),
-        }),
-        undefined
-      )
+      expect(raw).toHaveBeenCalledTimes(4)
+      expect(raw.mock.calls[3][0]).toContain("set status = 'consumed'")
+      expect(raw.mock.calls[3][0]).toContain("status = 'active'")
     })
 
     it("revokeGuestCartCapability updates status to revoked and records revoked_at", async () => {
       const service = createServiceInstance()
-      const revokedRecord = {
+      const activeRecord = {
         id: "gccap_r1",
+        cart_id: "cart_r1",
+        token_hash: "hash_r1",
+        expires_at: new Date(clock.now().getTime() + 86400000),
+        consumed_at: null,
+        last_used_at: null,
+        created_at: clock.now(),
+        updated_at: clock.now(),
+        deleted_at: null,
+        revoked_at: null,
+        status: GUEST_CART_CAPABILITY_STATUS.ACTIVE,
+      }
+      const revokedRecord = {
+        ...activeRecord,
         status: GUEST_CART_CAPABILITY_STATUS.REVOKED,
         revoked_at: clock.now(),
       }
 
-      ;(service as any).updateGuestCartCapabilities = jest.fn().mockResolvedValue([revokedRecord])
+      const raw = installTransactionalRaw(service, [
+        { rows: [{ cart_id: activeRecord.cart_id }] },
+        { rows: [] },
+        { rows: [activeRecord] },
+        { rows: [revokedRecord] },
+      ])
 
       const result = await service.revokeGuestCartCapability("gccap_r1", { now: clock.now() })
       expect(result.status).toBe(GUEST_CART_CAPABILITY_STATUS.REVOKED)
-      expect((service as any).updateGuestCartCapabilities).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: "gccap_r1",
-          status: GUEST_CART_CAPABILITY_STATUS.REVOKED,
-          revoked_at: clock.now(),
-        }),
-        undefined
-      )
+      expect(raw).toHaveBeenCalledTimes(4)
+      expect(raw.mock.calls[3][0]).toContain("set status = 'revoked'")
+      expect(raw.mock.calls[3][0]).toContain("status = 'active'")
     })
   })
 })

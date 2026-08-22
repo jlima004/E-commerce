@@ -7,6 +7,7 @@ import {
   GUEST_CART_CAPABILITY_LOOKUP_INVALID,
   GUEST_CART_CAPABILITY_MODULE,
   GUEST_CART_CAPABILITY_STATUS,
+  type GuestCartCapabilityMutationContext,
   type GuestCartCapabilityModuleService,
 } from ".."
 import { generateGuestCartCapability, hashGuestCartCapability } from "../hash"
@@ -109,6 +110,28 @@ if (!requestedDatabaseName) {
         getContainer().resolve(
           GUEST_CART_CAPABILITY_MODULE
         ) as GuestCartCapabilityModuleService
+
+      function deferred<T>() {
+        let resolve!: (value: T | PromiseLike<T>) => void
+        const promise = new Promise<T>((resolvePromise) => {
+          resolve = resolvePromise
+        })
+        return { promise, resolve }
+      }
+
+      function transactionContext(trx: {
+        raw(
+          sql: string,
+          bindings?: unknown[]
+        ): Promise<{ rows?: Array<Record<string, unknown>> }>
+      }): GuestCartCapabilityMutationContext {
+        return {
+          __type: "MedusaContext",
+          transactionManager: {
+            getTransactionContext: () => trx,
+          },
+        }
+      }
 
       beforeEach(async () => {
         await dbConnection.raw(`delete from guest_cart_capability`)
@@ -437,6 +460,128 @@ if (!requestedDatabaseName) {
         await expect(
           service.lookupGuestCartCapabilityByPresentedToken(mintExpire.plaintext_token)
         ).rejects.toThrow(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
+      })
+
+      it("rejects consumed, revoked, and expired capabilities uniformly before touch", async () => {
+        const service = resolveService()
+        const cases = [
+          {
+            cartId: "cart_touch_terminal_consumed",
+            transition: (id: string) =>
+              service.consumeGuestCartCapability(id, {
+                now: new Date("2026-08-02T10:00:00.000Z"),
+              }),
+          },
+          {
+            cartId: "cart_touch_terminal_revoked",
+            transition: (id: string) =>
+              service.revokeGuestCartCapability(id, {
+                now: new Date("2026-08-02T10:00:00.000Z"),
+              }),
+          },
+          {
+            cartId: "cart_touch_terminal_expired",
+            transition: (id: string) =>
+              service.expireGuestCartCapability(id, {
+                now: new Date("2026-08-02T10:00:00.000Z"),
+              }),
+          },
+        ]
+
+        for (const testCase of cases) {
+          const minted = await service.mintGuestCartCapability({
+            cart_id: testCase.cartId,
+            now: new Date("2026-08-01T00:00:00.000Z"),
+          })
+          await testCase.transition(minted.record.id)
+          await expect(
+            service.lookupGuestCartCapabilityByPresentedToken(
+              minted.plaintext_token,
+              { now: new Date("2026-08-02T12:00:00.000Z"), touch: true }
+            )
+          ).rejects.toThrow(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
+        }
+      })
+
+      async function assertLifecycleCannotAuthorizeStaleMutation(
+        transition: "consumeGuestCartCapability" | "revokeGuestCartCapability"
+      ): Promise<void> {
+        const service = resolveService()
+        const minted = await service.mintGuestCartCapability({
+          cart_id: `cart_race_${transition}`,
+          now: new Date("2026-08-01T00:00:00.000Z"),
+        })
+        const lifecycleReady = deferred<void>()
+        const releaseLifecycle = deferred<void>()
+
+        const lifecycle = dbConnection.transaction(async (trx) => {
+          const terminal = await service[transition](
+            minted.record.id,
+            { now: new Date("2026-08-02T10:00:00.000Z") },
+            transactionContext(trx)
+          )
+          expect(terminal.status).toBe(
+            transition === "consumeGuestCartCapability"
+              ? GUEST_CART_CAPABILITY_STATUS.CONSUMED
+              : GUEST_CART_CAPABILITY_STATUS.REVOKED
+          )
+          lifecycleReady.resolve()
+          await releaseLifecycle.promise
+        })
+
+        await lifecycleReady.promise
+        let mutationExecuted = false
+        const mutationStarted = deferred<void>()
+        const mutation = dbConnection.transaction(async (trx) => {
+          mutationStarted.resolve()
+          try {
+            await service.authorizeGuestCartCapabilityForMutation(
+              minted.plaintext_token,
+              minted.record.cart_id,
+              { now: new Date("2026-08-02T10:00:00.000Z") },
+              transactionContext(trx)
+            )
+            mutationExecuted = true
+            await trx.raw(
+              `update guest_cart_capability set updated_at = updated_at where id = ?`,
+              [minted.record.id]
+            )
+            return "mutation-authorized"
+          } catch (error) {
+            return error instanceof Error ? error.message : String(error)
+          }
+        })
+
+        // The lifecycle transaction has already changed the row but has not
+        // committed. The mutation must wait for the same cart advisory lock,
+        // then observe the terminal row before it can execute its mutation.
+        await mutationStarted.promise
+        releaseLifecycle.resolve()
+        const [_, mutationResult] = await Promise.all([lifecycle, mutation])
+
+        expect(mutationResult).toBe(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
+        expect(mutationExecuted).toBe(false)
+        const row = await dbConnection.raw(
+          `select status, consumed_at, revoked_at from guest_cart_capability where id = ?`,
+          [minted.record.id]
+        )
+        expect(row.rows[0].status).toBe(
+          transition === "consumeGuestCartCapability"
+            ? GUEST_CART_CAPABILITY_STATUS.CONSUMED
+            : GUEST_CART_CAPABILITY_STATUS.REVOKED
+        )
+      }
+
+      it("consume racing mutation cannot permit stale authorization", async () => {
+        await assertLifecycleCannotAuthorizeStaleMutation(
+          "consumeGuestCartCapability"
+        )
+      })
+
+      it("revoke racing mutation cannot permit stale authorization", async () => {
+        await assertLifecycleCannotAuthorizeStaleMutation(
+          "revokeGuestCartCapability"
+        )
       })
     },
   })

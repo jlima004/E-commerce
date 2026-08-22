@@ -32,7 +32,7 @@ function buildEligibleAttempt(
     currency_code: "brl",
     expires_at: null,
     order_id: null,
-    metadata: null,
+    metadata: { cart_resource_version: 1 },
     client_confirmed_at: null,
     instructions_displayed_at: null,
     awaiting_webhook_since: "2026-06-30T10:00:00.000Z",
@@ -285,6 +285,8 @@ function createContainer(input: {
   orderModule?: ReturnType<typeof createOrderModule>
   cart?: Record<string, unknown>
 }) {
+  const authorityAttempt = () => input.paymentAttemptModule?.store[0] ?? null
+
   return {
     resolve: jest.fn((key: string) => {
       if (key === PAYMENT_ATTEMPT_MODULE) {
@@ -312,6 +314,28 @@ function createContainer(input: {
           graph: jest.fn(async () => ({
             data: [input.cart ?? buildCart()],
           })),
+        }
+      }
+
+      if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+        return {
+          transaction: async (callback: (transaction: {
+            raw: (sql: string) => Promise<{ rows?: Array<Record<string, unknown>> }>
+          }) => Promise<unknown>) =>
+            callback({
+              raw: async (sql: string) => {
+                if (sql.includes("select cart_id from payment_attempt")) {
+                  return { rows: authorityAttempt() ? [{ cart_id: authorityAttempt()?.cart_id }] : [] }
+                }
+                if (sql.includes("from payment_attempt")) {
+                  return { rows: authorityAttempt() ? [authorityAttempt() as Record<string, unknown>] : [] }
+                }
+                if (sql.includes("from store_resource_version")) {
+                  return { rows: [{ version: 1 }] }
+                }
+                return { rows: [] }
+              },
+            }),
         }
       }
 

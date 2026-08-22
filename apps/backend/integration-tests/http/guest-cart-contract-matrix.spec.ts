@@ -4,7 +4,7 @@ import {
   deleteLineItemsWorkflow,
   updateLineItemInCartWorkflow,
 } from "@medusajs/core-flows"
-import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, MedusaError, Modules } from "@medusajs/framework/utils"
 import { GET as getActiveCart, POST as postActiveCart } from "../../src/api/store/carts/active/route"
 import { POST as addLineItem } from "../../src/api/store/carts/[id]/line-items/route"
 import { DELETE as clearLineItems } from "../../src/api/store/carts/[id]/line-items/route"
@@ -158,6 +158,9 @@ function createHarness() {
     async consumeGuestCartCapability() {
       capabilityRecord.consumed_at = new Date()
     },
+    async authorizeGuestCartCapabilityForMutation() {
+      return capabilityRecord
+    },
   }
 
   const remoteQuery = jest.fn(async (queryObject: any) => {
@@ -277,10 +280,37 @@ function createHarness() {
 
   const pgConnection = {
     async transaction(callback: (trx: unknown) => Promise<unknown>) {
-      return callback({ raw: async () => ({ rows: [] }) })
+      return callback({ raw: this.raw.bind(this) })
     },
-    async raw() {
+    async raw(sql: string) {
+      if (sql.includes("from payment_attempt")) {
+        return {
+          rows: (attempts.get(requestedCartId) ?? []).map((attempt) => ({
+            id: attempt.id,
+            status: attempt.status,
+            order_id: null,
+          })),
+        }
+      }
+      if (sql.includes("update payment_attempt")) {
+        const current = attempts.get(requestedCartId)?.[0]
+        if (current) current.status = "invalidated_by_cart_change"
+        return { rows: current ? [{ id: current.id }] : [] }
+      }
       return { rows: [] }
+    },
+  }
+
+  const cartModule = {
+    retrieveCart: async (id: string) => {
+      const cart = carts.get(id)
+      return cart ? JSON.parse(JSON.stringify(cart)) : null
+    },
+    baseRepository_: {
+      transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
+        callback({
+          getTransactionContext: () => ({ raw: pgConnection.raw }),
+        }),
     },
   }
 
@@ -387,6 +417,8 @@ function createHarness() {
           if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
           if (key === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
           if (key === ContainerRegistrationKeys.PG_CONNECTION) return pgConnection
+          if (key === ContainerRegistrationKeys.LINK) return { create: async () => undefined }
+          if (key === Modules.CART) return cartModule
           throw new Error(`unrecognized scope key ${String(key)}`)
         },
       },

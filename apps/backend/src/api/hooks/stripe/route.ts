@@ -1,9 +1,8 @@
 import Stripe from "stripe"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { MedusaError } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
 import { env, type AppEnv } from "../../../config/env"
 import { appLogger, logAllowlisted } from "../../../observability/logger"
-import { PAYMENT_ATTEMPT_MODULE } from "../../../modules/payment-attempt"
 import { WEBHOOKS_MODULE } from "../../../modules/webhooks"
 import {
   sanitizeWebhookError,
@@ -12,12 +11,13 @@ import {
 } from "../../../modules/webhooks/service"
 import {
   PaymentAttemptWebhookError,
-  applyStripePaymentIntentWebhookToAttempt,
-  findPaymentAttemptForWebhook,
   type StripePaymentIntentWebhookObject,
   type SupportedStripePaymentIntentEventType,
 } from "../../../modules/payment-attempt/service"
-import type { PaymentAttemptRecord } from "../../../modules/payment-attempt/types"
+import {
+  applyStripePaymentIntentWebhookInTransaction,
+  type PaymentAttemptSqlConnection,
+} from "../../../modules/payment-attempt/transactional-authority"
 import type {
   CreateWebhookEventLogInput,
   WebhookEntityType,
@@ -112,13 +112,19 @@ type WebhooksModuleLike = {
   ) => Promise<WebhookEventLogRecord[] | WebhookEventLogRecord>
 }
 
-type PaymentAttemptModuleLike = {
-  listPaymentAttempts?: (
-    filters?: Record<string, unknown>
-  ) => Promise<PaymentAttemptRecord[]>
-  updatePaymentAttempts?: (
-    data: PaymentAttemptRecord | PaymentAttemptRecord[]
-  ) => Promise<PaymentAttemptRecord[]>
+function resolvePaymentAttemptAuthorityConnection(
+  req: RequestWithRawBody
+): PaymentAttemptSqlConnection | null {
+  try {
+    const connection = req.scope.resolve(
+      ContainerRegistrationKeys.PG_CONNECTION
+    ) as PaymentAttemptSqlConnection | undefined
+    return connection && typeof connection.transaction === "function"
+      ? connection
+      : null
+  } catch {
+    return null
+  }
 }
 
 type RouteDeps = {
@@ -279,25 +285,6 @@ function resolveWebhooksModule(req: RequestWithRawBody): WebhooksModuleLike {
     throw new MedusaError(
       MedusaError.Types.INVALID_DATA,
       "Modulo de webhooks nao configurado."
-    )
-  }
-
-  return service
-}
-
-function resolvePaymentAttemptModule(
-  req: RequestWithRawBody
-): PaymentAttemptModuleLike {
-  const service = req.scope.resolve(PAYMENT_ATTEMPT_MODULE) as PaymentAttemptModuleLike
-
-  if (
-    !service ||
-    typeof service.listPaymentAttempts !== "function" ||
-    typeof service.updatePaymentAttempts !== "function"
-  ) {
-    throw new PaymentAttemptWebhookError(
-      "PAYMENT_ATTEMPT_MODULE_UNAVAILABLE",
-      "Modulo de tentativa de pagamento nao configurado."
     )
   }
 
@@ -520,20 +507,23 @@ async function processStripePaymentIntentEvent(input: {
   }
 
   const paymentIntent = input.event.data.object
-  const paymentAttemptModule = resolvePaymentAttemptModule(input.req)
-  const attempts =
-    (await paymentAttemptModule.listPaymentAttempts?.({
-      provider_payment_intent_id: paymentIntent.id,
-    })) ?? []
-  const attempt = findPaymentAttemptForWebhook(attempts, paymentIntent.id)
-  const updatedAttempt = applyStripePaymentIntentWebhookToAttempt(
-    attempt,
-    paymentIntent,
-    input.event.type as SupportedStripePaymentIntentEventType,
-    input.now
-  )
+  const authorityConnection = resolvePaymentAttemptAuthorityConnection(input.req)
 
-  await paymentAttemptModule.updatePaymentAttempts?.(updatedAttempt)
+  if (!authorityConnection) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_ORDER_AUTHORITY_UNAVAILABLE",
+      "Autoridade transacional de PaymentAttempt indisponivel para o webhook Stripe."
+    )
+  }
+
+  const updatedAttempt = await authorityConnection.transaction((transaction) =>
+    applyStripePaymentIntentWebhookInTransaction(
+      transaction,
+      paymentIntent,
+      input.event.type as SupportedStripePaymentIntentEventType,
+      input.now
+    )
+  )
 
   const shouldInvokeOrderEntrypoint =
     input.event.type === "payment_intent.succeeded" &&

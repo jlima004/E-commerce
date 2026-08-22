@@ -31,6 +31,12 @@ export const GUEST_CART_CAPABILITY_PLAINTEXT_FORBIDDEN =
 export const GUEST_CART_CAPABILITY_LOOKUP_INVALID =
   "GUEST_CART_CAPABILITY_LOOKUP_INVALID" as const
 
+export const GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED =
+  "GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED" as const
+
+export const GUEST_CART_CAPABILITY_LIFECYCLE_INVALID =
+  "GUEST_CART_CAPABILITY_LIFECYCLE_INVALID" as const
+
 export type GuestCartCapabilityRecord = {
   id: string
   cart_id: string
@@ -60,4 +66,29 @@ export type MintGuestCartCapabilityResult = {
 export type LookupGuestCartCapabilityOptions = {
   now?: Date
   touch?: boolean
+  cart_id?: string
+}
+
+export type GuestCartCapabilitySqlTransaction = {
+  raw(
+    sql: string,
+    bindings?: unknown[]
+  ): Promise<{ rows?: Array<Record<string, unknown>> }>
+    | { rows?: Array<Record<string, unknown>> }
+}
+
+export type GuestCartCapabilityMutationContext = {
+  __type: "MedusaContext"
+  transactionManager: {
+    getTransactionContext?: () =>
+      | GuestCartCapabilitySqlTransaction
+      | null
+      | undefined
+  }
+  manager?: {
+    getTransactionContext?: () =>
+      | GuestCartCapabilitySqlTransaction
+      | null
+      | undefined
+  }
 }

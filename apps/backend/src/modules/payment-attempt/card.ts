@@ -55,6 +55,7 @@ export type StartCardPaymentAttemptInput = {
   existingAttempts: PaymentAttemptRecord[]
   stripeLayer: StripeCardInitiationLayer
   generateId: () => string
+  cartResourceVersion?: number | null
   paymentSession: {
     payment_collection_id: string
     payment_session_id: string
@@ -194,7 +195,8 @@ export async function startCardPaymentAttempt(
           ...(persistable.metadata ?? {}),
           [STRIPE_SAFE_LAYER_METADATA_KEY]: STRIPE_SAFE_LAYER_LABEL,
         },
-        cartFingerprint
+        cartFingerprint,
+        input.cartResourceVersion
       ),
     },
     newAttemptId,

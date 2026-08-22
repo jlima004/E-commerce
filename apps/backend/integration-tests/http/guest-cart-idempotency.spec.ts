@@ -356,6 +356,9 @@ function createIdempotencyHarness() {
           if (key === ContainerRegistrationKeys.PG_CONNECTION) {
             return mockPgConnection
           }
+          if (key === ContainerRegistrationKeys.LINK) {
+            return { create: async () => undefined }
+          }
           throw new Error(`Unrecognized container key: ${String(key)}`)
         },
       },
