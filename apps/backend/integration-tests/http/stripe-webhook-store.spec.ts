@@ -1,4 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import defaultMiddlewares from "../../src/api/middlewares"
 import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
 import type { PaymentAttemptRecord } from "../../src/modules/payment-attempt/types"
@@ -53,7 +54,7 @@ function buildAttempt(
     currency_code: "brl",
     expires_at: null,
     order_id: null,
-    metadata: null,
+    metadata: { cart_resource_version: 1 },
     client_confirmed_at: null,
     instructions_displayed_at: null,
     awaiting_webhook_since: "2026-06-30T10:00:00.000Z",
@@ -166,6 +167,67 @@ function createPaymentAttemptModule(attempts: PaymentAttemptRecord[] = []) {
   }
 }
 
+function createPaymentAttemptAuthorityConnection(
+  paymentAttemptModule: ReturnType<typeof createPaymentAttemptModule>
+) {
+  return {
+    transaction: jest.fn(async (callback: (transaction: {
+      raw: (sql: string, bindings?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>
+    }) => Promise<unknown>) =>
+      callback({
+        raw: jest.fn(async (sql: string, bindings: unknown[] = []) => {
+          const attemptFor = (value: unknown) =>
+            paymentAttemptModule.attempts.find(
+              (attempt) =>
+                attempt.id === value ||
+                attempt.provider_payment_intent_id === value
+            )
+
+          if (sql.includes("pg_advisory_xact_lock")) {
+            return { rows: [] }
+          }
+
+          if (sql.includes("select cart_id from payment_attempt")) {
+            const attempt = attemptFor(bindings[0])
+            return { rows: attempt ? [{ cart_id: attempt.cart_id }] : [] }
+          }
+
+          if (sql.includes("update payment_attempt")) {
+            const hasTerminalTimestamp =
+              sql.includes("failed_at =") || sql.includes("canceled_at =")
+            const attempt = attemptFor(bindings[hasTerminalTimestamp ? 3 : 2])
+            if (!attempt) return { rows: [] }
+
+            const updated = {
+              ...attempt,
+              status: String(bindings[0]) as PaymentAttemptRecord["status"],
+              order_id: null,
+              updated_at: String(bindings[hasTerminalTimestamp ? 2 : 1]),
+              ...(sql.includes("failed_at =")
+                ? { failed_at: String(bindings[1]) }
+                : {}),
+              ...(sql.includes("canceled_at =")
+                ? { canceled_at: String(bindings[1]) }
+                : {}),
+            }
+            await paymentAttemptModule.updatePaymentAttempts(updated)
+            return { rows: [{ ...updated }] }
+          }
+
+          if (sql.includes("from payment_attempt")) {
+            const attempt = attemptFor(bindings[0])
+            return attempt
+              ? { rows: [{ ...attempt, metadata: attempt.metadata ?? { cart_resource_version: 1 } }] }
+              : { rows: [] }
+          }
+
+          throw new Error(`Unexpected PaymentAttempt authority SQL: ${sql}`)
+        }),
+      })
+    ),
+  }
+}
+
 function createRequest(
   scopeResolve: jest.Mock,
   overrides: Partial<RequestWithRawBody> = {}
@@ -187,6 +249,10 @@ function createScopeResolve(input: {
   webhookService: ReturnType<typeof createStatefulWebhookService>
   paymentAttemptModule?: ReturnType<typeof createPaymentAttemptModule>
 }) {
+  const authorityConnection = input.paymentAttemptModule
+    ? createPaymentAttemptAuthorityConnection(input.paymentAttemptModule)
+    : undefined
+
   return jest.fn((key: string) => {
     if (key === WEBHOOKS_MODULE) {
       return input.webhookService
@@ -194,6 +260,10 @@ function createScopeResolve(input: {
 
     if (key === PAYMENT_ATTEMPT_MODULE) {
       return input.paymentAttemptModule
+    }
+
+    if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+      return authorityConnection
     }
 
     return undefined

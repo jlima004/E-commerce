@@ -11,7 +11,7 @@ import {
   deleteLineItemsWorkflow,
   updateLineItemInCartWorkflow,
 } from "@medusajs/core-flows"
-import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, MedusaError, Modules } from "@medusajs/framework/utils"
 import { GUEST_CART_CAPABILITY_MODULE } from "../../src/modules/guest-cart-capability/types"
 import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
 import { STORE_IDEMPOTENCY_MODULE } from "../../src/modules/store-idempotency"
@@ -231,6 +231,56 @@ function createHarness() {
       }
     },
   }
+  const cartModule = {
+    baseRepository_: {
+      async transaction(callback: (transactionManager: unknown) => Promise<unknown>) {
+        const transactionContext = {
+          async raw(sql: string, bindings: unknown[] = []) {
+            if (sql.includes("pg_advisory_xact_lock")) {
+              return { rows: [] }
+            }
+
+            if (
+              sql.includes("select id, status, order_id") &&
+              sql.includes("from payment_attempt")
+            ) {
+              await paymentAttempt.listPaymentAttempts({
+                cart_id: String(bindings[0]),
+              })
+              return {
+                rows: attempts.map((attempt) => ({
+                  id: attempt.id,
+                  status: attempt.status,
+                  order_id: null,
+                })),
+              }
+            }
+
+            if (sql.includes("update payment_attempt")) {
+              attempts[0].status = "invalidated_by_cart_change"
+              return { rows: [{ id: attempts[0].id }] }
+            }
+
+            return pg.raw(sql, bindings)
+          },
+        }
+
+        return callback({
+          getTransactionContext: () => transactionContext,
+        })
+      },
+    },
+    async retrieveCart(id: string) {
+      return carts.get(id) ?? null
+    },
+    async addLineItems() {},
+    async updateLineItems() {},
+    async softDeleteLineItems() {},
+    async deleteLineItems() {},
+    async listLineItems() {
+      return []
+    },
+  }
   const addWorkflow = addToCartWorkflow as unknown as jest.Mock
   const deleteWorkflow = deleteLineItemsWorkflow as unknown as jest.Mock
   const deleteRun = jest.fn()
@@ -390,6 +440,7 @@ function createHarness() {
         if (key === STORE_RESOURCE_VERSION_MODULE) return versionService
         if (key === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
         if (key === ContainerRegistrationKeys.PG_CONNECTION) return pg
+        if (key === Modules.CART) return cartModule
         throw new Error(`unrecognized scope key ${String(key)}`)
       },
     },

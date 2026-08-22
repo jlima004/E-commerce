@@ -410,6 +410,24 @@ function wireScope(
       return guestCapService
     }
 
+    if (key === ContainerRegistrationKeys.LINK) {
+      return {
+        create: jest.fn(async (input: Record<string, unknown>) => {
+          expect(input[Modules.CART]).toEqual({
+            cart_id: expect.any(String),
+          })
+          expect(input[GUEST_CART_CAPABILITY_MODULE]).toEqual({
+            guest_cart_capability_id: expect.any(String),
+          })
+          expect(JSON.stringify(input)).not.toContain(
+            "synth_guest_capability_token"
+          )
+          return undefined
+        }),
+        dismiss: jest.fn(async () => undefined),
+      }
+    }
+
     if (key === ContainerRegistrationKeys.PG_CONNECTION) {
       return pgConnection
     }
