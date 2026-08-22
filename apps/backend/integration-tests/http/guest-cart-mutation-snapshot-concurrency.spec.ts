@@ -75,6 +75,8 @@ function createHarness() {
   const aSnapshotCaptured = deferred<void>()
   const allowASnapshotToReturn = deferred<void>()
   let snapshotCount = 0
+  const casTransactions: object[] = []
+  const snapshotTransactions: object[] = []
 
   const pgRaw = async (transaction: object, sql: string) => {
     if (sql.includes("pg_advisory_xact_lock")) {
@@ -88,7 +90,13 @@ function createHarness() {
   }
 
   const cartModule = {
-    retrieveCart: async (id: string) => {
+    retrieveCart: async (
+      id: string,
+      _config?: unknown,
+      sharedContext?: { transactionManager?: { getTransactionContext?: () => object } }
+    ) => {
+      const transaction = sharedContext?.transactionManager?.getTransactionContext?.()
+      if (transaction) snapshotTransactions.push(transaction)
       const snapshot = clone(id === cart.id ? cart : null)
       snapshotCount += 1
       if (snapshotCount === 1) {
@@ -180,7 +188,7 @@ function createHarness() {
   }
 
   const versionService = {
-    async initialize(_type: string, id: string) {
+    async initialize(_type: string, id: string, _sharedContext?: unknown) {
       return {
         id: `strver_${id}`,
         resource_type: "cart",
@@ -189,6 +197,9 @@ function createHarness() {
       }
     },
     async compareAndSwapWithMutation(input: any) {
+      casTransactions.push(
+        input.sharedContext.transactionManager.getTransactionContext()
+      )
       const current = versions.get(input.resourceId) ?? 1
       if (current !== input.expectedVersion) {
         return {
@@ -221,7 +232,9 @@ function createHarness() {
     },
   }))
 
-  const remoteQuery = async () => [clone(cart)]
+  // Deliberately stale/incomplete ownership reads must never become the
+  // response body; only the transaction-scoped Cart snapshot may do that.
+  const remoteQuery = async () => [{ ...clone(cart), items: [] }]
   const paymentAttempt = {
     async listPaymentAttempts() {
       return []
@@ -263,6 +276,8 @@ function createHarness() {
     aSnapshotCaptured,
     allowASnapshotToReturn,
     bWaitingForLock,
+    casTransactions,
+    snapshotTransactions,
     get snapshotCount() {
       return snapshotCount
     },
@@ -304,5 +319,7 @@ describe("HR-03 Cart mutation snapshot/ETag concurrency", () => {
       "variant_b",
     ])
     expect(harness.snapshotCount).toBe(2)
+    expect(harness.snapshotTransactions).toHaveLength(2)
+    expect(harness.snapshotTransactions).toEqual(harness.casTransactions)
   })
 })

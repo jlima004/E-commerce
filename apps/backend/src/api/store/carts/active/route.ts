@@ -50,6 +50,12 @@ type StoreCartRecord = StoreCartPreOrderRecord
 
 type LinkService = {
   create(input: Record<string, unknown>): Promise<unknown>
+  dismiss?(input: Record<string, unknown>): Promise<unknown>
+}
+
+type CartCleanupService = {
+  deleteCarts?(ids: string[]): Promise<void>
+  softDeleteCarts?(ids: string[]): Promise<unknown>
 }
 
 const ACTIVE_CART_QUERY_FIELDS = storeCartPreOrderFields
@@ -86,7 +92,7 @@ async function createGuestCartCapabilityLink(
   req: MedusaRequest,
   cartId: string,
   capabilityId: string
-): Promise<void> {
+): Promise<Record<string, unknown>> {
   const link = req.scope.resolve(
     ContainerRegistrationKeys.LINK
   ) as LinkService | undefined
@@ -97,12 +103,29 @@ async function createGuestCartCapabilityLink(
 
   // Only opaque record identifiers cross the module-link boundary. The
   // one-time plaintext token is intentionally never part of link storage.
-  await link.create({
+  const definition = {
     [Modules.CART]: { cart_id: cartId },
     [GUEST_CART_CAPABILITY_MODULE]: {
       guest_cart_capability_id: capabilityId,
     },
-  })
+  }
+  await link.create(definition)
+  return definition
+}
+
+async function dismissGuestCartCapabilityLink(
+  req: MedusaRequest,
+  definition: Record<string, unknown>
+): Promise<void> {
+  const link = req.scope.resolve(
+    ContainerRegistrationKeys.LINK
+  ) as LinkService | undefined
+
+  if (!link || typeof link.dismiss !== "function") {
+    throw new Error("GUEST_CART_CAPABILITY_LINK_DISMISS_UNAVAILABLE")
+  }
+
+  await link.dismiss(definition)
 }
 
 async function compensateGuestCartCapabilityMint(
@@ -118,6 +141,25 @@ async function compensateGuestCartCapabilityMint(
   }
 
   await guestCapService.revokeGuestCartCapability(capabilityId)
+}
+
+async function compensateGuestCartCreation(
+  req: MedusaRequest,
+  cartId: string
+): Promise<void> {
+  const cartModule = req.scope.resolve(Modules.CART) as CartCleanupService
+
+  if (typeof cartModule.deleteCarts === "function") {
+    await cartModule.deleteCarts([cartId])
+    return
+  }
+
+  if (typeof cartModule.softDeleteCarts === "function") {
+    await cartModule.softDeleteCarts([cartId])
+    return
+  }
+
+  throw new Error("GUEST_CART_CREATION_COMPENSATION_UNAVAILABLE")
 }
 
 async function retrieveCartById(
@@ -650,27 +692,33 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     throw error
   }
 
+  const linkDefinition = {
+    [Modules.CART]: { cart_id: cart.id },
+    [GUEST_CART_CAPABILITY_MODULE]: {
+      guest_cart_capability_id: mintResult.record.id,
+    },
+  }
   try {
-    await createGuestCartCapabilityLink(
-      req,
-      cart.id,
-      mintResult.record.id
-    )
+    await createGuestCartCapabilityLink(req, cart.id, mintResult.record.id)
   } catch (linkError) {
+    let compensationFailed = false
+
+    try {
+      await dismissGuestCartCapabilityLink(req, linkDefinition)
+    } catch {
+      compensationFailed = true
+    }
+
     try {
       await compensateGuestCartCapabilityMint(req, mintResult.record.id)
     } catch {
-      try {
-        await storeIdempotencyService.markReconciliationRequired({
-          id: claimResult.record.id,
-          expectedState: "processing",
-          expectedStateVersion: currentStateVersion,
-          result_type: "cart",
-          result_id: cart.id,
-          failure_code: "CAPABILITY_LINK_COMPENSATION_FAILED",
-        })
-      } catch {}
-      throw linkError
+      compensationFailed = true
+    }
+
+    try {
+      await compensateGuestCartCreation(req, cart.id)
+    } catch {
+      compensationFailed = true
     }
 
     try {
@@ -680,7 +728,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         expectedStateVersion: currentStateVersion,
         result_type: "cart",
         result_id: cart.id,
-        failure_code: "CAPABILITY_LINK_FAILED",
+        failure_code: compensationFailed
+          ? "CAPABILITY_LINK_COMPENSATION_FAILED"
+          : "CAPABILITY_LINK_FAILED",
       })
     } catch {}
     throw linkError

@@ -8,7 +8,10 @@ import {
 import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
 import { STORE_IDEMPOTENCY_MODULE } from "../../src/modules/store-idempotency"
 import { STORE_RESOURCE_VERSION_MODULE } from "../../src/modules/store-resource-version"
-import { toStoreErrorResponse } from "../../src/api/store-surface/errors"
+import {
+  attachStoreErrorEnvelope,
+  toStoreErrorResponse,
+} from "../../src/api/store-surface/errors"
 
 jest.mock("@medusajs/core-flows", () => ({
   addToCartWorkflow: jest.fn(),
@@ -474,6 +477,19 @@ describe("Guest cart line-item add M1", () => {
     })
     expect(harness.cart.items).toHaveLength(0)
     expect(toStoreErrorResponse(staleError).statusCode).toBe(412)
+
+    const middlewareResponse = response()
+    attachStoreErrorEnvelope(
+      { correlationId: "hr03-412-composition" },
+      middlewareResponse as never
+    )
+    middlewareResponse.status(staleError.statusCode).json(staleError)
+    expect(middlewareResponse.statusCode).toBe(412)
+    expect(middlewareResponse.headers.etag).toBe('"2"')
+    expect((middlewareResponse.body as any).cart).toMatchObject({
+      id: harness.cart.id,
+      items: [],
+    })
 
     const before = harness.mutationCount
     const replayError = await addLineItem(

@@ -348,10 +348,17 @@ if (!requestedDatabaseName) {
         expect(createdLinkInputs).toHaveLength(1)
 
         const failingLinkCalls: Array<Record<string, unknown>> = []
+        const failingLinkDismissCalls: Array<Record<string, unknown>> = []
+        const failingLinkState = new Map<string, Record<string, unknown>>()
         const failingLink = {
           create: async (input: Record<string, unknown>) => {
             failingLinkCalls.push(input)
+            failingLinkState.set(JSON.stringify(input), input)
             throw new Error("HR04_SIMULATED_LINK_FAILURE")
+          },
+          dismiss: async (input: Record<string, unknown>) => {
+            failingLinkDismissCalls.push(input)
+            failingLinkState.delete(JSON.stringify(input))
           },
         }
         const failedResponse = createResponse()
@@ -367,6 +374,11 @@ if (!requestedDatabaseName) {
         ).rejects.toThrow("HR04_SIMULATED_LINK_FAILURE")
 
         expect(failingLinkCalls).toHaveLength(1)
+        expect(failingLinkDismissCalls).toHaveLength(1)
+        expect(failingLinkState.size).toBe(0)
+        expect(JSON.stringify(failingLinkCalls[0])).not.toContain(
+          "plaintext_token"
+        )
         const failedCartId = String(
           (failingLinkCalls[0][Modules.CART] as Record<string, unknown>).cart_id
         )
@@ -404,8 +416,13 @@ if (!requestedDatabaseName) {
           fields: ["id", "guest_cart_capability_link.*", "guest_cart_capabilities.*"],
           filters: { id: failedCartId },
         })
-        expect(failedGraphResult.data[0].guest_cart_capabilities).toHaveLength(0)
-        expect(failedGraphResult.data[0].guest_cart_capability_link).toHaveLength(0)
+        expect(failedGraphResult.data).toHaveLength(0)
+
+        const deletedCartRows = await dbConnection.raw(
+          "select id from cart where id = ?",
+          [failedCartId]
+        )
+        expect(deletedCartRows.rows).toHaveLength(0)
       })
     },
   })

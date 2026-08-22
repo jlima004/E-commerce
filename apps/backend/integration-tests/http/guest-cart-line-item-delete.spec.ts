@@ -238,6 +238,7 @@ describe("Guest cart line-item delete M1", () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.headers.etag).toBe('"2"')
+    expect((res.body as any).cart.items).toHaveLength(0)
     expect(harness.cart.items).toHaveLength(0)
     expect(harness.deleteRun).toHaveBeenCalledWith(expect.objectContaining({
       input: { cart_id: harness.cart.id, ids: ["li_guest_delete_01"] },
@@ -259,6 +260,7 @@ describe("Guest cart line-item delete M1", () => {
     expect(harness.deleteWorkflow).toHaveBeenCalledTimes(1)
     expect(replay.statusCode).toBe(200)
     expect(replay.headers.etag).toBe('"2"')
+    expect((replay.body as any).cart.items).toHaveLength(0)
   })
 
   it("stale If-Match termina a claim em 412 e não chama o workflow", async () => {

@@ -300,6 +300,7 @@ describe("Guest cart line-item update M1", () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.headers.etag).toBe('"2"')
+    expect((res.body as any).cart.items[0].quantity).toBe(2)
     expect(harness.cart.items[0].quantity).toBe(2)
     expect(harness.attempts[0].status).toBe("invalidated_by_cart_change")
     expect(harness.records.get("guest-update-2").state).toBe("completed")
@@ -312,6 +313,7 @@ describe("Guest cart line-item update M1", () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.headers.etag).toBe('"2"')
+    expect((res.body as any).cart.items).toHaveLength(0)
     expect(harness.cart.items).toHaveLength(0)
     expect(harness.updateWorkflow).toHaveBeenCalledTimes(1)
     expect(harness.records.get("guest-update-remove").state).toBe("completed")
