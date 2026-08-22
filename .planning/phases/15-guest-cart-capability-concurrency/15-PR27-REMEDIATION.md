@@ -10,7 +10,7 @@ post-closure remediation addressed the six accepted findings B15-PR27-HR-01
 through B15-PR27-HR-06. This record is additive and does not rewrite
 `15-08-SUMMARY.md` or `15-CLOSURE.md`.
 
-**Final remediation status:** `REMEDIATED — AWAITING HUMAN RE-REVIEW`.
+**Final remediation status:** `HUMAN APPROVED — PASS`.
 
 ## Findings and technical result
 
@@ -23,8 +23,8 @@ through B15-PR27-HR-06. This record is additive and does not rewrite
 | B15-PR27-HR-05 | P2 | `POST /store/carts/active` runtime 409 outcomes were absent from the authoritative Store OpenAPI. | `apps/backend/src/api-docs/operations/store/carts.ts`, Store contract tests and generated Store artifact. | Public 409 is `StoreErrorResponse` with `CONFLICT`, correlation header and semantic coverage for reuse, in-progress and terminal/reconciliation conflicts; internal diagnostics remain private. |
 | B15-PR27-HR-06 | P2 | Cart mutation `412` documented the body but not its current `ETag`; the global Sentry composition also dropped it. | `apps/backend/src/api-docs/operations/store/carts.ts`, `apps/backend/src/api/middlewares.ts`, contract tests and native evidence fingerprints. | Cart `CART_VERSION_MISMATCH` documents and emits `StoreErrorResponse`, `x-correlation-id` and `ETag`; unrelated errors do not receive `ETag`. |
 
-The six findings are not marked closed. Each remains
-`REMEDIATED — AWAITING HUMAN RE-REVIEW`.
+Human re-review accepted the remediation. All six findings are now
+`CLOSED — PASS`.
 
 ## Implementation commits
 
@@ -161,12 +161,22 @@ database, remote Redis or production side effect was used.
 - BFF service authority remains required; no Store M1 promotion was introduced.
 - Historical `15-08-SUMMARY.md` and `15-CLOSURE.md`: unchanged.
 
+## Human re-review
+
+On 2026-08-22, the human review accepted the complete post-closure remediation.
+
+- B15-PR27-HR-01..HR-06: `CLOSED — PASS`.
+- PR #27 remediation: `HUMAN APPROVED — PASS`.
+- Phase-16 CONTEXT execution suspension: `LIFTED`.
+- Phase-16 RESEARCH+ remains `NOT AUTHORIZED`.
+- Merge remains `NOT AUTHORIZED`.
+
 ## Governance
 
 - Phase 15: `HISTORICALLY HUMAN APPROVED — CLOSED`.
-- PR #27 remediation: `IMPLEMENTED — AWAITING HUMAN RE-REVIEW`.
-- B15-PR27-HR-01..HR-06: `REMEDIATED — AWAITING HUMAN RE-REVIEW`.
-- Phase 16 CONTEXT: `DOCUMENTALLY AUTHORIZED`; execution is suspended pending human acceptance of this PR-27 remediation.
+- PR #27 remediation: `HUMAN APPROVED — PASS`.
+- B15-PR27-HR-01..HR-06: `CLOSED — PASS`.
+- Phase 16 CONTEXT: `AUTHORIZED — NOT STARTED`; the temporary execution suspension is lifted.
 - Phase 16 RESEARCH+: `NOT AUTHORIZED`.
 - Merge, deploy, release, frontend, real providers and remote infrastructure: `NOT AUTHORIZED`.
-- PR #27 is not merged and no review thread is being resolved as human acceptance.
+- PR #27 remains unmerged; review-thread resolution and merge remain separate actions.
