@@ -67,7 +67,7 @@ Phase 15: **CLOSED — HUMAN APPROVED**.
 
 Phase 15 closure artifact: `.planning/phases/15-guest-cart-capability-concurrency/15-CLOSURE.md` — CLOSED — HUMAN APPROVED.
 
-Phase 16: **NOT AUTHORIZED**. Phase-16 requirement statuses remain unchanged.
+Phase 16: **AUTHORIZED — CONTEXT NOT STARTED**. Phase-16 RESEARCH and subsequent gates remain separately human-gated; MRG-01..MRG-08 requirement statuses remain unchanged.
 
 ### Phase 16 — Cart Merge & Review
 
@@ -267,5 +267,5 @@ Phase 16: **NOT AUTHORIZED**. Phase-16 requirement statuses remain unchanged.
 - Phase 13: 8/8 COMPLETE; CLOSED — HUMAN APPROVED.
 - Phase 14: 9/9 COMPLETE; CLOSED — HUMAN APPROVED.
 - Phase 15: **CLOSED — HUMAN APPROVED**.
-- Phase 16..22: not started / not authorized; Phase 16 remains **NOT AUTHORIZED**.
+- Phase 16: **CONTEXT AUTHORIZED — NOT STARTED**; RESEARCH and later Phase-16 gates remain not authorized. Phase 17..22 remain not started / not authorized.
 - Frontend Milestone 1: BLOCKED.
