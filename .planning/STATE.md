@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
 status: ready
-last_updated: "2026-08-22T13:20:00-03:00"
+last_updated: "2026-08-22T17:50:38-03:00"
 progress:
   total_phases: 10
   completed_phases: 3
   total_plans: 36
   completed_plans: 36
   percent: 30
-stopped_at: PHASE 15 HUMAN APPROVED — CLOSED; PHASE 16 CONTEXT AUTHORIZED — NOT STARTED
+stopped_at: PHASE 15 POST-CLOSURE PR-27 REMEDIATION — HUMAN RE-REVIEW PENDING; PHASE 16 EXECUTION SUSPENDED
 current_phase: 16
 current_phase_name: cart-merge-review
 current_plan: null
@@ -24,7 +24,9 @@ See: `.planning/PROJECT.md`.
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, duplicate order or improper fulfillment.
 
-**Current focus:** Phase 16 — `Cart Merge & Review`, with **CONTEXT AUTHORIZED / NOT STARTED**.
+**Current focus:** PR #27 post-closure remediation for Phase 15, with
+**IMPLEMENTED / HUMAN RE-REVIEW PENDING**. Phase 16 CONTEXT remains
+**AUTHORIZED DOCUMENTALLY / EXECUTION SUSPENDED**.
 
 ## Execution Policy
 
@@ -88,6 +90,24 @@ REMOTE DB / REDIS: NOT AUTHORIZED
 FRONTEND: BLOCKED
 ```
 
+## Post-Closure PR #27 Remediation Override
+
+Phase 15 remains historically **HUMAN APPROVED — CLOSED**. The subsequent
+PR #27 remediation is technically implemented and has final Subagent G PASS,
+but requires a fresh human review:
+
+```text
+B15-PR27-HR-01..HR-06: REMEDIATED — AWAITING HUMAN RE-REVIEW
+Phase 15 post-closure remediation: IMPLEMENTED — HUMAN RE-REVIEW PENDING
+Phase 16 CONTEXT: AUTHORIZED DOCUMENTALLY — EXECUTION SUSPENDED
+Phase 16 RESEARCH+: NOT AUTHORIZED
+Next permitted action: HUMAN REVIEW OF PR #27 REMEDIATION
+Merge/deploy/providers/remote infrastructure: NOT AUTHORIZED
+```
+
+This override changes no milestone counters and does not rewrite the accepted
+historical Phase-15 closure artifacts.
+
 ## Current Position
 
 Milestone v1.1:
@@ -98,7 +118,7 @@ Milestone v1.1:
 - Phase 14: AUTH-01..AUTH-09 = **9/9 COMPLETE**
 - known plans human-approved executed: **36/36** (Phase 13: 7; Phase 14: 21; Phase 15: 15-01, 15-02, 15-03, 15-04, 15-05, 15-06, 15-07, 15-08)
 - Phase 15: **CLOSED — HUMAN APPROVED** (Plans 15-01..15-08 HUMAN APPROVED — PASS; 15-07 and 15-08 documentally closed; CART-01..CART-09 9/9 COMPLETE)
-- Phase 16: **CONTEXT AUTHORIZED / NOT STARTED**; RESEARCH and later gates remain unauthorized
+- Phase 16: **CONTEXT AUTHORIZED / EXECUTION SUSPENDED** pending human review of PR #27; RESEARCH and later gates remain unauthorized
 - frontend: BLOCKED
 
 ## Accepted Evidence References
@@ -114,6 +134,7 @@ Phase 15 accepted evidence is preserved in:
 - `.planning/phases/15-guest-cart-capability-concurrency/15-07-SUMMARY.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-08-SUMMARY.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-CLOSURE.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-PR27-REMEDIATION.md`
 
 ## Phase 15 Accepted Closure
 
