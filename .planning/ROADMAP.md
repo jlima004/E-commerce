@@ -28,7 +28,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 15 PLAN está **HUMAN APPROVED — PASS** (8 plans / 8 serial waves)
 - Phase 15 está **CLOSED — HUMAN APPROVED**; Plans `15-01`..`15-08` estão **8/8 HUMAN APPROVED — PASS**, `15-07` e `15-08` estão documentally closed, e CART-01..CART-09 estão **9/9 COMPLETE**
 - Phase 16 está **AUTHORIZED — CONTEXT NOT STARTED**; RESEARCH e gates posteriores da Phase 16 permanecem não autorizados até revisão humana própria; Phase 17+ permanecem não autorizadas
-- A execução do CONTEXT da Phase 16 está temporariamente suspensa até que a remediação pós-closure do PR #27 receba PASS humano; RESEARCH e gates posteriores continuam não autorizados
+- A remediação pós-closure do PR #27 recebeu PASS humano; B15-PR27-HR-01..HR-06 estão CLOSED — PASS e a suspensão temporária da execução do CONTEXT da Phase 16 foi levantada; RESEARCH e gates posteriores continuam não autorizados
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
 ## Milestones
@@ -251,10 +251,10 @@ separately human-gated and unauthorized.
 ### Post-closure PR #27 governance
 
 Phase 15 remains **CLOSED — HUMAN APPROVED** as historical closure status.
-PR #27 post-closure remediation is **IMPLEMENTED — AWAITING HUMAN RE-REVIEW**.
-Phase-16 CONTEXT is **DOCUMENTALLY AUTHORIZED**, but its execution is
-suspended pending human PASS on the remediation. Phase-16 RESEARCH and later
-gates remain unauthorized; milestone counters are unchanged.
+PR #27 post-closure remediation is **HUMAN APPROVED — PASS**;
+B15-PR27-HR-01..HR-06 are **CLOSED — PASS**. Phase-16 CONTEXT is
+**AUTHORIZED — NOT STARTED** and its temporary execution suspension is lifted.
+Phase-16 RESEARCH and later gates remain unauthorized; milestone counters are unchanged.
 
 Milestone counters: phases closed `3/10`; requirements `26/91`; open
 requirements `65`; plans `36/36`; percent `30`.
@@ -263,6 +263,7 @@ requirements `65`; plans `36/36`; percent `30`.
 
 - `15-08-SUMMARY.md` — final CART/Order/regression/leakage ledger and human verify
 - `15-CLOSURE.md` — human-approved Phase-15 closure authority
+- `15-PR27-REMEDIATION.md` — human-approved post-closure PR #27 remediation (6/6 CLOSED — PASS)
 
 ## Phase 16: Cart Merge & Review
 
