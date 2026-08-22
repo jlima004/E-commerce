@@ -106,7 +106,7 @@ export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
     evidenceFiles: STORE_EVIDENCE,
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
-        "e1587de69ff65049c41f7cb177ae94e8b0d42127b7ecc0d6f6f949aaf62085be",
+        "bbf584fb27730e66e37a2a06cf97caf50a704188867fdc94c20964bbe3b19db3",
       "apps/backend/src/api/store/products/query-config.ts":
         "2944ea725986a34d78187ea584220a1d79d3f8895f07c70203c209380b5c1f49",
       "apps/backend/src/api/store/products/serializers.ts":
@@ -121,7 +121,7 @@ export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
     evidenceFiles: STORE_EVIDENCE,
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
-        "babc3bcc9a2cdac56a1ee74b9eaa92854dbf2ba93b8cad2e3dd82287e57398bd",
+        "479a3b5a6ea0a78b8b6bcefdb97a12de977db0151437695dd42a23b796b35c4b",
       "apps/backend/src/api/store/products/query-config.ts":
         "ea39d2f7872074c4b80981f0c974741cce019787b3607961d831111ed21d839b",
       "apps/backend/src/api/store/products/serializers.ts":
@@ -136,7 +136,7 @@ export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
     evidenceFiles: ADMIN_EVIDENCE,
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
-        "4c998d5e68af3f51308be3e976cefbbeeb20410dd00b7efb2529c1be656cfc3e",
+        "a48896b9577c831d2830fa32e94a98d75385228305309d582602c046a1fbce32",
       "apps/backend/src/api/admin/products/sellable-gate-middleware.ts":
         "b842235b42e08f2b20e4e97f5ed4cbb2a101e4050c03f5d5ec797ad537af62e5",
       "apps/backend/src/api/admin/products/validators.ts":
@@ -151,7 +151,7 @@ export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
     evidenceFiles: ADMIN_EVIDENCE,
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
-        "2a2fc5d4153ad407460f5c69e025c8ce58be1653d9f53f1e062bafaae9413814",
+        "2407babe9b4242e419d7cee616f3b7f0c67234bf30de6b5242e9983904e12676",
       "apps/backend/src/api/admin/products/sellable-gate-middleware.ts":
         "93501738f135f745c009c2793368e3d5e0da17169c5f7324852de05a672788ea",
       "apps/backend/src/api/admin/products/validators.ts":
@@ -166,7 +166,7 @@ export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
     evidenceFiles: ADMIN_EVIDENCE,
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
-        "5ed035d65e804f4e0bcd20f3b6eb02d879e105d4a475749c8d77be0046a8c4df",
+        "eb06695c0489562a2f200538de495b57f442fa3a91eb962cc399aa6bdb6154e2",
       "apps/backend/src/api/admin/products/sellable-gate-middleware.ts":
         "df4749d9db6e11e3aad3528aa650085113925bf0bcfa01d560c917bda20a0c43",
       "apps/backend/src/api/admin/products/validators.ts":
@@ -181,7 +181,7 @@ export const NATIVE_EXTENSIONS: NativeExtensionEntry[] = [
     evidenceFiles: ADMIN_EVIDENCE,
     fingerprints: {
       "apps/backend/src/api/middlewares.ts":
-        "c5636fc0900373cd60db7084e638571a76aac9b66ba57fac395d97754aacab57",
+        "546e7abf9500bc1b4befadc2cc9aad98785a23730db0d7c272d3a86ab67580d6",
       "apps/backend/src/api/admin/products/sellable-gate-middleware.ts":
         "b2ff3b600f54e653e70315ff80a6a02ddaae6e09d93e3ac20b96f80166737c91",
       "apps/backend/src/api/admin/products/validators.ts":
