@@ -146,8 +146,11 @@ function createTracerHarness(
     updated_at: "2026-08-23T12:00:00.000Z",
     deleted_at: null,
   }
-  const transaction = { id: "tx_cart_merge_01", raw: jest.fn(async () => ({ rows: [] })) }
   const versions = new Map([[guestCart.id, 1]])
+  const transaction = {
+    id: "tx_cart_merge_01",
+    raw: jest.fn(async () => ({ rows: [] })),
+  }
   const idempotency = {
     claim: jest.fn(async (input: any) => ({
       type: "claimed" as const,
@@ -194,8 +197,30 @@ function createTracerHarness(
   }
   const cartModule = {
     baseRepository_: {
-      transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
-        callback({ getTransactionContext: () => transaction }),
+      transaction: async (callback: (manager: unknown) => Promise<unknown>) => {
+        const cartSnapshot = {
+          customer: guestCart.customer,
+          customer_id: guestCart.customer_id,
+          updated_at: guestCart.updated_at,
+        }
+        const capabilitySnapshot = {
+          status: capability.status,
+          consumed_at: capability.consumed_at,
+        }
+        const versionSnapshot = versions.get(guestCart.id)
+
+        try {
+          return await callback({ getTransactionContext: () => transaction })
+        } catch (error) {
+          guestCart.customer = cartSnapshot.customer
+          guestCart.customer_id = cartSnapshot.customer_id
+          guestCart.updated_at = cartSnapshot.updated_at
+          capability.status = capabilitySnapshot.status
+          capability.consumed_at = capabilitySnapshot.consumed_at
+          versions.set(guestCart.id, versionSnapshot ?? 1)
+          throw error
+        }
+      },
     },
     retrieveCart: jest.fn(async (id: string) => (id === guestCart.id ? guestCart : null)),
     updateCarts: jest.fn(async (input: Record<string, unknown>) => {
@@ -291,6 +316,54 @@ describe("Cart merge HTTP tracer", () => {
       expect(JSON.stringify(response.body)).not.toContain(
         "customer-jwt-is-not-persisted"
       )
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("rejeita If-Match stale antes de claim/CAS e devolve o snapshot corrente", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container)
+      harness.request.headers["if-match"] = '"2"'
+
+      await expect(
+        mergeCart(harness.request as never, createResponse() as never)
+      ).rejects.toMatchObject({
+        code: "CART_VERSION_MISMATCH",
+        statusCode: 412,
+        currentVersion: 1,
+        currentEtag: '"1"',
+      })
+
+      expect(harness.guestCart.customer_id).toBeNull()
+      expect(harness.versions.get(harness.guestCart.id)).toBe(1)
+      expect(harness.capability.status).toBe("active")
+      expect(harness.idempotency.claim).not.toHaveBeenCalled()
+      expect(harness.cartModule.updateCarts).not.toHaveBeenCalled()
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("reverte cart, versão e capability quando o failpoint ocorre antes do commit", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container)
+      harness.idempotency.markCompleted.mockImplementationOnce(async () => {
+        throw new Error("W0_FAILPOINT_BEFORE_COMMIT")
+      })
+
+      await expect(
+        mergeCart(harness.request as never, createResponse() as never)
+      ).rejects.toThrow("W0_FAILPOINT_BEFORE_COMMIT")
+
+      expect(harness.guestCart.customer_id).toBeNull()
+      expect(harness.versions.get(harness.guestCart.id)).toBe(1)
+      expect(harness.capability.status).toBe("active")
+      expect(harness.capability.consumed_at).toBeNull()
+      expect(harness.idempotency.claim).toHaveBeenCalledTimes(1)
+      expect(harness.idempotency.markCompleted).toHaveBeenCalledTimes(1)
     } finally {
       await boot.dispose()
     }

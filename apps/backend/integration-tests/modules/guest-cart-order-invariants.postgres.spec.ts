@@ -21,6 +21,7 @@ import {
   POST as updateLineItem,
 } from "../../src/api/store/carts/[id]/line-items/[line_id]/route"
 import { POST as completeCartOverride } from "../../src/api/store/carts/[id]/complete/route"
+import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route"
 import { createStripeWebhookPostHandler } from "../../src/api/hooks/stripe/route"
 import { createStoreSurfaceGuardMiddleware } from "../../src/api/store-surface/guard"
 import {
@@ -34,6 +35,7 @@ import { STORE_RESOURCE_VERSION_MODULE } from "../../src/modules/store-resource-
 import { WEBHOOKS_MODULE } from "../../src/modules/webhooks"
 import { CHECKOUT_COMPLETION_MODULE } from "../../src/modules/checkout-completion"
 import { ANALYTICS_EVENT_LOG_MODULE } from "../../src/modules/analytics-event-log"
+import { CART_MERGE_MODULE } from "../../src/modules/cart-merge"
 import {
   runCreateOrderFromConfirmedPaymentAttemptEntrypoint,
   type CreateOrderFromConfirmedPaymentAttemptResult,
@@ -706,6 +708,30 @@ if (!requestedDatabaseName) {
         await completeCartOverride({ params: { id: harness.cart.id }, scope: { resolve: jest.fn() } } as never, denied as never)
         expect(denied.statusCode).toBe(404)
         expect(await countOrders()).toBe(0)
+      })
+
+      it("mantém zero Orders no deny fail-closed do endpoint de merge", async () => {
+        const before = await countOrders()
+        const mergeService = getContainer().resolve(CART_MERGE_MODULE) as {
+          executeCartMerge: (...args: unknown[]) => Promise<unknown>
+        }
+        expect(mergeService.executeCartMerge).toEqual(expect.any(Function))
+
+        await expect(
+          mergeCart(
+            {
+              method: "POST",
+              url: "/store/customers/me/cart/merge",
+              originalUrl: "/store/customers/me/cart/merge",
+              body: { guestCartId: "cart_denied_before_authority" },
+              headers: {},
+              scope: getContainer(),
+            } as never,
+            response() as never
+          )
+        ).rejects.toMatchObject({ message: "Not Found" })
+
+        expect(await countOrders()).toBe(before)
       })
 
       it("uses only payment_intent.succeeded for one real Order and keeps webhook replay at one", async () => {
