@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
 status: ready
-last_updated: "2026-08-23T02:39:00.000Z"
+last_updated: "2026-08-23T09:47:18-03:00"
 progress:
   total_phases: 10
   completed_phases: 3
   total_plans: 36
   completed_plans: 36
   percent: 30
-stopped_at: PHASE 16 RESEARCH HUMAN APPROVED — PASS; PHASE 16 PLAN AUTHORIZED — NOT STARTED
+stopped_at: PHASE 16 PLAN TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED; EXECUTION NOT AUTHORIZED
 current_phase: 16
 current_phase_name: cart-merge-review
 current_plan: null
@@ -26,7 +26,8 @@ See: `.planning/PROJECT.md`.
 
 **Current focus:** Phase 16 CONTEXT and RESEARCH are **HUMAN APPROVED — PASS**.
 R16-HR-01..R16-HR-08 are **CLOSED — APPROVED**. Phase 16 PLAN is
-**AUTHORIZED — NOT STARTED**; EXECUTION and all subsequent gates remain **NOT AUTHORIZED**.
+**TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED** (14 plans / 14
+serial waves); EXECUTION and all subsequent gates remain **NOT AUTHORIZED**.
 
 ## Execution Policy
 
@@ -47,8 +48,8 @@ PLAN and closure are human-approved. Plans 15-01 through 15-08 are HUMAN
 APPROVED — PASS; B15-07-HR-01 is CLOSED — PASS, Plan 15-07 and Plan 15-08
 are documentally closed, and CART-01..CART-09 are 9/9 COMPLETE. Phase 16
 CONTEXT and RESEARCH are HUMAN APPROVED — PASS; R16-HR-01..R16-HR-08 are
-CLOSED — APPROVED. Phase-16 PLAN is AUTHORIZED — NOT STARTED; EXECUTION and all
-subsequent gates remain unauthorized.
+CLOSED — APPROVED. Phase-16 PLAN is TECHNICAL DRAFT — CHECKER PASS; HUMAN
+REVIEW REQUIRED; EXECUTION and all subsequent gates remain unauthorized.
 
 ## Current Gate
 
@@ -85,11 +86,16 @@ Phase 15 active blockers: 0
 Phase 16 CONTEXT: HUMAN APPROVED — PASS
 Phase 16 RESEARCH: HUMAN APPROVED — PASS
 R16-HR-01..R16-HR-08: CLOSED — APPROVED
-Phase 16 PLAN: AUTHORIZED — NOT STARTED
+Phase 16 PLAN: TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED
+Phase 16 PLAN artifacts: 16-PATTERNS.md + 16-01-PLAN.md..16-14-PLAN.md
+Phase 16 PLAN checker: VERIFICATION PASSED — 0 BLOCKER / 0 WARNING
+D16-01..D16-42: 42/42 exact-set covered
+R16-HR-01..R16-HR-08: 8/8 exact-set covered
+MRG-01..MRG-08: 8/8 planned; OPEN / UNCHANGED
 Phase 16 EXECUTION: NOT AUTHORIZED
 
 Next permitted action:
-EXECUTE PHASE 16 PLAN ONLY
+HUMAN REVIEW PHASE 16 PLAN ONLY
 
 Deploy / release: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
@@ -108,9 +114,9 @@ Phase 15 post-closure remediation: HUMAN APPROVED — PASS
 Phase 16 CONTEXT: HUMAN APPROVED — PASS
 Phase 16 RESEARCH: HUMAN APPROVED — PASS
 R16-HR-01..R16-HR-08: CLOSED — APPROVED
-Phase 16 PLAN: AUTHORIZED — NOT STARTED
+Phase 16 PLAN: TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED
 Phase 16 EXECUTION+: NOT AUTHORIZED
-Next permitted action: EXECUTE PHASE 16 PLAN ONLY
+Next permitted action: HUMAN REVIEW PHASE 16 PLAN ONLY
 Merge/deploy/providers/remote infrastructure: NOT AUTHORIZED
 ```
 
@@ -127,14 +133,17 @@ Milestone v1.1:
 - Phase 14: AUTH-01..AUTH-09 = **9/9 COMPLETE**
 - known plans human-approved executed: **36/36** (Phase 13: 7; Phase 14: 21; Phase 15: 15-01, 15-02, 15-03, 15-04, 15-05, 15-06, 15-07, 15-08)
 - Phase 15: **CLOSED — HUMAN APPROVED** (Plans 15-01..15-08 HUMAN APPROVED — PASS; 15-07 and 15-08 documentally closed; CART-01..CART-09 9/9 COMPLETE)
-- Phase 16: **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN AUTHORIZED — NOT STARTED**; R16-HR-01..08 CLOSED — APPROVED; execution and later gates remain unauthorized
+- Phase 16: **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED**; 14 plans / 14 serial waves; R16-HR-01..08 CLOSED — APPROVED; execution and later gates remain unauthorized
 - frontend: BLOCKED
 
 ## Accepted Evidence References
 
 Phase 16 accepted research review authority:
 
-- `.planning/phases/16-cart-merge-review/16-RESEARCH-REVIEW.md` — RESEARCH HUMAN APPROVED — PASS; R16-HR-01..R16-HR-08 CLOSED — APPROVED; PLAN AUTHORIZED — NOT STARTED.
+- `.planning/phases/16-cart-merge-review/16-RESEARCH-REVIEW.md` — RESEARCH HUMAN APPROVED — PASS; R16-HR-01..R16-HR-08 CLOSED — APPROVED; historical authority that authorized PLAN materialization only.
+- `.planning/phases/16-cart-merge-review/16-PATTERNS.md` — official typed pattern map used before planning.
+- `.planning/phases/16-cart-merge-review/16-01-PLAN.md` … `16-14-PLAN.md` — technical drafts; checker VERIFICATION PASSED; HUMAN PLAN REVIEW REQUIRED.
+- Decision-coverage handler: `could-not-parse` for the approved `D16-NN` namespace; retained as INFO with independent exact-set proof `D16-01..D16-42 = 42/42`. The binding decisions were not renamed.
 
 Phase 15 accepted evidence is preserved in:
 
@@ -169,7 +178,7 @@ Documentary ancestry before closure: fbc1182efa8a82ae5c37ce85176dd5b022459085
 Closure artifact commit: 049848feef2abcc5f92a0b265a445a10a3cc57cc
 ```
 
-No open Phase-15 blocker remains. Phase 16 CONTEXT and RESEARCH are HUMAN APPROVED — PASS; R16-HR-01..R16-HR-08 are CLOSED — APPROVED; Phase-16 PLAN is AUTHORIZED — NOT STARTED; execution and later gates remain NOT AUTHORIZED.
+No open Phase-15 blocker remains. Phase 16 CONTEXT and RESEARCH are HUMAN APPROVED — PASS; R16-HR-01..R16-HR-08 are CLOSED — APPROVED; Phase-16 PLAN is TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED; execution and later gates remain NOT AUTHORIZED.
 
 Phase 14 accepted evidence is preserved in:
 
@@ -358,8 +367,9 @@ APPROVED — PASS and documentally closed after Ledgers 01–17 and the final
 human checkpoint. Phase 15 CONTEXT, RESEARCH, PLAN and closure are
 human-approved. Plans 15-01..15-08 are human-approved. Phase 16 CONTEXT and
 RESEARCH are HUMAN APPROVED — PASS; R16-HR-01..R16-HR-08 are CLOSED — APPROVED.
-Phase-16 PLAN is AUTHORIZED — NOT STARTED. Execution, deploy, real providers,
-remote infrastructure and frontend remain unauthorized.
+Phase-16 PLAN is TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED.
+Execution, deploy, real providers, remote infrastructure and frontend remain
+unauthorized.
 
 Plan 15-04 final human review:
 
@@ -428,7 +438,7 @@ Last session: 2026-08-23T02:39:00.000Z
 
 Stopped at:
 
-Phase 16 RESEARCH HUMAN APPROVED — PASS; Phase 16 PLAN AUTHORIZED — NOT STARTED
+Phase 16 PLAN TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED
 PHASE 14: HUMAN APPROVED — CLOSED
 AUTH-01..AUTH-09: 9/9 COMPLETE
 PHASE 15 CONTEXT: HUMAN APPROVED — PASS
@@ -452,7 +462,11 @@ B15-PR27-HR-01..HR-06: CLOSED — PASS
 PHASE 16 CONTEXT: HUMAN APPROVED — PASS
 PHASE 16 RESEARCH: HUMAN APPROVED — PASS
 R16-HR-01..R16-HR-08: CLOSED — APPROVED
-PHASE 16 PLAN: AUTHORIZED — NOT STARTED
+PHASE 16 PLAN: TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED
+PHASE 16 PLAN SET: 16-01..16-14 / 14 SERIAL WAVES
+D16-01..D16-42: 42/42 COVERED
+R16-HR-01..R16-HR-08: 8/8 COVERED
+MRG-01..MRG-08: 8/8 PLANNED; OPEN / UNCHANGED
 PHASE 16 EXECUTION+: NOT AUTHORIZED
 FRONTEND: BLOCKED
 DEPLOY: NOT AUTHORIZED
@@ -465,5 +479,6 @@ Resume with:
 - `.planning/phases/16-cart-merge-review/16-RESEARCH-REVIEW.md`
 - `.planning/phases/16-cart-merge-review/16-RESEARCH.md`
 
-**Next permitted step:** **EXECUTE PHASE 16 PLAN ONLY**. Phase-16 execution,
-deploy, real providers, remote infra and frontend remain unauthorized.
+**Next permitted step:** **HUMAN REVIEW PHASE 16 PLAN ONLY**. Phase-16
+execution, deploy, real providers, remote infra and frontend remain
+unauthorized.

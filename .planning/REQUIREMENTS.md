@@ -72,7 +72,7 @@ B15-PR27-HR-01..HR-06. Human re-review accepted the remediation: all six finding
 are `CLOSED — PASS`; CART-01..CART-09 remain 9/9 COMPLETE and no requirement
 count changes.
 
-Phase 16 CONTEXT and RESEARCH: **HUMAN APPROVED — PASS**. `R16-HR-01..R16-HR-08` are **CLOSED — APPROVED**. Phase-16 PLAN is **AUTHORIZED — NOT STARTED**; EXECUTION and subsequent gates remain separately human-gated. MRG-01..MRG-08 remain unchanged / OPEN.
+Phase 16 CONTEXT and RESEARCH: **HUMAN APPROVED — PASS**. `R16-HR-01..R16-HR-08` are **CLOSED — APPROVED**. Phase-16 PLAN is **TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED** (14 plans / 14 serial waves); EXECUTION and subsequent gates remain separately human-gated and unauthorized. `MRG-01..MRG-08` are planned 8/8 but remain unchanged / OPEN.
 
 Research review authority: `.planning/phases/16-cart-merge-review/16-RESEARCH-REVIEW.md`.
 
@@ -274,5 +274,5 @@ Research review authority: `.planning/phases/16-cart-merge-review/16-RESEARCH-RE
 - Phase 13: 8/8 COMPLETE; CLOSED — HUMAN APPROVED.
 - Phase 14: 9/9 COMPLETE; CLOSED — HUMAN APPROVED.
 - Phase 15: **CLOSED — HUMAN APPROVED**.
-- Phase 16: **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN AUTHORIZED — NOT STARTED**; `R16-HR-01..R16-HR-08` CLOSED — APPROVED; EXECUTION and later Phase-16 gates remain not authorized. Phase 17..22 remain not started / not authorized.
+- Phase 16: **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED**; 14 plans / 14 serial waves; `D16-01..D16-42` 42/42 and `R16-HR-01..R16-HR-08` 8/8 covered; `MRG-01..MRG-08` 8/8 planned and OPEN; EXECUTION and later Phase-16 gates remain not authorized. Phase 17..22 remain not started / not authorized.
 - Frontend Milestone 1: BLOCKED.
