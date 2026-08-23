@@ -45,9 +45,9 @@ Execution remains manual-review gated.
 Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH,
 PLAN and closure are human-approved. Plans 15-01 through 15-08 are HUMAN
 APPROVED — PASS; B15-07-HR-01 is CLOSED — PASS, Plan 15-07 and Plan 15-08
-are documentally closed, and CART-01..CART-09 are 9/9 COMPLETE. Phase 16 is
-authorized only to begin CONTEXT; Phase-16 RESEARCH and all subsequent gates
-remain separately unauthorized.
+are documentally closed, and CART-01..CART-09 are 9/9 COMPLETE. Phase 16
+CONTEXT has been generated and is awaiting human review; Phase-16 RESEARCH
+and all subsequent gates remain separately unauthorized.
 
 ## Current Gate
 

@@ -132,7 +132,7 @@ relaxar as decisões acima.
 ### Governance and phase state
 
 - `.planning/PROJECT.md` — Core Value, boundary backend-only, invariantes de `Order`, constraints e bloqueio do frontend.
-- `.planning/STATE.md` — autorização limitada à captura do CONTEXT, governança manual, `parallelization=false` e gates posteriores não autorizados.
+- `.planning/STATE.md` — CONTEXT gerado e aguardando revisão humana, governança manual, `parallelization=false` e gates posteriores não autorizados.
 - `.planning/ROADMAP.md` — objetivo da Phase 16, dependência da Phase 15 e separação entre CONTEXT e RESEARCH/PLAN.
 - `.planning/REQUIREMENTS.md` — autoridade de `MRG-01..MRG-08` e rastreabilidade `FE-CART-006/007`.
 - `.planning/MILESTONES.md` — abertura do milestone v1.1 e separação entre backend e Frontend M1.
