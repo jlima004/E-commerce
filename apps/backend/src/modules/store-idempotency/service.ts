@@ -5,6 +5,10 @@ import {
   generateEntityId,
 } from "@medusajs/framework/utils"
 import { env } from "../../config/env"
+import {
+  resolveTransactionalKnex,
+  type SharedTransactionContext,
+} from "../../infrastructure/store-foundation-transaction-compatibility"
 import StoreIdempotencyRecord, {
   STORE_IDEMPOTENCY_HASH_VERSION,
   STORE_IDEMPOTENCY_PEPPER_VERSION,
@@ -150,8 +154,11 @@ export type ClaimInput = {
   resourceScope?: unknown
   rawIdempotencyKey: string
   canonicalSemanticObject: Record<string, unknown>
+  sharedContext?: SharedTransactionContext
   at?: Date
 }
+
+export type StoreIdempotencyMutationContext = SharedTransactionContext
 
 export type ClaimResult =
   | { type: "claimed"; record: StoreIdempotencyRecordRow }
@@ -677,7 +684,12 @@ const BaseStoreIdempotencyService = MedusaService({ StoreIdempotencyRecord })
 export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
   protected declare readonly baseRepository_: BaseRepositoryLike
 
-  private knex(): KnexLike {
+  private knex(sharedContext?: StoreIdempotencyMutationContext): KnexLike {
+    if (sharedContext) {
+      return resolveTransactionalKnex(
+        sharedContext.transactionManager
+      ) as unknown as KnexLike
+    }
     return this.baseRepository_.getActiveManager().getKnex()
   }
 
@@ -711,7 +723,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     const id = generateEntityId(undefined, "stidem")
     const timestamp = at.toISOString()
 
-    return this.knex().transaction(async (trx) => {
+    const claimInTransaction = async (trx: KnexLike): Promise<ClaimResult> => {
       const insert = await trx.raw(
         `
           insert into store_idempotency_record (
@@ -793,7 +805,13 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       }
 
       return { type: "in_progress" as const, record }
-    })
+    }
+
+    if (input.sharedContext) {
+      return claimInTransaction(this.knex(input.sharedContext))
+    }
+
+    return this.knex().transaction(claimInTransaction)
   }
 
   async transitionWithPredicate(input: {
@@ -816,6 +834,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       terminalized_at?: Date | null
       expires_at?: Date | null
     }
+    sharedContext?: StoreIdempotencyMutationContext
     at?: Date
   }): Promise<LifecycleClaimResult> {
     const at = input.at ?? new Date()
@@ -867,7 +886,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       )
     }
 
-    const result = await this.knex().raw(
+    const result = await this.knex(input.sharedContext).raw(
       `
         update store_idempotency_record
         set
@@ -926,7 +945,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
 
     const row = result.rows?.[0]
     if (!row) {
-      const current = await this.knex().raw(
+      const current = await this.knex(input.sharedContext).raw(
         `select * from store_idempotency_record where id = ?`,
         [input.id]
       )
@@ -946,6 +965,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     result_id?: string | null
     response_status?: number | null
     result_safe_metadata?: StoreIdempotencySafeMetadata | null
+    sharedContext?: StoreIdempotencyMutationContext
     at?: Date
   }): Promise<LifecycleClaimResult> {
     const at = input.at ?? new Date()
@@ -960,7 +980,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       input.response_status
     )
 
-    const result = await this.knex().raw(
+    const result = await this.knex(input.sharedContext).raw(
       `
         update store_idempotency_record
         set
@@ -988,7 +1008,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
 
     const row = result.rows?.[0]
     if (!row) {
-      const current = await this.knex().raw(
+      const current = await this.knex(input.sharedContext).raw(
         `select * from store_idempotency_record where id = ?`,
         [input.id]
       )
@@ -1009,6 +1029,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     result_id?: string | null
     response_status?: number | null
     result_safe_metadata?: StoreIdempotencySafeMetadata | null
+    sharedContext?: StoreIdempotencyMutationContext
     retentionMs?: number
     at?: Date
   }): Promise<LifecycleClaimResult> {
@@ -1020,6 +1041,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       id: input.id,
       expectedState: input.expectedState,
       expectedStateVersion: input.expectedStateVersion,
+      sharedContext: input.sharedContext,
       at,
       next: {
         state: "completed",
@@ -1046,12 +1068,14 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     retry_attempt_count: number
     retry_started_at: Date
     state_deadline_at: Date
+    sharedContext?: StoreIdempotencyMutationContext
     at?: Date
   }): Promise<LifecycleClaimResult> {
     return this.transitionWithPredicate({
       id: input.id,
       expectedState: input.expectedState,
       expectedStateVersion: input.expectedStateVersion,
+      sharedContext: input.sharedContext,
       at: input.at,
       next: {
         state: "failed_retryable",
@@ -1070,6 +1094,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     expectedState: StoreIdempotencyState
     expectedStateVersion: number
     failure_code: string
+    sharedContext?: StoreIdempotencyMutationContext
     retentionMs?: number
     at?: Date
   }): Promise<LifecycleClaimResult> {
@@ -1081,6 +1106,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       id: input.id,
       expectedState: input.expectedState,
       expectedStateVersion: input.expectedStateVersion,
+      sharedContext: input.sharedContext,
       at,
       next: {
         state: "failed_terminal",
@@ -1102,6 +1128,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     result_id?: string | null
     result_safe_metadata?: StoreIdempotencySafeMetadata | null
     failure_code?: string | null
+    sharedContext?: StoreIdempotencyMutationContext
     at?: Date
   }): Promise<LifecycleClaimResult> {
     const at = input.at ?? new Date()
@@ -1109,6 +1136,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       id: input.id,
       expectedState: input.expectedState,
       expectedStateVersion: input.expectedStateVersion,
+      sharedContext: input.sharedContext,
       at,
       next: {
         state: "reconciliation_required",
@@ -1130,6 +1158,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     id: string
     expectedState: StoreIdempotencyState
     expectedStateVersion: number
+    sharedContext?: StoreIdempotencyMutationContext
     at?: Date
   }): Promise<LifecycleClaimResult> {
     const at = input.at ?? new Date()
@@ -1137,6 +1166,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       id: input.id,
       expectedState: input.expectedState,
       expectedStateVersion: input.expectedStateVersion,
+      sharedContext: input.sharedContext,
       at,
       next: {
         state: "reconciliation_unresolved",

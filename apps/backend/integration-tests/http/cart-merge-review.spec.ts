@@ -126,7 +126,9 @@ function createTracerHarness() {
       return guestCart
     }),
   }
-  const service = new CartMergeModuleService()
+  // The HTTP tracer constructs the concrete Medusa service; the scope keeps
+  // the token-to-service resolution identical to the runtime route.
+  const service = new CartMergeModuleService({} as never)
   const scope = {
     resolve(key: unknown) {
       if (key === CART_MERGE_MODULE) return service
@@ -185,6 +187,9 @@ describe("Cart merge HTTP tracer", () => {
     expect((response.body as any).cart.customer.id).toBe("cus_merge_01")
     expect(harness.versions.get(harness.guestCart.id)).toBe(2)
     expect(harness.capability.status).toBe("consumed")
+    expect(
+      harness.capabilityService.authorizeGuestCartCapabilityForMutation
+    ).toHaveBeenCalledTimes(1)
     expect(harness.idempotency.claim).toHaveBeenCalledTimes(1)
     expect(harness.idempotency.markCompleted).toHaveBeenCalledTimes(1)
     expect(harness.cartModule.updateCarts).toHaveBeenCalledTimes(1)

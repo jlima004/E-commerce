@@ -113,6 +113,10 @@ const modules = [
     resolve: "./src/modules/guest-cart-capability",
   },
   {
+    key: "cart_merge",
+    resolve: "./src/modules/cart-merge",
+  },
+  {
     resolve: "./src/modules/payment-attempt",
   },
   {
