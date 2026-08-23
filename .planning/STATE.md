@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
 status: ready
-last_updated: "2026-08-22T18:26:00-03:00"
+last_updated: "2026-08-23T00:53:12.915Z"
 progress:
   total_phases: 10
   completed_phases: 3
@@ -408,13 +408,13 @@ Closed Phase-15 PLAN-review blockers:
 
 ## Session Continuity
 
-**Resume file:** .planning/STATE.md
+**Resume file:** .planning/phases/16-cart-merge-review/16-CONTEXT.md
 
-Last session: 2026-08-22
+Last session: 2026-08-23T00:53:12.828Z
 
 Stopped at:
 
-```text
+Phase 16 context gathered
 PHASE 14: HUMAN APPROVED — CLOSED
 AUTH-01..AUTH-09: 9/9 COMPLETE
 PHASE 15 CONTEXT: HUMAN APPROVED — PASS
@@ -440,6 +440,7 @@ PHASE 16 RESEARCH+: NOT AUTHORIZED
 FRONTEND: BLOCKED
 DEPLOY: NOT AUTHORIZED
 REAL PROVIDERS / REMOTE INFRA: NOT AUTHORIZED
+
 ```
 
 Resume with:
