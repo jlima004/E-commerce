@@ -21,6 +21,7 @@ import { handleCustomerAuthVerificationConfirm } from "../../src/api/store/custo
 import {
   STORE_SURFACE_MANIFEST,
   STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
+  STORE_SURFACE_M1_ENABLED_OPERATIONS,
   storeSurfaceOperationKey,
   validateStoreSurfaceManifest,
 } from "../../src/api/store-surface/manifest"
@@ -789,15 +790,12 @@ describe("Phase 14 verification HTTP contracts", () => {
       (entry) => entry.runtime_policy === "M1_ENABLED"
     ).map((entry) => storeSurfaceOperationKey(entry.method, entry.pathTemplate))
 
-    expect(enabled).toEqual([
-      "GET /store/customers/me",
-      "POST /store/customers/me/verify",
-      "POST /store/customers/verify/resend",
-      "POST /store/customers/verify",
-      "GET /store/customers/me/verify/status",
-      "POST /store/customers/me/password",
-    ])
-    expect(enabled).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
+    expect(enabled).toEqual([...STORE_SURFACE_M1_ENABLED_OPERATIONS])
+    expect(
+      STORE_SURFACE_PHASE14_ENABLED_OPERATIONS.every((operation) =>
+        enabled.includes(operation)
+      )
+    ).toBe(true)
 
     for (const [method, path] of [
       ["GET", "/store/customers/me"],

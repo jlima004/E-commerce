@@ -232,6 +232,7 @@ describe("medusa-config final Redis wiring", () => {
       "./src/modules/store-idempotency",
       "./src/modules/store-resource-version",
       "./src/modules/customer-auth/service",
+      "./src/modules/guest-cart-capability",
       "./src/modules/payment-attempt",
       "./src/modules/refund-request",
       "./src/modules/exchange-request",
@@ -240,10 +241,14 @@ describe("medusa-config final Redis wiring", () => {
     const customerAuth = config.modules.filter(
       (module) => module.resolve === "./src/modules/customer-auth/service"
     )
+    const guestCartCapability = config.modules.filter(
+      (module) => module.resolve === "./src/modules/guest-cart-capability"
+    )
 
     expect(storeIdempotency).toHaveLength(1)
     expect(storeResourceVersion).toHaveLength(1)
     expect(customerAuth).toHaveLength(1)
+    expect(guestCartCapability).toHaveLength(1)
     expect(redisModules).toHaveLength(4)
     expect(
       config.modules
@@ -257,6 +262,7 @@ describe("medusa-config final Redis wiring", () => {
     expect(serialized.match(/store-idempotency/g)?.length ?? 0).toBe(1)
     expect(serialized.match(/store-resource-version/g)?.length ?? 0).toBe(1)
     expect(serialized.match(/customer-auth\/service/g)?.length ?? 0).toBe(1)
+    expect(serialized.match(/guest-cart-capability/g)?.length ?? 0).toBe(1)
     expect(config.projectConfig.workerMode).toBe("server")
     expect(
       (config.projectConfig.http as { authMethodsPerActor?: unknown })

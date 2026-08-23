@@ -1,4 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { createStripeWebhookPostHandler } from "../../src/api/hooks/stripe/route"
 import { OrderCreationEntrypointError } from "../../src/workflows/order/webhook-order-entrypoint"
 import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
@@ -56,7 +57,7 @@ function buildAttempt(
     currency_code: "brl",
     expires_at: null,
     order_id: null,
-    metadata: null,
+    metadata: { cart_resource_version: 1 },
     client_confirmed_at: null,
     instructions_displayed_at: null,
     awaiting_webhook_since: "2026-07-22T10:00:00.000Z",
@@ -156,6 +157,55 @@ function createPaymentAttemptModule(attempts: PaymentAttemptRecord[] = []) {
       return rows
     }),
     attempts: store,
+  }
+}
+
+function createPaymentAttemptAuthorityConnection(
+  paymentAttemptModule: ReturnType<typeof createPaymentAttemptModule>
+) {
+  return {
+    transaction: jest.fn(async (callback: (transaction: {
+      raw: (sql: string, bindings?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>
+    }) => Promise<unknown>) =>
+      callback({
+        raw: jest.fn(async (sql: string, bindings: unknown[] = []) => {
+          const attemptFor = (value: unknown) =>
+            paymentAttemptModule.attempts.find(
+              (attempt) =>
+                attempt.id === value ||
+                attempt.provider_payment_intent_id === value
+            )
+
+          if (sql.includes("pg_advisory_xact_lock")) {
+            return { rows: [] }
+          }
+
+          if (sql.includes("select cart_id from payment_attempt")) {
+            const attempt = attemptFor(bindings[0])
+            return { rows: attempt ? [{ cart_id: attempt.cart_id }] : [] }
+          }
+
+          if (sql.includes("update payment_attempt")) {
+            const attempt = attemptFor(bindings[2])
+            if (!attempt) return { rows: [] }
+
+            attempt.status = String(bindings[0]) as PaymentAttemptRecord["status"]
+            attempt.order_id = null
+            attempt.updated_at = String(bindings[1])
+            return { rows: [{ ...attempt }] }
+          }
+
+          if (sql.includes("from payment_attempt")) {
+            const attempt = attemptFor(bindings[0])
+            return attempt
+              ? { rows: [{ ...attempt, metadata: attempt.metadata ?? { cart_resource_version: 1 } }] }
+              : { rows: [] }
+          }
+
+          throw new Error(`Unexpected PaymentAttempt authority SQL: ${sql}`)
+        }),
+      })
+    ),
   }
 }
 
@@ -391,6 +441,9 @@ describe("INV-4 Webhook idempotency and recoverable intermediate failure", () =>
       })
 
     const event = succeededEvent()
+    const authorityConnection = createPaymentAttemptAuthorityConnection(
+      paymentAttemptModule
+    )
     const handler = createStripeWebhookPostHandler({
       appEnv: {
         STRIPE_WEBHOOK_INGESTION_ENABLED: true,
@@ -414,6 +467,9 @@ describe("INV-4 Webhook idempotency and recoverable intermediate failure", () =>
             resolve: jest.fn((key: string) => {
               if (key === WEBHOOKS_MODULE) return webhookService
               if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttemptModule
+              if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+                return authorityConnection
+              }
               return undefined
             }),
           },
@@ -505,6 +561,9 @@ describe("INV-4 Webhook idempotency and recoverable intermediate failure", () =>
         payment_status: "captured",
       }
     })
+    const authorityConnection = createPaymentAttemptAuthorityConnection(
+      paymentAttemptModule
+    )
 
     async function dispatch(eventId: string) {
       const event = succeededEvent(eventId)
@@ -531,6 +590,9 @@ describe("INV-4 Webhook idempotency and recoverable intermediate failure", () =>
               if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttemptModule
               if (key === CHECKOUT_COMPLETION_MODULE) {
                 return checkoutCompletionModule
+              }
+              if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+                return authorityConnection
               }
               return undefined
             }),
@@ -644,6 +706,9 @@ describe("INV-4 Webhook idempotency and recoverable intermediate failure", () =>
 
     const webhookService = createWebhookService()
     const paymentAttemptModule = createPaymentAttemptModule([buildAttempt()])
+    const authorityConnection = createPaymentAttemptAuthorityConnection(
+      paymentAttemptModule
+    )
 
     async function dispatch(eventId: string) {
       const event = succeededEvent(eventId)
@@ -668,6 +733,9 @@ describe("INV-4 Webhook idempotency and recoverable intermediate failure", () =>
             resolve: jest.fn((key: string) => {
               if (key === WEBHOOKS_MODULE) return webhookService
               if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttemptModule
+              if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+                return authorityConnection
+              }
               return undefined
             }),
           },

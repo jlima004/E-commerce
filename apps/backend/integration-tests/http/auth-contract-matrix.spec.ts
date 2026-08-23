@@ -15,6 +15,7 @@ import {
 import {
   STORE_SURFACE_MANIFEST,
   STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
+  STORE_SURFACE_M1_ENABLED_OPERATIONS,
   storeSurfaceOperationKey,
   validateStoreSurfaceManifest,
 } from "../../src/api/store-surface/manifest"
@@ -64,17 +65,12 @@ describe("Phase 14 final HTTP/BFF/surface/anti-enum matrix", () => {
       "POST /auth/customer/emailpass/reset-password",
       "POST /auth/customer/emailpass/update",
     ])
-    expect(ENABLED_STORE).toEqual([
-      ...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
-    ])
-    expect(ENABLED_STORE).toEqual([
-      "GET /store/customers/me",
-      "POST /store/customers/me/verify",
-      "POST /store/customers/verify/resend",
-      "POST /store/customers/verify",
-      "GET /store/customers/me/verify/status",
-      "POST /store/customers/me/password",
-    ])
+    expect(ENABLED_STORE).toEqual([...STORE_SURFACE_M1_ENABLED_OPERATIONS])
+    expect(
+      STORE_SURFACE_PHASE14_ENABLED_OPERATIONS.every((operation) =>
+        ENABLED_STORE.includes(operation)
+      )
+    ).toBe(true)
     expect(validateStoreSurfaceManifest()).toEqual([])
   })
 

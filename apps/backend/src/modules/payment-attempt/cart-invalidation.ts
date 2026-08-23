@@ -36,6 +36,8 @@ function assertAttemptEligibleForFutureOrderLocal(
 export type PaymentAttemptInvalidationReason = "invalidated_by_cart_change"
 
 export const PAYMENT_ATTEMPT_CART_FINGERPRINT_METADATA_KEY = "cart_fingerprint"
+export const PAYMENT_ATTEMPT_CART_RESOURCE_VERSION_METADATA_KEY =
+  "cart_resource_version"
 
 export type PaymentAttemptCartFingerprintSource = {
   actorType: "guest" | "customer"
@@ -125,11 +127,26 @@ export function readPaymentAttemptCartFingerprint(
 
 export function withPaymentAttemptCartFingerprintMetadata(
   metadata: Record<string, unknown> | null | undefined,
-  fingerprint: string
+  fingerprint: string,
+  cartResourceVersion?: number | null
 ): Record<string, unknown> {
+  if (
+    cartResourceVersion !== undefined &&
+    cartResourceVersion !== null &&
+    (!Number.isSafeInteger(cartResourceVersion) || cartResourceVersion <= 0)
+  ) {
+    throw new Error("PAYMENT_ATTEMPT_CART_RESOURCE_VERSION_INVALID")
+  }
+
   return {
     ...(metadata ?? {}),
     [PAYMENT_ATTEMPT_CART_FINGERPRINT_METADATA_KEY]: fingerprint,
+    ...(cartResourceVersion === undefined || cartResourceVersion === null
+      ? {}
+      : {
+          [PAYMENT_ATTEMPT_CART_RESOURCE_VERSION_METADATA_KEY]:
+            cartResourceVersion,
+        }),
   }
 }
 

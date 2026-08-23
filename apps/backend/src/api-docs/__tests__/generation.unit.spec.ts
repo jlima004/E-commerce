@@ -98,6 +98,9 @@ describe("OpenAPI foundation generation", () => {
       "/auth/token/refresh",
       "/health/live",
       "/health/ready",
+      "/store/carts/active",
+      "/store/carts/{id}/line-items",
+      "/store/carts/{id}/line-items/{line_id}",
       "/store/customers/me",
       "/store/customers/me/password",
       "/store/customers/me/verify",
@@ -110,6 +113,9 @@ describe("OpenAPI foundation generation", () => {
         routePath.startsWith("/store/")
       ).sort()
     ).toEqual([
+      "/store/carts/active",
+      "/store/carts/{id}/line-items",
+      "/store/carts/{id}/line-items/{line_id}",
       "/store/customers/me",
       "/store/customers/me/password",
       "/store/customers/me/verify",

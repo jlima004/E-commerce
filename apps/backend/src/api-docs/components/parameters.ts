@@ -41,6 +41,13 @@ export function registerStoreRequestParameters(
       "Opaque server-issued resource version precondition. Cart enforcement and stale 412 behavior belong to Phase 15.",
   })
 
+  registry.registerComponent(
+    "store",
+    "parameters",
+    "XIndicioGuestCartToken",
+    STORE_GUEST_CART_TOKEN_HEADER_PARAMETER
+  )
+
   registry.registerComponent("store", "parameters", "XCorrelationId", {
     name: "x-correlation-id",
     in: "header",
@@ -54,6 +61,27 @@ export function registerStoreRequestParameters(
       "Optional correlation candidate. The server accepts only the closed format and replaces invalid or missing values; unsafe input is never echoed.",
   })
 }
+
+export const STORE_GUEST_CART_TOKEN_HEADER_PARAMETER = {
+  name: "x-indicio-guest-cart-token",
+  in: "header" as const,
+  required: false,
+  schema: {
+    type: "string",
+    minLength: 43,
+    maxLength: 512,
+    pattern: "^[A-Za-z0-9_-]+$",
+  },
+  description:
+    "Optional opaque guest cart capability presented only on the same-origin Next.js BFF to Medusa. It is not a user/browser credential, never appears in examples, and is omitted for Customer access. Swagger remains non-interactive.",
+  "x-bff-only": true,
+  "x-not-browser-credential": true,
+  "x-sensitive": true,
+} as const
+
+export const STORE_GUEST_CART_TOKEN_HEADER_REF = {
+  $ref: "#/components/parameters/XIndicioGuestCartToken",
+} as const
 
 export const CORRELATION_ID_HEADER = {
   name: "x-correlation-id",
@@ -85,6 +113,16 @@ export const STORE_CART_ID_PATH = {
     type: "string",
   },
   description: "Cart identifier.",
+} as const
+
+export const STORE_CART_LINE_ID_PATH = {
+  name: "line_id",
+  in: "path" as const,
+  required: true,
+  schema: {
+    type: "string",
+  },
+  description: "Cart line-item identifier.",
 } as const
 
 export const STORE_PRODUCT_ID_PATH = {

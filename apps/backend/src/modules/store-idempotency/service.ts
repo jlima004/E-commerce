@@ -61,6 +61,10 @@ export const STORE_IDEMPOTENCY_PHASE13_LOCAL_MUTATION =
 export const STORE_IDEMPOTENCY_PHASE13_UNCERTAIN_EFFECT =
   "phase13.uncertain-effect-simulation" as const
 
+/** Canonical operation label for POST /store/carts/active (get-or-create). */
+export const STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE =
+  "store.carts.active.create" as const
+
 export const STORE_IDEMPOTENCY_SAFE_METADATA_KEYS = [
   "operation",
   "result_type",
@@ -165,8 +169,10 @@ export type LifecycleClaimResult =
 
 const SAFE_METADATA_KEYS = new Set<string>(STORE_IDEMPOTENCY_SAFE_METADATA_KEYS)
 const OPERATION_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/
-/** Closed label vocabulary for operation/result_type/failure_code/harness. */
+/** Closed lowercase label vocabulary for operation/result_type/harness. */
 const SAFE_LABEL_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/
+/** Structured failure codes may preserve the public Cart vocabulary casing. */
+const SAFE_FAILURE_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/
 /**
  * Closed safe reference ids (result_id / correlation_ref).
  * Requires prefix_value shape so JWT/pepper/Pix blobs cannot hide in allowlisted keys.
@@ -175,7 +181,6 @@ const SAFE_REF_PATTERN = /^[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_-]{1,80}$/
 const LABEL_METADATA_KEYS = new Set<SafeMetadataKey>([
   "operation",
   "result_type",
-  "failure_code",
   "harness",
 ])
 const REF_METADATA_KEYS = new Set<SafeMetadataKey>([
@@ -337,6 +342,14 @@ function assertSafeLabelValue(value: string, code: string): void {
   }
 }
 
+function assertSafeFailureCodeValue(value: string, code: string): void {
+  if (!SAFE_FAILURE_CODE_PATTERN.test(value)) {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, code)
+  }
+
+  assertNoSensitiveStoreIdempotencyPersistence({ failure_code: value })
+}
+
 function assertSafeRefValue(value: string, code: string): void {
   if (!SAFE_REF_PATTERN.test(value)) {
     throw new MedusaError(MedusaError.Types.INVALID_DATA, code)
@@ -351,9 +364,12 @@ function assertSafePersistableString(
     assertSafeRefValue(value, "STORE_IDEMPOTENCY_SAFE_VALUE_INVALID")
     return
   }
+  if (key === "failure_code") {
+    assertSafeFailureCodeValue(value, "STORE_IDEMPOTENCY_SAFE_VALUE_INVALID")
+    return
+  }
   if (
     key === "result_type" ||
-    key === "failure_code" ||
     LABEL_METADATA_KEYS.has(key as SafeMetadataKey)
   ) {
     assertSafeLabelValue(value, "STORE_IDEMPOTENCY_SAFE_VALUE_INVALID")
@@ -437,6 +453,9 @@ export function assertNoSensitiveStoreIdempotencyPersistence(
     "tracking_token",
     "cpf",
     "federal_tax_id",
+    "guest_cart_token",
+    "guestcarttoken",
+    "x-indicio-guest-cart-token",
   ]
 
   for (const key of Object.keys(row)) {
@@ -629,6 +648,13 @@ function mapRow(row: Record<string, unknown>): StoreIdempotencyRecordRow {
     throw new MedusaError(
       MedusaError.Types.INVALID_DATA,
       "STORE_IDEMPOTENCY_STATE_INVALID"
+    )
+  }
+
+  if (mapped.failure_code != null) {
+    assertSafeFailureCodeValue(
+      mapped.failure_code,
+      "STORE_IDEMPOTENCY_SAFE_VALUE_INVALID"
     )
   }
 
@@ -913,6 +939,68 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     return { type: "claimed", record: mapRow(row) }
   }
 
+  async recordProcessingResult(input: {
+    id: string
+    expectedStateVersion: number
+    result_type?: string | null
+    result_id?: string | null
+    response_status?: number | null
+    result_safe_metadata?: StoreIdempotencySafeMetadata | null
+    at?: Date
+  }): Promise<LifecycleClaimResult> {
+    const at = input.at ?? new Date()
+    const metadata = sanitizeStoreIdempotencySafeMetadata(
+      input.result_safe_metadata ?? null
+    )
+    assertSafeTransitionResultFields({
+      result_type: input.result_type,
+      result_id: input.result_id,
+    })
+    const responseStatus = assertValidStoreIdempotencyResponseStatus(
+      input.response_status
+    )
+
+    const result = await this.knex().raw(
+      `
+        update store_idempotency_record
+        set
+          state_version = state_version + 1,
+          result_type = ?,
+          result_id = ?,
+          response_status = ?,
+          result_safe_metadata = cast(? as jsonb),
+          updated_at = ?
+        where id = ?
+          and state = 'processing'
+          and state_version = ?
+        returning *
+      `,
+      [
+        input.result_type ?? null,
+        input.result_id ?? null,
+        responseStatus,
+        metadata ? JSON.stringify(metadata) : null,
+        at.toISOString(),
+        input.id,
+        input.expectedStateVersion,
+      ]
+    )
+
+    const row = result.rows?.[0]
+    if (!row) {
+      const current = await this.knex().raw(
+        `select * from store_idempotency_record where id = ?`,
+        [input.id]
+      )
+      return {
+        type: "lost",
+        record: current.rows?.[0] ? mapRow(current.rows[0]) : null,
+      }
+    }
+
+    return { type: "claimed", record: mapRow(row) }
+  }
+
   async markCompleted(input: {
     id: string
     expectedState: StoreIdempotencyState
@@ -1010,6 +1098,9 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     id: string
     expectedState: StoreIdempotencyState
     expectedStateVersion: number
+    result_type?: string | null
+    result_id?: string | null
+    result_safe_metadata?: StoreIdempotencySafeMetadata | null
     failure_code?: string | null
     at?: Date
   }): Promise<LifecycleClaimResult> {
@@ -1022,6 +1113,9 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       next: {
         state: "reconciliation_required",
         failure_code: input.failure_code ?? null,
+        result_type: input.result_type ?? null,
+        result_id: input.result_id ?? null,
+        result_safe_metadata: input.result_safe_metadata ?? null,
         state_deadline_at: addMs(
           at,
           STORE_IDEMPOTENCY_RECONCILIATION_REVIEW_MS

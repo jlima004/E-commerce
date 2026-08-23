@@ -672,6 +672,50 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
     },
   })
 
+  registry.registerComponent(
+    "store",
+    "schemas",
+    "StoreAddCartLineItemRequest",
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["variant_id", "quantity"],
+      properties: {
+        variant_id: {
+          type: "string",
+          minLength: 1,
+          description: "Sellable catalog variant identifier.",
+        },
+        quantity: {
+          type: "integer",
+          minimum: 1,
+          maximum: 99,
+          description: "Quantity to add; integer from 1 through 99.",
+        },
+      },
+    }
+  )
+
+  registry.registerComponent(
+    "store",
+    "schemas",
+    "StoreUpdateCartLineItemRequest",
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["quantity"],
+      properties: {
+        quantity: {
+          type: "integer",
+          minimum: 0,
+          maximum: 99,
+          description:
+            "Replacement quantity; integer from 0 through 99. Zero removes the line item.",
+        },
+      },
+    }
+  )
+
   registry.registerComponent("store", "schemas", "PublicStoreCartPreOrder", {
     type: "object",
     additionalProperties: false,

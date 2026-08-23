@@ -54,7 +54,7 @@ function buildAttempt(
     currency_code: "brl",
     expires_at: null,
     order_id: ORDER_ID,
-    metadata: null,
+    metadata: { cart_resource_version: 1 },
     client_confirmed_at: null,
     instructions_displayed_at: null,
     awaiting_webhook_since: "2026-07-22T10:00:00.000Z",
@@ -135,13 +135,61 @@ function createGelatoFulfillmentModule(
   }
 }
 
+function createPaymentAttemptAuthorityConnection(paymentAttemptModule: {
+  attempts: PaymentAttemptRecord[]
+}) {
+  return {
+    transaction: jest.fn(async (callback: (transaction: {
+      raw: (sql: string, bindings?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>
+    }) => Promise<unknown>) =>
+      callback({
+        raw: jest.fn(async (sql: string, bindings: unknown[] = []) => {
+          const attempt = paymentAttemptModule.attempts.find(
+            (candidate) => candidate.id === bindings[0]
+          )
+
+          if (sql.includes("pg_advisory_xact_lock")) {
+            return { rows: [] }
+          }
+
+          if (sql.includes("select cart_id from payment_attempt")) {
+            return attempt ? { rows: [{ cart_id: attempt.cart_id }] } : { rows: [] }
+          }
+
+          if (sql.includes("from payment_attempt")) {
+            return attempt
+              ? { rows: [{ ...attempt, metadata: attempt.metadata ?? { cart_resource_version: 1 } }] }
+              : { rows: [] }
+          }
+
+          if (sql.includes("from store_resource_version")) {
+            return { rows: [{ version: 1 }] }
+          }
+
+          throw new Error(`Unexpected PaymentAttempt authority SQL: ${sql}`)
+        }),
+      })
+    ),
+  }
+}
+
 function createScopeResolve(input: {
   gelatoFulfillmentModule: ReturnType<typeof createGelatoFulfillmentModule>
 }) {
+  const attempts = [buildAttempt()]
   const paymentAttemptModule = {
-    listPaymentAttempts: jest.fn(async () => [buildAttempt()]),
-    updatePaymentAttempts: jest.fn(async (row) => [row]),
+    listPaymentAttempts: jest.fn(async () => attempts),
+    updatePaymentAttempts: jest.fn(async (row) => {
+      const updated = Array.isArray(row) ? row[0] : row
+      const index = attempts.findIndex((attempt) => attempt.id === updated.id)
+      if (index >= 0) attempts[index] = updated
+      return Array.isArray(row) ? row : [updated]
+    }),
+    attempts,
   }
+  const authorityConnection = createPaymentAttemptAuthorityConnection(
+    paymentAttemptModule
+  )
   const checkoutCompletionModule = {
     listCheckoutCompletionLogs: jest.fn(async () => [
       {
@@ -287,6 +335,9 @@ function createScopeResolve(input: {
       }
     }
     if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttemptModule
+    if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+      return authorityConnection
+    }
     if (key === CHECKOUT_COMPLETION_MODULE) return checkoutCompletionModule
     if (key === ANALYTICS_EVENT_LOG_MODULE || key === "analytics_event_log") {
       return analyticsEventLogModule

@@ -10,6 +10,20 @@ export const STORE_OPTIONAL_CUSTOMER = [
   { publishableApiKey: [], customerSession: [] },
 ] as const
 
+export const STORE_CART_M1_BFF_OPTIONAL_CUSTOMER = [
+  { bffServiceCredential: [], publishableApiKey: [] },
+  {
+    bffServiceCredential: [],
+    publishableApiKey: [],
+    customerBearer: [],
+  },
+  {
+    bffServiceCredential: [],
+    publishableApiKey: [],
+    customerSession: [],
+  },
+] as const
+
 export const STORE_REQUIRED_CUSTOMER = [
   { publishableApiKey: [], customerBearer: [] },
   { publishableApiKey: [], customerSession: [] },

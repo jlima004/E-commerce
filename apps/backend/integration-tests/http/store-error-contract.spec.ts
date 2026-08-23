@@ -12,6 +12,8 @@ import defaultMiddlewares, {
   isStoreApiRequest,
   storeErrorEnvelopeMiddleware,
 } from "../../src/api/middlewares"
+import { CartVersionMismatchError } from "../../src/api/store/carts/concurrency"
+import type { StoreCartPreOrderRecord } from "../../src/api/store/carts/serializers"
 import {
   createStoreSurfaceGuardMiddleware,
   storeSurfaceGuardMiddleware,
@@ -614,6 +616,52 @@ describe("Store error contract HTTP (FND-03 / 13-03 / R1)", () => {
         expect(body.retryable).toBe(true)
         expect(res.getHeader("retry-after")).toBe("9")
         expectNoCanaries(body)
+      })
+
+      it("preserves the current cart ETag through the composed Sentry path", () => {
+        const currentCart = {
+          id: "cart_hr06_synthetic",
+          currency_code: "brl",
+          email: "synthetic@example.invalid",
+          created_at: "2026-08-22T00:00:00.000Z",
+          updated_at: "2026-08-22T00:00:00.000Z",
+          total: 100,
+          subtotal: 100,
+          item_total: 100,
+          shipping_total: 0,
+          tax_total: 0,
+          discount_total: 0,
+          items: [],
+          shipping_address: null,
+        } as StoreCartPreOrderRecord
+        const { res, medusaErrorHandler } = invokeComposedStoreErrorStack(
+          new CartVersionMismatchError(currentCart, 7),
+          { "x-correlation-id": "corr_composed_412" }
+        )
+
+        expect(medusaErrorHandler).not.toHaveBeenCalled()
+        expect(res.statusCode).toBe(412)
+        const body = res.body as StoreErrorResponse
+        expect(isStoreErrorResponse(body)).toBe(true)
+        expect(body.code).toBe(STORE_ERROR_CODES.CART_VERSION_MISMATCH)
+        expect(body.retryable).toBe(false)
+        expect(body.correlationId).toBe("corr_composed_412")
+        expect(body.cart?.id).toBe("cart_hr06_synthetic")
+        expect(res.getHeader("x-correlation-id")).toBe("corr_composed_412")
+        expect(res.getHeader("ETag")).toBe('"7"')
+        expectNoCanaries(body)
+      })
+
+      it("does not emit ETag for a non-cart error with an unrelated currentEtag", () => {
+        const { res } = invokeComposedStoreErrorStack(
+          Object.assign(new MedusaError(MedusaError.Types.INVALID_DATA, "bad"), {
+            currentEtag: '"999"',
+          }),
+          { "x-correlation-id": "corr_composed_non_cart" }
+        )
+
+        expect(res.statusCode).toBe(400)
+        expect(res.getHeader("ETag")).toBeUndefined()
       })
 
       it("direct normalizer: second pass of public body preserves retryable=false", () => {

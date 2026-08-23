@@ -6,7 +6,7 @@ import {
 } from "../../src/api/store-surface/guard"
 import {
   STORE_SURFACE_MANIFEST,
-  STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
+  STORE_SURFACE_M1_ENABLED_OPERATIONS,
   storeSurfaceOperationKey,
   summarizeStoreSurfaceManifest,
   validateStoreSurfaceManifest,
@@ -72,26 +72,29 @@ describe("Phase 13 final Store foundation gate", () => {
     expect(scan.duplicatesInstalled).toEqual([])
     expect(scan.missingFromManifest).toEqual([])
     expect(scan.missingFromInstalled).toEqual([])
-    expect(evidence.runtime).toEqual({ native: 51, local: 12, total: 63 })
+    expect(evidence.runtime).toEqual({ native: 51, local: 13, total: 64 })
     expect(evidence.manifest).toEqual({
-      total: 63,
+      total: 64,
       authorized: 0,
-      extended: 15,
+      extended: 16,
       blocked: 17,
       outsideFrontendM1: 31,
-      m1Enabled: 6,
+      m1Enabled: 12,
     })
-    expect(counts.m1EnabledPolicy).toBe(6)
+    expect(counts.m1EnabledPolicy).toBe(12)
     expect(validateStoreSurfaceManifest()).toEqual([])
     expect(evidence.executableStoreBusinessKeys).toEqual(
-      [...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS].sort()
+      [...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()
     )
     expect(evidence.documentStoreBusinessKeys).toEqual(
-      [...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS].sort()
+      [...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()
     )
     expect(
       evidence.executableStoreBusinessKeys.every(
-        (key) => key.startsWith("GET /store/") || key.startsWith("POST /store/")
+        (key) =>
+          key.startsWith("GET /store/") ||
+          key.startsWith("POST /store/") ||
+          key.startsWith("DELETE /store/")
       )
     ).toBe(true)
     expect(
@@ -111,11 +114,13 @@ describe("Phase 13 final Store foundation gate", () => {
         .version
     ).toBe("1.0.0")
 
-    const phase14Keys = new Set<string>(STORE_SURFACE_PHASE14_ENABLED_OPERATIONS)
-    const m1EnabledKeys = STORE_SURFACE_MANIFEST.filter(
+    const m1EnabledKeys = new Set<string>(STORE_SURFACE_M1_ENABLED_OPERATIONS)
+    const manifestM1EnabledKeys = STORE_SURFACE_MANIFEST.filter(
       (entry) => entry.runtime_policy === "M1_ENABLED"
     ).map((entry) => storeSurfaceOperationKey(entry.method, entry.pathTemplate))
-    expect(m1EnabledKeys).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
+    expect(manifestM1EnabledKeys).toEqual([
+      ...STORE_SURFACE_M1_ENABLED_OPERATIONS,
+    ])
 
     for (const entry of STORE_SURFACE_MANIFEST) {
       expect(entry.classification).toBeTruthy()
@@ -125,7 +130,7 @@ describe("Phase 13 final Store foundation gate", () => {
       expect(entry.classification).not.toBe(entry.runtime_policy)
 
       const key = storeSurfaceOperationKey(entry.method, entry.pathTemplate)
-      if (phase14Keys.has(key)) {
+      if (m1EnabledKeys.has(key)) {
         expect(entry.runtime_policy).toBe("M1_ENABLED")
         expect(entry.m1_enablement).toBe("enabled")
         continue
@@ -228,7 +233,7 @@ describe("Phase 13 final Store foundation gate", () => {
     const preserved = STORE_SURFACE_MANIFEST.filter(
       (entry) => entry.runtime_policy === "PRESERVE_LEGACY"
     )
-    expect(preserved).toHaveLength(7)
+    expect(preserved).toHaveLength(5)
     for (const entry of preserved) {
       expect(decideStoreSurfaceAccess(entry.method, concretePath(entry))).toEqual(
         expect.objectContaining({ action: "allow", mode: "preserve_legacy" })

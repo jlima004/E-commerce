@@ -17,7 +17,7 @@
 
 | Versão | Data | Alterações |
 |---|---:|---|
-| 1.22 | 2026-08-08 | Adicionadas as entidades foundation Store `StoreIdempotencyRecord` (persistência transversal de claim/replay/conflito) e `StoreResourceVersion` (contrato documental; runtime no 13-05). Inclui UNIQUE composta por operação+ator+recurso+key hash, estados finitos com deadlines, retention terminal, driver Medusa scheduled `* * * * *`, hashing HMAC-SHA-256 com `STORE_IDEMPOTENCY_KEY_PEPPER`, e negativas de plaintext. `CheckoutCompletionLog` permanece exclusivo do nascimento de Order. Regras `DATA-123` a `DATA-132`. Em 2026-08-09, `P13-13-05-HCD-01` supersede somente o target físico de `StoreResourceVersion`: `bigint` + UNIQUE não parcial passam a `integer` + UNIQUE parcial `WHERE deleted_at IS NULL`; invariantes comportamentais permanecem. |
+| 1.22 | 2026-08-08 | Adicionadas as entidades foundation Store `StoreIdempotencyRecord` (persistência transversal de claim/replay/conflito) e `StoreResourceVersion` (contrato documental; runtime no 13-05). Inclui UNIQUE composta por operação+ator+recurso+key hash, estados finitos com deadlines, retention terminal, driver Medusa scheduled `* * * * *`, hashing HMAC-SHA-256 com `STORE_IDEMPOTENCY_KEY_PEPPER`, e negativas de plaintext. `CheckoutCompletionLog` permanece exclusivo do nascimento de Order. Regras `DATA-123` a `DATA-132`. Em 2026-08-09, `P13-13-05-HCD-01` supersede somente o target físico de `StoreResourceVersion`: `bigint` + UNIQUE não parcial passam a `integer` + UNIQUE parcial `WHERE deleted_at IS NULL`; invariantes comportamentais permanecem. Adicionada a entidade customizada `GuestCartCapability` (módulo `guest_cart_capability`, prefixo `gccap`, `token_hash` SHA-256 hex UNIQUE, status `active|expired|revoked|consumed`, TTL `7d` rolling / `30d` cap, UNIQUE parcial `active` por `cart_id`, link sem FK, negativas de plaintext/nonce/HKDF). |
 | 1.21 | 2026-06-22 | Corrigido o achado 4: adicionadas constraints monetárias explícitas para `Payment` e `Refund`. `Payment.amount` e `Payment.captured_amount` devem ser inteiros não negativos na menor unidade monetária; `Payment.captured_amount` não pode exceder `Payment.amount`; `Refund.amount` deve ser inteiro positivo; `Refund.currency_code` deve ser igual a `Payment.currency_code`; no MVP, `Payment.currency_code` e `Refund.currency_code` devem ser `BRL`; e o valor de reembolso deve respeitar o saldo capturado disponível considerando refunds confirmados e bloqueados. Atualizadas seções 2.10, 4.8, 4.9, 5.12, 5.13, regras `DATA-106`, `DATA-117` a `DATA-122` e constraints recomendadas. |
 | 1.20 | 2026-06-21 | Corrigido o achado 3: definida a fonte de verdade financeira para reembolsos. `Refund.status = succeeded` passa a ser a fonte de verdade para valores reembolsados confirmados; `Payment.status` e `Order.payment_status` são campos derivados/denormalizados que devem ser recalculados na mesma transação lógica que confirma reembolso via webhook Stripe. Proibida alteração manual isolada desses status sem recomputação a partir de `Payment.captured_amount` e `Refund.status = succeeded`. Atualizadas as seções 2.10, 4.8, 4.9, 5.12, relações, regras `DATA-053`, `DATA-054`, `DATA-107` e adicionadas `DATA-114` a `DATA-116`. |
 | 1.19 | 2026-06-21 | Corrigido o achado 2: adicionada `WebhookEventLog.deduplication_key` como chave canônica de deduplicação. A deduplicação passa a ser garantida por `unique(provider, deduplication_key)`. Quando `external_event_id` existir e for confiável, a chave deve derivar dele; quando não existir, deve derivar de `payload_hash` normalizado ou de chave determinística equivalente validada na integração. `payload_hash` isolado passa a ser índice diagnóstico, não garantia de unicidade. Atualizadas `DATA-005`, `DATA-030`, `DATA-031`, seção 4.5, seção 5.8 e índices recomendados. |
@@ -396,6 +396,7 @@ Premissas vinculantes:
 |---|---|---|---|
 | `StoreIdempotencyRecord` | Custom | ver §4.17 | Idempotência Store transversal; lifecycle job `* * * * *`. |
 | `StoreResourceVersion` | Custom | `resource_type`, `resource_id`, `version`, timestamps | Contrato físico DML-native aprovado por `P13-13-05-HCD-01`: PostgreSQL `integer`; UNIQUE parcial (`resource_type`,`resource_id`) `WHERE deleted_at IS NULL`; `CHECK(version > 0)`; bootstrap lazy `version=1`. |
+| `GuestCartCapability` | Custom | `id` (prefix `gccap`), `cart_id`, `token_hash`, `status` (`active`, `expired`, `revoked`, `consumed`), `expires_at`, `consumed_at`, `revoked_at`, `last_used_at` | Posse de carrinho anônimo via capability hash-only (módulo `guest_cart_capability`). TTL `7d` rolling / `30d` cap. UNIQUE parcial uma linha `active` por `cart_id`. Module link Cart sem FK. |
 
 ---
 
@@ -1628,6 +1629,47 @@ positive, server-authoritative, monotonic, default 1, CAS/rollback invariants
 - Bootstrap lazy: `INSERT ... ON CONFLICT DO NOTHING` com `version = 1`, depois lock/load na mesma transação.
 - CAS na mesma transaction manager da mutação Medusa protegida; commit único; rollback de ambos em falha.
 - Distinto de `StoreIdempotencyRecord.state_version` (lifecycle de idempotência ≠ versão de recurso).
+
+### 4.19 GuestCartCapability — Posse e Concorrência de Carrinho Anônimo (Phase 15)
+
+Entidade customizada do módulo `guest_cart_capability` para posse segura de carrinho anônimo via capability hash-only.
+
+#### Finalidade
+
+- Permitir que clientes anônimos possuam e modifiquem carrinhos sem expor `cart_id` sequencial ou confiar em cookies desprotegidos.
+- Garantir que o token trafegue apenas no header `x-indicio-guest-cart-token` (32 bytes CSPRNG codificados em `base64url`).
+- Persistir exclusivamente o hash SHA-256 hex (`token_hash`), garantindo que o banco de dados nunca contenha o token em texto puro.
+- Controlar o ciclo de vida da capability (`active`, `expired`, `revoked`, `consumed`) com TTL rolling de `7d` e teto absoluto de `30d` a partir de `created_at`.
+- Garantir cardinalidade de no máximo uma capability `active` por carrinho via índice parcial UNIQUE no PostgreSQL.
+- Associar-se ao `Cart` Medusa via module link (`apps/backend/src/links/guest-cart-capability-cart.ts`), sem FK SQL cross-module.
+
+#### Campos mínimos
+
+```json
+{
+  "id": "gccap_...",
+  "cart_id": "cart_...",
+  "token_hash": "sha256_hex_string_64_chars",
+  "status": "active | expired | revoked | consumed",
+  "expires_at": "datetime",
+  "consumed_at": "datetime | null",
+  "revoked_at": "datetime | null",
+  "last_used_at": "datetime | null",
+  "created_at": "datetime",
+  "updated_at": "datetime",
+  "deleted_at": "datetime | null"
+}
+```
+
+#### Constraints e Índices
+
+- `UNIQUE(token_hash)` — cada hash de token é globalmente único.
+- `UNIQUE(cart_id) WHERE status = 'active' AND deleted_at IS NULL` — no máximo uma capability ativa por carrinho.
+- `INDEX(status, expires_at)` — consulta eficiente para expiração e lookup.
+- Prefix de ID: `gccap`.
+- TTL: `7d` rolling em cada uso válido, limitado ao teto de `30d` a partir de `created_at`.
+- Status permitidos: `active`, `expired`, `revoked`, `consumed`.
+- Negativas de segurança: nunca persistir token puro, nonce, pepper HMAC ou HKDF; Redis não concede autoridade de posse.
 
 ---
 

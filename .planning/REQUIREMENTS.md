@@ -1,7 +1,7 @@
 # Requirements: Milestone v1.1 — Backend Storefront Readiness
 
 **Definido:** 2026-08-06
-**Status:** aberto; **17 requisitos concluídos** (FND-01..FND-08, AUTH-01..AUTH-09); **74 abertos**
+**Status:** aberto; **26 requisitos concluídos** (FND-01..FND-08, AUTH-01..AUTH-09, CART-01..CART-09); **65 abertos**
 **Escopo:** somente backend; o Frontend Milestone 1 permanece bloqueado
 
 > Decisões existentes em PRD/SRS/rastreabilidade não equivalem a implementação. Requisitos só podem ser concluídos com a evidência prevista no roadmap e gate de closure da phase correspondente.
@@ -47,21 +47,32 @@ Phase 13 closure artifact: `.planning/phases/13-storefront-contract-foundation-s
 
 Phase 14 closure artifact: `.planning/phases/14-customer-auth-verification/14-CLOSURE.md` — CLOSED — HUMAN APPROVED.
 
-Phase 15 authorization: **AUTHORIZED — CONTEXT NOT STARTED**. RESEARCH and subsequent Phase-15 gates remain separately human-gated.
-
 ### Phase 15 — Guest Cart Capability & Concurrency
 
-| ID | Classe | Requisito verificável |
-|---|---|---|
-| CART-01 | Persistência | Substituir `req.session.active_cart_id` como prova principal de posse por capability CSPRNG de pelo menos 32 bytes, persistida somente como hash. |
-| CART-02 | Segurança | Transportar a capability apenas em `x-indicio-guest-cart-token`, nunca em JSON, URL, logs, Sentry, analytics ou exemplos. |
-| CART-03 | Runtime | Validar ownership, expiração e revogação da capability e encerrá-la quando o carrinho expirar, for consumido ou concluído. |
-| CART-04 | Runtime | Criar/recuperar carrinho convidado de forma lazy e idempotente, retornando o estado canônico do carrinho. |
-| CART-05 | Runtime | Expor add/update/delete/clear de line item reutilizando operações Medusa nativas quando adequadas, sem segundo motor de carrinho. |
-| CART-06 | Runtime | Aceitar quantidade inteira entre 1 e 99, tratar remoção explicitamente e rejeitar negativos, decimais e valores acima do teto. |
-| CART-07 | Persistência | Incrementar versão monotônica em toda mudança estrutural relevante do carrinho. |
-| CART-08 | Contrato | Retornar `ETag`, exigir `If-Match` nas mutações e responder `412 CART_VERSION_MISMATCH` com snapshot canônico seguro. |
-| CART-09 | Runtime | Invalidar quote, seleção de frete e tentativa de pagamento incompatíveis após mutação estrutural e provar ausência de bypass por rota nativa. |
+| ID | Classe | Requisito verificável | Status |
+|---|---|---|---|
+| CART-01 | Persistência | Substituir `req.session.active_cart_id` como prova principal de posse por capability CSPRNG de pelo menos 32 bytes, persistida somente como hash. | COMPLETE |
+| CART-02 | Segurança | Transportar a capability apenas em `x-indicio-guest-cart-token`, nunca em JSON, URL, logs, Sentry, analytics ou exemplos. | COMPLETE |
+| CART-03 | Runtime | Validar ownership, expiração e revogação da capability e encerrá-la quando o carrinho expirar, for consumido ou concluído. | COMPLETE |
+| CART-04 | Runtime | Criar/recuperar carrinho convidado de forma lazy e idempotente, retornando o estado canônico do carrinho. | COMPLETE |
+| CART-05 | Runtime | Expor add/update/delete/clear de line item reutilizando operações Medusa nativas quando adequadas, sem segundo motor de carrinho. | COMPLETE |
+| CART-06 | Runtime | Aceitar quantidade inteira entre 1 e 99, tratar remoção explicitamente e rejeitar negativos, decimais e valores acima do teto. | COMPLETE |
+| CART-07 | Persistência | Incrementar versão monotônica em toda mudança estrutural relevante do carrinho. | COMPLETE |
+| CART-08 | Contrato | Retornar `ETag`, exigir `If-Match` nas mutações e responder `412 CART_VERSION_MISMATCH` com snapshot canônico seguro. | COMPLETE |
+| CART-09 | Runtime | Invalidar quote, seleção de frete e tentativa de pagamento incompatíveis após mutação estrutural e provar ausência de bypass por rota nativa. | COMPLETE |
+
+`requirements-completed:` `[CART-01, CART-02, CART-03, CART-04, CART-05, CART-06, CART-07, CART-08, CART-09]`
+
+Phase 15: **CLOSED — HUMAN APPROVED**.
+
+Phase 15 closure artifact: `.planning/phases/15-guest-cart-capability-concurrency/15-CLOSURE.md` — CLOSED — HUMAN APPROVED.
+
+Documentary post-closure note: PR #27 required implementation remediation for
+B15-PR27-HR-01..HR-06. Human re-review accepted the remediation: all six findings
+are `CLOSED — PASS`; CART-01..CART-09 remain 9/9 COMPLETE and no requirement
+count changes.
+
+Phase 16: **AUTHORIZED — CONTEXT NOT STARTED**. Phase-16 RESEARCH and subsequent gates remain separately human-gated; MRG-01..MRG-08 requirement statuses remain unchanged.
 
 ### Phase 16 — Cart Merge & Review
 
@@ -254,12 +265,12 @@ Phase 15 authorization: **AUTHORIZED — CONTEXT NOT STARTED**. RESEARCH and sub
 
 ## Coverage
 
-- Requisitos v1.1: **74 abertos, 17 concluídos** (FND-01..FND-08, AUTH-01..AUTH-09).
+- Requisitos v1.1: **65 abertos, 26 concluídos** (FND-01..FND-08, AUTH-01..AUTH-09, CART-01..CART-09).
 - Mapeados a exatamente uma phase: 91.
 - FE requirements com responsabilidade explícita: 54/54.
 - Phases: 13–22, lineares.
 - Phase 13: 8/8 COMPLETE; CLOSED — HUMAN APPROVED.
 - Phase 14: 9/9 COMPLETE; CLOSED — HUMAN APPROVED.
-- Phase 15: **AUTHORIZED — CONTEXT NOT STARTED**.
-- Phase 16..22: not started / not authorized.
+- Phase 15: **CLOSED — HUMAN APPROVED**.
+- Phase 16: **CONTEXT AUTHORIZED — NOT STARTED**; RESEARCH and later Phase-16 gates remain not authorized. Phase 17..22 remain not started / not authorized.
 - Frontend Milestone 1: BLOCKED.

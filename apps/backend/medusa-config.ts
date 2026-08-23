@@ -109,6 +109,10 @@ const modules = [
     resolve: "./src/modules/customer-auth/service",
   },
   {
+    key: "guest_cart_capability",
+    resolve: "./src/modules/guest-cart-capability",
+  },
+  {
     resolve: "./src/modules/payment-attempt",
   },
   {

@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
 status: ready
-last_updated: "2026-08-19T16:57:00.000Z"
+last_updated: "2026-08-22T18:26:00-03:00"
 progress:
   total_phases: 10
-  completed_phases: 2
-  total_plans: 28
-  completed_plans: 28
-  percent: 20
-stopped_at: PHASE 15 PLAN AUTHORIZED — NOT STARTED
-current_phase: 15
-current_phase_name: guest-cart-capability-concurrency
+  completed_phases: 3
+  total_plans: 36
+  completed_plans: 36
+  percent: 30
+stopped_at: PHASE 15 POST-CLOSURE PR-27 REMEDIATION — HUMAN APPROVED — PASS; PHASE 16 CONTEXT AUTHORIZED — NOT STARTED
+current_phase: 16
+current_phase_name: cart-merge-review
 current_plan: null
 ---
 
@@ -24,18 +24,30 @@ See: `.planning/PROJECT.md`.
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, duplicate order or improper fulfillment.
 
-**Current focus:** Phase 15 — `Guest Cart Capability & Concurrency`, with **RESEARCH HUMAN APPROVED — PASS / PLAN AUTHORIZED — NOT STARTED**. EXECUTION remains not authorized.
+**Current focus:** Phase 16 CONTEXT is **AUTHORIZED — NOT STARTED** after human
+acceptance of the Phase-15 PR #27 post-closure remediation. Phase-16 RESEARCH+
+remains **NOT AUTHORIZED**.
 
 ## Execution Policy
 
 Execution remains manual-review gated.
 
-- `mode=interactive`
-- `workflow.auto_advance=false`
-- `workflow._auto_chain_active=false`
-- `parallelization=false`
+**Current execution harness:** Codex
 
-Human approval closes only the reviewed gate. Phase 15 CONTEXT and RESEARCH are human-approved. Phase 15 PLAN is separately authorized and may begin; execution and later Phase-15 gates remain separately unauthorized.
+- **Harness:** Codex
+- **Orchestrator:** Codex
+- **Subagents (latest PR #27 remediation):** GPT 5.6 Luna A–G; runtime IDs recorded in `15-PR27-REMEDIATION.md`
+- `mode=interactive`
+- `parallelization=false`
+- `auto-chain=false`
+- `auto_advance=false` (`workflow.auto_advance=false`; `workflow._auto_chain_active=false`)
+
+Human approval closes only the reviewed gate. Phase 15 CONTEXT, RESEARCH,
+PLAN and closure are human-approved. Plans 15-01 through 15-08 are HUMAN
+APPROVED — PASS; B15-07-HR-01 is CLOSED — PASS, Plan 15-07 and Plan 15-08
+are documentally closed, and CART-01..CART-09 are 9/9 COMPLETE. Phase 16 is
+authorized only to begin CONTEXT; Phase-16 RESEARCH and all subsequent gates
+remain separately unauthorized.
 
 ## Current Gate
 
@@ -54,10 +66,23 @@ B14-21-HR-03: CLOSED — PASS
 B14-21-HR-04: CLOSED — PASS
 B14-21-HR-05: CLOSED — PASS
 
-Phase 15 CONTEXT: HUMAN APPROVED — PASS
-Phase 15 RESEARCH: HUMAN APPROVED — PASS
-Phase 15 PLAN: AUTHORIZED — NOT STARTED
-Phase 15 EXECUTION: NOT AUTHORIZED
+Phase 15: HUMAN APPROVED — CLOSED
+CART-01..CART-09: 9/9 COMPLETE
+Plan 15-01: HUMAN APPROVED — PASS
+Plan 15-02: HUMAN APPROVED — PASS
+Plan 15-03: HUMAN APPROVED — PASS
+Plan 15-04: HUMAN APPROVED — PASS (Task 15-04-04 / Checkpoint B15-P-HR-02 CLOSED)
+Plan 15-05: HUMAN APPROVED — PASS (Task 15-05-04 CLOSED)
+Plan 15-06: HUMAN APPROVED — PASS
+Plan 15-07: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED (B15-07-HR-01 CLOSED — PASS)
+Plan 15-08: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+15-08 technical ledger: 01–17 PASS
+15-08 final human checkpoint: PASS
+Phase 15 closure: HUMAN APPROVED — CLOSED
+Phase 15 active blockers: 0
+
+Phase 16 CONTEXT: AUTHORIZED — NOT STARTED
+Phase 16 RESEARCH+: NOT AUTHORIZED
 
 Deploy / release: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
@@ -65,19 +90,73 @@ REMOTE DB / REDIS: NOT AUTHORIZED
 FRONTEND: BLOCKED
 ```
 
+## Post-Closure PR #27 Remediation Acceptance
+
+Phase 15 remains historically **HUMAN APPROVED — CLOSED**. The subsequent
+PR #27 remediation received fresh human acceptance:
+
+```text
+B15-PR27-HR-01..HR-06: CLOSED — PASS
+Phase 15 post-closure remediation: HUMAN APPROVED — PASS
+Phase 16 CONTEXT: AUTHORIZED — NOT STARTED
+Phase 16 CONTEXT execution suspension: LIFTED
+Phase 16 RESEARCH+: NOT AUTHORIZED
+Next permitted action: EXECUTE PHASE 16 CONTEXT ONLY
+Merge/deploy/providers/remote infrastructure: NOT AUTHORIZED
+```
+
+This acceptance changes no milestone counters and does not rewrite the accepted
+historical Phase-15 closure artifacts.
+
 ## Current Position
 
 Milestone v1.1:
 
-- phases closed: **2/10**
-- requirements complete: **17/91**
+- phases closed: **3/10**
+- requirements complete: **26/91**
 - Phase 13: FND-01..FND-08 = **8/8 COMPLETE**
 - Phase 14: AUTH-01..AUTH-09 = **9/9 COMPLETE**
-- known plans human-approved executed: **28/28** (Phase 13: 7; Phase 14: 21)
-- Phase 15: **RESEARCH HUMAN APPROVED — PASS / PLAN AUTHORIZED — NOT STARTED**
+- known plans human-approved executed: **36/36** (Phase 13: 7; Phase 14: 21; Phase 15: 15-01, 15-02, 15-03, 15-04, 15-05, 15-06, 15-07, 15-08)
+- Phase 15: **CLOSED — HUMAN APPROVED** (Plans 15-01..15-08 HUMAN APPROVED — PASS; 15-07 and 15-08 documentally closed; CART-01..CART-09 9/9 COMPLETE)
+- Phase 16: **CONTEXT AUTHORIZED — NOT STARTED**; temporary PR #27 execution suspension lifted; RESEARCH and later gates remain unauthorized
 - frontend: BLOCKED
 
 ## Accepted Evidence References
+
+Phase 15 accepted evidence is preserved in:
+
+- `.planning/phases/15-guest-cart-capability-concurrency/15-01-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-02-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-03-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-04-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-05-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-06-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-07-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-08-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-CLOSURE.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-PR27-REMEDIATION.md`
+
+## Phase 15 Accepted Closure
+
+Phase 15 is formally closed by human approval. The accepted closure records:
+
+```text
+Phase 15: HUMAN APPROVED — CLOSED
+CART-01..CART-09: 9/9 COMPLETE
+Store exact-set: 64/51/13/16/47/5/12
+Auth M1: 6
+Cart M1: 6
+Global M1: 12
+Cart Store/BFF synchronous Order birth: 0
+Canonical payment_intent.succeeded: sole accepted Order-birth authority
+Final Plan-15-08 ledger: 01–17 PASS
+Capability leakage: ZERO
+Technical HEAD consumed: 31a381f44e9fbf36178b7fd0a9fb023b891b8594
+Documentary ancestry before closure: fbc1182efa8a82ae5c37ce85176dd5b022459085
+Closure artifact commit: 049848feef2abcc5f92a0b265a445a10a3cc57cc
+```
+
+No open Phase-15 blocker remains. Phase 16 CONTEXT is separately AUTHORIZED — NOT STARTED; Phase-16 RESEARCH and later gates remain NOT AUTHORIZED.
 
 Phase 14 accepted evidence is preserved in:
 
@@ -181,29 +260,69 @@ The approved backend boundary remains:
 
 Browser-direct Medusa remains forbidden. Backend access JWT, refresh credentials and internal auth/session capabilities do not cross the browser boundary except through the approved future BFF contract.
 
-## Phase 15 Authorization
+## Phase 15 Closure Status
 
-By explicit human authorization after Phase-15 RESEARCH review:
+By explicit human authorization of the Phase-15 closure/review gate:
 
 ```text
 Phase 15 — Guest Cart Capability & Concurrency
 CONTEXT: HUMAN APPROVED — PASS
 RESEARCH: HUMAN APPROVED — PASS
-PLAN: AUTHORIZED — NOT STARTED
-EXECUTION: NOT AUTHORIZED
+PLAN: HUMAN APPROVED — PASS
+8 plans / 8 serial waves
+EXECUTION: COMPLETE
+Plan 15-01: HUMAN APPROVED — PASS
+Plan 15-02: HUMAN APPROVED — PASS
+Plan 15-03: HUMAN APPROVED — PASS
+Plan 15-04: HUMAN APPROVED — PASS (Task 15-04-04 / B15-P-HR-02 CLOSED)
+Plan 15-05: HUMAN APPROVED — PASS (Task 15-05-04 CLOSED)
+Plan 15-06: HUMAN APPROVED — PASS
+Plan 15-07: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED (B15-07-HR-01 CLOSED — PASS)
+Plan 15-08: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+15-08 technical ledger: 01–17 PASS
+15-08 final human checkpoint: PASS
+Phase 15 closure: HUMAN APPROVED — CLOSED
+CART-01..CART-09: 9/9 COMPLETE
+Technical HEAD consumed: 31a381f44e9fbf36178b7fd0a9fb023b891b8594
+Documentary ancestry before closure: fbc1182efa8a82ae5c37ce85176dd5b022459085
+Phase-15 active blockers: 0
 ```
 
 Phase-15 RESEARCH is accepted at
 `.planning/phases/15-guest-cart-capability-concurrency/15-RESEARCH.md`.
-Its approved recommendations and human-review locks form the baseline for PLAN. This authorization extends only to creating/reviewing the Phase-15 PLAN and does **not** extend to:
+The approved 8-plan set at `15-01-PLAN.md` … `15-08-PLAN.md` replaces the superseded 18-plan decomposition. Execution is authorized only within those approved PLAN scopes and under the canonical `Phase 15 Execution Orchestration Policy` in `15-01-PLAN.md`:
 
-- execution;
-- implementation prompt beyond planning artifacts;
+- **current execution harness:** Codex
+- orchestrator: Codex;
+- subagents: NOT EXPOSED / NOT AVAILABLE IN CODEX HARNESS at the original Phase-15 execution gate;
+- `parallelization=false`;
+- `auto-chain=false`;
+- blocking human checkpoint between PLANs remains mandatory.
+
+This historical Phase-15 execution authorization did **not** extend to:
+
+- Phase 16 or later phases;
 - frontend;
 - deploy/release;
 - real providers;
 - remote infrastructure;
-- auto-chain.
+- bypassing the blocking human checkpoint after Plan 15-06.
+
+A separate human decision on 2026-08-22 now authorizes **Phase 16 CONTEXT only**. Phase-16 RESEARCH, PLAN and later gates remain separately unauthorized.
+
+Plan 15-05 final checkpoint:
+
+- Tasks 15-05-01..03 and the three authorized narrow remediations have accepted implementation/test evidence: **15-05 TECHNICAL: THIRD REMEDIATION — PASS**.
+- B15-05-HR-01..HR-08: **ALL CLOSED — PASS**.
+- B15-P-HR-03: **CLOSED — PASS**.
+- B15-P-HR-05: **CLOSED — PASS**.
+- The final remediation binds Customer line-item ADD/UPDATE to the same canonical active-cart selector used by `/store/carts/active`, while preserving Guest capability-to-target authority.
+- Task 15-05-04: **CLOSED — HUMAN APPROVED — PASS**.
+- Plan 15-05: **HUMAN APPROVED — CLOSED** and counted in `completed_plans`.
+- Plan 15-06: **HUMAN APPROVED — PASS** and documentally closed.
+- Plan 15-07: **HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**; `B15-07-HR-01` is **CLOSED — PASS**.
+- Plan 15-08: **HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED**.
+- Accepted summaries: `.planning/phases/15-guest-cart-capability-concurrency/15-05-SUMMARY.md`, `15-06-SUMMARY.md`, `15-07-SUMMARY.md` and `15-08-SUMMARY.md`.
 
 ## Hard Invariants Still in Force
 
@@ -220,13 +339,78 @@ Its approved recommendations and human-review locks form the baseline for PLAN. 
 
 No open Phase-14 blocker remains.
 
-Phase 15 CONTEXT and RESEARCH are human-approved. PLAN is authorized but not started. Execution, deploy, real providers, remote infrastructure and frontend remain unauthorized.
+No open Phase-15 blocker remains. B15-PR27-HR-01..HR-06 are CLOSED — PASS after human re-review. Plan 15-07 is HUMAN APPROVED — PASS and
+documentally closed; `B15-07-HR-01` is CLOSED — PASS. Plan 15-08 is HUMAN
+APPROVED — PASS and documentally closed after Ledgers 01–17 and the final
+human checkpoint. Phase 15 CONTEXT, RESEARCH, PLAN and closure are
+human-approved. Plans 15-01..15-08 are human-approved. Phase 16 CONTEXT is
+AUTHORIZED — NOT STARTED; Phase-16 RESEARCH and later gates, deploy, real
+providers, remote infrastructure and frontend remain unauthorized.
+
+Plan 15-04 final human review:
+
+- B15-04-HR-01..HR-09 — CLOSED — PASS
+- Task 15-04-04 / B15-P-HR-02 — CLOSED — HUMAN APPROVED — PASS
+- Plan 15-04 — HUMAN APPROVED — CLOSED
+
+Plan 15-05 final human review:
+
+- B15-05-HR-01..HR-08 — ALL CLOSED — PASS
+- B15-P-HR-03 — CLOSED — PASS
+- B15-P-HR-05 — CLOSED — PASS
+- Task 15-05-04 — CLOSED — HUMAN APPROVED — PASS
+- Plan 15-05 — HUMAN APPROVED — CLOSED
+
+Plan 15-06 final human review:
+
+- Task 15-06-01..03 — PASS
+- Plan 15-06 — HUMAN APPROVED — PASS
+- `.planning/phases/15-guest-cart-capability-concurrency/15-06-SUMMARY.md` — accepted evidence
+
+Plan 15-07 final human review:
+
+- Task 15-07-01..02 — PASS
+- B15-07-HR-01 — CLOSED — PASS — Cart OpenAPI requires BFF service authority in every Cart M1 security alternative
+- Store contract unit — 23/23 PASS
+- `openapi:lint` — PASS
+- Admin/Webhooks artifacts — unchanged
+- `openapi:check` — NOT RUN during 15-07 by plan contract
+- Plan 15-07 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+- `.planning/phases/15-guest-cart-capability-concurrency/15-07-SUMMARY.md` — accepted evidence
+- Plan 15-08 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+
+Plan 15-08 final human review:
+
+- Ledgers 01–17 — PASS
+- Final human checkpoint — PASS
+- Plan 15-08 — HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+- `.planning/phases/15-guest-cart-capability-concurrency/15-08-SUMMARY.md` — accepted final CART/Order/regression/leakage ledger and human verify
+- Phase 15 closure — HUMAN APPROVED — CLOSED
+
+Closed Phase-15 PLAN-review blockers:
+
+- B15-P-HR-01 — CLOSED — PASS — POST ACTIVE CAPABILITY CONTRACT / OPENAPI DRIFT
+- B15-P-HR-02 — CLOSED — PASS — IDEMPOTENCY REPLAY MATERIALIZATION
+- B15-P-HR-03 — CLOSED — PASS — VALIDATION / CLAIM ORDER + CLAIM LIFECYCLE
+- B15-P-HR-04 — CLOSED — PASS — CUSTOMER ACTIVE REGRESSION BETWEEN WAVES
+- B15-P-HR-05 — CLOSED — PASS — IMPOSSIBLE 1.0 NUMERIC TEST
+- B15-P-HR-06 — CLOSED — PASS — FINAL REGRESSION GATE IS OPTIONAL
+- B15-P-RP-HR-01 — CLOSED — PASS — conditional Customer authorization
+- B15-P-RP-HR-02 — CLOSED — PASS — execution subagent policy encoded
+- B15-P-RP-HR-03 — CLOSED — PASS — post-create/mint partial-effect policy
+- Stale If-Match contract — CLOSED — PASS — failed_terminal deterministic replay
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 260821-r4s | B15-07-HR-01: alinhar security contract do Cart M1 ao runtime BFF | 2026-08-21 | 637f19d | Verified | [260821-r4s-b15-07-hr-01-alinhar-security-contract-d](./quick/260821-r4s-b15-07-hr-01-alinhar-security-contract-d/) |
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/15-guest-cart-capability-concurrency/15-RESEARCH.md
+**Resume file:** .planning/STATE.md
 
-Last session: 2026-08-19T16:57:00.000Z
+Last session: 2026-08-22
 
 Stopped at:
 
@@ -235,8 +419,24 @@ PHASE 14: HUMAN APPROVED — CLOSED
 AUTH-01..AUTH-09: 9/9 COMPLETE
 PHASE 15 CONTEXT: HUMAN APPROVED — PASS
 PHASE 15 RESEARCH: HUMAN APPROVED — PASS
-PHASE 15 PLAN: AUTHORIZED — NOT STARTED
-PHASE 15 EXECUTION: NOT AUTHORIZED
+PHASE 15 PLAN: HUMAN APPROVED — PASS (8 plans / 8 serial waves)
+Plan 15-01: HUMAN APPROVED — PASS
+Plan 15-02: HUMAN APPROVED — PASS
+Plan 15-03: HUMAN APPROVED — PASS
+Plan 15-04: HUMAN APPROVED — PASS (Task 15-04-04 / B15-P-HR-02 CLOSED)
+Plan 15-05: HUMAN APPROVED — PASS (Task 15-05-04 CLOSED)
+Plan 15-06: HUMAN APPROVED — PASS
+Plan 15-07: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+B15-07-HR-01: CLOSED — PASS
+Plan 15-08: HUMAN APPROVED — PASS / DOCUMENTALLY CLOSED
+15-08 technical ledger: 01–17 PASS
+15-08 final human checkpoint: PASS
+PHASE 15: HUMAN APPROVED — CLOSED
+CART-01..CART-09: 9/9 COMPLETE
+PR #27 POST-CLOSURE REMEDIATION: HUMAN APPROVED — PASS
+B15-PR27-HR-01..HR-06: CLOSED — PASS
+PHASE 16 CONTEXT: AUTHORIZED — NOT STARTED
+PHASE 16 RESEARCH+: NOT AUTHORIZED
 FRONTEND: BLOCKED
 DEPLOY: NOT AUTHORIZED
 REAL PROVIDERS / REMOTE INFRA: NOT AUTHORIZED
@@ -249,7 +449,11 @@ Resume with:
 - `.planning/REQUIREMENTS.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-CONTEXT.md`
 - `.planning/phases/15-guest-cart-capability-concurrency/15-RESEARCH.md`
-- `.planning/phases/14-customer-auth-verification/14-21-SUMMARY.md`
-- `.planning/phases/14-customer-auth-verification/14-CLOSURE.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-05-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-06-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-07-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-08-SUMMARY.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-CLOSURE.md`
+- `.planning/phases/15-guest-cart-capability-concurrency/15-PR27-REMEDIATION.md`
 
-**Next permitted step:** Phase 15 PLAN only. EXECUTION remains not authorized.
+**Next permitted step:** execute **Phase 16 — CONTEXT** only. After CONTEXT is produced, stop for human review. Phase-16 RESEARCH and subsequent gates, deploy, real providers, remote infra and frontend remain unauthorized.
