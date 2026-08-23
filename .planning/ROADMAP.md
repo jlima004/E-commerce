@@ -27,8 +27,8 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 15 RESEARCH está **HUMAN APPROVED — PASS**
 - Phase 15 PLAN está **HUMAN APPROVED — PASS** (8 plans / 8 serial waves)
 - Phase 15 está **CLOSED — HUMAN APPROVED**; Plans `15-01`..`15-08` estão **8/8 HUMAN APPROVED — PASS**, `15-07` e `15-08` estão documentally closed, e CART-01..CART-09 estão **9/9 COMPLETE**
-- Phase 16 CONTEXT está **HUMAN APPROVED — PASS**; Phase 16 RESEARCH está **AUTHORIZED — NOT STARTED** por decisão humana explícita; PLAN e gates posteriores da Phase 16 permanecem não autorizados; Phase 17+ permanecem não autorizadas
-- A remediação pós-closure do PR #27 recebeu PASS humano; B15-PR27-HR-01..HR-06 estão CLOSED — PASS. O CONTEXT da Phase 16 foi posteriormente HUMAN APPROVED — PASS e somente o RESEARCH foi autorizado a seguir
+- Phase 16 CONTEXT e RESEARCH estão **HUMAN APPROVED — PASS**; `R16-HR-01..R16-HR-08` estão **CLOSED — APPROVED**; Phase 16 PLAN está **AUTHORIZED — NOT STARTED**; EXECUTION e gates posteriores da Phase 16 permanecem não autorizados; Phase 17+ permanecem não autorizadas
+- A remediação pós-closure do PR #27 recebeu PASS humano; B15-PR27-HR-01..HR-06 estão CLOSED — PASS. O CONTEXT e o RESEARCH da Phase 16 foram posteriormente HUMAN APPROVED — PASS e somente o PLAN foi autorizado a seguir
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
 ## Milestones
@@ -47,7 +47,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
 | 14 | Customer Auth & Verification | 13 | 9 | **CLOSED — HUMAN APPROVED; 21/21 plans; 63/63 tasks; 9/9 requirements** |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CLOSED — HUMAN APPROVED; 8/8 plans; CART-01..CART-09 = 9/9 COMPLETE** |
-| 16 | Cart Merge & Review | 15 | 8 | **CONTEXT HUMAN APPROVED — PASS; RESEARCH AUTHORIZED — NOT STARTED** |
+| 16 | Cart Merge & Review | 15 | 8 | **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN AUTHORIZED — NOT STARTED** |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
 | 18 | Gelato Shipping Quote & Selection | 17 | 8 | Not started |
 | 19 | Storefront PaymentAttempt Hardening | 18 | 9 | Not started |
@@ -244,17 +244,19 @@ and final human checkpoint are PASS. The final Store authority is
 Store/BFF synchronous Order birth is zero, the canonical
 `payment_intent.succeeded` webhook remains the only accepted Order-birth
 authority, and capability leakage is ZERO. No deploy, provider or remote
-infrastructure action is authorized. Phase 16 CONTEXT is **HUMAN APPROVED — PASS**.
-A subsequent explicit human decision authorizes **Phase 16 RESEARCH only**;
-Phase-16 PLAN and all later gates remain separately human-gated and unauthorized.
+infrastructure action is authorized. Phase 16 CONTEXT and RESEARCH are
+**HUMAN APPROVED — PASS**; `R16-HR-01..R16-HR-08` are **CLOSED — APPROVED**.
+A subsequent explicit human decision authorizes **Phase 16 PLAN only**;
+Phase-16 EXECUTION and all later gates remain separately human-gated and unauthorized.
 
 ### Post-closure PR #27 governance
 
 Phase 15 remains **CLOSED — HUMAN APPROVED** as historical closure status.
 PR #27 post-closure remediation is **HUMAN APPROVED — PASS**;
-B15-PR27-HR-01..HR-06 are **CLOSED — PASS**. Phase-16 CONTEXT is
-**HUMAN APPROVED — PASS**. Phase-16 RESEARCH is **AUTHORIZED — NOT STARTED**;
-PLAN and later gates remain unauthorized; milestone counters are unchanged.
+B15-PR27-HR-01..HR-06 are **CLOSED — PASS**. Phase-16 CONTEXT and RESEARCH are
+**HUMAN APPROVED — PASS**; `R16-HR-01..R16-HR-08` are **CLOSED — APPROVED**.
+Phase-16 PLAN is **AUTHORIZED — NOT STARTED**; EXECUTION and later gates remain
+unauthorized; milestone counters are unchanged.
 
 Milestone counters: phases closed `3/10`; requirements `26/91`; open
 requirements `65`; plans `36/36`; percent `30`.
@@ -269,9 +271,11 @@ requirements `65`; plans `36/36`; percent `30`.
 
 **Goal:** substituir attach simples por merge transacional, idempotente, parcial e revisável.
 
-**Status:** **CONTEXT HUMAN APPROVED — PASS; RESEARCH AUTHORIZED — NOT STARTED.** Depends on Phase 15 CLOSED. Phase-16 PLAN and later gates remain separately unauthorized.
+**Status:** **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN AUTHORIZED — NOT STARTED.** Depends on Phase 15 CLOSED. Phase-16 EXECUTION and later gates remain separately unauthorized.
 
 Context authority: `.planning/phases/16-cart-merge-review/16-CONTEXT.md` — HUMAN APPROVED — PASS.
+
+Research authority: `.planning/phases/16-cart-merge-review/16-RESEARCH.md`, reviewed by `.planning/phases/16-cart-merge-review/16-RESEARCH-REVIEW.md` — HUMAN APPROVED — PASS; `R16-HR-01..R16-HR-08` CLOSED — APPROVED.
 
 ## Phase 17: Authenticated BR Checkout & Privacy
 
@@ -316,5 +320,6 @@ O milestone só pode fechar quando houver evidência PASS para todos os gates pr
 Phase 15 CONTEXT, RESEARCH, PLAN and closure are HUMAN APPROVED — PASS;
 Plans 15-01..15-08 are **8/8 HUMAN APPROVED — PASS** and Plans 15-07 and
 15-08 are DOCUMENTALLY CLOSED. CART-01..CART-09 are 9/9 COMPLETE. Phase 16
-CONTEXT is **HUMAN APPROVED — PASS** and Phase-16 RESEARCH is **AUTHORIZED — NOT STARTED**;
-Phase-16 PLAN and later gates, provider real, infraestrutura remota, deploy and frontend remain unauthorized.
+CONTEXT and RESEARCH are **HUMAN APPROVED — PASS**, `R16-HR-01..R16-HR-08`
+are **CLOSED — APPROVED**, and Phase-16 PLAN is **AUTHORIZED — NOT STARTED**;
+Phase-16 EXECUTION and later gates, provider real, infraestrutura remota, deploy and frontend remain unauthorized.
