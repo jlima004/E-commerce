@@ -72,7 +72,7 @@ B15-PR27-HR-01..HR-06. Human re-review accepted the remediation: all six finding
 are `CLOSED — PASS`; CART-01..CART-09 remain 9/9 COMPLETE and no requirement
 count changes.
 
-Phase 16: **AUTHORIZED — CONTEXT NOT STARTED**. Phase-16 RESEARCH and subsequent gates remain separately human-gated; MRG-01..MRG-08 requirement statuses remain unchanged.
+Phase 16 CONTEXT: **HUMAN APPROVED — PASS**. Phase-16 RESEARCH is **AUTHORIZED — NOT STARTED** by explicit human decision; PLAN and subsequent gates remain separately human-gated. MRG-01..MRG-08 requirement statuses remain unchanged.
 
 ### Phase 16 — Cart Merge & Review
 
@@ -272,5 +272,5 @@ Phase 16: **AUTHORIZED — CONTEXT NOT STARTED**. Phase-16 RESEARCH and subseque
 - Phase 13: 8/8 COMPLETE; CLOSED — HUMAN APPROVED.
 - Phase 14: 9/9 COMPLETE; CLOSED — HUMAN APPROVED.
 - Phase 15: **CLOSED — HUMAN APPROVED**.
-- Phase 16: **CONTEXT AUTHORIZED — NOT STARTED**; RESEARCH and later Phase-16 gates remain not authorized. Phase 17..22 remain not started / not authorized.
+- Phase 16: **CONTEXT HUMAN APPROVED — PASS; RESEARCH AUTHORIZED — NOT STARTED**; PLAN and later Phase-16 gates remain not authorized. Phase 17..22 remain not started / not authorized.
 - Frontend Milestone 1: BLOCKED.

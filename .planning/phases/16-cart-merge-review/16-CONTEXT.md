@@ -1,7 +1,7 @@
 # Phase 16: Cart Merge & Review - Context
 
 **Gathered:** 2026-08-22T21:49:13-03:00
-**Status:** Awaiting human review
+**Status:** HUMAN APPROVED — PASS
 
 <domain>
 ## Phase Boundary
@@ -14,8 +14,10 @@ BFF-only boundary, a capability guest hash-only, a concorrência server-
 authoritative e a proibição de criação síncrona de `Order`.
 
 Esta discussão fixa decisões de produto e contrato suficientes para RESEARCH e
-PLAN posteriores. Ela não autoriza RESEARCH, PLAN, SPEC/SDD, implementação,
-testes de runtime, migrations, providers, deploy ou qualquer alteração remota.
+PLAN posteriores. Por si só, este CONTEXT não autoriza gates posteriores; após
+HUMAN APPROVED — PASS, uma decisão humana explícita separada autorizou somente
+o RESEARCH. PLAN, SPEC/SDD, implementação, testes de runtime, migrations,
+providers, deploy e qualquer alteração remota permanecem não autorizados.
 
 ### Requisitos da Phase 16
 
@@ -132,7 +134,7 @@ relaxar as decisões acima.
 ### Governance and phase state
 
 - `.planning/PROJECT.md` — Core Value, boundary backend-only, invariantes de `Order`, constraints e bloqueio do frontend.
-- `.planning/STATE.md` — CONTEXT gerado e aguardando revisão humana, governança manual, `parallelization=false` e gates posteriores não autorizados.
+- `.planning/STATE.md` — CONTEXT HUMAN APPROVED — PASS; RESEARCH autorizado separadamente, governança manual, `parallelization=false` e PLAN+ não autorizados.
 - `.planning/ROADMAP.md` — objetivo da Phase 16, dependência da Phase 15 e separação entre CONTEXT e RESEARCH/PLAN.
 - `.planning/REQUIREMENTS.md` — autoridade de `MRG-01..MRG-08` e rastreabilidade `FE-CART-006/007`.
 - `.planning/MILESTONES.md` — abertura do milestone v1.1 e separação entre backend e Frontend M1.
@@ -324,16 +326,18 @@ attach baseado somente em sessão legada
 
 </deferred>
 
-## Manual Review Gate
+## Human Approval Gate
 
-Este CONTEXT é o único artefato autorizado nesta etapa. Após sua materialização,
-o fluxo deve parar para revisão humana. `16-RESEARCH.md`, PLAN, SPEC/SDD,
-implementation prompt, execução, verification, review, closure, deploy,
-providers e infraestrutura remota não estão autorizados por este documento.
+Este CONTEXT recebeu **HUMAN APPROVED — PASS**. A aprovação fecha somente o
+gate CONTEXT e preserva integralmente D16-01..D16-42. Por decisão humana
+explícita subsequente, **Phase 16 RESEARCH está AUTHORIZED — NOT STARTED**.
+PLAN, SPEC/SDD, implementation prompt, execução, verification, review, closure,
+deploy, providers e infraestrutura remota permanecem não autorizados.
 
 ---
 
 *Phase: 16-cart-merge-review*
 *Context gathered: 2026-08-22T21:49:13-03:00*
-*Gate: CONTEXT generated — awaiting human review*
-*RESEARCH / PLAN / EXECUTION: NOT AUTHORIZED*
+*Gate: CONTEXT HUMAN APPROVED — PASS*
+*RESEARCH: AUTHORIZED — NOT STARTED*
+*PLAN / EXECUTION: NOT AUTHORIZED*
