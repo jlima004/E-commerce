@@ -204,4 +204,3 @@
 
 - Regra concreta para `CUSTOMER_CART_PRESERVED` — deliberadamente não inventada; RESEARCH/PLAN.
 - Data/gate de remoção final do attach após a fase de adaptação — PLAN posterior.
-
