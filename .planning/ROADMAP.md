@@ -27,8 +27,8 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 15 RESEARCH está **HUMAN APPROVED — PASS**
 - Phase 15 PLAN está **HUMAN APPROVED — PASS** (8 plans / 8 serial waves)
 - Phase 15 está **CLOSED — HUMAN APPROVED**; Plans `15-01`..`15-08` estão **8/8 HUMAN APPROVED — PASS**, `15-07` e `15-08` estão documentally closed, e CART-01..CART-09 estão **9/9 COMPLETE**
-- Phase 16 CONTEXT e RESEARCH estão **HUMAN APPROVED — PASS**; `R16-HR-01..R16-HR-08` estão **CLOSED — APPROVED**; Phase 16 PLAN está **TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED** (14 plans / 14 serial waves); EXECUTION e gates posteriores da Phase 16 permanecem não autorizados; Phase 17+ permanecem não autorizadas
-- A remediação pós-closure do PR #27 recebeu PASS humano; B15-PR27-HR-01..HR-06 estão CLOSED — PASS. O CONTEXT e o RESEARCH da Phase 16 foram posteriormente HUMAN APPROVED — PASS e somente o PLAN foi autorizado a seguir
+- Phase 16 CONTEXT, RESEARCH e PLAN estão **HUMAN APPROVED — PASS**; `R16-HR-01..R16-HR-08` e `B16-PLAN-HR-01..B16-PLAN-HR-02` estão **CLOSED — PASS**; Phase 16 EXECUTION está **AUTHORIZED — NOT STARTED** para o conjunto aceito de 14 planos / 14 waves seriais, com `auto_advance=false` e checkpoints humanos internos preservados; Phase 17+ permanecem não autorizadas
+- A remediação pós-closure do PR #27 recebeu PASS humano; B15-PR27-HR-01..HR-06 estão CLOSED — PASS. O CONTEXT, o RESEARCH e o PLAN da Phase 16 são HUMAN APPROVED — PASS; a EXECUTION está AUTHORIZED — NOT STARTED sob progressão serial/manual
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
 ## Milestones
@@ -47,7 +47,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | 13 | Storefront Contract Foundation & Surface Lockdown | v1.0 | 8 | CLOSED — HUMAN APPROVED; 7/7 plans; 8/8 requirements |
 | 14 | Customer Auth & Verification | 13 | 9 | **CLOSED — HUMAN APPROVED; 21/21 plans; 63/63 tasks; 9/9 requirements** |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CLOSED — HUMAN APPROVED; 8/8 plans; CART-01..CART-09 = 9/9 COMPLETE** |
-| 16 | Cart Merge & Review | 15 | 8 | **PLAN TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED; 14 plans / 14 serial waves; EXECUTION NOT AUTHORIZED** |
+| 16 | Cart Merge & Review | 15 | 8 | **CONTEXT/RESEARCH/PLAN HUMAN APPROVED — PASS; 14 plans / 14 serial waves; EXECUTION AUTHORIZED — NOT STARTED** |
 | 17 | Authenticated BR Checkout & Privacy | 16 | 10 | Not started |
 | 18 | Gelato Shipping Quote & Selection | 17 | 8 | Not started |
 | 19 | Storefront PaymentAttempt Hardening | 18 | 9 | Not started |
@@ -124,7 +124,7 @@ Detailed accepted evidence is preserved in:
 - `14-08-SUMMARY.md` — auth rate limits/timing/Redis fail-closed
 - `14-09-SUMMARY.md` — auth notification outbox/reconciliation
 - `14-10-SUMMARY.md` — session/JWT/refresh rotation
-- `14-11-SUMMARY.md` — PostgreSQL access guard/custom refresh-revoke surface
+- `14-11-SUMMARY.md` — PostgreSQL access guard/custom refresh-revoke
 - `14-12-SUMMARY.md` — verification latest-wins/one-winner domain
 - `14-13-SUMMARY.md` — exact verification Store surface and HTTP contracts
 - `14-14-SUMMARY.md` — registration coordinator/recovery/concurrency
@@ -246,8 +246,9 @@ Store/BFF synchronous Order birth is zero, the canonical
 authority, and capability leakage is ZERO. No deploy, provider or remote
 infrastructure action is authorized. Phase 16 CONTEXT and RESEARCH are
 **HUMAN APPROVED — PASS**; `R16-HR-01..R16-HR-08` are **CLOSED — APPROVED**.
-A subsequent explicit human decision authorizes **Phase 16 PLAN only**;
-Phase-16 EXECUTION and all later gates remain separately human-gated and unauthorized.
+The Phase 16 PLAN is **HUMAN APPROVED — PASS** after remediation and closure of `B16-PLAN-HR-01..B16-PLAN-HR-02`.
+A subsequent explicit human decision authorizes **Phase 16 EXECUTION** for the accepted 14-plan serial set.
+`auto_advance=false` remains binding; 16-04 and 16-13 retain their blocking human decisions, and Phase 17+ remains unauthorized.
 
 ### Post-closure PR #27 governance
 
@@ -255,8 +256,8 @@ Phase 15 remains **CLOSED — HUMAN APPROVED** as historical closure status.
 PR #27 post-closure remediation is **HUMAN APPROVED — PASS**;
 B15-PR27-HR-01..HR-06 are **CLOSED — PASS**. Phase-16 CONTEXT and RESEARCH are
 **HUMAN APPROVED — PASS**; `R16-HR-01..R16-HR-08` are **CLOSED — APPROVED**.
-Phase-16 PLAN is **TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED**
-(14 plans / 14 serial waves); EXECUTION and later gates remain unauthorized;
+Phase-16 PLAN is **HUMAN APPROVED — PASS** (14 plans / 14 serial waves);
+Phase-16 EXECUTION is **AUTHORIZED — NOT STARTED** under serial/manual progression;
 phase, requirements and percent counters remain unchanged while plan counters
 now reflect materialized plans `50/36`.
 
@@ -273,7 +274,7 @@ requirements `65`; plans `50/36`; percent `30`.
 
 **Goal:** substituir attach simples por merge transacional, idempotente, parcial e revisável.
 
-**Status:** **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED.** 14 plans / 14 serial waves. Depends on Phase 15 CLOSED. Phase-16 EXECUTION and later gates remain separately unauthorized.
+**Status:** **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN HUMAN APPROVED — PASS; EXECUTION AUTHORIZED — NOT STARTED.** 14 plans / 14 serial waves. Depends on Phase 15 CLOSED. Execution is serial with `auto_advance=false`; Phase 17+ remains separately unauthorized.
 
 Context authority: `.planning/phases/16-cart-merge-review/16-CONTEXT.md` — HUMAN APPROVED — PASS.
 
@@ -281,9 +282,11 @@ Research authority: `.planning/phases/16-cart-merge-review/16-RESEARCH.md`, revi
 
 Pattern authority: `.planning/phases/16-cart-merge-review/16-PATTERNS.md` — official typed `gsd-pattern-mapper` output.
 
-Plan-checker result: **VERIFICATION PASSED — 0 BLOCKER / 0 WARNING**. Executable coverage is `D16-01..D16-42` 42/42, `R16-HR-01..R16-HR-08` 8/8 and `MRG-01..MRG-08` 8/8. The generic decision-coverage parser reports `could-not-parse` for the approved `D16-NN` namespace; this remains a non-blocking INFO backed by the independent exact-set proof and does not authorize renaming the binding decisions.
+Plan review authority: `.planning/phases/16-cart-merge-review/16-PLAN-REVIEW.md` — PLAN HUMAN APPROVED — PASS; B16-PLAN-HR-01..02 CLOSED — PASS; EXECUTION AUTHORIZED — NOT STARTED.
 
-### Phase 16 plans — technical drafts awaiting human PLAN review
+Plan-checker result: **VERIFICATION PASSED — 0 BLOCKER / 0 WARNING**. Human PLAN review: **HUMAN APPROVED — PASS**; `B16-PLAN-HR-01` and `B16-PLAN-HR-02` are **CLOSED — PASS**. Execution authorization is recorded in `.planning/phases/16-cart-merge-review/16-PLAN-REVIEW.md`. Executable coverage is `D16-01..D16-42` 42/42, `R16-HR-01..R16-HR-08` 8/8 and `MRG-01..MRG-08` 8/8. The generic decision-coverage parser reports `could-not-parse` for the approved `D16-NN` namespace; this remains a non-blocking INFO backed by the independent exact-set proof and does not authorize renaming the binding decisions.
+
+### Phase 16 plans — human-approved execution set
 
 - **Wave 0:** `16-01-PLAN.md` — production tracer for transactional guest promotion.
 - **Wave 1** *(blocked on Wave 0 completion):* `16-02-PLAN.md` — closed decision engine, serializers and persistence models.
@@ -302,10 +305,10 @@ Plan-checker result: **VERIFICATION PASSED — 0 BLOCKER / 0 WARNING**. Executab
 
 Cross-cutting constraints:
 
-- every plan remains a technical draft with `HUMAN PLAN REVIEW REQUIRED` and `Phase 16 EXECUTION NOT AUTHORIZED`;
+- the plan set `16-01..16-14` is HUMAN APPROVED — PASS and Phase 16 EXECUTION is authorized; execution remains strictly serial with `workflow.auto_advance=false`;
 - PostgreSQL and real Medusa persistence are correctness authorities; Redis is auxiliary;
 - synchronous Phase-16 cart paths create zero Orders; canonical `payment_intent.succeeded` remains the sole accepted Order-birth authority;
-- `MRG-01..MRG-08` remain OPEN until separately authorized execution and accepted evidence close them;
+- `MRG-01..MRG-08` remain OPEN until accepted execution evidence and the later human closure gate close them;
 - registry TypeScript is OpenAPI authority; generated JSON is writer output only and Swagger remains non-interactive.
 
 ## Phase 17: Authenticated BR Checkout & Privacy
@@ -352,7 +355,7 @@ Phase 15 CONTEXT, RESEARCH, PLAN and closure are HUMAN APPROVED — PASS;
 Plans 15-01..15-08 are **8/8 HUMAN APPROVED — PASS** and Plans 15-07 and
 15-08 are DOCUMENTALLY CLOSED. CART-01..CART-09 are 9/9 COMPLETE. Phase 16
 CONTEXT and RESEARCH are **HUMAN APPROVED — PASS**, `R16-HR-01..R16-HR-08`
-are **CLOSED — APPROVED**, and Phase-16 PLAN is **TECHNICAL DRAFT — CHECKER
-PASS; HUMAN REVIEW REQUIRED** (14 plans / 14 serial waves); Phase-16 EXECUTION
-and later gates, provider real, infraestrutura remota, deploy and frontend
-remain unauthorized.
+are **CLOSED — APPROVED**, and Phase-16 PLAN is **HUMAN APPROVED — PASS**
+(14 plans / 14 serial waves); Phase-16 EXECUTION is **AUTHORIZED — NOT STARTED**
+under serial/manual progression. Phase 17+, provider real, infraestrutura remota,
+deploy and frontend remain unauthorized.
