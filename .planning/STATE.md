@@ -7,7 +7,7 @@ last_updated: "2026-08-23T09:47:18-03:00"
 progress:
   total_phases: 10
   completed_phases: 3
-  total_plans: 36
+  total_plans: 50
   completed_plans: 36
   percent: 30
 stopped_at: PHASE 16 PLAN TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED; EXECUTION NOT AUTHORIZED
@@ -131,7 +131,7 @@ Milestone v1.1:
 - requirements complete: **26/91**
 - Phase 13: FND-01..FND-08 = **8/8 COMPLETE**
 - Phase 14: AUTH-01..AUTH-09 = **9/9 COMPLETE**
-- known plans human-approved executed: **36/36** (Phase 13: 7; Phase 14: 21; Phase 15: 15-01, 15-02, 15-03, 15-04, 15-05, 15-06, 15-07, 15-08)
+- known plans human-approved executed: **36/50** (Phase 13: 7; Phase 14: 21; Phase 15: 15-01, 15-02, 15-03, 15-04, 15-05, 15-06, 15-07, 15-08)
 - Phase 15: **CLOSED — HUMAN APPROVED** (Plans 15-01..15-08 HUMAN APPROVED — PASS; 15-07 and 15-08 documentally closed; CART-01..CART-09 9/9 COMPLETE)
 - Phase 16: **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED**; 14 plans / 14 serial waves; R16-HR-01..08 CLOSED — APPROVED; execution and later gates remain unauthorized
 - frontend: BLOCKED

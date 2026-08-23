@@ -257,10 +257,11 @@ B15-PR27-HR-01..HR-06 are **CLOSED — PASS**. Phase-16 CONTEXT and RESEARCH are
 **HUMAN APPROVED — PASS**; `R16-HR-01..R16-HR-08` are **CLOSED — APPROVED**.
 Phase-16 PLAN is **TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED**
 (14 plans / 14 serial waves); EXECUTION and later gates remain unauthorized;
-milestone counters are unchanged.
+phase, requirements and percent counters remain unchanged while plan counters
+now reflect materialized plans `50/36`.
 
 Milestone counters: phases closed `3/10`; requirements `26/91`; open
-requirements `65`; plans `36/36`; percent `30`.
+requirements `65`; plans `50/36`; percent `30`.
 
 ### Accepted Phase-15 evidence
 

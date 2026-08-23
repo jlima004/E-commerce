@@ -11,7 +11,7 @@
 - Preserve `D16-01..D16-42` exactly.
 - Apply `R16-HR-01..R16-HR-08` over any conflicting recommendation or open decision in `16-RESEARCH.md`.
 - Keep `MRG-01..MRG-08` **OPEN / UNCHANGED**.
-- Preserve the current milestone counters: phases closed `3/10`; requirements complete `26/91`; open requirements `65`; plans `36/36`; progress `30%`.
+- Preserve the current milestone counters: phases closed `3/10`; requirements complete `26/91`; open requirements `65`; plans `50/36` (`total_plans=50`, `completed_plans=36`); progress `30%`.
 - `CUSTOMER_CART_PRESERVED` remains in the closed enum but has no positive branch or positive fixture.
 - `If-Match` on merge versions the guest source; the Customer destination version is resolved and locked server-side.
 - A pending review blocks every structural mutation, including another merge, with `409 REVIEW_REQUIRED` and zero effect.
