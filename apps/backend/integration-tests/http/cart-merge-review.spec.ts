@@ -9,7 +9,85 @@ import {
 } from "../../src/modules/guest-cart-capability/types"
 import { STORE_IDEMPOTENCY_MODULE } from "../../src/modules/store-idempotency"
 import { STORE_RESOURCE_VERSION_MODULE } from "../../src/modules/store-resource-version"
-import { Modules } from "@medusajs/framework/utils"
+import {
+  MedusaAppLoader,
+  container as medusaContainer,
+} from "@medusajs/framework"
+import { asValue } from "@medusajs/framework/awilix"
+import { configManager } from "@medusajs/framework/config"
+import {
+  ContainerRegistrationKeys,
+  createMedusaContainer,
+  Modules,
+} from "@medusajs/framework/utils"
+import { MedusaModule, ModulesDefinition } from "@medusajs/modules-sdk"
+
+type MedusaConfigModule = {
+  modules: Record<string, unknown>
+  [key: string]: unknown
+}
+
+type BootstrappedCartMerge = {
+  container: typeof medusaContainer
+  dispose: () => Promise<void>
+}
+
+function loadTracerConfig(includeCartMerge: boolean): MedusaConfigModule {
+  const config = require("../../medusa-config") as MedusaConfigModule
+  const cartMergeModule = config.modules[CART_MERGE_MODULE] as
+    | Record<string, unknown>
+    | undefined
+  if (!cartMergeModule || cartMergeModule.resolve !== "./src/modules/cart-merge") {
+    throw new Error("CART_MERGE_CONFIG_REGISTRATION_UNAVAILABLE")
+  }
+
+  const isolatedModules = Object.fromEntries(
+    Object.keys(ModulesDefinition).map((key) => [key, false])
+  ) as Record<string, unknown>
+  isolatedModules[CART_MERGE_MODULE] = includeCartMerge
+    ? cartMergeModule
+    : false
+
+  return { ...config, modules: isolatedModules }
+}
+
+async function bootstrapCartMergeContainer(
+  includeCartMerge = true
+): Promise<BootstrappedCartMerge> {
+  const container = medusaContainer
+  const tracerConfig = loadTracerConfig(includeCartMerge)
+  configManager.loadConfig({
+    projectConfig: tracerConfig,
+    baseDir: process.cwd(),
+  })
+  const logger = {
+    debug: () => undefined,
+    info: () => undefined,
+    log: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+  }
+  container.register({
+    [ContainerRegistrationKeys.LOGGER]: asValue(logger),
+    [ContainerRegistrationKeys.MANAGER]: asValue({}),
+    [ContainerRegistrationKeys.PG_CONNECTION]: asValue(undefined),
+  })
+
+  const appLoader = new MedusaAppLoader({
+    container,
+    cwd: process.cwd(),
+    medusaConfigPath: process.cwd(),
+  })
+  const application = await appLoader.load()
+
+  return {
+    container,
+    dispose: async () => {
+      await application.onApplicationShutdown()
+      MedusaModule.clearInstances()
+    },
+  }
+}
 
 function createResponse() {
   return {
@@ -31,7 +109,9 @@ function createResponse() {
   }
 }
 
-function createTracerHarness() {
+function createTracerHarness(
+  container: ReturnType<typeof createMedusaContainer>
+) {
   const guestCart = {
     id: "cart_guest_merge_01",
     customer: null,
@@ -126,19 +206,13 @@ function createTracerHarness() {
       return guestCart
     }),
   }
-  // The HTTP tracer constructs the concrete Medusa service; the scope keeps
-  // the token-to-service resolution identical to the runtime route.
-  const service = new CartMergeModuleService({} as never)
-  const scope = {
-    resolve(key: unknown) {
-      if (key === CART_MERGE_MODULE) return service
-      if (key === Modules.CART) return cartModule
-      if (key === GUEST_CART_CAPABILITY_MODULE) return capabilityService
-      if (key === STORE_IDEMPOTENCY_MODULE) return idempotency
-      if (key === STORE_RESOURCE_VERSION_MODULE) return resourceVersion
-      throw new Error(`unrecognized container key ${String(key)}`)
-    },
-  }
+  const scope = createMedusaContainer({}, container)
+  scope.register({
+    [Modules.CART]: asValue(cartModule),
+    [GUEST_CART_CAPABILITY_MODULE]: asValue(capabilityService),
+    [STORE_IDEMPOTENCY_MODULE]: asValue(idempotency),
+    [STORE_RESOURCE_VERSION_MODULE]: asValue(resourceVersion),
+  })
 
   return {
     guestCart,
@@ -169,31 +243,56 @@ function createTracerHarness() {
 }
 
 describe("Cart merge HTTP tracer", () => {
+  it("falha se cart_merge não puder ser resolvido pelo container real", async () => {
+    const boot = await bootstrapCartMergeContainer(false)
+    try {
+      const harness = createTracerHarness(boot.container)
+      await expect(
+        mergeCart(harness.request as never, createResponse() as never)
+      ).rejects.toThrow(/cart_merge/)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
   it("promove o guest integralmente quando não existe Customer cart", async () => {
-    const harness = createTracerHarness()
-    const response = createResponse()
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      expect(boot.container.resolve(CART_MERGE_MODULE)).toBeInstanceOf(
+        CartMergeModuleService
+      )
 
-    await mergeCart(harness.request as never, response as never)
+      const harness = createTracerHarness(boot.container)
+      const response = createResponse()
 
-    expect(response.statusCode).toBe(200)
-    expect(response.headers.etag).toBe('"2"')
-    expect((response.body as any).outcome).toBe("GUEST_CART_ATTACHED")
-    expect((response.body as any).review).toEqual({
-      requiresReview: false,
-      reviewRef: null,
-      rejectedItems: [],
-    })
-    expect((response.body as any).cart.id).toBe(harness.guestCart.id)
-    expect((response.body as any).cart.customer.id).toBe("cus_merge_01")
-    expect(harness.versions.get(harness.guestCart.id)).toBe(2)
-    expect(harness.capability.status).toBe("consumed")
-    expect(
-      harness.capabilityService.authorizeGuestCartCapabilityForMutation
-    ).toHaveBeenCalledTimes(1)
-    expect(harness.idempotency.claim).toHaveBeenCalledTimes(1)
-    expect(harness.idempotency.markCompleted).toHaveBeenCalledTimes(1)
-    expect(harness.cartModule.updateCarts).toHaveBeenCalledTimes(1)
-    expect(JSON.stringify(response.body)).not.toContain("guest-capability-is-not-persisted")
-    expect(JSON.stringify(response.body)).not.toContain("customer-jwt-is-not-persisted")
+      await mergeCart(harness.request as never, response as never)
+
+      expect(response.statusCode).toBe(200)
+      expect(response.headers.etag).toBe('"2"')
+      expect((response.body as any).outcome).toBe("GUEST_CART_ATTACHED")
+      expect((response.body as any).review).toEqual({
+        requiresReview: false,
+        reviewRef: null,
+        rejectedItems: [],
+      })
+      expect((response.body as any).cart.id).toBe(harness.guestCart.id)
+      expect((response.body as any).cart.customer.id).toBe("cus_merge_01")
+      expect(harness.versions.get(harness.guestCart.id)).toBe(2)
+      expect(harness.capability.status).toBe("consumed")
+      expect(
+        harness.capabilityService.authorizeGuestCartCapabilityForMutation
+      ).toHaveBeenCalledTimes(1)
+      expect(harness.idempotency.claim).toHaveBeenCalledTimes(1)
+      expect(harness.idempotency.markCompleted).toHaveBeenCalledTimes(1)
+      expect(harness.cartModule.updateCarts).toHaveBeenCalledTimes(1)
+      expect(JSON.stringify(response.body)).not.toContain(
+        "guest-capability-is-not-persisted"
+      )
+      expect(JSON.stringify(response.body)).not.toContain(
+        "customer-jwt-is-not-persisted"
+      )
+    } finally {
+      await boot.dispose()
+    }
   })
 })
