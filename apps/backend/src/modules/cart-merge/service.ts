@@ -208,6 +208,63 @@ async function lockCartRows(
   }
 }
 
+/**
+ * Disposable multiprocess proof hook. It is inert unless the test worker has
+ * explicitly armed the loopback-only barrier environment. The transaction
+ * remains open while the parent releases the worker, so the advisory lock is
+ * the synchronization authority rather than process memory or Redis.
+ */
+async function awaitCartMergeCustomerLockBarrier(
+  transaction: TransactionContext,
+  customerId: string
+): Promise<void> {
+  const runId = process.env.P16_CART_MERGE_BARRIER_RUN_ID
+  const role = process.env.P16_CART_MERGE_BARRIER_ROLE
+  if (!runId || !/^[a-f0-9]{16}$/.test(runId) || !/^[AB]$/.test(role ?? "")) {
+    return
+  }
+  if (typeof process.send !== "function") {
+    throw new Error("P16_CART_MERGE_LOCK_BARRIER_IPC_UNAVAILABLE")
+  }
+
+  const txid = String(
+    requireRows(await transaction.raw("select txid_current()::text as txid"))[0]
+      ?.txid ?? ""
+  )
+  if (!/^\d+$/.test(txid)) {
+    throw new Error("P16_CART_MERGE_LOCK_BARRIER_TXID_INVALID")
+  }
+  process.send({
+    type: "lock-acquired",
+    runId,
+    role,
+    customerId: customerId.replace(/[^a-zA-Z0-9_-]/g, "_"),
+    txid,
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      process.removeListener("message", onMessage)
+      reject(new Error("P16_CART_MERGE_LOCK_BARRIER_TIMEOUT"))
+    }, 30_000)
+    const onMessage = (message: unknown) => {
+      if (
+        !message ||
+        typeof message !== "object" ||
+        (message as { type?: unknown }).type !== "cart-merge-release" ||
+        (message as { runId?: unknown }).runId !== runId ||
+        (message as { role?: unknown }).role !== role
+      ) {
+        return
+      }
+      clearTimeout(timeout)
+      process.removeListener("message", onMessage)
+      resolve()
+    }
+    process.on("message", onMessage)
+  })
+}
+
 function throwConflict(code: string): never {
   throw Object.assign(
     new MedusaError(MedusaError.Types.CONFLICT, code),
@@ -627,6 +684,10 @@ class CartMergeModuleService extends MedusaService({
       // replay is receipt-authoritative and must not be rejected by a later
       // authority/candidate anomaly.
       await lockCustomerCartAuthority(transactionContext, input.customerId)
+      await awaitCartMergeCustomerLockBarrier(
+        transactionContext,
+        input.customerId
+      )
 
       // Replay is resolved before reading the current Cart. This is essential
       // after capability consumption, ACK, or a later fixture mutation: the

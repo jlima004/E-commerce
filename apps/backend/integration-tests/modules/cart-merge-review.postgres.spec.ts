@@ -1,3 +1,4 @@
+import { createRegionsWorkflow } from "@medusajs/core-flows"
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
 import { Modules } from "@medusajs/framework/utils"
 import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route"
@@ -26,7 +27,9 @@ import {
   insertCustomerCartAuthorityProbe,
   instrumentRealCartMergeTransaction,
   readCartMergeSchemaCatalog,
+  readCustomerCartCanonicalState,
   readRealCartMergeState,
+  runCartMergeRace,
   type CartMergePostgresRawConnection,
 } from "../helpers/cart-merge-postgres"
 
@@ -115,6 +118,30 @@ if (!requestedDatabaseName) {
       jest.setTimeout(180_000)
 
       const connection = dbConnection as unknown as CartMergePostgresRawConnection
+
+      const ensureBrazilRegion = async () => {
+        const existing = await connection.raw(
+          "select id from region where currency_code = ? and deleted_at is null limit 1",
+          ["brl"]
+        )
+        if ((existing.rows ?? []).length > 0) return
+        await createRegionsWorkflow(getContainer()).run({
+          input: {
+            regions: [
+              {
+                name: "P16 Cart Merge Brazil",
+                currency_code: "brl",
+                countries: ["br"],
+                payment_providers: ["pp_system_default"],
+              },
+            ],
+          },
+        })
+      }
+
+      beforeAll(async () => {
+        await ensureBrazilRegion()
+      })
 
       const runMerge = async (
         container: any,
@@ -673,6 +700,216 @@ if (!requestedDatabaseName) {
           expect(transaction.transactionIds).toHaveLength(1)
         }
       )
+
+      it("serializa active-vs-active em workers reais e materializa uma authority", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0602_active_active",
+          { withItems: false }
+        )
+        await ensureBrazilRegion()
+        const beforeOrders = await countPersistedOrders(connection)
+
+        const race = await runCartMergeRace(
+          process.env.DATABASE_URL!,
+          "active",
+          "active",
+          fixture,
+          fixture,
+          "p16-task0602-active-a",
+          "p16-task0602-active-b"
+        )
+        expect(race.lockTxids).toEqual([
+          expect.stringMatching(/^\d+$/),
+          expect.stringMatching(/^\d+$/),
+        ])
+        expect(new Set(race.lockTxids).size).toBe(2)
+        expect(race.workers.map((worker) => worker.statusCode).sort()).toEqual([
+          200,
+          201,
+        ])
+        expect(race.workers[0]?.cartId).toBe(race.workers[1]?.cartId)
+
+        const finalState = await readCustomerCartCanonicalState(
+          connection,
+          fixture.customerId
+        )
+        expect(finalState.activeAuthorityRows).toBe(1)
+        expect(finalState.usableCustomerCartIds).toHaveLength(1)
+        expect(finalState.activeAuthorityCartId).toBe(
+          finalState.usableCustomerCartIds[0]
+        )
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+      })
+
+      it("serializa active-vs-merge e deixa o perdedor reler a authority", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0602_active_merge"
+        )
+        const beforeOrders = await countPersistedOrders(connection)
+
+        const race = await runCartMergeRace(
+          process.env.DATABASE_URL!,
+          "active",
+          "merge",
+          fixture,
+          fixture,
+          "p16-task0602-active-merge-active",
+          "p16-task0602-active-merge-merge"
+        )
+        const activeResult = race.workers.find((worker) => worker.operation === "active")!
+        const mergeResult = race.workers.find((worker) => worker.operation === "merge")!
+
+        expect([activeResult.statusCode, mergeResult.statusCode].sort()).toEqual(
+          activeResult.statusCode === 201 ? [201, 409] : [200, 200]
+        )
+        if (activeResult.statusCode === 201) {
+          expect(mergeResult.code).toBe("CART_MERGE_CUSTOMER_DESTINATION_UNSUPPORTED")
+        } else {
+          expect(mergeResult.outcome).toBe("GUEST_CART_ATTACHED")
+          expect(mergeResult.statusCode).toBe(200)
+          expect(activeResult.statusCode).toBe(200)
+        }
+
+        const finalState = await readCustomerCartCanonicalState(
+          connection,
+          fixture.customerId
+        )
+        expect(finalState.activeAuthorityRows).toBe(1)
+        expect(finalState.usableCustomerCartIds).toHaveLength(1)
+        expect(finalState.activeAuthorityCartId).toBe(
+          finalState.usableCustomerCartIds[0]
+        )
+        const mergeState = await readRealCartMergeState(connection, fixture)
+        if (mergeResult.statusCode === 200) {
+          expect(mergeState.customer_id).toBe(fixture.customerId)
+          expect(mergeState.capability_status).toBe("consumed")
+          expect(mergeState.idempotency_state).toBe("completed")
+          expect(mergeState.result_outcome).toBe("GUEST_CART_ATTACHED")
+          expect(mergeState.review_status).toBeNull()
+        } else {
+          expect(mergeState.customer_id).toBeNull()
+          expect(mergeState.capability_status).toBe("active")
+          expect(mergeState.idempotency_state).toBeNull()
+          expect(mergeState.result_id).toBeNull()
+          expect(mergeState.review_status).toBeNull()
+        }
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+      })
+
+      it("serializa merge-vs-merge, consome uma capability e não herda replay por key diferente", async () => {
+        const container = getContainer()
+        const firstFixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0602_merge_merge_a"
+        )
+        const secondFixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0602_merge_merge_b",
+          { customerId: firstFixture.customerId }
+        )
+        const beforeOrders = await countPersistedOrders(connection)
+
+        const race = await runCartMergeRace(
+          process.env.DATABASE_URL!,
+          "merge",
+          "merge",
+          firstFixture,
+          secondFixture,
+          "p16-task0602-merge-a",
+          "p16-task0602-merge-b"
+        )
+        const winner = race.workers.find((worker) => worker.statusCode === 200)!
+        const loser = race.workers.find((worker) => worker.statusCode === 409)!
+        const winnerFixture = winner.role === "A" ? firstFixture : secondFixture
+        const loserFixture = loser.role === "A" ? firstFixture : secondFixture
+
+        expect(winner.outcome).toBe("GUEST_CART_ATTACHED")
+        expect(loser.code).toBe("CART_MERGE_CUSTOMER_DESTINATION_UNSUPPORTED")
+        const winnerState = await readRealCartMergeState(connection, winnerFixture)
+        const loserState = await readRealCartMergeState(connection, loserFixture)
+        expect(winnerState.customer_id).toBe(firstFixture.customerId)
+        expect(winnerState.capability_status).toBe("consumed")
+        expect(winnerState.idempotency_state).toBe("completed")
+        expect(winnerState.result_outcome).toBe("GUEST_CART_ATTACHED")
+        expect(winnerState.review_status).toBeNull()
+        expect(loserState.customer_id).toBeNull()
+        expect(loserState.capability_status).toBe("active")
+        expect(loserState.idempotency_state).toBeNull()
+        expect(loserState.result_id).toBeNull()
+        expect(loserState.review_status).toBeNull()
+
+        const finalState = await readCustomerCartCanonicalState(
+          connection,
+          firstFixture.customerId
+        )
+        expect(finalState.activeAuthorityRows).toBe(1)
+        expect(finalState.usableCustomerCartIds).toEqual([winnerFixture.guestCartId])
+        expect(finalState.activeAuthorityCartId).toBe(winnerFixture.guestCartId)
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+
+        await expect(
+          runMerge(container, loserFixture, {
+            headers: {
+              ...createCartMergeRequest(loserFixture, container).headers,
+              "idempotency-key": "p16-task0602-merge-different-key",
+            },
+          })
+        ).rejects.toMatchObject({
+          code: "CART_MERGE_CUSTOMER_DESTINATION_UNSUPPORTED",
+          statusCode: 409,
+          status: 409,
+        })
+        expect(await readRealCartMergeState(connection, loserFixture)).toEqual(
+          loserState
+        )
+      })
+
+      it("falha fechado em ambiguity pré-existente nos dois processos", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0602_preexisting_ambiguity",
+          { withItems: false }
+        )
+        const candidateIds = await createHistoricalCustomerCartCandidates(
+          container,
+          fixture.customerId,
+          fixture.identity
+        )
+        expect(candidateIds).toHaveLength(2)
+        const beforeOrders = await countPersistedOrders(connection)
+
+        const race = await runCartMergeRace(
+          process.env.DATABASE_URL!,
+          "active",
+          "active",
+          fixture,
+          fixture,
+          "p16-task0602-ambiguity-a",
+          "p16-task0602-ambiguity-b"
+        )
+
+        expect(race.workers.map((worker) => worker.statusCode)).toEqual([409, 409])
+        expect(race.workers.map((worker) => worker.code)).toEqual([
+          "CUSTOMER_CART_AUTHORITY_CONFLICT",
+          "CUSTOMER_CART_AUTHORITY_CONFLICT",
+        ])
+        const finalState = await readCustomerCartCanonicalState(
+          connection,
+          fixture.customerId
+        )
+        expect(finalState.activeAuthorityRows).toBe(0)
+        expect(finalState.usableCustomerCartIds).toHaveLength(2)
+        expect(await countCustomerCartAuthorityRows(connection, fixture.customerId)).toBe(0)
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+        const fixtureState = await readRealCartMergeState(connection, fixture)
+        expect(fixtureState.capability_status).toBe("active")
+        expect(fixtureState.idempotency_state).toBeNull()
+      })
     },
   })
 }

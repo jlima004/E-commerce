@@ -1,6 +1,7 @@
 import { createProductsWorkflow } from "@medusajs/core-flows"
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { Modules } from "@medusajs/framework/utils"
+import { spawn, type ChildProcess } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import {
   GUEST_CART_CAPABILITY_MODULE,
@@ -57,6 +58,34 @@ export type CartMergePersistedState = {
 export type CartMergeTransactionInstrumentation = {
   transactionIds: string[]
   restore(): void
+}
+
+export type CartMergeRaceOperation = "active" | "merge"
+
+export type CartMergeRaceWorkerResult = {
+  role: "A" | "B"
+  operation: CartMergeRaceOperation
+  statusCode: number | null
+  code: string | null
+  cartId: string | null
+  outcome: string | null
+  txid: string
+}
+
+export type CartMergeRaceResult = {
+  workers: [CartMergeRaceWorkerResult, CartMergeRaceWorkerResult]
+  lockTxids: [string, string]
+}
+
+type CartMergeRaceWorker = {
+  child: ChildProcess
+  role: "A" | "B"
+  queue: {
+    messages: unknown[]
+    waiters: Array<any>
+  }
+  send(message: Record<string, unknown>): void
+  close(): Promise<void>
 }
 
 export type CartMergeSchemaCatalog = {
@@ -461,7 +490,7 @@ export async function cleanupCartMergeSchemaProbes(
 export async function createRealCartMergeFixture(
   container: MedusaContainer,
   identity = `p16_real_${randomBytes(5).toString("hex")}`,
-  options: { withItems?: boolean } = {}
+  options: { withItems?: boolean; customerId?: string } = {}
 ): Promise<CartMergeFixture> {
   const fulfillmentModule = container.resolve(Modules.FULFILLMENT) as {
     createShippingProfiles(input: {
@@ -479,15 +508,18 @@ export async function createRealCartMergeFixture(
   const safeIdentity = identity.replace(/[^a-z0-9_-]/gi, "-")
   const handleIdentity = safeIdentity.replace(/_/g, "-")
   const email = `${safeIdentity}@cart-merge.test`
-  const createdCustomer = await customerModule.createCustomers({
-    email,
-    first_name: "Cart",
-    last_name: "Merge",
-  })
-  const customer = Array.isArray(createdCustomer)
-    ? createdCustomer[0]
-    : createdCustomer
-  const customerId = String((customer as { id?: unknown })?.id ?? "")
+  let customerId = options.customerId ?? ""
+  if (!customerId) {
+    const createdCustomer = await customerModule.createCustomers({
+      email,
+      first_name: "Cart",
+      last_name: "Merge",
+    })
+    const customer = Array.isArray(createdCustomer)
+      ? createdCustomer[0]
+      : createdCustomer
+    customerId = String((customer as { id?: unknown })?.id ?? "")
+  }
   if (!customerId) throw new Error("P16_REAL_CUSTOMER_CREATION_FAILED")
 
   const shippingProfile = await fulfillmentModule.createShippingProfiles({
@@ -633,6 +665,387 @@ export function createCartMergeResponse() {
       this.body = body
       return this
     },
+  }
+}
+
+const CART_MERGE_RACE_WORKER_SOURCE = String.raw`
+const { MedusaAppLoader, container } = require("@medusajs/framework")
+const { asValue } = require("@medusajs/framework/awilix")
+const { configManager } = require("@medusajs/framework/config")
+const { ContainerRegistrationKeys } = require("@medusajs/framework/utils")
+const { MedusaModule } = require("@medusajs/modules-sdk")
+const path = require("node:path")
+
+const role = process.env.P16_CART_MERGE_WORKER_ROLE
+const workerId = process.env.P16_CART_MERGE_WORKER_ID
+let application
+
+function send(message) {
+  if (typeof process.send !== "function") {
+    throw new Error("P16_CART_MERGE_WORKER_IPC_UNAVAILABLE")
+  }
+  process.send(message)
+}
+
+function response() {
+  return {
+    statusCode: 200,
+    headers: {},
+    body: undefined,
+    status(code) { this.statusCode = code; return this },
+    setHeader(name, value) { this.headers[String(name).toLowerCase()] = value; return this },
+    json(body) { this.body = body; return this },
+  }
+}
+
+function errorShape(error) {
+  return {
+    code: typeof error?.code === "string" ? error.code : null,
+    statusCode: Number.isInteger(error?.statusCode) ? error.statusCode : null,
+    message: typeof error?.message === "string" ? error.message : "WORKER_ERROR",
+  }
+}
+
+function requestFor(operation, fixture, idempotencyKey) {
+  const base = {
+    method: "POST",
+    originalUrl: operation === "active" ? "/store/carts/active" : "/store/customers/me/cart/merge",
+    url: operation === "active" ? "/store/carts/active" : "/store/customers/me/cart/merge",
+    scope: container,
+    auth_context: { actor_type: "customer", actor_id: fixture.customerId },
+    customerAuth: { authorized: true, customerId: fixture.customerId },
+    customerAuthBff: { authorized: true },
+    headers: {
+      authorization: "Bearer test-customer-jwt",
+      "x-indicio-bff-auth": "test-bff-authority",
+      "idempotency-key": idempotencyKey,
+    },
+  }
+  if (operation === "merge") {
+    base.body = { guestCartId: fixture.guestCartId }
+    base.headers["x-indicio-guest-cart-token"] = fixture.capabilityToken
+    base.headers["if-match"] = '"' + String(fixture.guestVersion) + '"'
+  }
+  return base
+}
+
+async function boot() {
+  const projectConfig = require(path.join(process.cwd(), "medusa-config"))
+  configManager.loadConfig({ projectConfig, baseDir: process.cwd() })
+  const { pgConnectionLoader } = require("@medusajs/framework")
+  await pgConnectionLoader()
+  const logger = {
+    debug() {}, info() {}, log() {}, warn() {}, error() {},
+  }
+  container.register({
+    [ContainerRegistrationKeys.LOGGER]: asValue(logger),
+  })
+  const loader = new MedusaAppLoader({
+    container,
+    cwd: process.cwd(),
+    medusaConfigPath: process.cwd(),
+  })
+  application = await loader.load()
+  send({ type: "ready", role, workerId, pid: process.pid })
+}
+
+async function run(message) {
+  const operation = message.operation
+  const fixture = message.fixture
+  const runId = message.runId
+  process.env.P16_CART_MERGE_BARRIER_RUN_ID = runId
+  process.env.P16_CART_MERGE_BARRIER_ROLE = role
+  process.env.P16_CART_MERGE_BARRIER_PARENT_PID = String(process.ppid)
+  const res = response()
+  send({ type: "command-started", runId, role })
+  try {
+    const handler = operation === "active"
+      ? require(path.join(process.cwd(), "src/api/store/carts/active/route")).POST
+      : require(path.join(process.cwd(), "src/api/store/customers/me/cart/merge/route")).POST
+    await handler(requestFor(operation, fixture, message.idempotencyKey), res)
+    send({
+      type: "result",
+      runId,
+      role,
+      operation,
+      statusCode: res.statusCode,
+      code: null,
+      cartId: res.body?.cart?.id ?? null,
+      outcome: res.body?.outcome ?? null,
+      txid: message.lockTxid ?? "",
+    })
+  } catch (error) {
+    send({
+      type: "result",
+      runId,
+      role,
+      operation,
+      statusCode: Number.isInteger(error?.statusCode) ? error.statusCode : null,
+      ...errorShape(error),
+      cartId: null,
+      outcome: null,
+      txid: message.lockTxid ?? "",
+    })
+  }
+}
+
+process.on("message", async (message) => {
+  if (!message || typeof message !== "object") return
+  if (message.type === "run") {
+    await run(message)
+    return
+  }
+  if (message.type === "close") {
+    await application?.onApplicationShutdown().catch(() => undefined)
+    MedusaModule.clearInstances()
+    process.exit(0)
+  }
+})
+
+boot().catch((error) => {
+  try { send({ type: "boot-error", role, code: error?.code ?? null, message: error?.message ?? "BOOT_ERROR" }) } catch {}
+  process.exit(1)
+})
+`
+
+function raceError(code: string): Error {
+  return new Error(code)
+}
+
+function workerMessageQueue(worker: CartMergeRaceWorker): {
+  messages: unknown[]
+  waiters: Array<{
+    predicate: (message: any) => boolean
+    resolve: (message: any) => void
+    reject: (error: Error) => void
+    timer?: ReturnType<typeof setTimeout>
+  }>
+} {
+  return (worker as unknown as { queue: { messages: unknown[]; waiters: Array<any> } }).queue
+}
+
+async function startCartMergeRaceWorker(
+  role: "A" | "B",
+  databaseUrl: string
+): Promise<CartMergeRaceWorker> {
+  const parsed = new URL(databaseUrl)
+  if (!["127.0.0.1", "localhost", "::1"].includes(parsed.hostname.replace(/^\[|\]$/g, ""))) {
+    throw raceError("P16_CART_MERGE_WORKER_DATABASE_HOST_FORBIDDEN")
+  }
+  const child = spawn(
+    process.execPath,
+    ["-r", "ts-node/register/transpile-only", "-e", CART_MERGE_RACE_WORKER_SOURCE],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        DATABASE_URL: databaseUrl,
+        P16_CART_MERGE_WORKER_ROLE: role,
+        P16_CART_MERGE_WORKER_ID: `worker-${role}`,
+        TS_NODE_PROJECT: "tsconfig.json",
+      },
+      stdio: ["ignore", "ignore", "pipe", "ipc"],
+    }
+  )
+  const queue = { messages: [] as unknown[], waiters: [] as Array<any> }
+  ;(child as unknown as { queue: typeof queue }).queue = queue
+  child.on("message", (message) => {
+    const waiterIndex = queue.waiters.findIndex((waiter) => waiter.predicate(message))
+    if (waiterIndex >= 0) {
+      const waiter = queue.waiters.splice(waiterIndex, 1)[0]
+      waiter.resolve(message)
+    } else {
+      queue.messages.push(message)
+    }
+  })
+  const boot = await nextCartMergeRaceWorkerMessage(
+    child as unknown as CartMergeRaceWorker,
+    (message) => message?.type === "ready" || message?.type === "boot-error",
+    60_000
+  )
+  if (boot.type !== "ready") {
+    throw raceError(
+      `P16_CART_MERGE_WORKER_BOOT_FAILED:${boot.code ?? boot.message ?? "unknown"}`
+    )
+  }
+  return {
+    child,
+    role,
+    queue,
+    send(message) {
+      if (!child.connected) throw raceError("P16_CART_MERGE_WORKER_IPC_CLOSED")
+      child.send(message)
+    },
+    close: async () => {
+      if (child.exitCode !== null) return
+      child.send({ type: "close" })
+      await new Promise<void>((resolveClose) => {
+        const timer = setTimeout(() => {
+          child.kill("SIGKILL")
+          resolveClose()
+        }, 10_000)
+        child.once("exit", () => {
+          clearTimeout(timer)
+          resolveClose()
+        })
+      })
+    },
+  }
+}
+
+function nextCartMergeRaceWorkerMessage(
+  worker: CartMergeRaceWorker,
+  predicate: (message: any) => boolean,
+  timeoutMs: number
+): Promise<any> {
+  const queue = workerMessageQueue(worker)
+  const existingIndex = queue.messages.findIndex(predicate)
+  if (existingIndex >= 0) return Promise.resolve(queue.messages.splice(existingIndex, 1)[0])
+  return new Promise((resolveMessage, reject) => {
+    const waiter = {
+      predicate,
+      resolve: (message: any) => {
+        clearTimeout(waiter.timer)
+        resolveMessage(message)
+      },
+      reject,
+      timer: undefined as ReturnType<typeof setTimeout> | undefined,
+    }
+    waiter.timer = setTimeout(() => {
+      const index = queue.waiters.indexOf(waiter)
+      if (index >= 0) queue.waiters.splice(index, 1)
+      reject(raceError("P16_CART_MERGE_LOCK_BARRIER_TIMEOUT"))
+    }, timeoutMs)
+    queue.waiters.push(waiter)
+  })
+}
+
+function cancelCartMergeRaceWaiters(workers: CartMergeRaceWorker[]): void {
+  for (const worker of workers) {
+    const queue = workerMessageQueue(worker)
+    const pending = queue.waiters.splice(0)
+    for (const waiter of pending) {
+      clearTimeout(waiter.timer)
+      waiter.reject(raceError("P16_CART_MERGE_RACE_WAITER_CANCELLED"))
+    }
+  }
+}
+
+export async function runCartMergeRace(
+  databaseUrl: string,
+  operationA: CartMergeRaceOperation,
+  operationB: CartMergeRaceOperation,
+  fixtureA: CartMergeFixture,
+  fixtureB: CartMergeFixture,
+  idempotencyKeyA = `p16-race-a-${randomBytes(5).toString("hex")}`,
+  idempotencyKeyB = `p16-race-b-${randomBytes(5).toString("hex")}`
+): Promise<CartMergeRaceResult> {
+  const runId = randomBytes(8).toString("hex")
+  const workers: CartMergeRaceWorker[] = []
+  try {
+    workers.push(await startCartMergeRaceWorker("A", databaseUrl))
+    workers.push(await startCartMergeRaceWorker("B", databaseUrl))
+  } catch (error) {
+    await Promise.all(workers.map((worker) => worker.close()))
+    throw error
+  }
+  const results: Array<CartMergeRaceWorkerResult> = []
+  try {
+    workers[0].send({
+      type: "run", runId, operation: operationA, fixture: fixtureA,
+      idempotencyKey: idempotencyKeyA,
+    })
+    workers[1].send({
+      type: "run", runId, operation: operationB, fixture: fixtureB,
+      idempotencyKey: idempotencyKeyB,
+    })
+
+    await Promise.all(workers.map((worker) =>
+      nextCartMergeRaceWorkerMessage(worker, (message) =>
+        message?.type === "command-started" && message.runId === runId,
+        30_000
+      )
+    ))
+
+    const first = await Promise.race(workers.map((worker) =>
+      nextCartMergeRaceWorkerMessage(worker, (message) =>
+        (message?.type === "lock-acquired" || message?.type === "result") &&
+          message.runId === runId,
+        30_000
+      ).then((message) => ({ worker, message }))
+    ))
+    if (first.message.type === "result") {
+      throw raceError(
+        `P16_CART_MERGE_WORKER_RESULT_BEFORE_LOCK:${first.message.code ?? first.message.message ?? "unknown"}`
+      )
+    }
+    cancelCartMergeRaceWaiters(workers)
+    first.worker.send({ type: "cart-merge-release", runId, role: first.message.role })
+
+    const secondWorker = workers.find((worker) => worker.role !== first.message.role)
+    if (!secondWorker) throw raceError("P16_CART_MERGE_SECOND_WORKER_MISSING")
+    const second = {
+      worker: secondWorker,
+      message: await nextCartMergeRaceWorkerMessage(
+        secondWorker,
+        (message) => message?.type === "lock-acquired" && message.runId === runId,
+        30_000
+      ),
+    }
+    second.worker.send({ type: "cart-merge-release", runId, role: second.message.role })
+
+    for (const worker of workers) {
+      const result = await nextCartMergeRaceWorkerMessage(
+        worker,
+        (message) => message?.type === "result" && message.runId === runId,
+        30_000
+      )
+      results.push({
+        role: result.role,
+        operation: result.operation,
+        statusCode: result.statusCode,
+        code: result.code,
+        cartId: result.cartId == null ? null : String(result.cartId),
+        outcome: result.outcome == null ? null : String(result.outcome),
+        txid: String(result.txid ?? ""),
+      })
+    }
+
+    const txids = [first.message.txid, second.message.txid].map(String) as [string, string]
+    if (!txids.every((txid) => /^\d+$/.test(txid))) {
+      throw raceError("P16_CART_MERGE_WORKER_TXID_UNSANITIZED")
+    }
+    return {
+      workers: results.sort((a, b) => a.role.localeCompare(b.role)) as [CartMergeRaceWorkerResult, CartMergeRaceWorkerResult],
+      lockTxids: txids,
+    }
+  } finally {
+    await Promise.all(workers.map((worker) => worker.close()))
+  }
+}
+
+export async function readCustomerCartCanonicalState(
+  connection: CartMergePostgresRawConnection,
+  customerId: string
+): Promise<{
+  activeAuthorityRows: number
+  activeAuthorityCartId: string | null
+  usableCustomerCartIds: string[]
+}> {
+  const authority = await connection.raw(
+    `select cart_id from customer_cart_authority where customer_id = ? and state = 'active' and deleted_at is null order by cart_id`,
+    [customerId]
+  )
+  const carts = await connection.raw(
+    `select id from cart where customer_id = ? and completed_at is null and deleted_at is null order by id`,
+    [customerId]
+  )
+  const authorityRows = requireRows(authority)
+  return {
+    activeAuthorityRows: authorityRows.length,
+    activeAuthorityCartId: authorityRows[0] ? readNullableString(authorityRows[0], "cart_id") : null,
+    usableCustomerCartIds: requireRows(carts).map((row) => readString(row, "id")),
   }
 }
 

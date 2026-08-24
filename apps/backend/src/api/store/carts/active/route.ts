@@ -241,6 +241,58 @@ function throwCustomerAuthorityConflict(): never {
   )
 }
 
+/** Test-only loopback barrier used by the real multiprocess PostgreSQL proof. */
+async function awaitCartMergeCustomerLockBarrier(
+  sharedContext: CustomerCartAuthoritySharedContext,
+  customerId: string
+): Promise<void> {
+  const runId = process.env.P16_CART_MERGE_BARRIER_RUN_ID
+  const role = process.env.P16_CART_MERGE_BARRIER_ROLE
+  if (!runId || !/^[a-f0-9]{16}$/.test(runId) || !/^[AB]$/.test(role ?? "")) {
+    return
+  }
+  if (typeof process.send !== "function") {
+    throw new Error("P16_CART_MERGE_LOCK_BARRIER_IPC_UNAVAILABLE")
+  }
+  const transaction = sharedContext.transactionManager?.getTransactionContext?.()
+  if (!transaction) {
+    throw new Error("P16_CART_MERGE_LOCK_BARRIER_TRANSACTION_UNAVAILABLE")
+  }
+  const result = await transaction.raw("select txid_current()::text as txid")
+  const txid = String(result.rows?.[0]?.txid ?? "")
+  if (!/^\d+$/.test(txid)) {
+    throw new Error("P16_CART_MERGE_LOCK_BARRIER_TXID_INVALID")
+  }
+  process.send({
+    type: "lock-acquired",
+    runId,
+    role,
+    customerId: customerId.replace(/[^a-zA-Z0-9_-]/g, "_"),
+    txid,
+  })
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      process.removeListener("message", onMessage)
+      reject(new Error("P16_CART_MERGE_LOCK_BARRIER_TIMEOUT"))
+    }, 30_000)
+    const onMessage = (message: unknown) => {
+      if (
+        !message ||
+        typeof message !== "object" ||
+        (message as { type?: unknown }).type !== "cart-merge-release" ||
+        (message as { runId?: unknown }).runId !== runId ||
+        (message as { role?: unknown }).role !== role
+      ) {
+        return
+      }
+      clearTimeout(timeout)
+      process.removeListener("message", onMessage)
+      resolve()
+    }
+    process.on("message", onMessage)
+  })
+}
+
 async function createOrReuseCustomerCartUnderAuthority(
   req: MedusaRequest,
   customerId: string,
@@ -250,6 +302,8 @@ async function createOrReuseCustomerCartUnderAuthority(
   >,
   sharedContext: CustomerCartAuthoritySharedContext
 ): Promise<CustomerActiveCartResult> {
+  await awaitCartMergeCustomerLockBarrier(sharedContext, customerId)
+
   if (authority.type === "ambiguous" || authority.type === "conflict") {
     throwCustomerAuthorityConflict()
   }
