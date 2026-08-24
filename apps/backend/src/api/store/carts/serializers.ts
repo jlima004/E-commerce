@@ -15,6 +15,13 @@ import {
   type PaymentAttemptCartFingerprintSource,
 } from "../../../modules/payment-attempt/cart-invalidation"
 import type { CheckoutCartLike } from "../../../modules/checkout/active-cart"
+import type {
+  CartMergeOutcome,
+  CartMergeResponse,
+  CartReviewAcknowledgeResponse,
+  CartReviewState,
+  RejectedItem,
+} from "../../../modules/cart-merge/types"
 
 type StoreCartShippingAddress = {
   first_name?: string | null
@@ -309,4 +316,137 @@ export function resolvePaymentAttemptCartFingerprintFromStoreCart(
   }
 
   return resolvePaymentAttemptCartFingerprint(source)
+}
+
+type CartReviewRecordInput = {
+  status: "pending" | "acknowledged"
+  review_ref: string | null
+  rejected_items: readonly RejectedItem[]
+}
+
+type CartMergeResponseInput = {
+  outcome: CartMergeOutcome
+  cart: StoreCartPreOrderRecord | PublicStoreCartPreOrder | null
+  review: CartReviewState | CartReviewRecordInput
+}
+
+function serializeRejectedItems(
+  items: readonly RejectedItem[]
+): RejectedItem[] {
+  return items.map((item) => serializeCartMergeRejectedItem(item))
+}
+
+export function serializeCartMergeRejectedItem(
+  item: RejectedItem
+): RejectedItem {
+  return {
+    variantId: item.variantId,
+    requestedQuantity: item.requestedQuantity,
+    acceptedQuantity: item.acceptedQuantity,
+    rejectedQuantity: item.rejectedQuantity,
+    reason: item.reason,
+  }
+}
+
+export function serializeCartReviewState(
+  review: CartReviewState | CartReviewRecordInput
+): CartReviewState {
+  if ("requiresReview" in review) {
+    return {
+      requiresReview: review.requiresReview,
+      reviewRef: review.requiresReview ? review.reviewRef : null,
+      rejectedItems: serializeRejectedItems(review.rejectedItems),
+    }
+  }
+
+  const pending = review.status === "pending"
+  return {
+    requiresReview: pending,
+    reviewRef: pending ? review.review_ref : null,
+    rejectedItems: pending ? serializeRejectedItems(review.rejected_items) : [],
+  }
+}
+
+function serializePublicCartSnapshot(
+  cart: PublicStoreCartPreOrder
+): PublicStoreCartPreOrder {
+  return {
+    id: cart.id,
+    email: cart.email,
+    currency_code: cart.currency_code,
+    locale: cart.locale,
+    total: cart.total,
+    subtotal: cart.subtotal,
+    item_total: cart.item_total,
+    shipping_total: cart.shipping_total,
+    tax_total: cart.tax_total,
+    discount_total: cart.discount_total,
+    region_id: cart.region_id,
+    created_at: cart.created_at,
+    updated_at: cart.updated_at,
+    checkout_data_complete: cart.checkout_data_complete,
+    customer: cart.customer
+      ? {
+          id: cart.customer.id,
+          email: cart.customer.email,
+        }
+      : null,
+    items: cart.items.map((item) => ({
+      id: item.id,
+      quantity: item.quantity,
+      title: item.title,
+      variant_id: item.variant_id,
+      variant_title: item.variant_title,
+      unit_price: item.unit_price,
+    })),
+    shipping_address: cart.shipping_address
+      ? {
+          first_name: cart.shipping_address.first_name,
+          last_name: cart.shipping_address.last_name,
+          company: cart.shipping_address.company,
+          address_1: cart.shipping_address.address_1,
+          address_2: cart.shipping_address.address_2,
+          city: cart.shipping_address.city,
+          postal_code: cart.shipping_address.postal_code,
+          country_code: cart.shipping_address.country_code,
+          province: cart.shipping_address.province,
+          phone: cart.shipping_address.phone,
+          masked_federal_tax_id:
+            cart.shipping_address.masked_federal_tax_id,
+        }
+      : null,
+  }
+}
+
+function serializeCartMergeCart(
+  cart: StoreCartPreOrderRecord | PublicStoreCartPreOrder | null
+): PublicStoreCartPreOrder | null {
+  if (!cart) {
+    return null
+  }
+
+  if ("checkout_data_complete" in cart) {
+    return serializePublicCartSnapshot(cart)
+  }
+
+  return serializeStoreCartPreOrder(cart)
+}
+
+export function serializeCartMergeResponse(
+  response: CartMergeResponseInput
+): CartMergeResponse {
+  return {
+    outcome: response.outcome,
+    cart: serializeCartMergeCart(response.cart),
+    review: serializeCartReviewState(response.review),
+  }
+}
+
+export function serializeCartReviewAcknowledgeResponse(
+  response: Omit<CartMergeResponseInput, "outcome">
+): CartReviewAcknowledgeResponse {
+  return {
+    cart: serializeCartMergeCart(response.cart),
+    review: serializeCartReviewState(response.review),
+  }
 }

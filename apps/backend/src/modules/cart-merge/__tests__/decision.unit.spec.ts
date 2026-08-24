@@ -1,255 +1,315 @@
-import { Modules } from "@medusajs/framework/utils"
-import { CartMergeModuleService } from ".."
-import type { CartMergeExecutionInput } from "../service"
 import {
-  GUEST_CART_CAPABILITY_MODULE,
-  type GuestCartCapabilityRecord,
-} from "../../guest-cart-capability"
+  CART_MERGE_MAX_QUANTITY,
+  buildCartMergeDecision,
+  normalizeGuestIntent,
+} from "../decision"
 import {
-  STORE_IDEMPOTENCY_CART_MERGE,
-  STORE_IDEMPOTENCY_MODULE,
-} from "../../store-idempotency"
-import { STORE_RESOURCE_VERSION_MODULE } from "../../store-resource-version"
+  CART_MERGE_OUTCOMES,
+  CART_MERGE_REJECTION_REASONS,
+  CartMergeStateConflictError,
+  type CartMergeDecisionInput,
+  type CartReviewState,
+  type RejectedItem,
+} from "../types"
+import {
+  serializeCartMergeRejectedItem,
+  serializeCartMergeResponse,
+  serializeCartReviewAcknowledgeResponse,
+  serializeCartReviewState,
+} from "../../../api/store/carts/serializers"
 
-const CART_MERGE_OUTCOMES = [
-  "MERGED",
-  "MERGED_PARTIAL",
-  "GUEST_CART_ATTACHED",
-  "NO_ITEMS",
-  "CUSTOMER_CART_PRESERVED",
-] as const
-
-type TestCart = {
-  id: string
-  customer: { id: string } | null
-  customer_id: string | null
-  email: string
-  currency_code: string
-  metadata: Record<string, unknown>
-  items: Array<{
-    id: string
-    variant_id: string
-    quantity: number
-    title: string
-    variant_title: string
-    unit_price: number
-  }>
-  completed_at: null
-  created_at: string
-  updated_at: string
+function guestCart(items: CartMergeDecisionInput["guestItems"] = []) {
+  return { items }
 }
 
-function createHarness() {
-  const cart: TestCart = {
-    id: "cart_unit_merge_01",
-    customer: null,
-    customer_id: null,
-    email: "guest@unit.test",
-    currency_code: "brl",
-    metadata: { active_for_checkout: true },
-    items: [
-      {
-        id: "line_b",
-        variant_id: "variant_b",
-        quantity: 2,
-        title: "B",
-        variant_title: "B",
-        unit_price: 100,
-      },
-      {
-        id: "line_a_1",
-        variant_id: "variant_a",
-        quantity: 3,
-        title: "A",
-        variant_title: "A",
-        unit_price: 100,
-      },
-      {
-        id: "line_a_2",
-        variant_id: "variant_a",
-        quantity: 4,
-        title: "A",
-        variant_title: "A",
-        unit_price: 100,
-      },
-    ],
-    completed_at: null,
-    created_at: "2026-08-23T12:00:00.000Z",
-    updated_at: "2026-08-23T12:00:00.000Z",
-  }
-  const capability: GuestCartCapabilityRecord = {
-    id: "gccap_unit_merge_01",
-    cart_id: cart.id,
-    token_hash: "hash-only-unit-capability",
-    status: "active",
-    expires_at: "2026-08-30T12:00:00.000Z",
-    consumed_at: null,
-    revoked_at: null,
-    last_used_at: null,
-    created_at: "2026-08-23T12:00:00.000Z",
-    updated_at: "2026-08-23T12:00:00.000Z",
-    deleted_at: null,
-  }
-  const versions = new Map([[cart.id, 7]])
-  const transaction = {
-    raw: jest.fn(async (sql: string) => {
-      if (sql.includes("from cart") && sql.includes("customer_id")) {
-        return { rows: [] }
-      }
-      if (sql.includes("select id from cart")) {
-        return { rows: [{ id: cart.id }] }
-      }
-      if (sql.includes("payment_attempt")) {
-        return { rows: [] }
-      }
-      return { rows: [] }
-    }),
-  }
-  const claim = jest.fn(async (input: any) => ({
-    type: "claimed" as const,
-    record: {
-      id: "stidem_unit_merge_01",
-      state: "processing" as const,
-      state_version: 1,
-      retry_attempt_count: 0,
-      request_fingerprint: input.canonicalSemanticObject,
-    },
-  }))
-  const markCompleted = jest.fn(async () => ({
-    type: "claimed" as const,
-    record: {
-      id: "stidem_unit_merge_01",
-      state: "completed" as const,
-      state_version: 2,
-    },
-  }))
-  const idempotency = { claim, markCompleted }
-  const capabilityService = {
-    lookupGuestCartCapabilityByPresentedToken: jest.fn(async () => capability),
-    authorizeGuestCartCapabilityForMutation: jest.fn(async () => capability),
-    consumeGuestCartCapability: jest.fn(async () => {
-      capability.status = "consumed"
-      capability.consumed_at = "2026-08-23T12:00:01.000Z"
-      return capability
-    }),
-  }
-  const resourceVersion = {
-    initialize: jest.fn(async () => ({
-      id: "strver_unit_merge_01",
-      resource_type: "cart",
-      resource_id: cart.id,
-      version: versions.get(cart.id),
-    })),
-    increment: jest.fn(async (_type: string, _id: string, expected: number) => {
-      const actual = versions.get(cart.id)!
-      if (expected !== actual) {
-        return { type: "stale" as const, actualVersion: actual, expectedVersion: expected }
-      }
-      versions.set(cart.id, actual + 1)
-      return { type: "updated" as const, previousVersion: actual, version: actual + 1 }
-    }),
-  }
-  const cartModule = {
-    baseRepository_: {
-      transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
-        callback({ getTransactionContext: () => transaction }),
-    },
-    retrieveCart: jest.fn(async () => cart),
-    updateCarts: jest.fn(async (input: Record<string, unknown>) => {
-      cart.customer_id = String(input.customer_id)
-      cart.customer = { id: cart.customer_id }
-      cart.updated_at = "2026-08-23T12:00:01.000Z"
-      return cart
-    }),
-  }
-  const request = {
-    scope: {
-      resolve(key: unknown) {
-        if (key === Modules.CART) return cartModule
-        if (key === GUEST_CART_CAPABILITY_MODULE) return capabilityService
-        if (key === STORE_IDEMPOTENCY_MODULE) return idempotency
-        if (key === STORE_RESOURCE_VERSION_MODULE) return resourceVersion
-        throw new Error(`UNEXPECTED_SCOPE_KEY:${String(key)}`)
-      },
-    },
-    customerAuthBff: { authorized: true },
-  }
+function customerCart(items: CartMergeDecisionInput["customerItems"] = []) {
+  return { items }
+}
 
-  const input: CartMergeExecutionInput = {
-    request: request as never,
-    customerId: "cus_unit_merge_01",
-    guestCartId: cart.id,
-    presentedCapability: "guest-capability-is-not-persisted",
-    rawIdempotencyKey: "merge-unit-key-01",
-    expectedGuestVersion: 7,
-  }
-
+function publicCart() {
   return {
-    cart,
-    capability,
-    versions,
-    claim,
-    markCompleted,
-    capabilityService,
-    cartModule,
-    input,
+    id: "cart_public_01",
+    email: "customer@example.test",
+    currency_code: "brl",
+    locale: "pt-BR",
+    total: 100,
+    subtotal: 100,
+    item_total: 100,
+    shipping_total: 0,
+    tax_total: 0,
+    discount_total: 0,
+    region_id: "reg_br",
+    created_at: "2026-08-24T12:00:00.000Z",
+    updated_at: "2026-08-24T12:00:01.000Z",
+    checkout_data_complete: false,
+    customer: {
+      id: "cus_public_01",
+      email: "customer@example.test",
+    },
+    items: [],
+    shipping_address: null,
   }
 }
 
-describe("Phase 16 cart merge decision tracer", () => {
-  it("fixa exatamente os cinco outcomes públicos e mantém o reservado enum-only", () => {
+describe("Phase 16 cart merge decision engine", () => {
+  it("fecha exatamente os cinco outcomes e os três rejection reasons", () => {
     expect(CART_MERGE_OUTCOMES).toEqual([
       "MERGED",
       "MERGED_PARTIAL",
       "GUEST_CART_ATTACHED",
-      "NO_ITEMS",
       "CUSTOMER_CART_PRESERVED",
+      "NO_ITEMS",
+    ])
+    expect(CART_MERGE_REJECTION_REASONS).toEqual([
+      "VARIANT_INVALID",
+      "VARIANT_UNAVAILABLE",
+      "QUANTITY_LIMIT_EXCEEDED",
     ])
   })
 
-  it("agrega a intenção por variantId, ordena antes do fingerprint e promove integralmente", async () => {
-    const harness = createHarness()
-    const service = new CartMergeModuleService({} as never)
-
-    const result = await service.executeCartMerge(harness.input)
-
-    expect(result.outcome).toBe("GUEST_CART_ATTACHED")
-    expect(result.outcome).not.toBe("CUSTOMER_CART_PRESERVED")
-    expect(harness.claim).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operation: STORE_IDEMPOTENCY_CART_MERGE,
-        canonicalSemanticObject: {
-          operation: "CART_MERGE",
-          customerId: "cus_unit_merge_01",
-          guestCartId: "cart_unit_merge_01",
-          customerCartId: null,
-          guestVersion: 7,
-          customerVersion: null,
-          normalizedGuestIntent: [
-            { variantId: "variant_a", quantity: 7 },
-            { variantId: "variant_b", quantity: 2 },
-          ],
-        },
-        sharedContext: expect.any(Object),
-      })
-    )
-    expect(harness.capability.status).toBe("consumed")
-    expect(harness.versions.get(harness.cart.id)).toBe(8)
-    expect(harness.markCompleted).toHaveBeenCalledTimes(1)
+  it("agrega duplicatas guest por variantId e ordena pelo identificador público", () => {
+    expect(
+      normalizeGuestIntent([
+        { variant_id: "variant_b", quantity: 2 },
+        { variantId: "variant_a", quantity: 3 },
+        { variant_id: "variant_a", quantity: 4 },
+      ])
+    ).toEqual([
+      { variantId: "variant_a", quantity: 7 },
+      { variantId: "variant_b", quantity: 2 },
+    ])
   })
 
-  it("não transforma CUSTOMER_CART_PRESERVED em fallback positivo do tracer", async () => {
-    const harness = createHarness()
-    const service = new CartMergeModuleService({} as never)
-
-    const result = await service.executeCartMerge(harness.input)
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        outcome: "GUEST_CART_ATTACHED",
-        version: 8,
-      })
+  it("falha com conflito 409 para linha persisted sem variantId seguro", () => {
+    expect(() => normalizeGuestIntent([{ quantity: 1 }])).toThrow(
+      CartMergeStateConflictError
     )
-    expect(JSON.stringify(result)).not.toContain("CUSTOMER_CART_PRESERVED")
+    try {
+      normalizeGuestIntent([{ quantity: 1 }])
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "CART_MERGE_STATE_CONFLICT",
+        statusCode: 409,
+        status: 409,
+      })
+    }
+  })
+
+  it("aplica o teto 99 sem reduzir Customer e localiza o overflow", () => {
+    const decision = buildCartMergeDecision({
+      guestCart: guestCart([{ variantId: "variant_a", quantity: 30 }]),
+      customerCart: customerCart([{ variantId: "variant_a", quantity: 80 }]),
+    })
+
+    expect(CART_MERGE_MAX_QUANTITY).toBe(99)
+    expect(decision.outcome).toBe("MERGED_PARTIAL")
+    expect(decision.decisions).toEqual([
+      {
+        variantId: "variant_a",
+        requestedQuantity: 30,
+        acceptedQuantity: 19,
+        rejectedQuantity: 11,
+        customerQuantityBefore: 80,
+        customerQuantityAfter: 99,
+        reason: "QUANTITY_LIMIT_EXCEEDED",
+      },
+    ])
+    expect(decision.rejectedItems).toEqual([
+      {
+        variantId: "variant_a",
+        requestedQuantity: 30,
+        acceptedQuantity: 19,
+        rejectedQuantity: 11,
+        reason: "QUANTITY_LIMIT_EXCEEDED",
+      },
+    ])
+    expect(decision.review).toEqual({
+      requiresReview: true,
+      reviewRef: null,
+      rejectedItems: decision.rejectedItems,
+    })
+  })
+
+  it("retorna MERGED para Customer vazio, que continua sendo destino", () => {
+    const decision = buildCartMergeDecision({
+      guestCart: guestCart([{ variantId: "variant_a", quantity: 2 }]),
+      customerCart: customerCart(),
+    })
+
+    expect(decision.outcome).toBe("MERGED")
+    expect(decision.acceptedItems).toEqual([
+      { variantId: "variant_a", quantity: 2 },
+    ])
+    expect(decision.review).toEqual({
+      requiresReview: false,
+      reviewRef: null,
+      rejectedItems: [],
+    })
+  })
+
+  it("promove integralmente sem destino com GUEST_CART_ATTACHED", () => {
+    const decision = buildCartMergeDecision({
+      guestCart: guestCart([{ variantId: "variant_a", quantity: 2 }]),
+    })
+
+    expect(decision.outcome).toBe("GUEST_CART_ATTACHED")
+    expect(decision.review.requiresReview).toBe(false)
+    expect(decision.rejectedItems).toEqual([])
+  })
+
+  it("usa MERGED_PARTIAL e review quando a promoção sem destino é parcial", () => {
+    const allRejected = buildCartMergeDecision({
+      guestCart: guestCart([{ variantId: "variant_a", quantity: 30 }]),
+      variantAvailability: new Map([["variant_a", "unavailable"]]),
+    })
+
+    expect(allRejected.outcome).toBe("NO_ITEMS")
+    expect(allRejected.review.requiresReview).toBe(false)
+
+    const partialPromotion = buildCartMergeDecision({
+      guestCart: guestCart([
+        { variantId: "variant_a", quantity: 2 },
+        { variantId: "variant_b", quantity: 1 },
+      ]),
+      unavailableVariantIds: ["variant_b"],
+    })
+    expect(partialPromotion.outcome).toBe("MERGED_PARTIAL")
+    expect(partialPromotion.review.requiresReview).toBe(true)
+  })
+
+  it("retorna NO_ITEMS sem review quando todas as variantes são rejeitadas", () => {
+    const decision = buildCartMergeDecision({
+      guestCart: guestCart([
+        { variantId: "variant_a", quantity: 2 },
+        { variantId: "variant_b", quantity: 1 },
+      ]),
+      invalidVariantIds: ["variant_a"],
+      unavailableVariantIds: ["variant_b"],
+    })
+
+    expect(decision.outcome).toBe("NO_ITEMS")
+    expect(decision.review).toEqual({
+      requiresReview: false,
+      reviewRef: null,
+      rejectedItems: decision.rejectedItems,
+    })
+    expect(decision.rejectedItems).toEqual([
+      expect.objectContaining({
+        variantId: "variant_a",
+        reason: "VARIANT_INVALID",
+        acceptedQuantity: 0,
+        rejectedQuantity: 2,
+      }),
+      expect.objectContaining({
+        variantId: "variant_b",
+        reason: "VARIANT_UNAVAILABLE",
+        acceptedQuantity: 0,
+        rejectedQuantity: 1,
+      }),
+    ])
+  })
+
+  it("falha fechado para duplicatas físicas Customer incompatíveis", () => {
+    expect(() =>
+      buildCartMergeDecision({
+        guestCart: guestCart([{ variantId: "variant_a", quantity: 1 }]),
+        customerCart: customerCart([
+          { variantId: "variant_a", quantity: 1, unit_price: 100 },
+          { variantId: "variant_a", quantity: 1, unit_price: 200 },
+        ]),
+      })
+    ).toThrow(CartMergeStateConflictError)
+  })
+
+  it("conserva requested = accepted + rejected por variante", () => {
+    const decision = buildCartMergeDecision({
+      guestCart: guestCart([
+        { variantId: "variant_a", quantity: 30 },
+        { variantId: "variant_b", quantity: 2 },
+      ]),
+      customerCart: customerCart([{ variantId: "variant_a", quantity: 80 }]),
+      unavailableVariantIds: ["variant_b"],
+    })
+
+    for (const item of decision.decisions) {
+      expect(item.acceptedQuantity + item.rejectedQuantity).toBe(
+        item.requestedQuantity
+      )
+    }
+  })
+
+  it("serializa rejected item e review com property sets fechados", () => {
+    const rejectedItem = serializeCartMergeRejectedItem({
+      variantId: "variant_public",
+      requestedQuantity: 30,
+      acceptedQuantity: 19,
+      rejectedQuantity: 11,
+      reason: "QUANTITY_LIMIT_EXCEEDED",
+      providerId: "provider-internal",
+      catalogTitle: "internal-catalog-title",
+    } as RejectedItem & {
+      providerId: string
+      catalogTitle: string
+    })
+    const review = serializeCartReviewState({
+      requiresReview: true,
+      reviewRef: "review_opaque",
+      rejectedItems: [rejectedItem],
+      internalId: "must-not-leak",
+    } as CartReviewState & { internalId: string })
+
+    expect(Object.keys(rejectedItem)).toEqual([
+      "variantId",
+      "requestedQuantity",
+      "acceptedQuantity",
+      "rejectedQuantity",
+      "reason",
+    ])
+    expect(Object.keys(review)).toEqual([
+      "requiresReview",
+      "reviewRef",
+      "rejectedItems",
+    ])
+    expect(JSON.stringify(review)).not.toContain("provider")
+    expect(JSON.stringify(review)).not.toContain("internal")
+  })
+
+  it("serializa merge e ACK sem espalhar receipt ou campos internos", () => {
+    const response = serializeCartMergeResponse({
+      outcome: "MERGED_PARTIAL",
+      cart: publicCart(),
+      review: {
+        requiresReview: true,
+        reviewRef: "review_opaque",
+        rejectedItems: [
+          {
+            variantId: "variant_public",
+            requestedQuantity: 2,
+            acceptedQuantity: 1,
+            rejectedQuantity: 1,
+            reason: "VARIANT_UNAVAILABLE",
+          },
+        ],
+        resultId: "internal-result",
+        requestFingerprint: "secret-digest",
+      } as never,
+    })
+    const acknowledge = serializeCartReviewAcknowledgeResponse({
+      cart: publicCart(),
+      review: {
+        requiresReview: false,
+        reviewRef: null,
+        rejectedItems: [],
+        actorId: "internal-actor",
+      } as never,
+    })
+
+    expect(Object.keys(response)).toEqual(["outcome", "cart", "review"])
+    expect(Object.keys(acknowledge)).toEqual(["cart", "review"])
+    expect(response.cart).not.toHaveProperty("capability")
+    expect(response.cart).not.toHaveProperty("requestFingerprint")
+    expect(JSON.stringify(response)).not.toContain("internal-result")
+    expect(JSON.stringify(response)).not.toContain("secret-digest")
+    expect(JSON.stringify(acknowledge)).not.toContain("internal-actor")
   })
 })
