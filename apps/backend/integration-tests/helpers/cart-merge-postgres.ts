@@ -45,6 +45,66 @@ export type CartMergeTransactionInstrumentation = {
   restore(): void
 }
 
+export type CartMergeSchemaCatalog = {
+  tables: string[]
+  columns: Array<{
+    table_name: string
+    column_name: string
+    udt_name: string
+    is_nullable: string
+  }>
+  checks: Array<{
+    table_name: string
+    constraint_name: string
+    definition: string
+  }>
+  indexes: Array<{
+    table_name: string
+    index_name: string
+    is_unique: boolean
+    predicate: string | null
+    definition: string
+  }>
+}
+
+export type CustomerCartBackfillAudit = {
+  status: "none" | "single" | "ambiguous"
+  candidateCount: number
+  selectedCartId: string | null
+  report: {
+    code:
+      | "P16_CUSTOMER_CART_BACKFILL_NO_CANDIDATE"
+      | "P16_CUSTOMER_CART_BACKFILL_SINGLE_CANDIDATE"
+      | "P16_CUSTOMER_CART_BACKFILL_AMBIGUOUS"
+    candidateCount: number
+  }
+}
+
+export type CartMergeResultProbeInput = {
+  id: string
+  idempotencyRecordId?: string
+  customerId?: string
+  guestCartId?: string
+  canonicalCartId?: string
+  capabilityId?: string
+  requestFingerprint?: string
+}
+
+export type CartReviewProbeInput = {
+  id: string
+  cartId: string
+  reviewRef: string
+  mergeResultId: string
+  status?: "pending" | "acknowledged"
+}
+
+export type CustomerCartAuthorityProbeInput = {
+  id: string
+  customerId: string
+  cartId: string
+  state?: "active" | "superseded"
+}
+
 type CartRepository = {
   transaction<T>(
     callback: (transactionManager: {
@@ -73,6 +133,311 @@ function readNullableString(
   key: string
 ): string | null {
   return row[key] == null ? null : String(row[key])
+}
+
+function readBoolean(value: unknown): boolean {
+  return value === true || value === "t" || value === "true"
+}
+
+/**
+ * Reads the physical catalog produced by the approved cart-merge migration.
+ * The assertions intentionally query PostgreSQL catalogs instead of models or
+ * TypeScript metadata so a disposable migration failure cannot be masked.
+ */
+export async function readCartMergeSchemaCatalog(
+  connection: CartMergePostgresRawConnection
+): Promise<CartMergeSchemaCatalog> {
+  const tables = await connection.raw(`
+    select table_name
+    from information_schema.tables
+    where table_schema = 'public'
+      and table_name in (
+        'cart_merge_result',
+        'cart_review',
+        'customer_cart_authority'
+      )
+    order by table_name
+  `)
+  const columns = await connection.raw(`
+    select table_name, column_name, udt_name, is_nullable
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name in (
+        'cart_merge_result',
+        'cart_review',
+        'customer_cart_authority'
+      )
+    order by table_name, ordinal_position
+  `)
+  const checks = await connection.raw(`
+    select
+      tbl.relname as table_name,
+      con.conname as constraint_name,
+      pg_get_constraintdef(con.oid) as definition
+    from pg_constraint con
+    join pg_class tbl on tbl.oid = con.conrelid
+    join pg_namespace schema_name on schema_name.oid = tbl.relnamespace
+    where schema_name.nspname = 'public'
+      and con.contype = 'c'
+      and tbl.relname in (
+        'cart_merge_result',
+        'cart_review',
+        'customer_cart_authority'
+      )
+    order by tbl.relname, con.conname
+  `)
+  const indexes = await connection.raw(`
+    select
+      tbl.relname as table_name,
+      idx.relname as index_name,
+      catalog_index.indisunique as is_unique,
+      pg_get_expr(catalog_index.indpred, catalog_index.indrelid) as predicate,
+      pg_get_indexdef(catalog_index.indexrelid) as definition
+    from pg_index catalog_index
+    join pg_class idx on idx.oid = catalog_index.indexrelid
+    join pg_class tbl on tbl.oid = catalog_index.indrelid
+    join pg_namespace schema_name on schema_name.oid = tbl.relnamespace
+    where schema_name.nspname = 'public'
+      and tbl.relname in (
+        'cart_merge_result',
+        'cart_review',
+        'customer_cart_authority'
+      )
+    order by tbl.relname, idx.relname
+  `)
+
+  return {
+    tables: requireRows(tables).map((row) => readString(row, "table_name")),
+    columns: requireRows(columns).map((row) => ({
+      table_name: readString(row, "table_name"),
+      column_name: readString(row, "column_name"),
+      udt_name: readString(row, "udt_name"),
+      is_nullable: readString(row, "is_nullable"),
+    })),
+    checks: requireRows(checks).map((row) => ({
+      table_name: readString(row, "table_name"),
+      constraint_name: readString(row, "constraint_name"),
+      definition: readString(row, "definition"),
+    })),
+    indexes: requireRows(indexes).map((row) => ({
+      table_name: readString(row, "table_name"),
+      index_name: readString(row, "index_name"),
+      is_unique: readBoolean(row.is_unique),
+      predicate: readNullableString(row, "predicate"),
+      definition: readString(row, "definition"),
+    })),
+  }
+}
+
+/**
+ * Creates two real, active Customer carts representing historical duplicate
+ * candidates. The audit below must refuse to choose either one.
+ */
+export async function createHistoricalCustomerCartCandidates(
+  container: MedusaContainer,
+  customerId: string,
+  identity: string
+): Promise<string[]> {
+  const cartModule = container.resolve(Modules.CART) as unknown as {
+    createCarts(input: Record<string, unknown>): Promise<unknown>
+  }
+
+  const candidates = await Promise.all(
+    [0, 1].map(async (index) => {
+      const created = await cartModule.createCarts({
+        currency_code: "brl",
+        customer_id: customerId,
+        email: `${identity}@cart-merge.test`,
+        metadata: {
+          historical_fixture: true,
+          candidate_index: index,
+        },
+      })
+      const cart = Array.isArray(created) ? created[0] : created
+      const cartId = String((cart as { id?: unknown })?.id ?? "")
+      if (!cartId) {
+        throw new Error("P16_HISTORICAL_CUSTOMER_CART_CREATION_FAILED")
+      }
+      return cartId
+    })
+  )
+
+  return candidates
+}
+
+/**
+ * Performs only the read side of the future authority backfill. In particular,
+ * it does not order by temporal columns and never returns a selected cart for
+ * an ambiguous Customer.
+ */
+export async function auditCustomerCartBackfill(
+  connection: CartMergePostgresRawConnection,
+  customerId: string
+): Promise<CustomerCartBackfillAudit> {
+  const result = await connection.raw(
+    `
+      select id
+      from cart
+      where customer_id = ?
+        and completed_at is null
+        and deleted_at is null
+    `,
+    [customerId]
+  )
+  const candidateCount = requireRows(result).length
+
+  if (candidateCount > 1) {
+    return {
+      status: "ambiguous",
+      candidateCount,
+      selectedCartId: null,
+      report: {
+        code: "P16_CUSTOMER_CART_BACKFILL_AMBIGUOUS",
+        candidateCount,
+      },
+    }
+  }
+
+  if (candidateCount === 1) {
+    return {
+      status: "single",
+      candidateCount,
+      selectedCartId: readString(requireRows(result)[0], "id"),
+      report: {
+        code: "P16_CUSTOMER_CART_BACKFILL_SINGLE_CANDIDATE",
+        candidateCount,
+      },
+    }
+  }
+
+  return {
+    status: "none",
+    candidateCount: 0,
+    selectedCartId: null,
+    report: {
+      code: "P16_CUSTOMER_CART_BACKFILL_NO_CANDIDATE",
+      candidateCount: 0,
+    },
+  }
+}
+
+export function assertCustomerCartBackfillFailClosed(
+  audit: CustomerCartBackfillAudit
+): void {
+  if (audit.status !== "ambiguous") return
+
+  const error = new Error(audit.report.code)
+  Object.assign(error, {
+    code: audit.report.code,
+    candidateCount: audit.report.candidateCount,
+    selectedCartId: null,
+  })
+  throw error
+}
+
+export async function countCustomerCartAuthorityRows(
+  connection: CartMergePostgresRawConnection,
+  customerId: string
+): Promise<number> {
+  const result = await connection.raw(
+    `
+      select count(*)::int as count
+      from customer_cart_authority
+      where customer_id = ?
+    `,
+    [customerId]
+  )
+  return Number(requireRows(result)[0]?.count ?? 0)
+}
+
+export async function insertCartMergeResultProbe(
+  connection: CartMergePostgresRawConnection,
+  input: CartMergeResultProbeInput
+): Promise<void> {
+  await connection.raw(
+    `
+      insert into cart_merge_result (
+        id,
+        idempotency_record_id,
+        customer_id,
+        guest_cart_id,
+        customer_cart_id,
+        canonical_cart_id,
+        capability_id,
+        capability_hash,
+        request_fingerprint,
+        guest_version_before,
+        customer_version_before,
+        guest_version_after,
+        customer_version_after,
+        outcome,
+        rejected_items,
+        review_id,
+        review_ref,
+        original_public_cart_snapshot,
+        original_review_snapshot,
+        original_etag,
+        expires_at
+      ) values (?, ?, ?, ?, null, ?, ?, null, ?, 1, null, 1, null, 'NO_ITEMS', '[]'::jsonb, null, null, '{}'::jsonb, '{}'::jsonb, '"1"', '2099-01-01T00:00:00.000Z')
+    `,
+    [
+      input.id,
+      input.idempotencyRecordId ?? `${input.id}_idempotency`,
+      input.customerId ?? `${input.id}_customer`,
+      input.guestCartId ?? `${input.id}_guest_cart`,
+      input.canonicalCartId ?? `${input.id}_canonical_cart`,
+      input.capabilityId ?? `${input.id}_capability`,
+      input.requestFingerprint ?? `${input.id}_fingerprint`,
+    ]
+  )
+}
+
+export async function insertCartReviewProbe(
+  connection: CartMergePostgresRawConnection,
+  input: CartReviewProbeInput
+): Promise<void> {
+  await connection.raw(
+    `
+      insert into cart_review (
+        id, cart_id, review_ref, merge_result_id, produced_cart_version,
+        status, rejected_items
+      ) values (?, ?, ?, ?, 1, ?, '[]'::jsonb)
+    `,
+    [
+      input.id,
+      input.cartId,
+      input.reviewRef,
+      input.mergeResultId,
+      input.status ?? "pending",
+    ]
+  )
+}
+
+export async function insertCustomerCartAuthorityProbe(
+  connection: CartMergePostgresRawConnection,
+  input: CustomerCartAuthorityProbeInput
+): Promise<void> {
+  await connection.raw(
+    `
+      insert into customer_cart_authority (id, customer_id, cart_id, state)
+      values (?, ?, ?, ?)
+    `,
+    [input.id, input.customerId, input.cartId, input.state ?? "active"]
+  )
+}
+
+export async function cleanupCartMergeSchemaProbes(
+  connection: CartMergePostgresRawConnection,
+  prefix: string
+): Promise<void> {
+  await connection.raw(`delete from cart_review where id like ?`, [`${prefix}%`])
+  await connection.raw(`delete from cart_merge_result where id like ?`, [
+    `${prefix}%`,
+  ])
+  await connection.raw(
+    `delete from customer_cart_authority where id like ?`,
+    [`${prefix}%`]
+  )
 }
 
 /**

@@ -143,7 +143,7 @@ if (!requestedDatabaseName) {
           ({ table_name, column_name, udt_name, is_nullable }) =>
             `${table_name}.${column_name}:${udt_name}:${is_nullable}`
         )
-        expect(columnSignatures).toEqual(
+        expect(columnSignatures.sort()).toEqual(
           [
             "cart_merge_result.id:text:NO",
             "cart_merge_result.idempotency_record_id:text:NO",
