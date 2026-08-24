@@ -49,6 +49,26 @@ export type CartReviewAcknowledgeResponse = {
   review: CartReviewState
 }
 
+export type CanonicalCustomerCartAuthorityResult =
+  | {
+      type: "none"
+      customerId: string
+    }
+  | {
+      type: "single"
+      customerId: string
+      cartId: string
+      authorityId: string
+    }
+  | {
+      type: "ambiguous"
+      customerId: string
+    }
+  | {
+      type: "conflict"
+      customerId: string
+    }
+
 /**
  * Input projection accepted by the pure decision engine. The snake_case
  * aliases exist only for persisted Medusa rows and never cross a public

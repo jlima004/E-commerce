@@ -43,6 +43,11 @@ import {
   type StoreResourceVersionMutationContext,
 } from "../store-resource-version"
 import { lockCartOrderAuthority } from "../payment-attempt/transactional-authority"
+import {
+  lockCustomerCartAuthority,
+  resolveCanonicalCustomerCartAuthority,
+} from "../../api/store/carts/customer-active-cart"
+import type { CustomerCartAuthoritySharedContext } from "../../api/store/carts/customer-active-cart"
 import { buildCartMergeDecision } from "./decision"
 import CustomerCartAuthority from "./models/customer-cart-authority"
 import CartMergeResult from "./models/cart-merge-result"
@@ -178,10 +183,6 @@ function requireRows(result: { rows?: Array<Record<string, unknown>> }): Array<R
   return result.rows ?? []
 }
 
-function readId(row: Record<string, unknown>): string {
-  return typeof row.id === "string" ? row.id : String(row.id)
-}
-
 function isActiveGuestCart(cart: StoreCartPreOrderRecord): boolean {
   const metadata = cart.metadata
   return (
@@ -192,32 +193,6 @@ function isActiveGuestCart(cart: StoreCartPreOrderRecord): boolean {
       (metadata as Record<string, unknown>).active_for_checkout !== false) &&
     !cart.customer?.id
   )
-}
-
-async function lockCustomerScope(
-  transaction: TransactionContext,
-  customerId: string
-): Promise<void> {
-  await transaction.raw(
-    "select pg_advisory_xact_lock(hashtextextended(?, 1616))",
-    [customerId]
-  )
-}
-
-async function listCustomerCartIds(
-  transaction: TransactionContext,
-  customerId: string
-): Promise<string[]> {
-  const result = await transaction.raw(
-    `
-      select id
-      from cart
-      where customer_id = ? and completed_at is null and deleted_at is null
-      order by id
-    `,
-    [customerId]
-  )
-  return requireRows(result).map(readId)
 }
 
 async function lockCartRows(
@@ -587,6 +562,36 @@ async function insertCustomerCartAuthority(
   )
 }
 
+/**
+ * Keep the merge service compatible with the narrow HTTP tracer double used by
+ * the existing route contract while preferring the canonical facade in real
+ * Medusa wiring.
+ */
+async function completeStoreIdempotencyCompat(
+  service: StoreIdempotencyModuleService,
+  input: Parameters<StoreIdempotencyModuleService["completeStoreIdempotency"]>[0]
+) {
+  const candidate = service as StoreIdempotencyModuleService & {
+    completeStoreIdempotency?: StoreIdempotencyModuleService["completeStoreIdempotency"]
+  }
+  if (typeof candidate.completeStoreIdempotency === "function") {
+    return candidate.completeStoreIdempotency(input)
+  }
+
+  return service.markCompleted({
+    id: input.id,
+    expectedState: input.expectedState,
+    expectedStateVersion: input.expectedStateVersion,
+    result_type: input.resultBinding.resultType,
+    result_id: input.resultBinding.resultId,
+    response_status: input.responseStatus,
+    result_safe_metadata: input.resultSafeMetadata,
+    sharedContext: input.sharedContext,
+    retentionMs: input.retentionMs,
+    at: input.at,
+  })
+}
+
 class CartMergeModuleService extends MedusaService({
   CustomerCartAuthority,
   CartMergeResult,
@@ -618,7 +623,10 @@ class CartMergeModuleService extends MedusaService({
       const sharedContext = currentVersionContext(manager)
       const operationAt = new Date()
 
-      await lockCustomerScope(transactionContext, input.customerId)
+      // Every merge path enters the shared Customer lock first. A committed
+      // replay is receipt-authoritative and must not be rejected by a later
+      // authority/candidate anomaly.
+      await lockCustomerCartAuthority(transactionContext, input.customerId)
 
       // Replay is resolved before reading the current Cart. This is essential
       // after capability consumption, ACK, or a later fixture mutation: the
@@ -637,14 +645,20 @@ class CartMergeModuleService extends MedusaService({
         )
       }
 
-      const customerCartIds = await listCustomerCartIds(
-        transactionContext,
+      const customerAuthority = await resolveCanonicalCustomerCartAuthority(
+        sharedContext as unknown as CustomerCartAuthoritySharedContext,
         input.customerId
       )
 
       // Destination selection and all non-tracer outcomes belong to later
       // plans. Never turn this fail-closed branch into CUSTOMER_CART_PRESERVED.
-      if (customerCartIds.length > 0) {
+      if (
+        customerAuthority.type === "ambiguous" ||
+        customerAuthority.type === "conflict"
+      ) {
+        throwConflict("CUSTOMER_CART_AUTHORITY_CONFLICT")
+      }
+      if (customerAuthority.type === "single") {
         throwConflict("CART_MERGE_CUSTOMER_DESTINATION_UNSUPPORTED")
       }
 
@@ -775,7 +789,7 @@ class CartMergeModuleService extends MedusaService({
         })
         tripFailpoint(request, "result")
 
-        const completion = await idempotencyService.completeStoreIdempotency({
+        const completion = await completeStoreIdempotencyCompat(idempotencyService, {
           id: claim.record.id,
           expectedState: "processing",
           expectedStateVersion: claim.record.state_version,
@@ -906,7 +920,7 @@ class CartMergeModuleService extends MedusaService({
       )
       tripFailpoint(request, "capability_consume")
 
-      const completion = await idempotencyService.completeStoreIdempotency({
+      const completion = await completeStoreIdempotencyCompat(idempotencyService, {
         id: claim.record.id,
         expectedState: "processing",
         expectedStateVersion: claim.record.state_version,
