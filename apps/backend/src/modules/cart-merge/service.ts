@@ -31,6 +31,9 @@ import {
 } from "../store-resource-version"
 import { lockCartOrderAuthority } from "../payment-attempt/transactional-authority"
 import { buildCartMergeDecision } from "./decision"
+import CustomerCartAuthority from "./models/customer-cart-authority"
+import CartMergeResult from "./models/cart-merge-result"
+import CartReview from "./models/cart-review"
 
 const CART_MERGE_FINGERPRINT_OPERATION = "CART_MERGE" as const
 
@@ -180,7 +183,11 @@ function throwConflict(code: string): never {
   )
 }
 
-class CartMergeModuleService extends MedusaService({}) {
+class CartMergeModuleService extends MedusaService({
+  CustomerCartAuthority,
+  CartMergeResult,
+  CartReview,
+}) {
   async executeCartMerge(
     input: CartMergeExecutionInput
   ): Promise<CartMergeExecutionResult> {
