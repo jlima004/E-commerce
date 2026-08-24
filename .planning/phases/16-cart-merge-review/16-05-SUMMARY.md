@@ -16,7 +16,7 @@ affects: [phase-16-cart-merge-review, plan-16-06]
 actuals:
   tokens: 26721
   tasks: 3
-  commits: 5
+  commits: 6
 
 tech-stack:
   added: []
@@ -41,6 +41,7 @@ key-decisions:
   - "A suíte unitária omitida do files_modified foi criada somente após B16-05-HR-01 autorizar explicitamente sua expansão de allowlist."
   - "A identidade de schema aprovada no Plan 16-04 permaneceu byte-identical; models, snapshot e migration não foram alterados."
   - "Capability consumida só é reconhecida para replay compatível com Customer, chave, fingerprint, scope e result bindings; não autoriza nova mutation."
+  - "Committed replay valida a guest/source version recebida contra guest_version_before do receipt original antes de qualquer lookup ou fetch atual; divergência retorna IDEMPOTENCY_KEY_REUSE_CONFLICT."
   - "NO_ITEMS cria apenas o receipt idempotente permitido, preserva capability ACTIVE e não altera carts, versões, review ou Order."
   - "MRG-01..MRG-08 permanecem OPEN / UNCHANGED; Phase 16 permanece IN PROGRESS."
 
@@ -59,6 +60,7 @@ requirements-completed: []
 - **Task 16-05-02:** **PASS**
 - **Task 16-05-03:** **PASS**
 - **B16-05-HR-01:** inconsistência documental registrada; remediação autorizada e concluída, sem blocker técnico pendente.
+- **B16-05-HR-02:** **TECHNICAL PASS — HUMAN CLOSEOUT PENDING**; replay committed vincula `expectedGuestVersion` ao `guest_version_before` original e rejeita divergência com 409/zero write.
 - **Schema identity:** **FROZEN / PASS antes e depois**
 - **MRG-01..MRG-08:** **OPEN / UNCHANGED**
 - **16-06:** **NOT STARTED / NOT AUTHORIZED**
@@ -68,7 +70,7 @@ requirements-completed: []
 
 - **Duração observável:** aproximadamente 1h56 entre o primeiro commit técnico e a conclusão da validação independente; o preflight anterior não foi cronometrado.
 - **Primeiro commit técnico:** `2026-08-24T14:41:15-03:00`
-- **Último commit técnico:** `2026-08-24T16:28:23-03:00`
+- **Último commit técnico:** `2026-08-24T17:21:31-03:00`
 - **Tasks:** 3/3 PASS
 - **Arquivos técnicos modificados/criados:** 7
 
@@ -77,6 +79,7 @@ requirements-completed: []
 - Migration fresh, tabelas, columns, CHECKs, uniques globais/parciais, indexes e collision audit ambíguo foram provados em PostgreSQL real disposable; a ambiguidade retorna `selectedCartId: null` sem heurística temporal.
 - Claim/load/complete/fail de StoreIdempotency e lifecycle de capability respeitam `sharedContext`, fingerprint canônica, bindings terminais, conflito de reuse e replay compatível pós-consumo.
 - `CartMergeResult` preserva receipt original, replay não refaz writes, `NO_ITEMS` mantém estado estrutural, e failpoints deixam baseline transacional íntegro com Order delta zero.
+- Replay committed com a mesma chave e versão original continua reproduzindo o receipt mesmo após mudança do cart atual; a mesma chave com guest/source version divergente retorna `IDEMPOTENCY_KEY_REUSE_CONFLICT`/409 sem write ou novo Order.
 
 ## Task Commits
 
@@ -85,6 +88,7 @@ requirements-completed: []
 3. **Task 16-05-02 RED:** `3fe25b4` — `test(16-05-02): add failing claim and replay coverage`
 4. **Task 16-05-02 GREEN:** `2fef94c12c6bc07e8ac00d97ac500833688e9df4` — `feat(16-05-02): close idempotency replay lifecycle`
 5. **Task 16-05-03:** `db4437c15bfb350511791cd539acb5fe138dd877` — `feat(16-05-03): persist cart merge receipts atomically`
+6. **B16-05-HR-02 remediation:** `f20d47a428c6e48a649718e31398ea0847742169` — `fix(16-05): bind committed replay to guest version`
 
 O commit documental deste SUMMARY é separado e local.
 
@@ -137,9 +141,10 @@ SCHEMA_IDENTITY_SHA256_END
 
 ### Task 16-05-03
 
-- PostgreSQL disposable: **13 testes PASS**, exit code 0.
+- PostgreSQL disposable: **14 testes PASS**, exit code 0.
 - `[P12_DISPOSABLE_POSTGRES_CLEAN]`: **PASS**.
 - Receipt e committed replay original após alteração do cart: **PASS**, sem write/version bump.
+- Replay com `If-Match` divergente do `guest_version_before` original: **PASS**, `IDEMPOTENCY_KEY_REUSE_CONFLICT`/409, estado persistido inalterado e Order delta 0.
 - `NO_ITEMS`: **PASS**, receipt permitido, capability ACTIVE, zero alteração estrutural e Order delta 0.
 - Failpoints: **PASS** para cart, invalidation, version, association, result, capability consume e idempotency completion; review/supersede não aplicáveis ao tracer atual.
 - Shared transaction manager e rollback baseline: **PASS**.
@@ -162,6 +167,7 @@ Resultados consolidados:
 - **Order invariant:** delta persistido `0` nas provas PostgreSQL; nenhum caminho pre-Order criou Order.
 - **Leakage:** nenhum raw capability, raw Idempotency-Key, JWT, Authorization, cookie, provider payload, nova PII ou secret persistido/logado nas superfícies auditadas.
 - **Allowlist:** diff técnico entre `1cf8f490c2acf6dc24e640c4650acbac0322510e` e `db4437c` contém somente os sete paths autorizados pela allowlist expandida.
+- **Remediação B16-05-HR-02:** diff de `f20d47a` contém somente os dois arquivos já autorizados; nenhum model, migration, helper, planning artifact ou Plan 16-06 foi alterado.
 - **Worktree:** limpo.
 - **Remote action:** nenhuma migration remota, provider, Redis remoto, deploy ou push.
 
@@ -169,13 +175,26 @@ Resultados consolidados:
 
 `B16-05-HR-01` registrou que o plano exigia uma suíte unitária inexistente sem incluí-la em `files_modified`. A criação de `apps/backend/src/modules/store-idempotency/__tests__/store-idempotency.unit.spec.ts` foi autorizada explicitamente e limitada a esse propósito. A remediação passou sem mudança de contrato ou schema.
 
+`B16-05-HR-02` identificou que o committed replay, embora corretamente resolvido antes do current-cart fetch, não vinculava o `If-Match` recebido ao `guest_version_before` do receipt original. A correção foi limitada a `service.ts` e à prova PostgreSQL correspondente: replay compatível permanece receipt-based; versão divergente retorna `IDEMPOTENCY_KEY_REUSE_CONFLICT`/409 antes de lookup ou write. A suíte disposable passou com 14/14 testes e cleanup; a validação independente confirmou zero write, Order delta 0 e schema unchanged. A remediação técnica aguarda HUMAN CLOSEOUT REVIEW.
+
+### Gates da remediação B16-05-HR-02
+
+- Unitários relevantes: **3 suítes / 39 testes PASS**.
+- PostgreSQL disposable: **1 suíte / 14 testes PASS**, exit code 0, com `[P12_DISPOSABLE_POSTGRES_CLEAN]`.
+- Build do backend: **PASS**, 0 erros; warnings globais não bloqueantes.
+- `state validate`: **PASS**, `valid: true`, `warnings: []`, `drift: {}`.
+- `git diff --check HEAD` e `git diff --check`: **PASS**.
+- Leakage/source scan: **PASS**; nenhum raw capability, Idempotency-Key, JWT, Authorization ou payload de provider novo.
+- Branch/allowlist: **PASS**; `f20d47a` contém somente `service.ts` e a suíte PostgreSQL. Nenhum model, migration, helper, planning artifact ou Plan 16-06 foi alterado.
+- Remote action: **NONE**; nenhum commit foi enviado, push, migration remota, provider, Redis remoto ou deploy.
+
 ## Deviations from Plan
 
-Uma expansão documental de allowlist foi autorizada pelo gate humano B16-05-HR-01 para materializar o teste unitário já exigido pelo plano. Não houve outra divergência ou escopo técnico adicional.
+Uma expansão documental de allowlist foi autorizada pelo gate humano B16-05-HR-01 para materializar o teste unitário já exigido pelo plano. A remediação B16-05-HR-02 foi executada na allowlist de dois arquivos, sem alteração de contrato, schema ou escopo adjacente.
 
 ## Issues Encountered
 
-O único blocker foi a inconsistência de allowlist documentada em B16-05-HR-01. Após a autorização humana, o teste foi criado, a Task 16-05-02 passou e as Tasks 16-05-03/final validation foram concluídas sem blocker.
+Os blockers B16-05-HR-01 e B16-05-HR-02 foram tecnicamente remediados. O primeiro tratou a allowlist do teste unitário; o segundo tratou o binding da guest/source version no committed replay. Ambos aguardam apenas o HUMAN CLOSEOUT REVIEW do Plan 16-05.
 
 ## User Setup Required
 
@@ -192,4 +211,4 @@ Plan 16-05 está pronto para **HUMAN CLOSEOUT REVIEW**. Nenhuma ação posterior
 ---
 *Phase: 16-cart-merge-review*
 *Plan: 16-05*
-*Technical execution: PASS; human closeout pending*
+*Technical execution: PASS; B16-05-HR-02 remediated; human closeout pending; 16-06 not authorized*
