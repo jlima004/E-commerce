@@ -30,14 +30,28 @@ export type CartMergePersistedState = {
   cart_id: string
   customer_id: string | null
   cart_xmin: string
+  line_items: unknown
   version: number | null
   version_xmin: string | null
+  authority_state: string | null
+  authority_customer_id: string | null
+  authority_cart_id: string | null
+  authority_xmin: string | null
   capability_status: string | null
   capability_consumed_at: string | null
   capability_xmin: string | null
   idempotency_state: string | null
   idempotency_result_id: string | null
   idempotency_xmin: string | null
+  result_id: string | null
+  result_outcome: string | null
+  result_review_id: string | null
+  result_xmin: string | null
+  result_etag: string | null
+  result_expires_at: string | null
+  review_status: string | null
+  review_ref: string | null
+  review_xmin: string | null
 }
 
 export type CartMergeTransactionInstrumentation = {
@@ -118,7 +132,7 @@ type CartModule = {
   baseRepository_: CartRepository
 }
 
-type Failpoint = { trip(): void }
+type Failpoint = { trip(point?: string): void }
 
 function requireRows(result: RawResult): Array<Record<string, unknown>> {
   return result.rows ?? []
@@ -446,7 +460,8 @@ export async function cleanupCartMergeSchemaProbes(
  */
 export async function createRealCartMergeFixture(
   container: MedusaContainer,
-  identity = `p16_real_${randomBytes(5).toString("hex")}`
+  identity = `p16_real_${randomBytes(5).toString("hex")}`,
+  options: { withItems?: boolean } = {}
 ): Promise<CartMergeFixture> {
   const fulfillmentModule = container.resolve(Modules.FULFILLMENT) as {
     createShippingProfiles(input: {
@@ -510,11 +525,13 @@ export async function createRealCartMergeFixture(
   const variant = products[0]?.variants[0]
   if (!variant?.id) throw new Error("P16_REAL_VARIANT_CREATION_FAILED")
 
-  const cart = await cartModule.createCarts({
+  const cartInput: Record<string, unknown> = {
     currency_code: "brl",
     email,
     metadata: { active_for_checkout: true },
-    items: [
+  }
+  if (options.withItems !== false) {
+    cartInput.items = [
       {
         title: `Cart merge item ${safeIdentity}`,
         quantity: 1,
@@ -524,8 +541,9 @@ export async function createRealCartMergeFixture(
         requires_shipping: false,
         is_custom_price: true,
       },
-    ],
-  })
+    ]
+  }
+  const cart = await cartModule.createCarts(cartInput)
 
   const capabilityService = container.resolve(
     GUEST_CART_CAPABILITY_MODULE
@@ -652,14 +670,38 @@ export async function readRealCartMergeState(
         c.id as cart_id,
         c.customer_id,
         c.xmin::text as cart_xmin,
+        coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'id', li.id,
+              'quantity', li.quantity,
+              'variant_id', li.variant_id
+            ) order by li.id
+          )
+          from cart_line_item li
+          where li.cart_id = c.id and li.deleted_at is null
+        ), '[]'::jsonb) as line_items,
         v.version,
         v.xmin::text as version_xmin,
+        authority.state as authority_state,
+        authority.customer_id as authority_customer_id,
+        authority.cart_id as authority_cart_id,
+        authority.xmin::text as authority_xmin,
         cap.status as capability_status,
         cap.consumed_at::text as capability_consumed_at,
         cap.xmin::text as capability_xmin,
         idem.state as idempotency_state,
         idem.result_id as idempotency_result_id,
-        idem.xmin::text as idempotency_xmin
+        idem.xmin::text as idempotency_xmin,
+        result.id as result_id,
+        result.outcome as result_outcome,
+        result.review_id as result_review_id,
+        result.xmin::text as result_xmin,
+        result.original_etag as result_etag,
+        result.expires_at::text as result_expires_at,
+        review.status as review_status,
+        review.review_ref as review_ref,
+        review.xmin::text as review_xmin
       from cart c
       left join store_resource_version v
         on v.resource_type = 'cart'
@@ -668,12 +710,21 @@ export async function readRealCartMergeState(
       left join guest_cart_capability cap
         on cap.cart_id = c.id
        and cap.deleted_at is null
+      left join customer_cart_authority authority
+        on authority.cart_id = c.id
+       and authority.state = 'active'
+       and authority.deleted_at is null
+      left join cart_merge_result result
+        on result.canonical_cart_id = c.id
+       and result.deleted_at is null
       left join store_idempotency_record idem
-        on idem.operation = 'cart_merge'
-       and idem.result_id = c.id
+        on idem.id = result.idempotency_record_id
        and idem.deleted_at is null
+      left join cart_review review
+        on review.merge_result_id = result.id
+       and review.deleted_at is null
       where c.id = ? and c.deleted_at is null
-      order by idem.created_at desc nulls last
+      order by result.created_at desc nulls last
       limit 1
     `,
     [fixture.guestCartId]
@@ -685,14 +736,28 @@ export async function readRealCartMergeState(
     cart_id: readString(row, "cart_id"),
     customer_id: readNullableString(row, "customer_id"),
     cart_xmin: readString(row, "cart_xmin"),
+    line_items: row.line_items ?? [],
     version: row.version == null ? null : Number(row.version),
     version_xmin: readNullableString(row, "version_xmin"),
+    authority_state: readNullableString(row, "authority_state"),
+    authority_customer_id: readNullableString(row, "authority_customer_id"),
+    authority_cart_id: readNullableString(row, "authority_cart_id"),
+    authority_xmin: readNullableString(row, "authority_xmin"),
     capability_status: readNullableString(row, "capability_status"),
     capability_consumed_at: readNullableString(row, "capability_consumed_at"),
     capability_xmin: readNullableString(row, "capability_xmin"),
     idempotency_state: readNullableString(row, "idempotency_state"),
     idempotency_result_id: readNullableString(row, "idempotency_result_id"),
     idempotency_xmin: readNullableString(row, "idempotency_xmin"),
+    result_id: readNullableString(row, "result_id"),
+    result_outcome: readNullableString(row, "result_outcome"),
+    result_review_id: readNullableString(row, "result_review_id"),
+    result_xmin: readNullableString(row, "result_xmin"),
+    result_etag: readNullableString(row, "result_etag"),
+    result_expires_at: readNullableString(row, "result_expires_at"),
+    review_status: readNullableString(row, "review_status"),
+    review_ref: readNullableString(row, "review_ref"),
+    review_xmin: readNullableString(row, "review_xmin"),
   }
 }
 
@@ -723,7 +788,7 @@ export function instrumentRealCartMergeTransaction(
       const value = await callback(transactionManager)
       const after = await transaction.raw("select txid_current()::text as txid")
       transactionIds.push(String(after.rows?.[0]?.txid ?? ""))
-      options.failpoint?.trip()
+      options.failpoint?.trip("transaction_before_commit")
       return value
     }, ...rest)
   }
@@ -739,13 +804,21 @@ export function instrumentRealCartMergeTransaction(
 export function createCartMergeFailpoint(
   code = "P16_CART_MERGE_FAILPOINT"
 ) {
-  let armed = false
+  let armedPoint: string | null = null
+  const ledger: string[] = []
   return {
-    arm() {
-      armed = true
+    arm(point?: string) {
+      armedPoint = point ?? "*"
     },
-    trip() {
-      if (armed) throw new Error(code)
+    trip(point = "transaction_before_commit") {
+      ledger.push(point)
+      if (armedPoint === "*" || armedPoint === point) {
+        throw new Error(`${code}:${point}`)
+      }
+    },
+    ledger,
+    reset() {
+      armedPoint = null
     },
   }
 }

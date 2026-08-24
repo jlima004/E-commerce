@@ -5,10 +5,6 @@ import {
   CART_MERGE_MODULE,
 } from "../../src/modules/cart-merge"
 import {
-  STORE_IDEMPOTENCY_CART_MERGE,
-  STORE_IDEMPOTENCY_MODULE,
-} from "../../src/modules/store-idempotency"
-import {
   assertDisposableMedusaEnvironment,
   buildDisposableMedusaEnvironment,
   requireDisposableDatabaseName,
@@ -119,6 +115,19 @@ if (!requestedDatabaseName) {
       jest.setTimeout(180_000)
 
       const connection = dbConnection as unknown as CartMergePostgresRawConnection
+
+      const runMerge = async (
+        container: any,
+        fixture: Awaited<ReturnType<typeof createRealCartMergeFixture>>,
+        overrides: Record<string, unknown> = {}
+      ) => {
+        const response = createCartMergeResponse()
+        await mergeCart(
+          createCartMergeRequest(fixture, container, overrides) as never,
+          response as never
+        )
+        return response
+      }
 
       it("aplica o schema frozen real com tabelas, CHECKs e índices aprovados", async () => {
         expect(process.env.DB_HOST).toMatch(/^(localhost|127\.0\.0\.1|::1)$/)
@@ -391,11 +400,11 @@ if (!requestedDatabaseName) {
         }
       })
 
-      it("executa o CartMergeModuleService real e prova um commit PostgreSQL único", async () => {
+      it("persiste receipt, authority e terminal state no mesmo transaction manager", async () => {
         const container = getContainer()
         const fixture = await createRealCartMergeFixture(
           container,
-          "p16_wave0_real_commit"
+          "p16_task0503_commit"
         )
         const beforeOrders = await countPersistedOrders(connection)
         const beforeState = await readRealCartMergeState(connection, fixture)
@@ -438,7 +447,69 @@ if (!requestedDatabaseName) {
         expect(afterState.capability_status).toBe("consumed")
         expect(afterState.capability_consumed_at).not.toBeNull()
         expect(afterState.idempotency_state).toBe("completed")
-        expect(afterState.idempotency_result_id).toBe(fixture.guestCartId)
+        expect(afterState.result_id).toMatch(/^cmres_/)
+        expect(afterState.idempotency_result_id).toBe(afterState.result_id)
+        expect(afterState.result_outcome).toBe("GUEST_CART_ATTACHED")
+        expect(afterState.result_etag).toBe('"2"')
+        expect(afterState.authority_state).toBe("active")
+        expect(afterState.authority_customer_id).toBe(fixture.customerId)
+        expect(afterState.authority_cart_id).toBe(fixture.guestCartId)
+        expect(afterState.review_status).toBeNull()
+
+        const receiptQuery = await connection.raw(
+          `
+            select
+              r.id,
+              r.idempotency_record_id,
+              r.customer_id,
+              r.guest_cart_id,
+              r.customer_cart_id,
+              r.canonical_cart_id,
+              r.capability_id,
+              r.capability_hash,
+              r.request_fingerprint,
+              r.guest_version_before,
+              r.guest_version_after,
+              r.outcome,
+              r.rejected_items,
+              r.review_id,
+              r.review_ref,
+              r.original_public_cart_snapshot,
+              r.original_review_snapshot,
+              r.original_etag,
+              r.expires_at::text as result_expires_at,
+              i.expires_at::text as idempotency_expires_at
+            from cart_merge_result r
+            join store_idempotency_record i on i.id = r.idempotency_record_id
+            where r.id = ?
+          `,
+          [afterState.result_id]
+        )
+        const receipt = receiptQuery.rows?.[0]
+        expect(receipt).toEqual(
+          expect.objectContaining({
+            id: afterState.result_id,
+            idempotency_record_id: expect.any(String),
+            customer_id: fixture.customerId,
+            guest_cart_id: fixture.guestCartId,
+            customer_cart_id: null,
+            canonical_cart_id: fixture.guestCartId,
+            capability_id: fixture.capabilityId,
+            guest_version_before: fixture.guestVersion,
+            guest_version_after: fixture.guestVersion + 1,
+            outcome: "GUEST_CART_ATTACHED",
+            rejected_items: [],
+            review_id: null,
+            review_ref: null,
+            original_etag: '"2"',
+          })
+        )
+        expect(receipt?.capability_hash).not.toBe(fixture.capabilityToken)
+        expect(receipt?.request_fingerprint).not.toContain(fixture.capabilityToken)
+        expect(receipt?.request_fingerprint).not.toContain(fixture.idempotencyKey)
+        expect(receipt?.original_public_cart_snapshot).toBeTruthy()
+        expect(receipt?.original_review_snapshot).toBeTruthy()
+        expect(receipt?.result_expires_at).toBe(receipt?.idempotency_expires_at)
         expect(await countUsableCustomerCarts(connection, fixture.customerId)).toBe(1)
         expect(await countPersistedOrders(connection)).toBe(beforeOrders)
 
@@ -450,116 +521,127 @@ if (!requestedDatabaseName) {
             afterState.version_xmin,
             afterState.capability_xmin,
             afterState.idempotency_xmin,
+            afterState.authority_xmin,
+            afterState.result_xmin,
           ])
         ).toEqual(new Set([transaction.transactionIds[0]]))
       })
 
-      it("reverte os efeitos reais do merge quando o tracer falha antes do commit", async () => {
+      it("reproduz somente o receipt original depois de mudança no cart atual", async () => {
         const container = getContainer()
         const fixture = await createRealCartMergeFixture(
           container,
-          "p16_wave0_real_rollback"
+          "p16_task0503_replay_original"
         )
+        const first = await runMerge(container, fixture)
+        const committedState = await readRealCartMergeState(connection, fixture)
         const beforeOrders = await countPersistedOrders(connection)
+        const originalBody = structuredClone(first.body)
+        const originalEtag = first.headers.etag
+
+        await connection.raw(
+          "update cart set email = ? where id = ?",
+          [`changed-after-commit@cart-merge.test`, fixture.guestCartId]
+        )
+        const mutatedState = await readRealCartMergeState(connection, fixture)
+
+        const replay = await runMerge(container, fixture)
+        const replayState = await readRealCartMergeState(connection, fixture)
+
+        expect(replay.statusCode).toBe(200)
+        expect(replay.headers.etag).toBe(originalEtag)
+        expect(replay.body).toEqual(originalBody)
+        expect(mutatedState.cart_xmin).not.toBe(committedState.cart_xmin)
+        expect(replayState).toEqual(mutatedState)
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+      })
+
+      it("confirma NO_ITEMS sem tocar cart, lines, version, review ou capability", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0503_no_items",
+          { withItems: false }
+        )
         const beforeState = await readRealCartMergeState(connection, fixture)
-        const failpoint = createCartMergeFailpoint()
-        failpoint.arm()
-        const cartModule = container.resolve(Modules.CART) as unknown as {
-          baseRepository_: {
-            transaction: (...args: any[]) => Promise<unknown>
-          }
-        }
-        const transaction = instrumentRealCartMergeTransaction(cartModule as any, {
-          failpoint,
-        })
+        const beforeOrders = await countPersistedOrders(connection)
+        expect(beforeState.line_items).toEqual([])
+        const first = await runMerge(container, fixture)
+        const afterFirst = await readRealCartMergeState(connection, fixture)
 
-        try {
-          await expect(
-            mergeCart(
-              createCartMergeRequest(fixture, container) as never,
-              createCartMergeResponse() as never
-            )
-          ).rejects.toThrow("P16_CART_MERGE_FAILPOINT")
-        } finally {
-          transaction.restore()
-        }
+        expect(first.statusCode).toBe(200)
+        expect(first.headers.etag).toBe(`"${fixture.guestVersion}"`)
+        expect((first.body as any).outcome).toBe("NO_ITEMS")
+        expect((first.body as any).cart.items).toEqual([])
+        expect(afterFirst.customer_id).toBe(beforeState.customer_id)
+        expect(afterFirst.line_items).toEqual(beforeState.line_items)
+        expect(afterFirst.cart_xmin).toBe(beforeState.cart_xmin)
+        expect(afterFirst.version).toBe(beforeState.version)
+        expect(afterFirst.version_xmin).toBe(beforeState.version_xmin)
+        expect(afterFirst.capability_status).toBe("active")
+        expect(afterFirst.capability_consumed_at).toBeNull()
+        expect(afterFirst.authority_state).toBeNull()
+        expect(afterFirst.review_status).toBeNull()
+        expect(afterFirst.result_id).toMatch(/^cmres_/)
+        expect(afterFirst.idempotency_state).toBe("completed")
+        expect(afterFirst.idempotency_result_id).toBe(afterFirst.result_id)
+        expect(afterFirst.result_outcome).toBe("NO_ITEMS")
+        expect(afterFirst.result_etag).toBe(`"${fixture.guestVersion}"`)
 
-        const afterState = await readRealCartMergeState(connection, fixture)
-        expect(afterState.customer_id).toBe(beforeState.customer_id)
-        expect(afterState.version).toBe(beforeState.version)
-        expect(afterState.capability_status).toBe("active")
-        expect(afterState.capability_consumed_at).toBeNull()
-        expect(afterState.idempotency_state).toBeNull()
+        const second = await runMerge(container, fixture)
+        const afterReplay = await readRealCartMergeState(connection, fixture)
+        expect(second.body).toEqual(first.body)
+        expect(second.headers.etag).toBe(first.headers.etag)
+        expect(afterReplay).toEqual(afterFirst)
         expect(await countUsableCustomerCarts(connection, fixture.customerId)).toBe(0)
         expect(await countPersistedOrders(connection)).toBe(beforeOrders)
-        expect(transaction.transactionIds).toHaveLength(2)
-        expect(new Set(transaction.transactionIds).size).toBe(1)
       })
 
-      it("usa StoreIdempotency real para distinguir claim e replay da mesma chave", async () => {
-        const container = getContainer()
-        const fixture = await createRealCartMergeFixture(
-          container,
-          "p16_wave0_real_replay"
-        )
-        const beforeState = await readRealCartMergeState(connection, fixture)
-        const beforeOrders = await countPersistedOrders(connection)
-        const idempotency = container.resolve(STORE_IDEMPOTENCY_MODULE) as any
-        const input = {
-          operation: STORE_IDEMPOTENCY_CART_MERGE,
-          actorScope: {
-            actor_type: "customer",
-            customer_id: fixture.customerId,
-          },
-          resourceScope: {
-            resource_type: "cart_merge",
-            guest_cart_id: fixture.guestCartId,
-            customer_cart_id: null,
-            capability_id: fixture.capabilityId,
-          },
-          rawIdempotencyKey: fixture.idempotencyKey,
-          canonicalSemanticObject: {
-            operation: "CART_MERGE",
-            customerId: fixture.customerId,
-            guestCartId: fixture.guestCartId,
-            customerCartId: null,
-            guestVersion: fixture.guestVersion,
-            customerVersion: null,
-            normalizedGuestIntent: [
-              { variantId: fixture.variantId, quantity: 1 },
-            ],
-          },
+      it.each([
+        "cart",
+        "invalidation",
+        "version",
+        "association",
+        "result",
+        "capability_consume",
+        "idempotency_completion",
+      ])(
+        "faz rollback integral no failpoint pós-write %s",
+        async (point) => {
+          const container = getContainer()
+          const fixture = await createRealCartMergeFixture(
+            container,
+            `p16_task0503_failpoint_${point}`
+          )
+          const beforeState = await readRealCartMergeState(connection, fixture)
+          const beforeOrders = await countPersistedOrders(connection)
+          const failpoint = createCartMergeFailpoint()
+          failpoint.arm(point)
+          const cartModule = container.resolve(Modules.CART) as unknown as {
+            baseRepository_: {
+              transaction: (...args: any[]) => Promise<unknown>
+            }
+          }
+          const transaction = instrumentRealCartMergeTransaction(cartModule as any, {
+            failpoint,
+          })
+
+          try {
+            await expect(
+              runMerge(container, fixture, { cartMergeFailpoint: failpoint })
+            ).rejects.toThrow(`P16_CART_MERGE_FAILPOINT:${point}`)
+          } finally {
+            transaction.restore()
+          }
+
+          const afterState = await readRealCartMergeState(connection, fixture)
+          expect(afterState).toEqual(beforeState)
+          expect(await countUsableCustomerCarts(connection, fixture.customerId)).toBe(0)
+          expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+          expect(failpoint.ledger).toContain(point)
+          expect(transaction.transactionIds).toHaveLength(1)
         }
-
-        const first = await idempotency.claim(input)
-        expect(first.type).toBe("claimed")
-        const completed = await idempotency.markCompleted({
-          id: first.record.id,
-          expectedState: "processing",
-          expectedStateVersion: first.record.state_version,
-          result_type: "cart_merge",
-          result_id: fixture.guestCartId,
-          response_status: 200,
-          result_safe_metadata: {
-            operation: STORE_IDEMPOTENCY_CART_MERGE,
-            result_type: "cart_merge",
-            result_id: fixture.guestCartId,
-            response_status: 200,
-          },
-        })
-        expect(completed.type).toBe("claimed")
-
-        const second = await idempotency.claim(input)
-        expect(second.type).toBe("replay")
-        expect(second.record.id).toBe(first.record.id)
-        expect(second.record.state).toBe("completed")
-
-        const afterState = await readRealCartMergeState(connection, fixture)
-        expect(afterState.customer_id).toBe(beforeState.customer_id)
-        expect(afterState.version).toBe(beforeState.version)
-        expect(afterState.capability_status).toBe("active")
-        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
-      })
+      )
     },
   })
 }
