@@ -30,6 +30,7 @@ import {
   type StoreResourceVersionMutationContext,
 } from "../store-resource-version"
 import { lockCartOrderAuthority } from "../payment-attempt/transactional-authority"
+import { buildCartMergeDecision } from "./decision"
 
 const CART_MERGE_FINGERPRINT_OPERATION = "CART_MERGE" as const
 
@@ -131,45 +132,6 @@ function isActiveGuestCart(cart: StoreCartPreOrderRecord): boolean {
       (metadata as Record<string, unknown>).active_for_checkout !== false) &&
     !cart.customer?.id
   )
-}
-
-function normalizeGuestIntent(cart: StoreCartPreOrderRecord): Array<{
-  variantId: string
-  quantity: number
-}> {
-  const quantities = new Map<string, number>()
-  for (const item of cart.items ?? []) {
-    if (
-      typeof item.variant_id !== "string" ||
-      item.variant_id.trim().length === 0 ||
-      typeof item.quantity !== "number" ||
-      !Number.isSafeInteger(item.quantity) ||
-      (item.quantity as number) <= 0
-    ) {
-      throw new MedusaError(
-        MedusaError.Types.CONFLICT,
-        "CART_MERGE_GUEST_INTENT_INVALID"
-      )
-    }
-    const variantId = item.variant_id.trim()
-    quantities.set(
-      variantId,
-      (quantities.get(variantId) ?? 0) + item.quantity
-    )
-  }
-
-  const intent = [...quantities.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([variantId, quantity]) => ({ variantId, quantity }))
-
-  if (intent.length === 0) {
-    throw new MedusaError(
-      MedusaError.Types.CONFLICT,
-      "CART_MERGE_GUEST_INTENT_EMPTY"
-    )
-  }
-
-  return intent
 }
 
 async function lockCustomerScope(
@@ -299,7 +261,11 @@ class CartMergeModuleService extends MedusaService({}) {
         sharedContext as GuestCartCapabilityMutationContext
       )
 
-      const normalizedGuestIntent = normalizeGuestIntent(cart)
+      const decision = buildCartMergeDecision({ guestCart: cart })
+      if (decision.outcome !== "GUEST_CART_ATTACHED") {
+        throwConflict("CART_MERGE_GUEST_INTENT_EMPTY")
+      }
+
       const idempotencyService = request.scope.resolve<StoreIdempotencyModuleService>(
         STORE_IDEMPOTENCY_MODULE
       )
@@ -323,7 +289,7 @@ class CartMergeModuleService extends MedusaService({}) {
           customerCartId: null,
           guestVersion: versionRow.version,
           customerVersion: null,
-          normalizedGuestIntent,
+          normalizedGuestIntent: decision.normalizedGuestIntent,
         },
         sharedContext,
       })
