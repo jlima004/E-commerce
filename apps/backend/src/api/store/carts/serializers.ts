@@ -418,6 +418,12 @@ function serializePublicCartSnapshot(
   }
 }
 
+function isPublicStoreCartPreOrder(
+  cart: StoreCartPreOrderRecord | PublicStoreCartPreOrder
+): cart is PublicStoreCartPreOrder {
+  return "checkout_data_complete" in cart
+}
+
 function serializeCartMergeCart(
   cart: StoreCartPreOrderRecord | PublicStoreCartPreOrder | null
 ): PublicStoreCartPreOrder | null {
@@ -425,7 +431,7 @@ function serializeCartMergeCart(
     return null
   }
 
-  if ("checkout_data_complete" in cart) {
+  if (isPublicStoreCartPreOrder(cart)) {
     return serializePublicCartSnapshot(cart)
   }
 
