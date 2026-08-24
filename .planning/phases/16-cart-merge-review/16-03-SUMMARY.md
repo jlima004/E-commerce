@@ -49,15 +49,29 @@ requirements-completed: []
 ## Status
 
 - **Phase:** 16 — Cart Merge & Review — **IN PROGRESS**
-- **Plan:** 16-03 — **PASS técnico / aguardando HUMAN DDL-CLOSEOUT REVIEW**
+- **Plan 16-03:** **REMEDIATED TECHNICALLY / AWAITING HUMAN DDL REVIEW**
 - **Task 16-03-01:** **PASS — PRESERVED / NOT REEXECUTED**
 - **Task 16-03-02:** **PASS**
 - **B16-03-HR-01:** **CLOSED — PASS** — preflight, allowlist e lifecycle autorizado.
 - **B16-03-HR-02:** **CLOSED — PASS** — geração única e cleanup disposable.
 - **B16-03-HR-03:** **CLOSED — PASS** — schema audit e gates finais; alerta extra de containers históricos foi revisado como não normativo.
+- **B16-04-HR-01:** **REMEDIATED — AWAITING HUMAN REVIEW**
 - **MRG-01..MRG-08:** **OPEN / UNCHANGED**
-- **16-04:** **NOT STARTED / NOT AUTHORIZED**
+- **Plan 16-04:** **CHECKPOINT NOT APPROVED YET**
+- **16-05:** **NOT AUTHORIZED**
 - **Push:** **NOT PERFORMED**
+
+## Human DDL remediation / B16-04-HR-01
+
+- O primeiro HUMAN DDL checkpoint devolveu `revise-ddl`.
+- Três `unique: true` foram gerados como soft-delete partial.
+- Esses três uniques foram corrigidos para global non-partial UNIQUE.
+- Os uniques de active authority e pending review permaneceram parciais.
+- Nenhum model foi alterado.
+- Nenhum `db:generate` foi reexecutado.
+- Nenhum migration apply ocorreu.
+- A schema identity foi recalculada.
+- B16-04-HR-01 aguarda nova HUMAN DDL REVIEW.
 
 ## Execução do retry humano
 
@@ -84,15 +98,15 @@ O exact-set contém somente:
 - `CartMergeResult` → `cart_merge_result`
 - `CartReview` → `cart_review`
 
-O snapshot e a migration não contêm entidade inesperada, foreign key ou native enum adicional. Foram confirmados os estados/outcomes/status aprovados, uniques parciais respeitando `deleted_at`, `review_ref`/`merge_result_id`, `pending` por cart, snapshots originais, ETag, versões, `expires_at` e os campos nullable/safe. `CUSTOMER_CART_PRESERVED` continua reservado e unreachable no service.
+O snapshot e a migration não contêm entidade inesperada, foreign key ou native enum adicional. Foram confirmados os estados/outcomes/status, os uniques globais non-partial de `idempotency_record_id`, `review_ref` e `merge_result_id`, os uniques parciais de active authority e pending review, snapshots originais, ETag, versões, `expires_at` e os campos nullable/safe. `CUSTOMER_CART_PRESERVED` continua reservado e unreachable no service.
 
 ## Schema identity SHA-256
 
-Paths ordenados deterministicamente; hashes calculados após a geração e antes do commit técnico:
+Os hashes originais foram calculados após a geração e antes do commit técnico; após a remediação B16-04-HR-01, a identidade foi recalculada com paths ordenados deterministicamente:
 
 SCHEMA_IDENTITY_SHA256_BEGIN
-ecd52d6899197a44c9d85989684f254029b1ea4913e458e480d0beeda9deebf8  apps/backend/src/modules/cart-merge/migrations/.snapshot-cart-merge.json
-742d77c09486438b9412ff31677e18813ae1105767eb72ecc0b72cccb829f421  apps/backend/src/modules/cart-merge/migrations/Migration20260824160628.ts
+d4e625bf2f467d7f9f8358d637e4803f4672fb6d8bf47dc97ceb5746df7f3849  apps/backend/src/modules/cart-merge/migrations/.snapshot-cart-merge.json
+3a1f141e4f6269a7f7a579371c8ceeb9916da88e7681673ac4408d6cec2b6522  apps/backend/src/modules/cart-merge/migrations/Migration20260824160628.ts
 381f7683377a74a9b29f55ad074bbe89c796e708a8d43adf18fb3417aefbbd90  apps/backend/src/modules/cart-merge/models/cart-merge-result.ts
 3779a10be4d8a05be6146768c25bdd6d73d9cbe909aec222102d1874ed526dea  apps/backend/src/modules/cart-merge/models/cart-review.ts
 14c85b8e5afa579892330438cc1988afdd247cc87a8b810f84692685ee7095c1  apps/backend/src/modules/cart-merge/models/customer-cart-authority.ts
@@ -128,12 +142,13 @@ O commit documental deste SUMMARY é separado e local. Nenhum push foi feito.
 
 ## Limites do fechamento
 
-Este SUMMARY registra o PASS técnico do Plan 16-03 e encerra somente o retry autorizado. Não aplica migration, não fecha MRG-01..MRG-08, não fecha a Phase 16, não atualiza counters/milestone/STATE, não inicia o Plan 16-04 e não autoriza provider, deploy, release ou infraestrutura remota.
+Este SUMMARY preserva o PASS técnico do Plan 16-03 e registra a remediação B16-04-HR-01. Não aplica migration, não fecha MRG-01..MRG-08, não fecha a Phase 16, não atualiza counters/milestone/STATE, não inicia o Plan 16-04 e não autoriza provider, deploy, release ou infraestrutura remota.
 
 ## Next permitted action
 
-- **Next permitted action:** **HUMAN DDL/CLOSEOUT REVIEW OF PLAN 16-03**.
-- **16-04:** **NOT STARTED / NOT AUTHORIZED**.
+- **Next permitted action:** **HUMAN DDL REVIEW OF PLAN 16-03**.
+- **Plan 16-04:** **CHECKPOINT NOT APPROVED YET**.
+- **16-05:** **NOT AUTHORIZED**.
 - **Push:** **NOT PERFORMED**.
 
 ---
