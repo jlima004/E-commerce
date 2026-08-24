@@ -1,8 +1,6 @@
 import { Modules } from "@medusajs/framework/utils"
-import {
-  CartMergeModuleService,
-  type CartMergeExecutionInput,
-} from ".."
+import { CartMergeModuleService } from ".."
+import type { CartMergeExecutionInput } from "../service"
 import {
   GUEST_CART_CAPABILITY_MODULE,
   type GuestCartCapabilityRecord,

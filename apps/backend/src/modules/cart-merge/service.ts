@@ -40,9 +40,8 @@ type TransactionContext = {
   ): Promise<{ rows?: Array<Record<string, unknown>> }>
 }
 
-type TransactionManager = {
-  getTransactionContext?: () => TransactionContext | null | undefined
-}
+type TransactionManager =
+  StoreResourceVersionMutationContext["transactionManager"]
 
 type CartModule = {
   baseRepository_?: {
@@ -73,17 +72,44 @@ type MergeRequest = MedusaRequest & {
   customerAuthBff?: { authorized?: boolean }
 }
 
-function currentVersionContext(
-  transaction: TransactionContext
-): StoreResourceVersionMutationContext {
-  const transactionManager = {
-    getTransactionContext: () => transaction,
-  } as unknown as StoreResourceVersionMutationContext["transactionManager"]
+function cartMergeCartRetrieveConfig(): { relations: string[] } {
+  return {
+    relations: ["items", "customer"],
+  }
+}
+
+function projectCartCustomer(
+  cart: StoreCartPreOrderRecord | null
+): StoreCartPreOrderRecord | null {
+  if (!cart) {
+    return null
+  }
+
+  if (cart.customer?.id) {
+    return cart
+  }
+
+  const customerId =
+    typeof cart.customer_id === "string" && cart.customer_id.length > 0
+      ? cart.customer_id
+      : undefined
+  if (!customerId) {
+    return cart
+  }
 
   return {
+    ...cart,
+    customer: { id: customerId },
+  }
+}
+
+function currentVersionContext(
+  manager: TransactionManager
+): StoreResourceVersionMutationContext {
+  return {
     __type: "MedusaContext",
-    transactionManager,
-    manager: transactionManager,
+    transactionManager: manager,
+    manager,
   }
 }
 
@@ -238,7 +264,7 @@ class CartMergeModuleService extends MedusaService({}) {
       }
 
       await lockCartRows(transactionContext, [input.guestCartId])
-      const sharedContext = currentVersionContext(transactionContext)
+      const sharedContext = currentVersionContext(manager)
       const versionService = request.scope.resolve<StoreResourceVersionModuleService>(
         STORE_RESOURCE_VERSION_MODULE
       )
@@ -249,7 +275,13 @@ class CartMergeModuleService extends MedusaService({}) {
       )
 
       const cart = cartModule.retrieveCart
-        ? await cartModule.retrieveCart(input.guestCartId, undefined, sharedContext)
+        ? projectCartCustomer(
+            await cartModule.retrieveCart(
+              input.guestCartId,
+              cartMergeCartRetrieveConfig(),
+              sharedContext
+            )
+          )
         : null
       if (!cart || !isActiveGuestCart(cart)) {
         throwConflict("CART_MERGE_GUEST_CART_UNSUPPORTED")
@@ -317,7 +349,13 @@ class CartMergeModuleService extends MedusaService({}) {
       if (claim.type === "replay") {
         if (claim.record.state === "completed" && claim.record.result_id) {
           const replayCart = cartModule.retrieveCart
-            ? await cartModule.retrieveCart(claim.record.result_id, undefined, sharedContext)
+            ? projectCartCustomer(
+                await cartModule.retrieveCart(
+                  claim.record.result_id,
+                  cartMergeCartRetrieveConfig(),
+                  sharedContext
+                )
+              )
             : null
           if (!replayCart) throwConflict("CART_MERGE_REPLAY_UNAVAILABLE")
           return {
@@ -332,10 +370,18 @@ class CartMergeModuleService extends MedusaService({}) {
       if (typeof cartModule.updateCarts !== "function") {
         throw new Error("CART_UPDATE_AUTHORITY_UNAVAILABLE")
       }
-      await cartModule.updateCarts(
-        { id: input.guestCartId, customer_id: input.customerId },
-        sharedContext
-      )
+      if (cartModule.updateCarts.length === 1) {
+        await cartModule.updateCarts(
+          { id: input.guestCartId, customer_id: input.customerId },
+          sharedContext
+        )
+      } else {
+        await cartModule.updateCarts(
+          { id: input.guestCartId },
+          { customer_id: input.customerId },
+          sharedContext
+        )
+      }
 
       await applyStructuralCartInvalidation(
         input.guestCartId,
@@ -379,7 +425,13 @@ class CartMergeModuleService extends MedusaService({}) {
       }
 
       const snapshot = cartModule.retrieveCart
-        ? await cartModule.retrieveCart(input.guestCartId, undefined, sharedContext)
+        ? projectCartCustomer(
+            await cartModule.retrieveCart(
+              input.guestCartId,
+              cartMergeCartRetrieveConfig(),
+              sharedContext
+            )
+          )
         : null
       if (!snapshot) throwConflict("CART_MERGE_SNAPSHOT_UNAVAILABLE")
       assertNoPaymentOrOrderFields(snapshot)
