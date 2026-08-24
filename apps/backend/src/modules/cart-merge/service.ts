@@ -470,6 +470,10 @@ async function replayCommittedReceipt(
   input: CartMergeExecutionInput,
   receipt: CartMergeReceiptRow
 ): Promise<CartMergeExecutionResult> {
+  if (input.expectedGuestVersion !== receipt.guest_version_before) {
+    throwConflict("IDEMPOTENCY_KEY_REUSE_CONFLICT")
+  }
+
   if (receipt.capability_status === "consumed") {
     const replay = (await capabilityService.lookupConsumedGuestCartCapabilityForReplay(
       {

@@ -556,6 +556,37 @@ if (!requestedDatabaseName) {
         expect(await countPersistedOrders(connection)).toBe(beforeOrders)
       })
 
+      it("rejeita replay com If-Match divergente sem write nem Order", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0503_replay_version_conflict"
+        )
+        await runMerge(container, fixture)
+
+        const beforeConflict = await readRealCartMergeState(connection, fixture)
+        const beforeOrders = await countPersistedOrders(connection)
+        const originalRequest = createCartMergeRequest(fixture, container)
+
+        await expect(
+          runMerge(container, fixture, {
+            headers: {
+              ...originalRequest.headers,
+              "if-match": `"${fixture.guestVersion + 100}"`,
+            },
+          })
+        ).rejects.toMatchObject({
+          code: "IDEMPOTENCY_KEY_REUSE_CONFLICT",
+          statusCode: 409,
+          status: 409,
+        })
+
+        expect(await readRealCartMergeState(connection, fixture)).toEqual(
+          beforeConflict
+        )
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+      })
+
       it("confirma NO_ITEMS sem tocar cart, lines, version, review ou capability", async () => {
         const container = getContainer()
         const fixture = await createRealCartMergeFixture(
