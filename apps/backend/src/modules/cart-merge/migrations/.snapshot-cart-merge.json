@@ -416,7 +416,7 @@
           "constraint": false,
           "primary": false,
           "unique": false,
-          "expression": "CREATE UNIQUE INDEX IF NOT EXISTS \"UQ_cart_merge_result_idempotency_record\" ON \"cart_merge_result\" (\"idempotency_record_id\") WHERE deleted_at IS NULL"
+          "expression": "CREATE UNIQUE INDEX IF NOT EXISTS \"UQ_cart_merge_result_idempotency_record\" ON \"cart_merge_result\" (\"idempotency_record_id\")"
         },
         {
           "keyName": "IDX_cart_merge_result_customer_id",
@@ -670,7 +670,7 @@
           "constraint": false,
           "primary": false,
           "unique": false,
-          "expression": "CREATE UNIQUE INDEX IF NOT EXISTS \"UQ_cart_review_review_ref\" ON \"cart_review\" (\"review_ref\") WHERE deleted_at IS NULL"
+          "expression": "CREATE UNIQUE INDEX IF NOT EXISTS \"UQ_cart_review_review_ref\" ON \"cart_review\" (\"review_ref\")"
         },
         {
           "keyName": "UQ_cart_review_merge_result",
@@ -679,7 +679,7 @@
           "constraint": false,
           "primary": false,
           "unique": false,
-          "expression": "CREATE UNIQUE INDEX IF NOT EXISTS \"UQ_cart_review_merge_result\" ON \"cart_review\" (\"merge_result_id\") WHERE deleted_at IS NULL"
+          "expression": "CREATE UNIQUE INDEX IF NOT EXISTS \"UQ_cart_review_merge_result\" ON \"cart_review\" (\"merge_result_id\")"
         },
         {
           "keyName": "UQ_cart_review_pending_cart",
