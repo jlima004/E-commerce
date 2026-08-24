@@ -748,10 +748,16 @@ describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — Real Author
     })
     const res = createMockResponse()
 
-    await expect(getActiveCart(req as never, res as never)).rejects.toMatchObject({
+    const ambiguityError = await getActiveCart(req as never, res as never).catch(
+      (error) => error
+    )
+    expect(ambiguityError).toMatchObject({
       code: "CUSTOMER_CART_AUTHORITY_CONFLICT",
       statusCode: 409,
     })
+    expect(ambiguityError.message).toBe("CUSTOMER_CART_AUTHORITY_CONFLICT")
+    expect(JSON.stringify(ambiguityError)).not.toContain("cart_same_first")
+    expect(JSON.stringify(ambiguityError)).not.toContain("cart_same_second")
 
     expect(res.statusCode).toBe(200)
     expect(res.body).toBeNull()
@@ -762,7 +768,50 @@ describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — Real Author
     expect(JSON.stringify(res)).not.toContain("cart_same_second")
   })
 
-  it("PROVA 7.2: authority stale não faz fallback temporal e retorna 409 sem mutação", async () => {
+  it("PROVA 7.2: POST ambíguo retorna 409 sanitizado sem criar ou reivindicar efeito", async () => {
+    const harness = createCustomerHarness()
+    const customerId = "cus_post_ambiguous"
+    harness.carts.set("cart_post_first", {
+      id: "cart_post_first",
+      customer_id: customerId,
+      customer: { id: customerId },
+      metadata: { active_for_checkout: true },
+      completed_at: null,
+      items: [],
+    })
+    harness.carts.set("cart_post_second", {
+      id: "cart_post_second",
+      customer_id: customerId,
+      customer: { id: customerId },
+      metadata: { active_for_checkout: true },
+      completed_at: null,
+      items: [],
+    })
+
+    const beforeCartIds = [...harness.carts.keys()].sort()
+    const session = harness.createCustomerSession(customerId)
+    const req = harness.createRequest({
+      method: "POST",
+      headers: { authorization: `Bearer ${session.token}` },
+    })
+    const res = createMockResponse()
+
+    const ambiguityError = await postActiveCart(req as never, res as never).catch(
+      (error) => error
+    )
+    expect(ambiguityError).toMatchObject({
+      code: "CUSTOMER_CART_AUTHORITY_CONFLICT",
+      statusCode: 409,
+    })
+    expect(ambiguityError.message).toBe("Customer cart state conflict")
+    expect(JSON.stringify(ambiguityError)).not.toContain("cart_post_first")
+    expect(JSON.stringify(ambiguityError)).not.toContain("cart_post_second")
+    expect([...harness.carts.keys()].sort()).toEqual(beforeCartIds)
+    expect(harness.authorities.size).toBe(0)
+    expect(res.body).toBeNull()
+  })
+
+  it("PROVA 7.3: authority stale não faz fallback temporal e retorna 409 sem mutação", async () => {
     const harness = createCustomerHarness()
     const customerId = "cus_stale_authority"
     const cart = {
