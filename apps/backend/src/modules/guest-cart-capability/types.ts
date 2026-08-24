@@ -37,6 +37,9 @@ export const GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED =
 export const GUEST_CART_CAPABILITY_LIFECYCLE_INVALID =
   "GUEST_CART_CAPABILITY_LIFECYCLE_INVALID" as const
 
+export const GUEST_CART_CAPABILITY_REPLAY_BINDING_INVALID =
+  "GUEST_CART_CAPABILITY_REPLAY_BINDING_INVALID" as const
+
 export type GuestCartCapabilityRecord = {
   id: string
   cart_id: string
@@ -90,5 +93,59 @@ export type GuestCartCapabilityMutationContext = {
       | GuestCartCapabilitySqlTransaction
       | null
       | undefined
+  }
+}
+
+/**
+ * Server-derived, hash-only bindings required for a post-consumption replay.
+ * The raw capability and raw Idempotency-Key intentionally have no type here:
+ * only their derived hashes may cross this boundary.
+ */
+export type GuestCartCapabilityReplayBinding = {
+  customerId: string
+  guestCartId: string
+  customerCartId: string | null
+  operation: string
+  actorScopeHash: string
+  resourceScopeHash: string
+  idempotencyKeyHash: string
+  idempotencyRecordId: string
+  requestFingerprint: string
+  resultId: string
+  resultType: string
+  capabilityHash: string
+  expiresAt: string | Date
+}
+
+export type LookupConsumedGuestCartCapabilityForReplayInput = {
+  presentedToken: string
+  cartId: string
+  bffAuthorized: boolean
+  customerAuthorized: boolean
+  binding: GuestCartCapabilityReplayBinding
+  sharedContext: GuestCartCapabilityMutationContext
+  now?: Date
+}
+
+export type GuestCartCapabilityReplayResult = {
+  capability: GuestCartCapabilityRecord
+  result: {
+    id: string
+    idempotency_record_id: string
+    customer_id: string
+    guest_cart_id: string
+    customer_cart_id: string | null
+    canonical_cart_id: string
+    capability_id: string
+    capability_hash: string
+    request_fingerprint: string
+    outcome: string
+    rejected_items: unknown
+    review_id: string | null
+    review_ref: string | null
+    original_public_cart_snapshot: unknown
+    original_review_snapshot: unknown
+    original_etag: string
+    expires_at: string | Date
   }
 }

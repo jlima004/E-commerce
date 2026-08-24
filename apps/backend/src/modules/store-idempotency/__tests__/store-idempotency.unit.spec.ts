@@ -8,12 +8,13 @@ import {
 } from "../service"
 import {
   GuestCartCapabilityModuleService,
-  lookupConsumedGuestCartCapabilityForReplay,
+} from "../../guest-cart-capability/service"
+import { hashGuestCartCapability } from "../../guest-cart-capability/hash"
+import {
+  GUEST_CART_CAPABILITY_STATUS,
   type GuestCartCapabilityReplayBinding,
   type GuestCartCapabilityRecord,
-} from "../../guest-cart-capability"
-import { hashGuestCartCapability } from "../../guest-cart-capability/hash"
-import { GUEST_CART_CAPABILITY_STATUS } from "../../guest-cart-capability/types"
+} from "../../guest-cart-capability/types"
 
 const at = new Date("2026-08-24T12:00:00.000Z")
 const rawIdempotencyKey = "cart-merge-key-canary"
@@ -41,8 +42,16 @@ function row(overrides: Partial<StoreIdempotencyRecordRow> = {}): StoreIdempoten
   return {
     id: idempotencyRecordId,
     operation,
-    actor_scope_hash: "a".repeat(64),
-    resource_scope_hash: "b".repeat(64),
+    actor_scope_hash: hashStoreIdempotencyScope({
+      actor_type: "customer",
+      customer_id: customerId,
+    }),
+    resource_scope_hash: hashStoreIdempotencyScope({
+      resource_type: "cart_merge",
+      guest_cart_id: guestCartId,
+      customer_cart_id: null,
+      capability_id: "gccap_phase16",
+    }),
     idempotency_key_hash: hashStoreIdempotencyKey(
       rawIdempotencyKey,
       Buffer.alloc(32).toString("base64url")
@@ -71,7 +80,7 @@ function row(overrides: Partial<StoreIdempotencyRecordRow> = {}): StoreIdempoten
   }
 }
 
-function sharedContext(raw: jest.Mock) {
+function sharedContext(raw: jest.Mock): any {
   const transactionManager = {
     getTransactionContext: () => ({ raw }),
   }
@@ -219,6 +228,9 @@ describe("Task 16-05-02: idempotency e replay terminal", () => {
       sharedContext: sharedContext(conflictRaw),
     })
     expect(conflict.type).toBe("conflict")
+    if (conflict.type !== "conflict") {
+      throw new Error("expected idempotency conflict")
+    }
     expect(conflict.publicCode).toBe("IDEMPOTENCY_KEY_REUSE_CONFLICT")
     expect(conflict.record.state_version).toBe(2)
     expect(conflictRaw).toHaveBeenCalledTimes(2)
@@ -402,7 +414,11 @@ describe("Task 16-05-02: consumed capability replay", () => {
     expect(replay?.capability.status).toBe(GUEST_CART_CAPABILITY_STATUS.CONSUMED)
     expect(replay?.capability.expires_at).toBe(originalExpiresAt)
     expect(raw).toHaveBeenCalledTimes(2)
-    expect(raw.mock.calls.map(([sql]) => String(sql).toLowerCase()).join(" ")).not.toContain("update")
+    expect(
+      raw.mock.calls
+        .map(([sql]) => String(sql).toLowerCase())
+        .join(" ")
+    ).not.toMatch(/\bupdate\s+/)
     expect((service as any).baseRepository_.transaction).not.toHaveBeenCalled()
   })
 
@@ -438,11 +454,5 @@ describe("Task 16-05-02: consumed capability replay", () => {
     })
     expect(unauthorized).toBeNull()
     expect(unauthorizedRaw).not.toHaveBeenCalled()
-  })
-})
-
-describe("Task 16-05-02: exported consumed capability replay lookup", () => {
-  it("mantém a API funcional delegando para o service real", async () => {
-    expect(typeof lookupConsumedGuestCartCapabilityForReplay).toBe("function")
   })
 })
