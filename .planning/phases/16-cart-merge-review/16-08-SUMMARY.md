@@ -16,7 +16,8 @@ affects: [phase-16-cart-merge-review, plan-16-11]
 actuals:
   tokens: 11019
   tasks: 1
-  commits: 2
+  technical_commits: 2
+  documentation_commits: 1
 
 tech-stack:
   added: []
@@ -43,8 +44,6 @@ key-decisions:
 patterns-established:
   - "Applied e replay compatível retornam cart/review público fechado, ETag preservado e Cache-Control no-store."
   - "Mutation posterior invalida ACK antigo pela versão produzida, sem reativar review automaticamente."
-
-requirements-completed: [MRG-06, MRG-07]
 
 coverage:
   - id: D1
