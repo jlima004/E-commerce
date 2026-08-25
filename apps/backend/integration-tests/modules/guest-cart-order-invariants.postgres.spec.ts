@@ -297,7 +297,26 @@ if (!requestedDatabaseName) {
         return attempts
       },
     }
-    const scope = {
+    const scope: any = {
+      createScope() {
+        const overrides = new Map<unknown, unknown>()
+        const childScope: any = {
+          register(key: unknown, registration: unknown) {
+            overrides.set(key, registration)
+            return childScope
+          },
+          resolve(key: unknown) {
+            if (overrides.has(key)) {
+              const registration = overrides.get(key) as { resolve?: () => unknown }
+              return typeof registration?.resolve === "function"
+                ? registration.resolve()
+                : registration
+            }
+            return scope.resolve(key)
+          },
+        }
+        return childScope
+      },
       resolve(key: unknown) {
         if (key === GUEST_CART_CAPABILITY_MODULE) {
           return {
@@ -339,7 +358,7 @@ if (!requestedDatabaseName) {
         }
         if (key === Modules.CART) {
           const transaction = { raw: async () => ({ rows: [] }) }
-          return {
+          const cartModule = {
             baseRepository_: {
               async transaction(callback: (manager: unknown) => Promise<unknown>) {
                 return callback({
@@ -351,6 +370,8 @@ if (!requestedDatabaseName) {
               return carts.get(id)
             },
           }
+          ;(cartModule as any).MedusaContextIndex_ = { retrieveCart: 2 }
+          return cartModule
         }
         if (key === ContainerRegistrationKeys.LINK) {
           return {

@@ -21,10 +21,14 @@ export type CartMergeFixture = {
   guestCartId: string
   guestCartEmail: string
   variantId: string
+  secondaryVariantId: string
   capabilityId: string
   capabilityToken: string
   guestVersion: number
   idempotencyKey: string
+  mutationCartId?: string
+  mutationVersion?: number
+  mutationVariantId?: string
 }
 
 export type CartMergePersistedState = {
@@ -62,7 +66,11 @@ export type CartMergeTransactionInstrumentation = {
   restore(): void
 }
 
-export type CartMergeRaceOperation = "active" | "merge"
+export type CartMergeRaceOperation =
+  | "active"
+  | "merge"
+  | "guest-mutation"
+  | "customer-mutation"
 
 export type CartMergeRaceWorkerResult = {
   role: "A" | "B"
@@ -72,6 +80,11 @@ export type CartMergeRaceWorkerResult = {
   cartId: string | null
   outcome: string | null
   txid: string
+  pid: number
+  connectionPid: string
+  message: string | null
+  etag: string | null
+  responseFingerprint: string
 }
 
 export type CartMergeRaceResult = {
@@ -82,6 +95,8 @@ export type CartMergeRaceResult = {
 type CartMergeRaceWorker = {
   child: ChildProcess
   role: "A" | "B"
+  pid: number
+  connectionPid: string
   queue: {
     messages: unknown[]
     waiters: Array<any>
@@ -492,7 +507,11 @@ export async function cleanupCartMergeSchemaProbes(
 export async function createRealCartMergeFixture(
   container: MedusaContainer,
   identity = `p16_real_${randomBytes(5).toString("hex")}`,
-  options: { withItems?: boolean; customerId?: string } = {}
+  options: {
+    withItems?: boolean
+    customerId?: string
+    guestItemQuantity?: number
+  } = {}
 ): Promise<CartMergeFixture> {
   const fulfillmentModule = container.resolve(Modules.FULFILLMENT) as {
     createShippingProfiles(input: {
@@ -536,7 +555,7 @@ export async function createRealCartMergeFixture(
           handle: `cart-merge-${handleIdentity}`,
           status: "published",
           shipping_profile_id: shippingProfile.id,
-          options: [{ title: "Size", values: ["M"] }],
+          options: [{ title: "Size", values: ["M", "L"] }],
           variants: [
             {
               title: "M",
@@ -552,13 +571,30 @@ export async function createRealCartMergeFixture(
               },
               prices: [{ amount: 99, currency_code: "brl" }],
             },
+            {
+              title: "L",
+              sku: `CART-MERGE-${safeIdentity}-L`,
+              options: { Size: "L" },
+              manage_inventory: false,
+              allow_backorder: true,
+              metadata: {
+                gelato_product_uid: `gelato_${safeIdentity}_l`,
+                gelato_template_id: `template_${safeIdentity}_l`,
+                gelato_variant_options: { size: "L", color: "Preto" },
+                template_mode: "fixed",
+              },
+              prices: [{ amount: 99, currency_code: "brl" }],
+            },
           ],
         },
       ],
     },
   })
   const variant = products[0]?.variants[0]
-  if (!variant?.id) throw new Error("P16_REAL_VARIANT_CREATION_FAILED")
+  const secondaryVariant = products[0]?.variants[1]
+  if (!variant?.id || !secondaryVariant?.id) {
+    throw new Error("P16_REAL_VARIANT_CREATION_FAILED")
+  }
 
   const cartInput: Record<string, unknown> = {
     currency_code: "brl",
@@ -569,7 +605,7 @@ export async function createRealCartMergeFixture(
     cartInput.items = [
       {
         title: `Cart merge item ${safeIdentity}`,
-        quantity: 1,
+        quantity: options.guestItemQuantity ?? 1,
         unit_price: 99,
         variant_id: variant.id,
         variant_sku: variant.sku,
@@ -617,10 +653,76 @@ export async function createRealCartMergeFixture(
     guestCartId: cart.id,
     guestCartEmail: email,
     variantId: variant.id,
+    secondaryVariantId: secondaryVariant.id,
     capabilityId: minted.record.id,
     capabilityToken: minted.plaintext_token,
     guestVersion: version.version,
     idempotencyKey: `cart-merge-${safeIdentity}`,
+  }
+}
+
+export type CartMergeCustomerCartFixture = {
+  cartId: string
+  customerId: string
+  version: number
+  variantId: string
+}
+
+/** Creates a real canonical-candidate Customer cart for structural-race tests. */
+export async function createRealCustomerCartFixture(
+  container: MedusaContainer,
+  fixture: CartMergeFixture,
+  identity: string,
+  options: { itemQuantity?: number } = {}
+): Promise<CartMergeCustomerCartFixture> {
+  const cartModule = container.resolve(Modules.CART) as unknown as {
+    createCarts(input: Record<string, unknown>): Promise<{ id: string }>
+  }
+  const cart = await cartModule.createCarts({
+    currency_code: "brl",
+    customer_id: fixture.customerId,
+    email: `${identity}@cart-merge.test`,
+    metadata: { active_for_checkout: true },
+    items: [
+      {
+        title: `Customer cart item ${identity}`,
+        quantity: options.itemQuantity ?? 1,
+        unit_price: 99,
+        variant_id: fixture.variantId,
+        requires_shipping: false,
+        is_custom_price: true,
+      },
+    ],
+  })
+
+  const resourceVersionService = container.resolve(
+    STORE_RESOURCE_VERSION_MODULE
+  ) as unknown as {
+    initialize(
+      resourceType: string,
+      resourceId: string,
+      sharedContext: unknown
+    ): Promise<{ version: number }>
+    baseRepository_: {
+      transaction<T>(
+        callback: (transactionManager: unknown) => Promise<T>
+      ): Promise<T>
+    }
+  }
+  const version = await resourceVersionService.baseRepository_.transaction(
+    async (transactionManager) =>
+      resourceVersionService.initialize("cart", cart.id, {
+        __type: "MedusaContext",
+        transactionManager,
+        manager: transactionManager,
+      })
+  )
+
+  return {
+    cartId: cart.id,
+    customerId: fixture.customerId,
+    version: version.version,
+    variantId: fixture.variantId,
   }
 }
 
@@ -675,13 +777,16 @@ const CART_MERGE_RACE_WORKER_SOURCE = String.raw`
 const { MedusaAppLoader, container } = require("@medusajs/framework")
 const { asValue } = require("@medusajs/framework/awilix")
 const { configManager } = require("@medusajs/framework/config")
-const { ContainerRegistrationKeys } = require("@medusajs/framework/utils")
+const { ContainerRegistrationKeys, Modules } = require("@medusajs/framework/utils")
 const { MedusaModule } = require("@medusajs/modules-sdk")
 const path = require("node:path")
 
 const role = process.env.P16_CART_MERGE_WORKER_ROLE
 const workerId = process.env.P16_CART_MERGE_WORKER_ID
 let application
+let connectionPid = ""
+let transactionTxid = ""
+let transactionConnectionPid = ""
 
 function send(message) {
   if (typeof process.send !== "function") {
@@ -709,25 +814,68 @@ function errorShape(error) {
   }
 }
 
-function requestFor(operation, fixture, idempotencyKey) {
+function awaitRunRelease(runId, releaseTypes) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      process.removeListener("message", onMessage)
+      reject(new Error("P16_CART_MERGE_STRUCTURAL_BARRIER_TIMEOUT"))
+    }, 30_000)
+    const onMessage = (message) => {
+      if (!releaseTypes.includes(message?.type) || message.runId !== runId) return
+      clearTimeout(timeout)
+      process.removeListener("message", onMessage)
+      resolve()
+    }
+    process.on("message", onMessage)
+  })
+}
+
+function requireQuery(scope, label) {
+  const query = scope.resolve(ContainerRegistrationKeys.QUERY)
+  if (!query || typeof query.graph !== "function") {
+    throw new Error("P16_CART_MERGE_WORKER_QUERY_UNAVAILABLE:" + label)
+  }
+  return query
+}
+
+function requestFor(operation, fixture, idempotencyKey, scope) {
   const base = {
     method: "POST",
-    originalUrl: operation === "active" ? "/store/carts/active" : "/store/customers/me/cart/merge",
-    url: operation === "active" ? "/store/carts/active" : "/store/customers/me/cart/merge",
-    scope: container,
-    auth_context: { actor_type: "customer", actor_id: fixture.customerId },
-    customerAuth: { authorized: true, customerId: fixture.customerId },
-    customerAuthBff: { authorized: true },
-    headers: {
-      authorization: "Bearer test-customer-jwt",
-      "x-indicio-bff-auth": "test-bff-authority",
-      "idempotency-key": idempotencyKey,
-    },
+    originalUrl: operation === "active"
+      ? "/store/carts/active"
+      : operation === "merge"
+        ? "/store/customers/me/cart/merge"
+        : "/store/carts/" + (operation === "guest-mutation" ? fixture.guestCartId : fixture.mutationCartId) + "/line-items",
+    url: operation === "active"
+      ? "/store/carts/active"
+      : operation === "merge"
+        ? "/store/customers/me/cart/merge"
+        : "/store/carts/" + (operation === "guest-mutation" ? fixture.guestCartId : fixture.mutationCartId) + "/line-items",
+    params: operation === "active" || operation === "merge"
+      ? {}
+      : { id: operation === "guest-mutation" ? fixture.guestCartId : fixture.mutationCartId },
+    scope,
+    body: operation === "guest-mutation" || operation === "customer-mutation"
+      ? { variant_id: operation === "guest-mutation" ? fixture.secondaryVariantId : fixture.mutationVariantId, quantity: 1 }
+      : undefined,
+    headers: { "idempotency-key": idempotencyKey },
+  }
+  if (operation !== "guest-mutation") {
+    base.auth_context = { actor_type: "customer", actor_id: fixture.customerId }
+    base.customerAuth = { authorized: true, customerId: fixture.customerId }
+    base.customerAuthBff = { authorized: true }
+    base.headers.authorization = "Bearer test-customer-jwt"
+    base.headers["x-indicio-bff-auth"] = "test-bff-authority"
   }
   if (operation === "merge") {
     base.body = { guestCartId: fixture.guestCartId }
     base.headers["x-indicio-guest-cart-token"] = fixture.capabilityToken
     base.headers["if-match"] = '"' + String(fixture.guestVersion) + '"'
+  } else if (operation === "guest-mutation") {
+    base.headers["x-indicio-guest-cart-token"] = fixture.capabilityToken
+    base.headers["if-match"] = '"' + String(fixture.guestVersion) + '"'
+  } else if (operation === "customer-mutation") {
+    base.headers["if-match"] = '"' + String(fixture.mutationVersion) + '"'
   }
   return base
 }
@@ -737,6 +885,14 @@ async function boot() {
   configManager.loadConfig({ projectConfig, baseDir: process.cwd() })
   const { pgConnectionLoader } = require("@medusajs/framework")
   await pgConnectionLoader()
+  const pgConnection = container.resolve(ContainerRegistrationKeys.PG_CONNECTION)
+  const connectionResult = await pgConnection.raw(
+    "select pg_backend_pid()::text as pid"
+  )
+  connectionPid = String(connectionResult.rows?.[0]?.pid ?? "")
+  if (!/^\d+$/.test(connectionPid)) {
+    throw new Error("P16_CART_MERGE_WORKER_CONNECTION_PID_INVALID")
+  }
   const logger = {
     debug() {}, info() {}, log() {}, warn() {}, error() {},
   }
@@ -749,7 +905,24 @@ async function boot() {
     medusaConfigPath: process.cwd(),
   })
   application = await loader.load()
-  send({ type: "ready", role, workerId, pid: process.pid })
+  requireQuery(container, "root")
+  const cartModule = container.resolve(Modules.CART)
+  const repository = cartModule.baseRepository_
+  const originalTransaction = repository.transaction
+  repository.transaction = async function instrumentedWorkerTransaction(callback, ...rest) {
+    return originalTransaction.call(this, async (transactionManager) => {
+      const transaction = transactionManager.getTransactionContext?.()
+      if (transaction) {
+        const identity = await transaction.raw(
+          "select txid_current()::text as txid, pg_backend_pid()::text as pid"
+        )
+        transactionTxid = String(identity.rows?.[0]?.txid ?? "")
+        transactionConnectionPid = String(identity.rows?.[0]?.pid ?? "")
+      }
+      return callback(transactionManager)
+    }, ...rest)
+  }
+  send({ type: "ready", role, workerId, pid: process.pid, connectionPid })
 }
 
 async function run(message) {
@@ -762,10 +935,17 @@ async function run(message) {
   const res = response()
   send({ type: "command-started", runId, role })
   try {
+    if (message.waitForStructuralRelease) {
+      await awaitRunRelease(runId, ["structural-release"])
+    }
     const handler = operation === "active"
       ? require(path.join(process.cwd(), "src/api/store/carts/active/route")).POST
-      : require(path.join(process.cwd(), "src/api/store/customers/me/cart/merge/route")).POST
-    await handler(requestFor(operation, fixture, message.idempotencyKey), res)
+      : operation === "merge"
+        ? require(path.join(process.cwd(), "src/api/store/customers/me/cart/merge/route")).POST
+        : require(path.join(process.cwd(), "src/api/store/carts/[id]/line-items/route")).POST
+    const requestScope = container.createScope()
+    requireQuery(requestScope, "request")
+    await handler(requestFor(operation, fixture, message.idempotencyKey, requestScope), res)
     send({
       type: "result",
       runId,
@@ -775,7 +955,15 @@ async function run(message) {
       code: null,
       cartId: res.body?.cart?.id ?? null,
       outcome: res.body?.outcome ?? null,
-      txid: message.lockTxid ?? "",
+      txid: transactionTxid || message.lockTxid || "",
+      pid: process.pid,
+      connectionPid: transactionConnectionPid || connectionPid,
+      etag: typeof res.headers?.etag === "string" ? res.headers.etag : null,
+      responseFingerprint: JSON.stringify({
+        statusCode: res.statusCode,
+        etag: typeof res.headers?.etag === "string" ? res.headers.etag : null,
+        body: res.body ?? null,
+      }),
     })
   } catch (error) {
     send({
@@ -787,7 +975,11 @@ async function run(message) {
       ...errorShape(error),
       cartId: null,
       outcome: null,
-      txid: message.lockTxid ?? "",
+      txid: transactionTxid || message.lockTxid || "",
+      pid: process.pid,
+      connectionPid: transactionConnectionPid || connectionPid,
+      etag: null,
+      responseFingerprint: "",
     })
   }
 }
@@ -862,6 +1054,10 @@ async function startCartMergeRaceWorker(
       queue.messages.push(message)
     }
   })
+  child.stderr?.on("data", (chunk) => {
+    const text = String(chunk).trim()
+    if (text) process.stderr.write(`[P16 worker ${role}] ${text}\n`)
+  })
   const boot = await nextCartMergeRaceWorkerMessage(
     child as unknown as CartMergeRaceWorker,
     (message) => message?.type === "ready" || message?.type === "boot-error",
@@ -870,9 +1066,14 @@ async function startCartMergeRaceWorker(
   if (boot.type !== "ready") {
     throw raceError(`P16_CART_MERGE_WORKER_BOOT_FAILED:${boot.code ?? boot.message ?? "unknown"}`)
   }
+  if (!Number.isInteger(boot.pid) || !/^\d+$/.test(String(boot.connectionPid ?? ""))) {
+    throw raceError("P16_CART_MERGE_WORKER_IDENTITY_INVALID")
+  }
   return {
     child,
     role,
+    pid: Number(boot.pid),
+    connectionPid: String(boot.connectionPid),
     queue,
     send(message) {
       if (!child.connected) throw raceError("P16_CART_MERGE_WORKER_IPC_CLOSED")
@@ -916,21 +1117,20 @@ function nextCartMergeRaceWorkerMessage(
     waiter.timer = setTimeout(() => {
       const index = queue.waiters.indexOf(waiter)
       if (index >= 0) queue.waiters.splice(index, 1)
-      reject(raceError("P16_CART_MERGE_LOCK_BARRIER_TIMEOUT"))
+      reject(
+        raceError(
+          `P16_CART_MERGE_LOCK_BARRIER_TIMEOUT:${worker.role}:${queue.messages
+            .map((message: any) => String(message?.type ?? "unknown"))
+            .join(",")}`
+        )
+      )
     }, timeoutMs)
     queue.waiters.push(waiter)
   })
 }
 
-function cancelCartMergeRaceWaiters(workers: CartMergeRaceWorker[]): void {
-  for (const worker of workers) {
-    const queue = workerMessageQueue(worker)
-    const pending = queue.waiters.splice(0)
-    for (const waiter of pending) {
-      clearTimeout(waiter.timer)
-      waiter.reject(raceError("P16_CART_MERGE_RACE_WAITER_CANCELLED"))
-    }
-  }
+function usesCustomerLockBarrier(operation: CartMergeRaceOperation): boolean {
+  return operation === "active" || operation === "merge"
 }
 
 export async function runCartMergeRace(
@@ -956,10 +1156,12 @@ export async function runCartMergeRace(
     workers[0].send({
       type: "run", runId, operation: operationA, fixture: fixtureA,
       idempotencyKey: idempotencyKeyA,
+      waitForStructuralRelease: !usesCustomerLockBarrier(operationA),
     })
     workers[1].send({
       type: "run", runId, operation: operationB, fixture: fixtureB,
       idempotencyKey: idempotencyKeyB,
+      waitForStructuralRelease: !usesCustomerLockBarrier(operationB),
     })
 
     await Promise.all(workers.map((worker) =>
@@ -969,34 +1171,8 @@ export async function runCartMergeRace(
       )
     ))
 
-    const first = await Promise.race(workers.map((worker) =>
-      nextCartMergeRaceWorkerMessage(worker, (message) =>
-        (message?.type === "lock-acquired" || message?.type === "result") &&
-          message.runId === runId,
-        30_000
-      ).then((message) => ({ worker, message }))
-    ))
-    if (first.message.type === "result") {
-      throw raceError(
-        `P16_CART_MERGE_WORKER_RESULT_BEFORE_LOCK:${first.message.code ?? first.message.message ?? "unknown"}`
-      )
-    }
-    cancelCartMergeRaceWaiters(workers)
-    first.worker.send({ type: "cart-merge-release", runId, role: first.message.role })
-
-    const secondWorker = workers.find((worker) => worker.role !== first.message.role)
-    if (!secondWorker) throw raceError("P16_CART_MERGE_SECOND_WORKER_MISSING")
-    const second = {
-      worker: secondWorker,
-      message: await nextCartMergeRaceWorkerMessage(
-        secondWorker,
-        (message) => message?.type === "lock-acquired" && message.runId === runId,
-        30_000
-      ),
-    }
-    second.worker.send({ type: "cart-merge-release", runId, role: second.message.role })
-
-    for (const worker of workers) {
+    const lockTxidByRole = new Map<string, string>()
+    const readResult = async (worker: CartMergeRaceWorker) => {
       const result = await nextCartMergeRaceWorkerMessage(
         worker,
         (message) => message?.type === "result" && message.runId === runId,
@@ -1010,15 +1186,101 @@ export async function runCartMergeRace(
         cartId: result.cartId == null ? null : String(result.cartId),
         outcome: result.outcome == null ? null : String(result.outcome),
         txid: String(result.txid ?? ""),
+        pid: Number(result.pid ?? worker.pid),
+        connectionPid: String(result.connectionPid ?? worker.connectionPid),
+        message: result.message == null ? null : String(result.message),
+        etag: result.etag == null ? null : String(result.etag),
+        responseFingerprint: String(result.responseFingerprint ?? ""),
       })
     }
 
-    const txids = [first.message.txid, second.message.txid].map(String) as [string, string]
+    const operationByRole = new Map<"A" | "B", CartMergeRaceOperation>([
+      ["A", operationA],
+      ["B", operationB],
+    ])
+    const barrierWorkers = workers.filter((worker) =>
+      usesCustomerLockBarrier(operationByRole.get(worker.role) as CartMergeRaceOperation)
+    )
+    const mutationWorkers = workers.filter((worker) =>
+      !usesCustomerLockBarrier(operationByRole.get(worker.role) as CartMergeRaceOperation)
+    )
+
+    if (barrierWorkers.length === 1 && mutationWorkers.length === 1) {
+      const barrierWorker = barrierWorkers[0]
+      const mutationWorker = mutationWorkers[0]
+      const lockMessage = await nextCartMergeRaceWorkerMessage(
+        barrierWorker,
+        (message) => message?.type === "lock-acquired" && message.runId === runId,
+        30_000
+      )
+      lockTxidByRole.set(String(lockMessage.role), String(lockMessage.txid))
+      if (operationByRole.get(mutationWorker.role) === "customer-mutation") {
+        barrierWorker.send({
+          type: "cart-merge-release",
+          runId,
+          role: lockMessage.role,
+          lockTxid: lockMessage.txid,
+        })
+        mutationWorker.send({ type: "structural-release", runId })
+        await Promise.all([readResult(mutationWorker), readResult(barrierWorker)])
+      } else {
+        mutationWorker.send({ type: "structural-release", runId })
+        await readResult(mutationWorker)
+        barrierWorker.send({
+          type: "cart-merge-release",
+          runId,
+          role: lockMessage.role,
+          lockTxid: lockMessage.txid,
+        })
+        await readResult(barrierWorker)
+      }
+    } else if (barrierWorkers.length === 2) {
+      const lockWaiters = barrierWorkers.map((worker) => ({
+        worker,
+        promise: nextCartMergeRaceWorkerMessage(
+          worker,
+          (message) => message?.type === "lock-acquired" && message.runId === runId,
+          30_000
+        ).then((message) => ({ worker, message })),
+      }))
+      const first = await Promise.race(lockWaiters.map(({ promise }) => promise))
+      lockTxidByRole.set(String(first.message.role), String(first.message.txid))
+      first.worker.send({
+        type: "cart-merge-release",
+        runId,
+        role: first.message.role,
+        lockTxid: first.message.txid,
+      })
+
+      const secondWorker = barrierWorkers.find((worker) => worker.role !== first.message.role)
+      if (!secondWorker) throw raceError("P16_CART_MERGE_SECOND_WORKER_MISSING")
+      const secondWaiter = lockWaiters.find(({ worker }) => worker.role === secondWorker.role)
+      if (!secondWaiter) throw raceError("P16_CART_MERGE_SECOND_WORKER_WAITER_MISSING")
+      const second = (await secondWaiter.promise).message
+      lockTxidByRole.set(String(second.role), String(second.txid))
+      secondWorker.send({
+        type: "cart-merge-release",
+        runId,
+        role: second.role,
+        lockTxid: second.txid,
+      })
+      await Promise.all(barrierWorkers.map((worker) => readResult(worker)))
+    } else {
+      for (const mutationWorker of mutationWorkers) {
+        mutationWorker.send({ type: "structural-release", runId })
+      }
+      await Promise.all(workers.map((worker) => readResult(worker)))
+    }
+
+    const sortedResults = results.sort((a, b) => a.role.localeCompare(b.role))
+    const txids = sortedResults.map((result) =>
+      lockTxidByRole.get(result.role) ?? result.txid
+    ).map(String) as [string, string]
     if (!txids.every((txid) => /^\d+$/.test(txid))) {
       throw raceError("P16_CART_MERGE_WORKER_TXID_UNSANITIZED")
     }
     return {
-      workers: results.sort((a, b) => a.role.localeCompare(b.role)) as [CartMergeRaceWorkerResult, CartMergeRaceWorkerResult],
+      workers: sortedResults as [CartMergeRaceWorkerResult, CartMergeRaceWorkerResult],
       lockTxids: txids,
     }
   } finally {

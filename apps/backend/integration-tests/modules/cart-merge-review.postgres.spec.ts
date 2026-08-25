@@ -1,6 +1,7 @@
 import { createRegionsWorkflow } from "@medusajs/core-flows"
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
-import { Modules } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
+import { POST as addGuestLineItem } from "../../src/api/store/carts/[id]/line-items/route"
 import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route"
 import {
   CART_MERGE_MODULE,
@@ -20,6 +21,7 @@ import {
   createCartMergeRequest,
   createCartMergeResponse,
   createHistoricalCustomerCartCandidates,
+  createRealCustomerCartFixture,
   createRealCartMergeFixture,
   cleanupCartMergeSchemaProbes,
   insertCartMergeResultProbe,
@@ -154,6 +156,65 @@ if (!requestedDatabaseName) {
           response as never
         )
         return response
+      }
+
+      const readCartRow = async (cartId: string) => {
+        const result = await connection.raw(
+          `
+            select
+              c.id,
+              c.customer_id,
+              c.metadata,
+              v.version,
+              coalesce((
+                select jsonb_agg(
+                  jsonb_build_object(
+                    'variant_id', li.variant_id,
+                    'quantity', li.quantity
+                  ) order by li.variant_id
+                )
+                from cart_line_item li
+                where li.cart_id = c.id and li.deleted_at is null
+              ), '[]'::jsonb) as line_items
+            from cart c
+            left join store_resource_version v
+              on v.resource_type = 'cart'
+             and v.resource_id = c.id
+             and v.deleted_at is null
+            where c.id = ? and c.deleted_at is null
+          `,
+          [cartId]
+        )
+        const row = result.rows?.[0]
+        if (!row) throw new Error(`P16_REAL_CART_ROW_MISSING:${cartId}`)
+        return row
+      }
+
+      const readLedgerCounts = async (fixture: {
+        guestCartId: string
+        customerCartId?: string
+      }) => {
+        const result = await connection.raw(
+          `
+            select
+              (
+                select count(*)::int
+                from cart_merge_result
+                where guest_cart_id = ? and deleted_at is null
+              ) as result_count,
+              (
+                select count(*)::int
+                from cart_review
+                where cart_id = ? and deleted_at is null
+              ) as review_count
+          `,
+          [fixture.guestCartId, fixture.customerCartId ?? fixture.guestCartId]
+        )
+        const row = result.rows?.[0]
+        return {
+          resultCount: Number(row?.result_count ?? 0),
+          reviewCount: Number(row?.review_count ?? 0),
+        }
       }
 
       it("aplica o schema frozen real com tabelas, CHECKs e índices aprovados", async () => {
@@ -554,6 +615,393 @@ if (!requestedDatabaseName) {
         ).toEqual(new Set([transaction.transactionIds[0]]))
       })
 
+      it("persiste MERGED_PARTIAL real com ledger e CartReview canônicos", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0707_merged_partial_ledger",
+          { guestItemQuantity: 30 }
+        )
+        const customerCart = await createRealCustomerCartFixture(
+          container,
+          fixture,
+          "p16_task0707_merged_partial_ledger",
+          { itemQuantity: 80 }
+        )
+        const beforeGuest = await readRealCartMergeState(connection, fixture)
+        const beforeCustomer = await readCartRow(customerCart.cartId)
+        const beforeLedger = await readLedgerCounts({
+          guestCartId: fixture.guestCartId,
+          customerCartId: customerCart.cartId,
+        })
+        const beforeOrders = await countPersistedOrders(connection)
+
+        expect(beforeGuest.line_items).toEqual([
+          expect.objectContaining({
+            variant_id: fixture.variantId,
+            quantity: 30,
+          }),
+        ])
+        expect(beforeCustomer.line_items).toEqual([
+          expect.objectContaining({
+            variant_id: fixture.variantId,
+            quantity: 80,
+          }),
+        ])
+        expect(beforeLedger).toEqual({ resultCount: 0, reviewCount: 0 })
+
+        const response = await runMerge(container, fixture)
+        const body = response.body as any
+        const rejectedItems = [
+          {
+            variantId: fixture.variantId,
+            requestedQuantity: 30,
+            acceptedQuantity: 19,
+            rejectedQuantity: 11,
+            reason: "QUANTITY_LIMIT_EXCEEDED",
+          },
+        ]
+
+        expect(response.statusCode).toBe(200)
+        expect(response.headers.etag).toBe(`"${customerCart.version + 1}"`)
+        expect(body.outcome).toBe("MERGED_PARTIAL")
+        expect(body.cart.id).toBe(customerCart.cartId)
+        expect(body.cart.items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              variant_id: fixture.variantId,
+              quantity: 99,
+            }),
+          ])
+        )
+        expect(body.review).toEqual({
+          requiresReview: true,
+          reviewRef: expect.stringMatching(/^review_/),
+          rejectedItems,
+        })
+
+        const afterGuest = await readRealCartMergeState(connection, fixture)
+        const afterGuestRow = await readCartRow(fixture.guestCartId)
+        const afterCustomer = await readCartRow(customerCart.cartId)
+        const authority = await readCustomerCartCanonicalState(
+          connection,
+          fixture.customerId
+        )
+        const receiptQuery = await connection.raw(
+          `
+            select
+              id,
+              customer_cart_id,
+              canonical_cart_id,
+              guest_version_before,
+              customer_version_before,
+              guest_version_after,
+              customer_version_after,
+              outcome,
+              rejected_items,
+              review_id,
+              review_ref,
+              original_public_cart_snapshot,
+              original_review_snapshot,
+              original_etag
+            from cart_merge_result
+            where guest_cart_id = ? and deleted_at is null
+          `,
+          [fixture.guestCartId]
+        )
+        const reviewQuery = await connection.raw(
+          `
+            select
+              id,
+              cart_id,
+              review_ref,
+              merge_result_id,
+              produced_cart_version,
+              status,
+              rejected_items
+            from cart_review
+            where cart_id = ? and deleted_at is null
+          `,
+          [customerCart.cartId]
+        )
+        const receipt = receiptQuery.rows?.[0]
+        const review = reviewQuery.rows?.[0]
+
+        expect(afterGuest.line_items).toEqual(beforeGuest.line_items)
+        expect(afterGuest.customer_id).toBeNull()
+        expect(afterGuest.version).toBe(fixture.guestVersion + 1)
+        expect(afterGuest.capability_status).toBe("consumed")
+        expect(afterGuest.idempotency_state).toBe("completed")
+        expect(afterGuest.idempotency_result_id).toBe(afterGuest.result_id)
+        expect(afterGuest.result_outcome).toBe("MERGED_PARTIAL")
+        expect(afterGuest.authority_state).toBeNull()
+        expect(afterGuest.review_status).toBe("pending")
+        expect(afterGuest.review_ref).toBe(body.review.reviewRef)
+        expect(afterGuestRow.metadata).toEqual(
+          expect.objectContaining({
+            active_for_checkout: false,
+            superseded_by_cart_id: customerCart.cartId,
+          })
+        )
+
+        expect(afterCustomer.customer_id).toBe(fixture.customerId)
+        expect(afterCustomer.version).toBe(customerCart.version + 1)
+        expect(afterCustomer.line_items).toEqual([
+          expect.objectContaining({
+            variant_id: fixture.variantId,
+            quantity: 99,
+          }),
+        ])
+        expect(afterCustomer.version).not.toBe(beforeCustomer.version)
+        expect(authority).toEqual({
+          activeAuthorityRows: 1,
+          activeAuthorityCartId: customerCart.cartId,
+          usableCustomerCartIds: [customerCart.cartId],
+        })
+
+        expect(receiptQuery.rows).toHaveLength(1)
+        expect(receipt).toEqual(
+          expect.objectContaining({
+            id: afterGuest.result_id,
+            customer_cart_id: customerCart.cartId,
+            canonical_cart_id: customerCart.cartId,
+            guest_version_before: fixture.guestVersion,
+            customer_version_before: customerCart.version,
+            guest_version_after: fixture.guestVersion + 1,
+            customer_version_after: customerCart.version + 1,
+            outcome: "MERGED_PARTIAL",
+            rejected_items: rejectedItems,
+            review_id: expect.any(String),
+            review_ref: body.review.reviewRef,
+            original_public_cart_snapshot: body.cart,
+            original_review_snapshot: body.review,
+            original_etag: response.headers.etag,
+          })
+        )
+        expect(receipt?.review_id).toBe(review?.id)
+        expect(receipt?.review_ref).toBe(review?.review_ref)
+
+        expect(reviewQuery.rows).toHaveLength(1)
+        expect(review).toEqual({
+          id: receipt?.review_id,
+          cart_id: customerCart.cartId,
+          review_ref: body.review.reviewRef,
+          merge_result_id: afterGuest.result_id,
+          produced_cart_version: customerCart.version + 1,
+          status: "pending",
+          rejected_items: rejectedItems,
+        })
+        const pendingReviewCount = await connection.raw(
+          `select count(*)::int as count from cart_review where cart_id = ? and status = 'pending' and deleted_at is null`,
+          [customerCart.cartId]
+        )
+        expect(pendingReviewCount.rows).toEqual([{ count: 1 }])
+        expect(await readLedgerCounts({
+          guestCartId: fixture.guestCartId,
+          customerCartId: customerCart.cartId,
+        })).toEqual({ resultCount: 1, reviewCount: 1 })
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+      })
+
+      it("faz rollback integral no failpoint review após o write da CartReview", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0707_failpoint_review",
+          { guestItemQuantity: 30 }
+        )
+        const customerCart = await createRealCustomerCartFixture(
+          container,
+          fixture,
+          "p16_task0707_failpoint_review",
+          { itemQuantity: 80 }
+        )
+        const beforeGuest = await readRealCartMergeState(connection, fixture)
+        const beforeGuestRow = await readCartRow(fixture.guestCartId)
+        const beforeCustomer = await readCartRow(customerCart.cartId)
+        const beforeAuthority = await readCustomerCartCanonicalState(
+          connection,
+          fixture.customerId
+        )
+        const beforeLedger = await readLedgerCounts({
+          guestCartId: fixture.guestCartId,
+          customerCartId: customerCart.cartId,
+        })
+        const beforeOrders = await countPersistedOrders(connection)
+        const failpoint = createCartMergeFailpoint()
+        failpoint.arm("review")
+        const cartModule = container.resolve(Modules.CART) as unknown as {
+          baseRepository_: { transaction: (...args: any[]) => Promise<unknown> }
+        }
+        const transaction = instrumentRealCartMergeTransaction(cartModule as any, {
+          failpoint,
+        })
+
+        try {
+          await expect(
+            runMerge(container, fixture, { cartMergeFailpoint: failpoint })
+          ).rejects.toThrow("P16_CART_MERGE_FAILPOINT:review")
+        } finally {
+          transaction.restore()
+        }
+
+        const afterGuest = await readRealCartMergeState(connection, fixture)
+        const afterGuestRow = await readCartRow(fixture.guestCartId)
+        const afterCustomer = await readCartRow(customerCart.cartId)
+        expect(afterGuest).toEqual(beforeGuest)
+        expect(afterGuestRow).toEqual(beforeGuestRow)
+        expect(afterCustomer).toEqual(beforeCustomer)
+        expect(await readCustomerCartCanonicalState(connection, fixture.customerId)).toEqual(
+          beforeAuthority
+        )
+        expect(await readLedgerCounts({
+          guestCartId: fixture.guestCartId,
+          customerCartId: customerCart.cartId,
+        })).toEqual(beforeLedger)
+        expect(afterGuest.capability_status).toBe("active")
+        expect(afterGuest.idempotency_state).toBeNull()
+        expect(afterGuest.result_id).toBeNull()
+        expect(afterGuest.review_status).toBeNull()
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+        expect(failpoint.ledger).toContain("review")
+        expect(transaction.transactionIds).toHaveLength(1)
+      })
+
+      it("faz rollback integral no failpoint supersede com destino Customer real", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0707_failpoint_supersede"
+        )
+        const customerCart = await createRealCustomerCartFixture(
+          container,
+          fixture,
+          "p16_task0707_failpoint_supersede"
+        )
+        const beforeGuest = await readRealCartMergeState(connection, fixture)
+        const beforeGuestRow = await readCartRow(fixture.guestCartId)
+        const beforeCustomer = await readCartRow(customerCart.cartId)
+        const beforeAuthority = await readCustomerCartCanonicalState(
+          connection,
+          fixture.customerId
+        )
+        const beforeLedger = await readLedgerCounts({
+          guestCartId: fixture.guestCartId,
+          customerCartId: customerCart.cartId,
+        })
+        const beforeOrders = await countPersistedOrders(connection)
+        const failpoint = createCartMergeFailpoint()
+        failpoint.arm("supersede")
+        const cartModule = container.resolve(Modules.CART) as unknown as {
+          baseRepository_: { transaction: (...args: any[]) => Promise<unknown> }
+        }
+        const transaction = instrumentRealCartMergeTransaction(cartModule as any, {
+          failpoint,
+        })
+
+        try {
+          await expect(
+            runMerge(container, fixture, { cartMergeFailpoint: failpoint })
+          ).rejects.toThrow("P16_CART_MERGE_FAILPOINT:supersede")
+        } finally {
+          transaction.restore()
+        }
+
+        const afterGuest = await readRealCartMergeState(connection, fixture)
+        const afterGuestRow = await readCartRow(fixture.guestCartId)
+        const afterCustomer = await readCartRow(customerCart.cartId)
+        expect(afterGuest).toEqual(beforeGuest)
+        expect(afterGuestRow).toEqual(beforeGuestRow)
+        expect(afterCustomer).toEqual(beforeCustomer)
+        expect(await readCustomerCartCanonicalState(connection, fixture.customerId)).toEqual(
+          beforeAuthority
+        )
+        expect(await readLedgerCounts({
+          guestCartId: fixture.guestCartId,
+          customerCartId: customerCart.cartId,
+        })).toEqual(beforeLedger)
+        expect(afterGuestRow.metadata).toEqual(beforeGuestRow.metadata)
+        expect(afterGuest.capability_status).toBe("active")
+        expect(afterGuest.idempotency_state).toBeNull()
+        expect(afterGuest.result_id).toBeNull()
+        expect(afterGuest.review_status).toBeNull()
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+        expect(failpoint.ledger).toContain("supersede")
+        expect(transaction.transactionIds).toHaveLength(1)
+      })
+
+      it("prova mutation guest serial real com addToCartWorkflow nativo e QUERY resolvido", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0703_guest_mutation_smoke"
+        )
+        const beforeState = await readRealCartMergeState(connection, fixture)
+        const beforeOrders = await countPersistedOrders(connection)
+        const requestScope = container.createScope()
+        const query = requestScope.resolve(ContainerRegistrationKeys.QUERY) as {
+          graph?: unknown
+        }
+        expect(typeof query.graph).toBe("function")
+
+        const cartModule = container.resolve(Modules.CART) as unknown as {
+          baseRepository_: {
+            transaction: (...args: any[]) => Promise<unknown>
+          }
+        }
+        const transaction = instrumentRealCartMergeTransaction(cartModule as any)
+        const response = createCartMergeResponse()
+
+        try {
+          await addGuestLineItem(
+            {
+              method: "POST",
+              url: `/store/carts/${fixture.guestCartId}/line-items`,
+              originalUrl: `/store/carts/${fixture.guestCartId}/line-items`,
+              params: { id: fixture.guestCartId },
+              body: { variant_id: fixture.secondaryVariantId, quantity: 1 },
+              headers: {
+                "idempotency-key": "cart-merge-p16-task0703-guest-smoke",
+                "if-match": `"${fixture.guestVersion}"`,
+                "x-indicio-guest-cart-token": fixture.capabilityToken,
+              },
+              scope: requestScope,
+            } as never,
+            response as never
+          )
+        } finally {
+          transaction.restore()
+        }
+
+        expect(response.statusCode).toBe(200)
+        expect(response.headers.etag).toBe(`\"${fixture.guestVersion + 1}\"`)
+        expect((response.body as any).cart.id).toBe(fixture.guestCartId)
+        const afterState = await readRealCartMergeState(connection, fixture)
+        expect(afterState.customer_id).toBeNull()
+        expect(afterState.version).toBe(fixture.guestVersion + 1)
+        expect(afterState.line_items).toHaveLength(beforeState.line_items.length + 1)
+        expect(afterState.line_items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              variant_id: fixture.secondaryVariantId,
+              quantity: 1,
+            }),
+          ])
+        )
+        expect(afterState.capability_status).toBe("active")
+        expect(afterState.capability_consumed_at).toBeNull()
+        const capability = await connection.raw(
+          "select token_hash from guest_cart_capability where id = ? and deleted_at is null",
+          [fixture.capabilityId]
+        )
+        expect(capability.rows?.[0]?.token_hash).not.toBe(fixture.capabilityToken)
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+
+        expect(transaction.transactionIds).toHaveLength(2)
+        expect(transaction.transactionIds[0]).toMatch(/^\d+$/)
+        expect(new Set(transaction.transactionIds).size).toBe(1)
+      })
+
       it("reproduz somente o receipt original depois de mudança no cart atual", async () => {
         const container = getContainer()
         const fixture = await createRealCartMergeFixture(
@@ -951,6 +1399,314 @@ if (!requestedDatabaseName) {
         expect(await readRealCartMergeState(connection, attachedFixture)).toEqual(
           beforeReplay
         )
+      })
+
+      it("faz different-key concurrent merge no mesmo guest com um vencedor e um loser sem segundo efeito", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0703_different_key_merge"
+        )
+        const beforeOrders = await countPersistedOrders(connection)
+
+        const race = await runCartMergeRace(
+          process.env.DATABASE_URL!,
+          "merge",
+          "merge",
+          fixture,
+          fixture,
+          "p16-task0703-different-key-a",
+          "p16-task0703-different-key-b"
+        )
+        console.info(
+          `[P16_RACE_EVIDENCE] case=different-key workers=${JSON.stringify(
+            race.workers.map(({ role, pid, connectionPid, txid, statusCode, code }) => ({
+              role,
+              pid,
+              connectionPid,
+              txid,
+              statusCode,
+              code,
+            }))
+          )} lockTxids=${JSON.stringify(race.lockTxids)}`
+        )
+
+        expect(new Set(race.workers.map((worker) => worker.pid)).size).toBe(2)
+        expect(new Set(race.workers.map((worker) => worker.connectionPid)).size).toBe(2)
+        expect(new Set(race.lockTxids).size).toBe(2)
+        expect(race.workers).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              statusCode: 200,
+              outcome: "GUEST_CART_ATTACHED",
+              cartId: fixture.guestCartId,
+            }),
+            expect.objectContaining({
+              statusCode: 409,
+              code: "CART_MERGE_GUEST_CART_UNSUPPORTED",
+              outcome: null,
+            }),
+          ])
+        )
+
+        const state = await readRealCartMergeState(connection, fixture)
+        expect(state.customer_id).toBe(fixture.customerId)
+        expect(state.capability_status).toBe("consumed")
+        expect(state.capability_consumed_at).not.toBeNull()
+        expect(state.idempotency_state).toBe("completed")
+        expect(state.result_outcome).toBe("GUEST_CART_ATTACHED")
+        expect(state.version).toBe(fixture.guestVersion + 1)
+        const resultCount = await connection.raw(
+          `select count(*)::int as count from cart_merge_result where guest_cart_id = ? and deleted_at is null`,
+          [fixture.guestCartId]
+        )
+        expect(Number(resultCount.rows?.[0]?.count ?? 0)).toBe(1)
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+      })
+
+      it("faz same-key concurrent merge no mesmo guest uma única vez e permite replay compatível", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0703_same_key_merge"
+        )
+        const beforeOrders = await countPersistedOrders(connection)
+
+        const race = await runCartMergeRace(
+          process.env.DATABASE_URL!,
+          "merge",
+          "merge",
+          fixture,
+          fixture,
+          "p16-task0703-same-key",
+          "p16-task0703-same-key"
+        )
+        console.info(
+          `[P16_RACE_EVIDENCE] case=same-key workers=${JSON.stringify(
+            race.workers.map(({ role, pid, connectionPid, txid, statusCode, code }) => ({
+              role,
+              pid,
+              connectionPid,
+              txid,
+              statusCode,
+              code,
+            }))
+          )} lockTxids=${JSON.stringify(race.lockTxids)}`
+        )
+
+        expect(new Set(race.workers.map((worker) => worker.pid)).size).toBe(2)
+        expect(new Set(race.workers.map((worker) => worker.connectionPid)).size).toBe(2)
+        expect(new Set(race.lockTxids).size).toBe(2)
+        expect(race.workers).toEqual([
+          expect.objectContaining({
+            statusCode: 200,
+            outcome: "GUEST_CART_ATTACHED",
+            cartId: fixture.guestCartId,
+          }),
+          expect.objectContaining({
+            statusCode: 200,
+            outcome: "GUEST_CART_ATTACHED",
+            cartId: fixture.guestCartId,
+          }),
+        ])
+
+        const state = await readRealCartMergeState(connection, fixture)
+        const resultCount = await connection.raw(
+          `select count(*)::int as count from cart_merge_result where guest_cart_id = ? and deleted_at is null`,
+          [fixture.guestCartId]
+        )
+        expect(Number(resultCount.rows?.[0]?.count ?? 0)).toBe(1)
+        expect(state.customer_id).toBe(fixture.customerId)
+        expect(state.capability_status).toBe("consumed")
+        expect(state.idempotency_state).toBe("completed")
+        expect(state.result_outcome).toBe("GUEST_CART_ATTACHED")
+        expect(state.version).toBe(fixture.guestVersion + 1)
+        expect(state.line_items).toEqual([
+          expect.objectContaining({
+            variant_id: fixture.variantId,
+            quantity: 1,
+          }),
+        ])
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+      })
+
+      it("serializa merge-vs-guest structural mutation real semherdar efeito", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0703_merge_guest_mutation"
+        )
+        const beforeOrders = await countPersistedOrders(connection)
+
+        const race = await runCartMergeRace(
+          process.env.DATABASE_URL!,
+          "merge",
+          "guest-mutation",
+          fixture,
+          fixture,
+          "p16-task0703-merge-guest",
+          "p16-task0703-guest-mutation"
+        )
+        console.info(
+          `[P16_RACE_EVIDENCE] case=merge-vs-guest workers=${JSON.stringify(
+            race.workers.map(({ role, pid, connectionPid, txid, statusCode, code }) => ({
+              role,
+              pid,
+              connectionPid,
+              txid,
+              statusCode,
+              code,
+            }))
+          )} lockTxids=${JSON.stringify(race.lockTxids)}`
+        )
+
+        expect(new Set(race.workers.map((worker) => worker.pid)).size).toBe(2)
+        expect(new Set(race.workers.map((worker) => worker.connectionPid)).size).toBe(2)
+        expect(new Set(race.lockTxids).size).toBe(2)
+        expect(race.workers).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ operation: "guest-mutation", statusCode: 200 }),
+            expect.objectContaining({ operation: "merge", statusCode: 412 }),
+          ])
+        )
+
+        const state = await readRealCartMergeState(connection, fixture)
+        expect(state.customer_id).toBeNull()
+        expect(state.capability_status).toBe("active")
+        expect(state.idempotency_state).toBeNull()
+        expect(state.result_id).toBeNull()
+        expect(state.version).toBe(fixture.guestVersion + 1)
+        expect(state.line_items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              variant_id: fixture.variantId,
+              quantity: 1,
+            }),
+            expect.objectContaining({
+              variant_id: fixture.secondaryVariantId,
+              quantity: 1,
+            }),
+          ])
+        )
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+      })
+
+      it("serializa merge-vs-Customer no mesmo cart real sem lost update nem quantity overwrite", async () => {
+        const container = getContainer()
+        const fixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0703_merge_customer_mutation"
+        )
+        const customerCart = await createRealCustomerCartFixture(
+          container,
+          fixture,
+          "p16_task0703_merge_customer_mutation"
+        )
+        fixture.mutationCartId = customerCart.cartId
+        fixture.mutationVersion = customerCart.version
+        fixture.mutationVariantId = fixture.secondaryVariantId
+        const beforeOrders = await countPersistedOrders(connection)
+
+        const race = await runCartMergeRace(
+          process.env.DATABASE_URL!,
+          "merge",
+          "customer-mutation",
+          fixture,
+          fixture,
+          "p16-task0703-merge-customer",
+          "p16-task0703-customer-mutation"
+        )
+        console.info(
+          `[P16_RACE_EVIDENCE] case=merge-vs-Customer workers=${JSON.stringify(
+            race.workers.map(({ role, pid, connectionPid, txid, statusCode, code }) => ({
+              role,
+              pid,
+              connectionPid,
+              txid,
+              statusCode,
+              code,
+            }))
+          )} lockTxids=${JSON.stringify(race.lockTxids)}`
+        )
+
+        expect(new Set(race.workers.map((worker) => worker.pid)).size).toBe(2)
+        expect(new Set(race.workers.map((worker) => worker.connectionPid)).size).toBe(2)
+        expect(new Set(race.lockTxids).size).toBe(2)
+        const mergeResult = race.workers.find((worker) => worker.operation === "merge")!
+        const mutationResult = race.workers.find(
+          (worker) => worker.operation === "customer-mutation"
+        )!
+        expect(mergeResult).toEqual(
+          expect.objectContaining({
+            statusCode: 200,
+            outcome: "MERGED",
+            cartId: customerCart.cartId,
+          })
+        )
+        expect([200, 412]).toContain(mutationResult.statusCode)
+        if (mutationResult.statusCode === 200) {
+          expect(mutationResult.cartId).toBe(customerCart.cartId)
+        } else {
+          expect(mutationResult.code).toBe("CART_VERSION_MISMATCH")
+        }
+
+        const guestState = await readRealCartMergeState(connection, fixture)
+        expect(guestState.customer_id).toBeNull()
+        expect(guestState.capability_status).toBe("consumed")
+        expect(guestState.idempotency_state).toBe("completed")
+        expect(guestState.result_outcome).toBe("MERGED")
+        expect(guestState.review_status).toBeNull()
+
+        const customerState = await connection.raw(
+          `
+            select
+              c.customer_id,
+              v.version,
+              coalesce((
+                select jsonb_agg(
+                  jsonb_build_object('variant_id', li.variant_id, 'quantity', li.quantity)
+                  order by li.variant_id
+                )
+                from cart_line_item li
+                where li.cart_id = c.id and li.deleted_at is null
+              ), '[]'::jsonb) as line_items
+            from cart c
+            left join store_resource_version v
+              on v.resource_type = 'cart'
+             and v.resource_id = c.id
+             and v.deleted_at is null
+            where c.id = ? and c.deleted_at is null
+          `,
+          [customerCart.cartId]
+        )
+        const expectedCustomerState =
+          mutationResult.statusCode === 200
+            ? {
+                version: 3,
+                line_items: [
+                  { quantity: 1, variant_id: fixture.secondaryVariantId },
+                  { quantity: 2, variant_id: fixture.variantId },
+                ],
+              }
+            : {
+                version: 2,
+                line_items: [{ quantity: 2, variant_id: fixture.variantId }],
+              }
+        expect(customerState.rows).toEqual([
+          expect.objectContaining({
+            customer_id: fixture.customerId,
+            ...expectedCustomerState,
+          }),
+        ])
+
+        const authority = await readCustomerCartCanonicalState(
+          connection,
+          fixture.customerId
+        )
+        expect(authority.activeAuthorityRows).toBe(1)
+        expect(authority.activeAuthorityCartId).toBe(customerCart.cartId)
+        expect(authority.usableCustomerCartIds).toEqual([customerCart.cartId])
+        expect(await countPersistedOrders(connection)).toBe(beforeOrders)
       })
 
       it("falha fechado em ambiguity pré-existente nos dois processos", async () => {

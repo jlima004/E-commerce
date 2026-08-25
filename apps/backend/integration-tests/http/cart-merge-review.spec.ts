@@ -1,5 +1,10 @@
 import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route"
 import {
+  addToCartWorkflow,
+  deleteLineItemsWorkflow,
+  updateLineItemInCartWorkflow,
+} from "@medusajs/core-flows"
+import {
   CART_MERGE_MODULE,
   CartMergeModuleService,
 } from "../../src/modules/cart-merge"
@@ -8,7 +13,14 @@ import {
   GUEST_CART_CAPABILITY_MODULE,
 } from "../../src/modules/guest-cart-capability/types"
 import { STORE_IDEMPOTENCY_MODULE } from "../../src/modules/store-idempotency"
+import {
+  buildStoreIdempotencyRequestFingerprint,
+  hashStoreIdempotencyKey,
+  hashStoreIdempotencyScope,
+} from "../../src/modules/store-idempotency"
 import { STORE_RESOURCE_VERSION_MODULE } from "../../src/modules/store-resource-version"
+import { env } from "../../src/config/env"
+import { hashGuestCartCapability } from "../../src/modules/guest-cart-capability/hash"
 import {
   MedusaAppLoader,
   container as medusaContainer,
@@ -18,9 +30,17 @@ import { configManager } from "@medusajs/framework/config"
 import {
   ContainerRegistrationKeys,
   createMedusaContainer,
+  MedusaError,
   Modules,
 } from "@medusajs/framework/utils"
 import { MedusaModule, ModulesDefinition } from "@medusajs/modules-sdk"
+import { toStoreErrorResponse } from "../../src/api/store-surface/errors"
+
+jest.mock("@medusajs/core-flows", () => ({
+  addToCartWorkflow: jest.fn(),
+  updateLineItemInCartWorkflow: jest.fn(),
+  deleteLineItemsWorkflow: jest.fn(),
+}))
 
 type MedusaConfigModule = {
   modules: Record<string, unknown>
@@ -109,9 +129,71 @@ function createResponse() {
   }
 }
 
+type CartMergeHarnessOptions = {
+  customerCart?: boolean
+  guestItems?: Array<Record<string, unknown>>
+  customerItems?: Array<Record<string, unknown>>
+}
+
+function sellableVariant(id: string) {
+  return {
+    id,
+    metadata: {
+      gelato_product_uid: "gelato_product_test",
+      gelato_template_id: "gelato_template_test",
+      gelato_variant_options: { size: "M", color: "Black" },
+      template_mode: "fixed",
+    },
+    prices: [{ currency_code: "brl", amount: 99 }],
+    product: { status: "published" },
+  }
+}
+
+function expectPublicMergeBody(body: any) {
+  expect(Object.keys(body).sort()).toEqual(["cart", "outcome", "review"])
+  expect(Object.keys(body.review).sort()).toEqual([
+    "rejectedItems",
+    "requiresReview",
+    "reviewRef",
+  ])
+  for (const rejectedItem of body.review.rejectedItems) {
+    expect(Object.keys(rejectedItem).sort()).toEqual([
+      "acceptedQuantity",
+      "reason",
+      "rejectedQuantity",
+      "requestedQuantity",
+      "variantId",
+    ])
+  }
+  expect(Object.keys(body.cart).sort()).toEqual([
+    "checkout_data_complete",
+    "created_at",
+    "currency_code",
+    "customer",
+    "discount_total",
+    "email",
+    "id",
+    "item_total",
+    "items",
+    "locale",
+    "region_id",
+    "shipping_address",
+    "shipping_total",
+    "subtotal",
+    "tax_total",
+    "total",
+    "updated_at",
+  ])
+  expect(JSON.stringify(body)).not.toMatch(
+    /guest-capability-is-not-persisted|customer-jwt-is-not-persisted|bff-secret-is-not-persisted|internalMetadata|raw-db-secret/
+  )
+}
+
 function createTracerHarness(
-  container: ReturnType<typeof createMedusaContainer>
+  container: ReturnType<typeof createMedusaContainer>,
+  options: CartMergeHarnessOptions = {}
 ) {
+  const customerId = "cus_merge_01"
   const guestCart = {
     id: "cart_guest_merge_01",
     customer: null,
@@ -119,7 +201,7 @@ function createTracerHarness(
     email: "guest@example.com",
     currency_code: "brl",
     metadata: { active_for_checkout: true },
-    items: [
+    items: options.guestItems ?? [
       {
         id: "li_guest_merge_01",
         variant_id: "variant_tshirt_black_m",
@@ -127,16 +209,43 @@ function createTracerHarness(
         title: "Camiseta preta M",
         variant_title: "Preta / M",
         unit_price: 9900,
+        variant: sellableVariant("variant_tshirt_black_m"),
       },
     ],
     completed_at: null,
     created_at: "2026-08-23T12:00:00.000Z",
     updated_at: "2026-08-23T12:00:00.000Z",
   }
+  const customerCart = options.customerCart
+    ? {
+        id: "cart_customer_merge_01",
+        customer: { id: customerId },
+        customer_id: customerId,
+        email: "customer@example.com",
+        currency_code: "brl",
+        metadata: { active_for_checkout: true },
+        items: options.customerItems ?? [
+          {
+            id: "li_customer_merge_01",
+            variant_id: "variant_tshirt_black_m",
+            quantity: 1,
+            title: "Camiseta preta M",
+            variant_title: "Preta / M",
+            unit_price: 9900,
+            variant: sellableVariant("variant_tshirt_black_m"),
+          },
+        ],
+        completed_at: null,
+        created_at: "2026-08-23T11:00:00.000Z",
+        updated_at: "2026-08-23T11:00:00.000Z",
+      }
+    : null
+  const carts = new Map<string, any>([[guestCart.id, guestCart]])
+  if (customerCart) carts.set(customerCart.id, customerCart)
   const capability = {
     id: "gccap_merge_01",
     cart_id: guestCart.id,
-    token_hash: "hash_only_guest_merge_01",
+    token_hash: hashGuestCartCapability("guest-capability-is-not-persisted"),
     status: "active" as const,
     expires_at: "2026-08-30T12:00:00.000Z",
     consumed_at: null,
@@ -146,32 +255,147 @@ function createTracerHarness(
     updated_at: "2026-08-23T12:00:00.000Z",
     deleted_at: null,
   }
-  const versions = new Map([[guestCart.id, 1]])
+  const versions = new Map<string, number>([[guestCart.id, 1]])
+  if (customerCart) versions.set(customerCart.id, 1)
+  const idempotencyRecords = new Map<string, any>()
+  let committedReceiptRow: Record<string, unknown> | null = null
   const transaction = {
     id: "tx_cart_merge_01",
-    raw: jest.fn(async () => ({ rows: [] })),
+    raw: jest.fn(async (sql: string, bindings: unknown[] = []) => {
+      const normalized = sql.toLowerCase().replace(/\s+/g, " ").trim()
+      if (normalized.includes("from cart_merge_result")) {
+        if (!committedReceiptRow) return { rows: [] }
+        const record = [...idempotencyRecords.values()].find(
+          (candidate) => candidate.id === committedReceiptRow?.idempotency_record_id
+        )
+        return {
+          rows: [
+            {
+              ...committedReceiptRow,
+              capability_status: capability.status,
+              actor_scope_hash: record?.actor_scope_hash,
+              resource_scope_hash: record?.resource_scope_hash,
+              idempotency_key_hash: record?.idempotency_key_hash,
+              idempotency_operation: "cart_merge",
+              idempotency_state: record?.state,
+              idempotency_result_type: "cart_merge",
+              idempotency_result_id: record?.result_id,
+              idempotency_expires_at: committedReceiptRow.expires_at,
+            },
+          ],
+        }
+      }
+      if (normalized.includes("from customer_cart_authority")) {
+        return {
+          rows: customerCart
+            ? [
+                {
+                  id: "ccauth_merge_01",
+                  customer_id: customerId,
+                  cart_id: customerCart.id,
+                  state: "active",
+                },
+              ]
+            : [],
+        }
+      }
+      if (normalized.includes("from cart where customer_id")) {
+        return {
+          rows: customerCart
+            ? [
+                {
+                  id: customerCart.id,
+                  customer_id: customerId,
+                  completed_at: null,
+                  deleted_at: null,
+                  metadata: customerCart.metadata,
+                },
+              ]
+            : [],
+        }
+      }
+      if (normalized.startsWith("insert into cart_merge_result")) {
+        committedReceiptRow = {
+          id: String(bindings[0]),
+          idempotency_record_id: String(bindings[1]),
+          customer_id: String(bindings[2]),
+          guest_cart_id: String(bindings[3]),
+          customer_cart_id: bindings[4] == null ? null : String(bindings[4]),
+          canonical_cart_id: String(bindings[5]),
+          capability_id: String(bindings[6]),
+          capability_hash: bindings[7] == null ? null : String(bindings[7]),
+          request_fingerprint: String(bindings[8]),
+          guest_version_before: bindings[9],
+          customer_version_before: bindings[10],
+          guest_version_after: bindings[11],
+          customer_version_after: bindings[12],
+          outcome: bindings[13],
+          rejected_items: bindings[14],
+          review_id: bindings[15],
+          review_ref: bindings[16],
+          original_public_cart_snapshot: bindings[17],
+          original_review_snapshot: bindings[18],
+          original_etag: bindings[19],
+          expires_at: bindings[20],
+        }
+      }
+      return { rows: [] }
+    }),
   }
   const idempotency = {
-    claim: jest.fn(async (input: any) => ({
-      type: "claimed" as const,
-      record: {
+    claim: jest.fn(async (input: any) => {
+      const existing = idempotencyRecords.get(input.rawIdempotencyKey)
+      const fingerprint = buildStoreIdempotencyRequestFingerprint(
+        input.canonicalSemanticObject
+      )
+      if (existing) {
+        if (existing.request_fingerprint !== fingerprint) {
+          return {
+            type: "conflict" as const,
+            record: existing,
+            publicCode: "IDEMPOTENCY_KEY_REUSE_CONFLICT",
+          }
+        }
+        if (existing.state === "completed") {
+          return { type: "replay" as const, record: existing }
+        }
+        return { type: "in_progress" as const, record: existing }
+      }
+      const record = {
         id: "stidem_merge_01",
         state: "processing" as const,
         state_version: 1,
         retry_attempt_count: 0,
-        request_fingerprint: input.canonicalSemanticObject,
-      },
-    })),
-    markCompleted: jest.fn(async () => ({
-      type: "claimed" as const,
-      record: { id: "stidem_merge_01", state: "completed", state_version: 2 },
-    })),
+        request_fingerprint: fingerprint,
+        actor_scope_hash: hashStoreIdempotencyScope(input.actorScope),
+        resource_scope_hash: hashStoreIdempotencyScope(input.resourceScope),
+        idempotency_key_hash: hashStoreIdempotencyKey(
+          input.rawIdempotencyKey,
+          env.STORE_IDEMPOTENCY_KEY_PEPPER
+        ),
+        result_id: null as string | null,
+      }
+      idempotencyRecords.set(input.rawIdempotencyKey, record)
+      return { type: "claimed" as const, record }
+    }),
+    markCompleted: jest.fn(async (input: any) => {
+      const record = [...idempotencyRecords.values()].find(
+        (candidate) => candidate.id === input.id
+      )
+      if (!record) throw new Error("IDEMPOTENCY_RECORD_NOT_FOUND")
+      record.state = "completed"
+      record.state_version += 1
+      record.result_id = input.result_id
+      return { type: "claimed" as const, record }
+    }),
   }
   const capabilityService = {
     lookupGuestCartCapabilityByPresentedToken: jest.fn(async () => capability),
     authorizeGuestCartCapabilityForMutation: jest.fn(
       async (_token: string, cartId: string) => {
-        if (cartId !== guestCart.id) throw new Error("GUEST_CART_CAPABILITY_LOOKUP_INVALID")
+        if (cartId !== guestCart.id) {
+          throw new MedusaError(MedusaError.Types.NOT_FOUND, "Not Found")
+        }
         return capability
       }
     ),
@@ -180,6 +404,12 @@ function createTracerHarness(
       capability.consumed_at = "2026-08-23T12:00:01.000Z"
       return capability
     }),
+    lookupConsumedGuestCartCapabilityForReplay: jest.fn(
+      async (input: { binding: { resultId: string } }) =>
+        committedReceiptRow?.id === input.binding.resultId
+          ? { result: { id: input.binding.resultId } }
+          : null
+    ),
   }
   const resourceVersion = {
     initialize: jest.fn(async (_type: string, id: string) => ({
@@ -195,40 +425,86 @@ function createTracerHarness(
       return { type: "updated", previousVersion: actual, version: actual + 1 }
     }),
   }
+  ;(
+    addToCartWorkflow as unknown as jest.Mock
+  ).mockReset().mockImplementation(() => ({
+    run: async ({ input }: any) => {
+      const target = carts.get(input.cart_id)
+      const item = {
+        id: `li_added_${target.items.length + 1}`,
+        variant_id: input.items[0].variant_id,
+        quantity: input.items[0].quantity,
+        title: "Camiseta",
+        variant: sellableVariant(input.items[0].variant_id),
+      }
+      target.items.push(item)
+      return { result: { cart_id: target.id } }
+    },
+  }))
+  ;(
+    updateLineItemInCartWorkflow as unknown as jest.Mock
+  ).mockReset().mockImplementation(() => ({
+    run: async ({ input }: any) => {
+      const target = carts.get(input.cart_id)
+      const item = target.items.find((candidate: any) => candidate.id === input.item_id)
+      if (!item) throw new Error("LINE_ITEM_NOT_FOUND")
+      item.quantity = input.update.quantity
+      return { result: { cart_id: target.id } }
+    },
+  }))
+  ;(
+    deleteLineItemsWorkflow as unknown as jest.Mock
+  ).mockReset().mockImplementation(() => ({
+    run: async ({ input }: any) => {
+      const target = carts.get(input.cart_id)
+      target.items = target.items.filter((item: any) => !input.ids.includes(item.id))
+      return { result: { cart_id: target.id } }
+    },
+  }))
   const cartModule = {
     baseRepository_: {
       transaction: async (callback: (manager: unknown) => Promise<unknown>) => {
-        const cartSnapshot = {
-          customer: guestCart.customer,
-          customer_id: guestCart.customer_id,
-          updated_at: guestCart.updated_at,
-        }
+        const cartSnapshot = new Map(
+          [...carts.entries()].map(([id, cart]) => [id, JSON.parse(JSON.stringify(cart))])
+        )
         const capabilitySnapshot = {
           status: capability.status,
           consumed_at: capability.consumed_at,
         }
         const versionSnapshot = versions.get(guestCart.id)
+        const customerVersionSnapshot = customerCart
+          ? versions.get(customerCart.id)
+          : undefined
+        const receiptSnapshot = committedReceiptRow
 
         try {
           return await callback({ getTransactionContext: () => transaction })
         } catch (error) {
-          guestCart.customer = cartSnapshot.customer
-          guestCart.customer_id = cartSnapshot.customer_id
-          guestCart.updated_at = cartSnapshot.updated_at
+          for (const [id, snapshot] of cartSnapshot.entries()) {
+            Object.assign(carts.get(id), snapshot)
+          }
           capability.status = capabilitySnapshot.status
           capability.consumed_at = capabilitySnapshot.consumed_at
           versions.set(guestCart.id, versionSnapshot ?? 1)
+          if (customerCart) versions.set(customerCart.id, customerVersionSnapshot ?? 1)
+          committedReceiptRow = receiptSnapshot
           throw error
         }
       },
     },
-    retrieveCart: jest.fn(async (id: string) => (id === guestCart.id ? guestCart : null)),
-    updateCarts: jest.fn(async (input: Record<string, unknown>) => {
-      Object.assign(guestCart, input)
-      guestCart.customer = { id: String(input.customer_id) }
-      guestCart.customer_id = String(input.customer_id)
-      guestCart.updated_at = "2026-08-23T12:00:01.000Z"
-      return guestCart
+    retrieveCart: jest.fn(async (id: string) => carts.get(id) ?? null),
+    updateCarts: jest.fn(async (selector: Record<string, unknown>, data?: Record<string, unknown>) => {
+      const id = String(data ? selector.id : selector.id)
+      const target = carts.get(id)
+      const patch = data ?? selector
+      if (!target) throw new Error("CART_NOT_FOUND")
+      Object.assign(target, patch)
+      if (Object.prototype.hasOwnProperty.call(patch, "customer_id")) {
+        target.customer = patch.customer_id ? { id: String(patch.customer_id) } : null
+        target.customer_id = patch.customer_id ?? null
+      }
+      target.updated_at = "2026-08-23T12:00:01.000Z"
+      return target
     }),
   }
   const scope = createMedusaContainer({}, container)
@@ -241,6 +517,8 @@ function createTracerHarness(
 
   return {
     guestCart,
+    customerCart,
+    carts,
     capability,
     versions,
     idempotency,
@@ -317,6 +595,452 @@ describe("Cart merge HTTP tracer", () => {
       expect(JSON.stringify(response.body)).not.toContain(
         "customer-jwt-is-not-persisted"
       )
+      expectPublicMergeBody(response.body)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("executa MERGED integral no Customer destination pelo serviço real", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container, {
+        customerCart: true,
+        customerItems: [
+          {
+            id: "li_customer_merge_01",
+            variant_id: "variant_tshirt_black_m",
+            quantity: 1,
+            title: "Camiseta preta M",
+            variant_title: "Preta / M",
+            unit_price: 9900,
+            variant: sellableVariant("variant_tshirt_black_m"),
+          },
+        ],
+        guestItems: [
+          {
+            id: "li_guest_merge_01",
+            variant_id: "variant_tshirt_black_m",
+            quantity: 2,
+            title: "Camiseta preta M",
+            variant_title: "Preta / M",
+            unit_price: 9900,
+            variant: sellableVariant("variant_tshirt_black_m"),
+          },
+        ],
+      })
+      const response = createResponse()
+
+      await mergeCart(harness.request as never, response as never)
+
+      expect(response.statusCode).toBe(200)
+      expect(response.headers.etag).toBe('"2"')
+      expect(response.headers["cache-control"]).toBe("no-store")
+      expect((response.body as any).outcome).toBe("MERGED")
+      expect((response.body as any).cart.id).toBe(harness.customerCart?.id)
+      expect((response.body as any).cart.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            variant_id: "variant_tshirt_black_m",
+            quantity: 3,
+          }),
+        ])
+      )
+      expect((response.body as any).review).toEqual({
+        requiresReview: false,
+        reviewRef: null,
+        rejectedItems: [],
+      })
+      expect(harness.customerCart?.items[0].quantity).toBe(3)
+      expect(harness.capability.status).toBe("consumed")
+      expectPublicMergeBody(response.body)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("executa partial real Customer A=80 + guest A=30 como 99/19/11 com review", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container, {
+        customerCart: true,
+        customerItems: [
+          {
+            id: "li_customer_merge_01",
+            variant_id: "variant_tshirt_black_m",
+            quantity: 80,
+            title: "Camiseta preta M",
+            variant_title: "Preta / M",
+            unit_price: 9900,
+            variant: sellableVariant("variant_tshirt_black_m"),
+          },
+        ],
+        guestItems: [
+          {
+            id: "li_guest_merge_01",
+            variant_id: "variant_tshirt_black_m",
+            quantity: 30,
+            title: "Camiseta preta M",
+            variant_title: "Preta / M",
+            unit_price: 9900,
+            variant: sellableVariant("variant_tshirt_black_m"),
+          },
+        ],
+      })
+      const response = createResponse()
+
+      await mergeCart(harness.request as never, response as never)
+
+      expect(response.statusCode).toBe(200)
+      expect(response.headers.etag).toBe('"2"')
+      expect(response.headers["cache-control"]).toBe("no-store")
+      expect((response.body as any).outcome).toBe("MERGED_PARTIAL")
+      expect((response.body as any).cart.id).toBe(harness.customerCart?.id)
+      expect((response.body as any).cart.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            variant_id: "variant_tshirt_black_m",
+            quantity: 99,
+          }),
+        ])
+      )
+      expect((response.body as any).review).toEqual({
+        requiresReview: true,
+        reviewRef: expect.stringMatching(/^review_/),
+        rejectedItems: [
+          {
+            variantId: "variant_tshirt_black_m",
+            requestedQuantity: 30,
+            acceptedQuantity: 19,
+            rejectedQuantity: 11,
+            reason: "QUANTITY_LIMIT_EXCEEDED",
+          },
+        ],
+      })
+      expect(harness.customerCart?.items[0].quantity).toBe(99)
+      expect(harness.capability.status).toBe("consumed")
+      expectPublicMergeBody(response.body)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("retorna NO_ITEMS para todas as variantes rejeitadas e preserva o estado", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container, {
+        customerCart: true,
+        guestItems: [
+          {
+            id: "li_guest_invalid_01",
+            variant_id: "variant_invalid",
+            quantity: 3,
+            title: "Camiseta inválida",
+            variant: null,
+          },
+        ],
+      })
+      const response = createResponse()
+
+      await mergeCart(harness.request as never, response as never)
+
+      expect(response.statusCode).toBe(200)
+      expect(response.headers.etag).toBe('"1"')
+      expect((response.body as any).outcome).toBe("NO_ITEMS")
+      expect((response.body as any).review).toEqual({
+        requiresReview: false,
+        reviewRef: null,
+        rejectedItems: [
+          {
+            variantId: "variant_invalid",
+            requestedQuantity: 3,
+            acceptedQuantity: 0,
+            rejectedQuantity: 3,
+            reason: "VARIANT_INVALID",
+          },
+        ],
+      })
+      expect(harness.customerCart?.items[0].quantity).toBe(1)
+      expect(harness.capability.status).toBe("active")
+      expect(harness.versions.get(harness.customerCart?.id ?? "")).toBe(1)
+      expectPublicMergeBody(response.body)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("mantém razões fechadas VARIANT_INVALID, VARIANT_UNAVAILABLE e QUANTITY_LIMIT_EXCEEDED", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container, {
+        customerCart: true,
+        customerItems: [
+          {
+            id: "li_customer_overflow_01",
+            variant_id: "variant_overflow",
+            quantity: 80,
+            title: "Camiseta overflow",
+            variant: sellableVariant("variant_overflow"),
+          },
+        ],
+        guestItems: [
+          {
+            id: "li_guest_invalid_01",
+            variant_id: "variant_invalid",
+            quantity: 2,
+            title: "Inválida",
+            variant: null,
+          },
+          {
+            id: "li_guest_unavailable_01",
+            variant_id: "variant_unavailable",
+            quantity: 4,
+            title: "Indisponível",
+            variant: {
+              ...sellableVariant("variant_unavailable"),
+              product: { status: "draft" },
+            },
+          },
+          {
+            id: "li_guest_overflow_01",
+            variant_id: "variant_overflow",
+            quantity: 30,
+            title: "Overflow",
+            variant: sellableVariant("variant_overflow"),
+          },
+          {
+            id: "li_guest_valid_01",
+            variant_id: "variant_valid",
+            quantity: 2,
+            title: "Válida",
+            variant: sellableVariant("variant_valid"),
+          },
+        ],
+      })
+      const response = createResponse()
+
+      await mergeCart(harness.request as never, response as never)
+
+      expect((response.body as any).outcome).toBe("MERGED_PARTIAL")
+      expect((response.body as any).review.rejectedItems).toEqual(
+        expect.arrayContaining([
+          {
+            variantId: "variant_invalid",
+            requestedQuantity: 2,
+            acceptedQuantity: 0,
+            rejectedQuantity: 2,
+            reason: "VARIANT_INVALID",
+          },
+          {
+            variantId: "variant_unavailable",
+            requestedQuantity: 4,
+            acceptedQuantity: 0,
+            rejectedQuantity: 4,
+            reason: "VARIANT_UNAVAILABLE",
+          },
+          {
+            variantId: "variant_overflow",
+            requestedQuantity: 30,
+            acceptedQuantity: 19,
+            rejectedQuantity: 11,
+            reason: "QUANTITY_LIMIT_EXCEEDED",
+          },
+        ])
+      )
+      expect((response.body as any).review.rejectedItems).toHaveLength(3)
+      expect((response.body as any).review.requiresReview).toBe(true)
+      expectPublicMergeBody(response.body)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("replay committed devolve body, review e ETag originais após mudança posterior", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container, {
+        customerCart: true,
+        customerItems: [
+          {
+            id: "li_customer_merge_01",
+            variant_id: "variant_tshirt_black_m",
+            quantity: 80,
+            title: "Camiseta preta M",
+            variant_title: "Preta / M",
+            unit_price: 9900,
+            variant: sellableVariant("variant_tshirt_black_m"),
+          },
+        ],
+        guestItems: [
+          {
+            id: "li_guest_merge_01",
+            variant_id: "variant_tshirt_black_m",
+            quantity: 30,
+            title: "Camiseta preta M",
+            variant_title: "Preta / M",
+            unit_price: 9900,
+            variant: sellableVariant("variant_tshirt_black_m"),
+          },
+        ],
+      })
+      const first = createResponse()
+      await mergeCart(harness.request as never, first as never)
+      const originalBody = JSON.parse(JSON.stringify(first.body))
+      const originalEtag = first.headers.etag
+
+      harness.customerCart?.items.push({
+        id: "li_later_mutation",
+        variant_id: "variant_later",
+        quantity: 1,
+        title: "Posterior",
+        variant: sellableVariant("variant_later"),
+      })
+      harness.versions.set(harness.customerCart?.id ?? "", 9)
+      harness.customerCart!.updated_at = "2026-08-23T14:00:00.000Z"
+
+      const replay = createResponse()
+      await mergeCart(harness.request as never, replay as never)
+
+      expect(replay.statusCode).toBe(200)
+      expect(replay.headers.etag).toBe(originalEtag)
+      expect(replay.headers["cache-control"]).toBe("no-store")
+      expect(replay.body).toEqual(originalBody)
+      expect(harness.capabilityService.lookupConsumedGuestCartCapabilityForReplay).toHaveBeenCalledTimes(1)
+      expect(harness.customerCart?.items).toHaveLength(2)
+      expectPublicMergeBody(replay.body)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("rejeita reuso da mesma idempotency key com If-Match incompatível como 409", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container)
+      await mergeCart(harness.request as never, createResponse() as never)
+      harness.request.headers["if-match"] = '"2"'
+
+      await expect(
+        mergeCart(harness.request as never, createResponse() as never)
+      ).rejects.toMatchObject({
+        code: "IDEMPOTENCY_KEY_REUSE_CONFLICT",
+        statusCode: 409,
+      })
+      expect(harness.capability.status).toBe("consumed")
+      expect(harness.versions.get(harness.guestCart.id)).toBe(2)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("retorna 409 sanitizado para estado persistido malformado", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container, {
+        guestItems: [
+          {
+            id: "li_guest_malformed_01",
+            variant_id: "variant_tshirt_black_m",
+            quantity: 0,
+            title: "Estado inválido",
+          },
+        ],
+      })
+
+      const error = await mergeCart(
+        harness.request as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+
+      expect(error).toMatchObject({
+        code: "CART_MERGE_STATE_CONFLICT",
+        statusCode: 409,
+      })
+      const normalized = toStoreErrorResponse(error, {
+        correlationId: "merge-malformed-state",
+      })
+      expect(normalized.statusCode).toBe(409)
+      expect(normalized.body).toEqual(
+        expect.objectContaining({ code: "CONFLICT" })
+      )
+      expect(JSON.stringify(normalized.body)).not.toContain("Estado inválido")
+      expect(harness.capability.status).toBe("active")
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("retorna 404 para capability inválida e para capability foreign", async () => {
+    const invalidBoot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(invalidBoot.container)
+      harness.capabilityService.lookupGuestCartCapabilityByPresentedToken.mockRejectedValueOnce(
+        new MedusaError(MedusaError.Types.NOT_FOUND, "Not Found")
+      )
+      const error = await mergeCart(
+        harness.request as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+      expect(error).toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+      expect(toStoreErrorResponse(error).statusCode).toBe(404)
+    } finally {
+      await invalidBoot.dispose()
+    }
+
+    const foreignBoot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(foreignBoot.container)
+      harness.request.body = { guestCartId: "cart_guest_foreign" }
+      const error = await mergeCart(
+        harness.request as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+      expect(error).toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+      expect(toStoreErrorResponse(error).statusCode).toBe(404)
+      expect(harness.capability.status).toBe("active")
+    } finally {
+      await foreignBoot.dispose()
+    }
+  })
+
+  it("retorna 400 para input malformado antes de resolver o motor", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container)
+      harness.request.body = {}
+      const error = await mergeCart(
+        harness.request as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+      expect(error).toMatchObject({ type: MedusaError.Types.INVALID_DATA })
+      expect(toStoreErrorResponse(error).statusCode).toBe(400)
+      expect(harness.idempotency.claim).not.toHaveBeenCalled()
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("normaliza falha técnica sem expor detalhe e preserva zero efeito", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container)
+      harness.transaction.raw.mockImplementationOnce(async () => {
+        throw new Error("raw-db-secret-merge-technical-failure")
+      })
+      const error = await mergeCart(
+        harness.request as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+      const normalized = toStoreErrorResponse(error, {
+        correlationId: "merge-technical-failure",
+      })
+      expect(normalized.statusCode).toBe(500)
+      expect(normalized.body).toEqual(
+        expect.objectContaining({ code: "INTERNAL_ERROR" })
+      )
+      expect(JSON.stringify(normalized.body)).not.toContain("raw-db-secret")
+      expect(harness.guestCart.customer_id).toBeNull()
+      expect(harness.capability.status).toBe("active")
     } finally {
       await boot.dispose()
     }
