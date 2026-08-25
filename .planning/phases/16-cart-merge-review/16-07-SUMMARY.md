@@ -15,14 +15,16 @@ affects: [phase-16-cart-merge-review, plan-16-08]
 
 actuals:
   tasks: 3
-  technical_commits: 5
-  documentation_commits: 1
+  technical_commits: 7
+  documentation_commits: 2
 
 key-decisions:
   - "A rota projeta explicitamente somente requiresReview, reviewRef e rejectedItems do CartMergeExecutionResult."
   - "Native Cart workflows recebem o mesmo transaction manager por uma facade não-module-shaped e índices MedusaContext; não há transação detached."
   - "Uma chave diferente após capability consumida e guest cart superseded retorna 409 CART_MERGE_GUEST_CART_UNSUPPORTED sem novo efeito; a chave original continua replay-safe."
   - "O comando PostgreSQL com duas specs no mesmo processo foi tratado como diagnóstico de interferência de realm Map do harness; cada spec foi executada isoladamente no wrapper disposable, com exit e cleanup obrigatórios."
+  - "A remediação B16-07-HR-04 usa child scope real do Medusa, facade não-module-shaped com índice MedusaContext e o mesmo transaction manager real em transactionManager e manager; não há mock ou registro manual de QUERY."
+  - "A remediação B16-07-HR-03 prova races multiprocess reais, MERGED_PARTIAL persistido, rollback de review/supersede e invariantes de zero Order em PostgreSQL disposable."
   - "MRG-01..MRG-08 permanecem OPEN / UNCHANGED; Phase 16 permanece IN PROGRESS."
 ---
 
@@ -33,7 +35,9 @@ key-decisions:
 ## Status
 
 - **B16-07-HR-01:** **CLOSED — PASS**
-- **Allowlist expansion:** **PASS** — o único path adicional autorizado foi `apps/backend/src/api/store/customers/me/cart/merge/route.ts`.
+- **B16-07-HR-03:** **CLOSED — PASS** — races PostgreSQL multiprocess, failpoints, ledger e zero Order.
+- **B16-07-HR-04:** **CLOSED — PASS** — child scope real do Medusa e workflow nativo dentro da mesma transação.
+- **Technical allowlist:** **PASS** — seis paths técnicos autorizados; este SUMMARY é o único path documental adicional após o technical pass.
 - **Plan 16-07:** **TECHNICAL PASS — HUMAN CLOSEOUT PENDING**
 - **Phase 16:** **IN PROGRESS**
 - **MRG-01..MRG-08:** **OPEN / UNCHANGED**
@@ -57,6 +61,18 @@ O blocker foi encontrado no preflight: a rota necessária para Task 16-07-02 est
 - **Task 16-07-02:** **PASS** — RED/GREEN da rota real, review parcial explícito, non-partial/replay, ETag e `Cache-Control: no-store`.
 - **Task 16-07-03:** **PASS** — races, rollback/failpoints, replay, capability lifecycle, versões/quantidades, authority e zero Order em PostgreSQL real disposable.
 
+## Human-Review Remediation
+
+- **B16-07-HR-03:** **CLOSED — PASS.** A prova real disposable cobriu merge-vs-guest, merge-vs-Customer, same-key e different-key em processos e conexões distintos. Também passou `MERGED_PARTIAL` persistido com receipt/review/itens rejeitados, rollback integral de review e supersede, replay/capability/idempotency e Order delta `0`.
+- **B16-07-HR-04:** **CLOSED — PASS.** `line-item-mutation.ts` cria `req.scope.createScope()`, registra somente a facade real de `Modules.CART` com `asValue`, injeta o contexto no índice resolvido por `MedusaContext` e mantém o mesmo manager em `transactionManager` e `manager`. O smoke usou `addToCartWorkflow` nativo e `QUERY` real; dois registros de transação observaram o mesmo txid.
+- **Unit final:** **PASS** — `decision.unit.spec.ts`, 13/13 testes.
+- **HTTP final:** **PASS** — 2 suites, 17/17 testes.
+- **PostgreSQL Cart Merge final isolado:** **PASS** — 1 suite, 26/26 testes, exit 0 e `[P12_DISPOSABLE_POSTGRES_CLEAN]`.
+- **PostgreSQL Guest Order invariants final isolado:** **PASS** — 1 suite, 3/3 testes, exit 0 e `[P12_DISPOSABLE_POSTGRES_CLEAN]`.
+- **Build final:** **PASS** — backend e frontend; zero erros. O lint reportou 472 warnings globais preexistentes não bloqueantes.
+- **Validação independente:** **PASS** — auditoria read-only serial confirmou child scope, QUERY real, workflow nativo, races, ledger, rollback, Orders, schema e allowlist.
+- **Commits técnicos desta remediação:** `0101362` (`fix(16-07): preserve medusa cart workflow transaction scope`) e `5e9a3ed` (`test(16-07): close cart merge postgres evidence gaps`).
+
 ## Technical Commits
 
 1. `76960d1c7afbccf81adce71612072a384ef6e8d5` — `test(16-07): add failing persisted-state decision case`
@@ -69,9 +85,9 @@ Todos são commits locais; nenhum commit anterior foi amendado.
 
 ## Verification Gates
 
-- **Unit:** 2 suites, 16 testes PASS, exit 0 (`decision.unit.spec.ts` e `shipping-invalidation.unit.spec.ts`).
-- **HTTP:** 2 suites, 6 testes PASS, exit 0 (`cart-merge-review.spec.ts` e `guest-cart-mutation-snapshot-concurrency.spec.ts`).
-- **PostgreSQL Cart Merge isolado:** 1 suite, 18/18 testes PASS, exit 0; failpoints, active-vs-active, active-vs-merge, merge-vs-merge, replay e ambiguity passaram; `[P12_DISPOSABLE_POSTGRES_CLEAN]` confirmado.
+- **Unit:** gate final de `decision.unit.spec.ts`, 13/13 testes PASS, exit 0.
+- **HTTP:** 2 suites, 17/17 testes PASS, exit 0 (`cart-merge-review.spec.ts` e `guest-cart-mutation-snapshot-concurrency.spec.ts`).
+- **PostgreSQL Cart Merge isolado:** 1 suite, 26/26 testes PASS, exit 0; failpoints, ledger parcial, review/supersede, active-vs-active, active-vs-merge, merge-vs-merge, merge-vs-guest, merge-vs-Customer, replay e ambiguity passaram; `[P12_DISPOSABLE_POSTGRES_CLEAN]` confirmado.
 - **PostgreSQL Guest Order invariants isolado:** 1 suite, 3/3 testes PASS, exit 0; `[P12_DISPOSABLE_POSTGRES_CLEAN]` confirmado.
 - **PostgreSQL combinado:** a tentativa literal com as duas specs no mesmo processo reproduziu a falha conhecida de realm (`Map.prototype.set called on incompatible receiver`) do harness, com cleanup confirmado. As duas specs foram então executadas separadamente, cada uma em processo/harness disposable próprio, e são a evidência autoritativa do gate.
 - **Corrida merge-vs-merge:** workers/processos e conexões distintos produziram `GUEST_CART_ATTACHED` e `MERGED`, dois receipts distintos, customer versions/quantidades/linhas exatos, uma authority ativa, capability consumida e Order delta zero. Chave diferente retornou 409 sem alteração; chave original reproduziu o receipt.
@@ -80,9 +96,9 @@ Todos são commits locais; nenhum commit anterior foi amendado.
 - **`git diff --check`:** **PASS** antes do commit técnico e no fechamento.
 - **`state validate`:** `valid: true`, `warnings: []`, `drift: {}`.
 - **Leakage:** **PASS** — response público fechado; nenhum capability, raw Idempotency-Key, JWT, Authorization ou metadata interna é projetado; somente hashes/fixtures sintéticos aparecem nas provas autorizadas.
-- **Allowlist audit:** **PASS** — o diff desde `d976de89fa57dbff5f471e7ff68efe3745906473` contém somente oito paths efetivamente alterados, todos dentro da allowlist expandida.
+- **Allowlist audit:** **PASS** — os commits técnicos alteraram exatamente os seis paths autorizados; este SUMMARY é o único path documental adicionado depois.
 - **Order delta:** **0** nos cenários PostgreSQL; não há Order em outcome, conflito, replay ou rollback.
-- **Worktree antes deste SUMMARY:** **CLEAN** após o commit técnico.
+- **Worktree antes deste SUMMARY:** **CLEAN** após os dois commits técnicos.
 
 ## Schema Identity SHA-256
 
