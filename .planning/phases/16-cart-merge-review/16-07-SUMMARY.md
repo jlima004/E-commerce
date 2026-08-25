@@ -35,9 +35,10 @@ key-decisions:
 ## Status
 
 - **B16-07-HR-01:** **CLOSED — PASS**
+- **B16-07-HR-02:** **CLOSED — PASS** — matriz HTTP ampliada e validada, 2 suites / 17/17 testes.
 - **B16-07-HR-03:** **CLOSED — PASS** — races PostgreSQL multiprocess, failpoints, ledger e zero Order.
 - **B16-07-HR-04:** **CLOSED — PASS** — child scope real do Medusa e workflow nativo dentro da mesma transação.
-- **Technical allowlist:** **PASS** — seis paths técnicos autorizados; este SUMMARY é o único path documental adicional após o technical pass.
+- **Technical allowlist:** **PASS** — seis paths técnicos efetivamente alterados, todos autorizados; este SUMMARY é o único path documental adicional após o technical pass.
 - **Plan 16-07:** **TECHNICAL PASS — HUMAN CLOSEOUT PENDING**
 - **Phase 16:** **IN PROGRESS**
 - **MRG-01..MRG-08:** **OPEN / UNCHANGED**
@@ -63,6 +64,7 @@ O blocker foi encontrado no preflight: a rota necessária para Task 16-07-02 est
 
 ## Human-Review Remediation
 
+- **B16-07-HR-02:** **CLOSED — PASS.** A remediação ampliou a matriz HTTP para cobrir MERGED, MERGED_PARTIAL real, NO_ITEMS, VARIANT_INVALID, VARIANT_UNAVAILABLE, QUANTITY_LIMIT_EXCEEDED, malformed persisted state, idempotency conflict, invalid/foreign capability, malformed input, technical failure sanitizada e committed replay com body/review/ETag originais. Gate final: 2 suites / 17/17 testes PASS.
 - **B16-07-HR-03:** **CLOSED — PASS.** A prova real disposable cobriu merge-vs-guest, merge-vs-Customer, same-key e different-key em processos e conexões distintos. Também passou `MERGED_PARTIAL` persistido com receipt/review/itens rejeitados, rollback integral de review e supersede, replay/capability/idempotency e Order delta `0`.
 - **B16-07-HR-04:** **CLOSED — PASS.** `line-item-mutation.ts` cria `req.scope.createScope()`, registra somente a facade real de `Modules.CART` com `asValue`, injeta o contexto no índice resolvido por `MedusaContext` e mantém o mesmo manager em `transactionManager` e `manager`. O smoke usou `addToCartWorkflow` nativo e `QUERY` real; dois registros de transação observaram o mesmo txid.
 - **Unit final:** **PASS** — `decision.unit.spec.ts`, 13/13 testes.
