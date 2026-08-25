@@ -117,14 +117,15 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     expectedGuestVersion,
   })
 
+  res.setHeader("Cache-Control", "no-store")
   res.setHeader("ETag", formatCartEtag(result.version))
   res.status(200).json({
     outcome: result.outcome,
     cart: serializeStoreCartPreOrder(result.cart),
     review: {
-      requiresReview: false,
-      reviewRef: null,
-      rejectedItems: [],
+      requiresReview: result.review.requiresReview,
+      reviewRef: result.review.reviewRef,
+      rejectedItems: result.review.rejectedItems,
     },
   })
 }
