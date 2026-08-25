@@ -800,7 +800,7 @@ if (!requestedDatabaseName) {
         expect(await countPersistedOrders(connection)).toBe(beforeOrders)
       })
 
-      it("serializa merge-vs-merge, consome uma capability e não herda replay por key diferente", async () => {
+      it("serializa merge-vs-merge com destino Customer real e não herda replay por key diferente", async () => {
         const container = getContainer()
         const firstFixture = await createRealCartMergeFixture(
           container,
@@ -822,49 +822,134 @@ if (!requestedDatabaseName) {
           "p16-task0602-merge-a",
           "p16-task0602-merge-b"
         )
-        const winner = race.workers.find((worker) => worker.statusCode === 200)!
-        const loser = race.workers.find((worker) => worker.statusCode === 409)!
-        const winnerFixture = winner.role === "A" ? firstFixture : secondFixture
-        const loserFixture = loser.role === "A" ? firstFixture : secondFixture
+        expect(race.workers).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              statusCode: 200,
+              outcome: "GUEST_CART_ATTACHED",
+            }),
+            expect.objectContaining({ statusCode: 200, outcome: "MERGED" }),
+          ])
+        )
 
-        expect(winner.outcome).toBe("GUEST_CART_ATTACHED")
-        expect(loser.code).toBe("CART_MERGE_CUSTOMER_DESTINATION_UNSUPPORTED")
-        const winnerState = await readRealCartMergeState(connection, winnerFixture)
-        const loserState = await readRealCartMergeState(connection, loserFixture)
-        expect(winnerState.customer_id).toBe(firstFixture.customerId)
-        expect(winnerState.capability_status).toBe("consumed")
-        expect(winnerState.idempotency_state).toBe("completed")
-        expect(winnerState.result_outcome).toBe("GUEST_CART_ATTACHED")
-        expect(winnerState.review_status).toBeNull()
-        expect(loserState.customer_id).toBeNull()
-        expect(loserState.capability_status).toBe("active")
-        expect(loserState.idempotency_state).toBeNull()
-        expect(loserState.result_id).toBeNull()
-        expect(loserState.review_status).toBeNull()
+        const attached = race.workers.find(
+          (worker) => worker.outcome === "GUEST_CART_ATTACHED"
+        )!
+        const merged = race.workers.find(
+          (worker) => worker.outcome === "MERGED"
+        )!
+        const attachedFixture =
+          attached.role === "A" ? firstFixture : secondFixture
+        const mergedFixture = merged.role === "A" ? firstFixture : secondFixture
+        expect(attached.cartId).toBe(attachedFixture.guestCartId)
+        expect(merged.cartId).toBe(attachedFixture.guestCartId)
+
+        const attachedState = await readRealCartMergeState(
+          connection,
+          attachedFixture
+        )
+        const mergedState = await readRealCartMergeState(
+          connection,
+          mergedFixture
+        )
+        expect(attachedState.customer_id).toBe(firstFixture.customerId)
+        expect(attachedState.capability_status).toBe("consumed")
+        expect(attachedState.idempotency_state).toBe("completed")
+        expect(attachedState.result_outcome).toBe("GUEST_CART_ATTACHED")
+        expect(attachedState.customer_version_before).toBeNull()
+        expect(attachedState.customer_version_after).toBeNull()
+        expect(attachedState.version).toBe(attachedFixture.guestVersion + 2)
+        expect(attachedState.authority_state).toBe("active")
+        expect(attachedState.authority_customer_id).toBe(firstFixture.customerId)
+        expect(attachedState.authority_cart_id).toBe(attachedFixture.guestCartId)
+        expect(attachedState.review_status).toBeNull()
+        expect(attachedState.line_items).toHaveLength(2)
+        expect(attachedState.line_items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              variant_id: attachedFixture.variantId,
+              quantity: 1,
+            }),
+            expect.objectContaining({
+              variant_id: mergedFixture.variantId,
+              quantity: 1,
+            }),
+          ])
+        )
+
+        expect(mergedState.customer_id).toBeNull()
+        expect(mergedState.capability_status).toBe("consumed")
+        expect(mergedState.idempotency_state).toBe("completed")
+        expect(mergedState.result_outcome).toBe("MERGED")
+        expect(mergedState.customer_version_before).toBe(
+          attachedFixture.guestVersion + 1
+        )
+        expect(mergedState.customer_version_after).toBe(
+          attachedFixture.guestVersion + 2
+        )
+        expect(mergedState.version).toBe(mergedFixture.guestVersion + 1)
+        expect(mergedState.authority_state).toBeNull()
+        expect(mergedState.authority_customer_id).toBeNull()
+        expect(mergedState.authority_cart_id).toBeNull()
+        expect(mergedState.review_status).toBeNull()
+        expect(mergedState.line_items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              variant_id: mergedFixture.variantId,
+              quantity: 1,
+            }),
+          ])
+        )
+        expect(new Set([attachedState.result_id, mergedState.result_id]).size).toBe(2)
 
         const finalState = await readCustomerCartCanonicalState(
           connection,
           firstFixture.customerId
         )
         expect(finalState.activeAuthorityRows).toBe(1)
-        expect(finalState.usableCustomerCartIds).toEqual([winnerFixture.guestCartId])
-        expect(finalState.activeAuthorityCartId).toBe(winnerFixture.guestCartId)
+        expect(finalState.usableCustomerCartIds).toEqual([attachedFixture.guestCartId])
+        expect(finalState.activeAuthorityCartId).toBe(attachedFixture.guestCartId)
         expect(await countPersistedOrders(connection)).toBe(beforeOrders)
 
+        const beforeDifferentKey = await readRealCartMergeState(
+          connection,
+          mergedFixture
+        )
         await expect(
-          runMerge(container, loserFixture, {
+          runMerge(container, mergedFixture, {
             headers: {
-              ...createCartMergeRequest(loserFixture, container).headers,
+              ...createCartMergeRequest(mergedFixture, container).headers,
               "idempotency-key": "p16-task0602-merge-different-key",
             },
           })
         ).rejects.toMatchObject({
-          code: "CART_MERGE_CUSTOMER_DESTINATION_UNSUPPORTED",
+          code: "CART_MERGE_GUEST_CART_UNSUPPORTED",
           statusCode: 409,
           status: 409,
         })
-        expect(await readRealCartMergeState(connection, loserFixture)).toEqual(
-          loserState
+        expect(await readRealCartMergeState(connection, mergedFixture)).toEqual(
+          beforeDifferentKey
+        )
+
+        const sameKey =
+          attached.role === "A"
+            ? "p16-task0602-merge-a"
+            : "p16-task0602-merge-b"
+        const beforeReplay = await readRealCartMergeState(
+          connection,
+          attachedFixture
+        )
+        const replay = await runMerge(container, attachedFixture, {
+          headers: {
+            ...createCartMergeRequest(attachedFixture, container).headers,
+            "idempotency-key": sameKey,
+          },
+        })
+        expect(replay.statusCode).toBe(200)
+        expect((replay.body as any).outcome).toBe("GUEST_CART_ATTACHED")
+        expect(replay.headers.etag).toBe(`"${attachedFixture.guestVersion + 1}"`)
+        expect(await readRealCartMergeState(connection, attachedFixture)).toEqual(
+          beforeReplay
         )
       })
 

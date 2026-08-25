@@ -46,6 +46,8 @@ export type CartMergePersistedState = {
   idempotency_xmin: string | null
   result_id: string | null
   result_outcome: string | null
+  customer_version_before: number | null
+  customer_version_after: number | null
   result_review_id: string | null
   result_xmin: string | null
   result_etag: string | null
@@ -532,6 +534,7 @@ export async function createRealCartMergeFixture(
         {
           title: `Cart merge ${safeIdentity}`,
           handle: `cart-merge-${handleIdentity}`,
+          status: "published",
           shipping_profile_id: shippingProfile.id,
           options: [{ title: "Size", values: ["M"] }],
           variants: [
@@ -865,9 +868,7 @@ async function startCartMergeRaceWorker(
     60_000
   )
   if (boot.type !== "ready") {
-    throw raceError(
-      `P16_CART_MERGE_WORKER_BOOT_FAILED:${boot.code ?? boot.message ?? "unknown"}`
-    )
+    throw raceError(`P16_CART_MERGE_WORKER_BOOT_FAILED:${boot.code ?? boot.message ?? "unknown"}`)
   }
   return {
     child,
@@ -1108,6 +1109,8 @@ export async function readRealCartMergeState(
         idem.xmin::text as idempotency_xmin,
         result.id as result_id,
         result.outcome as result_outcome,
+        result.customer_version_before,
+        result.customer_version_after,
         result.review_id as result_review_id,
         result.xmin::text as result_xmin,
         result.original_etag as result_etag,
@@ -1128,7 +1131,7 @@ export async function readRealCartMergeState(
        and authority.state = 'active'
        and authority.deleted_at is null
       left join cart_merge_result result
-        on result.canonical_cart_id = c.id
+        on result.guest_cart_id = c.id
        and result.deleted_at is null
       left join store_idempotency_record idem
         on idem.id = result.idempotency_record_id
@@ -1164,6 +1167,14 @@ export async function readRealCartMergeState(
     idempotency_xmin: readNullableString(row, "idempotency_xmin"),
     result_id: readNullableString(row, "result_id"),
     result_outcome: readNullableString(row, "result_outcome"),
+    customer_version_before:
+      row.customer_version_before == null
+        ? null
+        : Number(row.customer_version_before),
+    customer_version_after:
+      row.customer_version_after == null
+        ? null
+        : Number(row.customer_version_after),
     result_review_id: readNullableString(row, "result_review_id"),
     result_xmin: readNullableString(row, "result_xmin"),
     result_etag: readNullableString(row, "result_etag"),

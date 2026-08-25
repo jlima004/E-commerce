@@ -1,8 +1,10 @@
 import { addToCartWorkflow, deleteLineItemsWorkflow, updateLineItemInCartWorkflow } from "@medusajs/core-flows"
+import { asValue } from "@medusajs/framework/awilix"
 import { randomBytes } from "node:crypto"
 import type { MedusaRequest } from "@medusajs/framework/http"
 import {
   MedusaError,
+  MedusaContext,
   MedusaService,
   Modules,
   generateEntityId,
@@ -35,6 +37,7 @@ import {
 } from "../store-idempotency"
 import {
   GUEST_CART_CAPABILITY_MODULE,
+  GUEST_CART_CAPABILITY_LOOKUP_INVALID,
   type GuestCartCapabilityReplayBinding,
   type GuestCartCapabilityRecord,
   type GuestCartCapabilityMutationContext,
@@ -94,32 +97,34 @@ function createTransactionalCartModule(
   cartModule: CartModule,
   sharedContext: StoreResourceVersionMutationContext
 ): CartModule {
-  const contextAwareMethods = new Set([
-    "addLineItems",
-    "updateLineItems",
-    "softDeleteLineItems",
-    "restoreLineItems",
-    "deleteLineItems",
-    "listLineItems",
-    "retrieveCart",
-    "listCarts",
-    "retrieveLineItem",
-  ])
+  // A Medusa workflow contextualizes registered module services and may strip
+  // transaction fields from an ordinary Medusa-module proxy before invoking a
+  // method. Keep the facade deliberately non-module-shaped so every Cart
+  // method used by native workflows receives the exact outer manager context.
+  const facade = Object.create(null) as object
+  return new Proxy(facade, {
+    get(_target, property) {
+      if (property === "constructor") {
+        return Object
+      }
 
-  return new Proxy(cartModule, {
-    get(target, property, receiver) {
-      const value = Reflect.get(target, property, receiver)
-      if (
-        typeof property !== "string" ||
-        !contextAwareMethods.has(property) ||
-        typeof value !== "function"
-      ) {
+      const value = Reflect.get(cartModule as object, property)
+      if (typeof property !== "string" || typeof value !== "function") {
         return value
       }
 
-      return (...args: unknown[]) => value.apply(target, [...args, sharedContext])
+      return (...args: unknown[]) => {
+        const contextIndex = MedusaContext.getIndex(cartModule, property)
+        if (!Number.isInteger(contextIndex)) {
+          return value.apply(cartModule, args)
+        }
+
+        const contextArgs = [...args]
+        contextArgs[contextIndex as number] = sharedContext
+        return value.apply(cartModule, contextArgs)
+      }
     },
-  })
+  }) as CartModule
 }
 
 function createTransactionalWorkflowScope(
@@ -131,15 +136,13 @@ function createTransactionalWorkflowScope(
     cartModule,
     sharedContext
   )
+  const transactionalScope = request.scope.createScope()
+  transactionalScope.register(
+    Modules.CART,
+    asValue(transactionalCartModule)
+  )
 
-  return {
-    resolve(key: unknown) {
-      if (key === Modules.CART) {
-        return transactionalCartModule
-      }
-      return request.scope.resolve(key as never)
-    },
-  }
+  return transactionalScope
 }
 
 type CartMergeFailpoint = {
@@ -477,6 +480,7 @@ async function applyAcceptedItemsToCart(
       await deleteLineItemsWorkflow(workflowScope as never).run({
         input: { cart_id: cart.id, ids: safeLineIds },
         context: sharedContext as never,
+        container: workflowScope as never,
       })
       continue
     }
@@ -494,6 +498,7 @@ async function applyAcceptedItemsToCart(
           update: { quantity: wantedQuantity },
         },
         context: sharedContext as never,
+        container: workflowScope as never,
       })
     }
 
@@ -505,6 +510,7 @@ async function applyAcceptedItemsToCart(
           ids: duplicateIds,
         },
         context: sharedContext as never,
+        container: workflowScope as never,
       })
     }
   }
@@ -546,6 +552,7 @@ async function applyAcceptedCustomerItems(
           ],
         },
         context: sharedContext as never,
+        container: workflowScope as never,
       })
       continue
     }
@@ -562,6 +569,7 @@ async function applyAcceptedCustomerItems(
         update: { quantity: variantDecision.customerQuantityAfter },
       },
       context: sharedContext as never,
+      container: workflowScope as never,
     })
 
     const duplicateIds = matchingItems.slice(1).map((item) => item.id)
@@ -575,6 +583,7 @@ async function applyAcceptedCustomerItems(
           ids: duplicateIds as string[],
         },
         context: sharedContext as never,
+        container: workflowScope as never,
       })
     }
   }
@@ -1140,11 +1149,34 @@ class CartMergeModuleService extends MedusaService({
         [input.guestCartId, ...(customerCartId ? [customerCartId] : [])]
       )
 
-      const preflightCapability = (await capabilityService.lookupGuestCartCapabilityByPresentedToken(
-        input.presentedCapability,
-        { touch: false, cart_id: input.guestCartId },
-        sharedContext as GuestCartCapabilityMutationContext
-      )) as GuestCartCapabilityRecord
+      let preflightCapability: GuestCartCapabilityRecord
+      try {
+        preflightCapability = (await capabilityService.lookupGuestCartCapabilityByPresentedToken(
+          input.presentedCapability,
+          { touch: false, cart_id: input.guestCartId },
+          sharedContext as GuestCartCapabilityMutationContext
+        )) as GuestCartCapabilityRecord
+      } catch (error) {
+        // A different idempotency key after a committed merge sees the
+        // consumed capability before the stale guest cart is inspected. Turn
+        // only that terminal-cart case into the documented 409 conflict;
+        // invalid capabilities on an active guest cart keep their uniform
+        // lookup error.
+        if (
+          error instanceof Error &&
+          error.message === GUEST_CART_CAPABILITY_LOOKUP_INVALID
+        ) {
+          const currentGuestCart = await retrieveMergeCart(
+            cartModule,
+            input.guestCartId,
+            sharedContext
+          )
+          if (!currentGuestCart || !isActiveGuestCart(currentGuestCart)) {
+            throwConflict("CART_MERGE_GUEST_CART_UNSUPPORTED")
+          }
+        }
+        throw error
+      }
 
       if (preflightCapability.cart_id !== input.guestCartId) {
         throw new MedusaError(MedusaError.Types.NOT_FOUND, "Not Found")
