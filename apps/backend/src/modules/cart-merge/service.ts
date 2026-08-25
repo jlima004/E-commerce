@@ -66,6 +66,7 @@ import {
   type CartMergeOutcome,
   type CartReviewState,
 } from "./types"
+import { assertNoPendingCartReview } from "./review-guard"
 
 const CART_MERGE_FINGERPRINT_OPERATION = "CART_MERGE" as const
 
@@ -313,33 +314,6 @@ async function lockCartRows(
       "select id from cart where id = ? and deleted_at is null for update",
       [cartId]
     )
-  }
-}
-
-async function assertNoPendingCartReview(
-  transaction: TransactionContext,
-  cartIds: readonly string[]
-): Promise<void> {
-  const ids = [...new Set(cartIds)].filter(Boolean)
-  if (ids.length === 0) {
-    return
-  }
-
-  const bindings = ids.map(() => "?").join(", ")
-  const result = await transaction.raw(
-    `
-      select id
-      from cart_review
-      where cart_id in (${bindings})
-        and status = 'pending'
-        and deleted_at is null
-      order by id
-      for update
-    `,
-    ids
-  )
-  if (requireRows(result).length > 0) {
-    throwConflict("REVIEW_REQUIRED")
   }
 }
 
@@ -1394,8 +1368,8 @@ class CartMergeModuleService extends MedusaService({
         [input.guestCartId, ...(customerCartId ? [customerCartId] : [])]
       )
       await assertNoPendingCartReview(
-        transactionContext,
-        [input.guestCartId, ...(customerCartId ? [customerCartId] : [])]
+        [input.guestCartId, ...(customerCartId ? [customerCartId] : [])],
+        sharedContext
       )
 
       let preflightCapability: GuestCartCapabilityRecord
