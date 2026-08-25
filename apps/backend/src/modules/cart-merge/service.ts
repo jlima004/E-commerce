@@ -165,6 +165,20 @@ export type CartMergeExecutionResult = {
   review: CartReviewState
 }
 
+export type CartReviewAcknowledgeExecutionInput = {
+  request: MedusaRequest
+  cartId: string
+  customerId: string
+  reviewRef: string | null
+  expectedVersion: number
+}
+
+export type CartReviewAcknowledgeExecutionResult = {
+  cart: StoreCartPreOrderRecord
+  version: number
+  review: CartReviewState
+}
+
 type MergeRequest = MedusaRequest & {
   customerAuthBff?: { authorized?: boolean }
   cartMergeFailpoint?: CartMergeFailpoint
@@ -206,6 +220,16 @@ type CartMergeReceiptRow = {
 type CartMergeReviewIdentity = {
   id: string
   reviewRef: string
+}
+
+type CartReviewRow = {
+  id: string
+  cart_id: string
+  review_ref: string
+  merge_result_id: string
+  produced_cart_version: number
+  status: "pending" | "acknowledged"
+  acknowledged_at: string | Date | null
 }
 
 function cartMergeCartRetrieveConfig(): { relations: string[] } {
@@ -433,6 +457,77 @@ async function retrieveMergeCart(
       sharedContext
     )
   )
+}
+
+function throwNotFound(): never {
+  throw new MedusaError(MedusaError.Types.NOT_FOUND, "Not Found")
+}
+
+function mapCartReviewRow(row: Record<string, unknown>): CartReviewRow {
+  const status = row.status
+  if (status !== "pending" && status !== "acknowledged") {
+    throwConflict("CART_REVIEW_STATE_CONFLICT")
+  }
+
+  if (
+    typeof row.id !== "string" ||
+    row.id.trim().length === 0 ||
+    typeof row.cart_id !== "string" ||
+    row.cart_id.trim().length === 0 ||
+    typeof row.review_ref !== "string" ||
+    row.review_ref.trim().length === 0 ||
+    typeof row.merge_result_id !== "string" ||
+    row.merge_result_id.trim().length === 0
+  ) {
+    throwConflict("CART_REVIEW_STATE_CONFLICT")
+  }
+
+  const producedCartVersion = Number(row.produced_cart_version)
+  if (!Number.isSafeInteger(producedCartVersion) || producedCartVersion <= 0) {
+    throwConflict("CART_REVIEW_STATE_CONFLICT")
+  }
+
+  const acknowledgedAt =
+    row.acknowledged_at instanceof Date ||
+    typeof row.acknowledged_at === "string"
+      ? row.acknowledged_at
+      : null
+
+  if (
+    (status === "pending" && acknowledgedAt !== null) ||
+    (status === "acknowledged" && acknowledgedAt === null)
+  ) {
+    throwConflict("CART_REVIEW_STATE_CONFLICT")
+  }
+
+  return {
+    id: row.id,
+    cart_id: row.cart_id,
+    review_ref: row.review_ref,
+    merge_result_id: row.merge_result_id,
+    produced_cart_version: producedCartVersion,
+    status,
+    acknowledged_at: acknowledgedAt,
+  }
+}
+
+async function loadCartReviewsForUpdate(
+  transaction: TransactionContext,
+  cartId: string
+): Promise<CartReviewRow[]> {
+  const result = await transaction.raw(
+    `
+      select id, cart_id, review_ref, merge_result_id,
+             produced_cart_version, status, acknowledged_at
+      from cart_review
+      where cart_id = ? and deleted_at is null
+      order by created_at desc, id desc
+      for update
+    `,
+    [cartId]
+  )
+
+  return requireRows(result).map(mapCartReviewRow)
 }
 
 async function applyAcceptedItemsToCart(
@@ -1072,6 +1167,160 @@ class CartMergeModuleService extends MedusaService({
   CartMergeResult,
   CartReview,
 }) {
+  async acknowledgeCartReview(
+    input: CartReviewAcknowledgeExecutionInput
+  ): Promise<CartReviewAcknowledgeExecutionResult> {
+    const request = input.request as MergeRequest
+    if (request.customerAuthBff?.authorized !== true) {
+      throwNotFound()
+    }
+
+    const cartModule = request.scope.resolve<CartModule>(Modules.CART)
+    const transaction = cartModule.baseRepository_?.transaction
+    if (typeof transaction !== "function") {
+      throw new Error("CART_TRANSACTION_AUTHORITY_UNAVAILABLE")
+    }
+
+    return transaction.call(cartModule.baseRepository_, async (manager) => {
+      const transactionContext = manager.getTransactionContext?.()
+      if (!transactionContext) {
+        throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
+      }
+
+      const sharedContext = currentVersionContext(manager)
+
+      // ACK shares the canonical Customer lock with merge and every other
+      // Customer-cart authority path. The authority is resolved again inside
+      // this transaction so the URL cart id cannot become an authority input.
+      await lockCustomerCartAuthority(transactionContext, input.customerId)
+      const authority = await resolveCanonicalCustomerCartAuthority(
+        sharedContext as unknown as CustomerCartAuthoritySharedContext,
+        input.customerId
+      )
+      if (
+        authority.type !== "single" ||
+        authority.cartId !== input.cartId
+      ) {
+        throwNotFound()
+      }
+
+      // Cart row/advisory lock precedes the version and CartReview locks.
+      await lockCartRows(transactionContext, [input.cartId])
+      const versionService = request.scope.resolve<StoreResourceVersionModuleService>(
+        STORE_RESOURCE_VERSION_MODULE
+      )
+      const versionRow = await versionService.loadForUpdate(
+        "cart",
+        input.cartId,
+        sharedContext
+      )
+      if (!versionRow) {
+        throwConflict("CART_REVIEW_STATE_CONFLICT")
+      }
+
+      const cart = await retrieveMergeCart(
+        cartModule,
+        input.cartId,
+        sharedContext
+      )
+      if (
+        !cart ||
+        !isActiveCustomerCart(cart, input.customerId) ||
+        cart.id !== authority.cartId
+      ) {
+        throwNotFound()
+      }
+      assertNoPaymentOrOrderFields(cart)
+
+      // The current Cart snapshot and version are read before examining the
+      // review. A stale If-Match therefore exits before any CartReview write.
+      if (versionRow.version !== input.expectedVersion) {
+        throw new CartVersionMismatchError(cart, versionRow.version)
+      }
+
+      const reviews = await loadCartReviewsForUpdate(
+        transactionContext,
+        input.cartId
+      )
+      const pendingReviews = reviews.filter(
+        (review) => review.status === "pending"
+      )
+      if (pendingReviews.length > 1) {
+        throwConflict("CART_REVIEW_STATE_CONFLICT")
+      }
+      const pendingReview = pendingReviews[0]
+
+      if (input.reviewRef === null) {
+        if (pendingReview) {
+          throwConflict("CART_REVIEW_REQUIRED")
+        }
+
+        return {
+          cart,
+          version: versionRow.version,
+          review: {
+            requiresReview: false,
+            reviewRef: null,
+            rejectedItems: [],
+          },
+        }
+      }
+
+      const requestedReview = reviews.find(
+        (review) => review.review_ref === input.reviewRef
+      )
+      if (!requestedReview) {
+        if (pendingReview) {
+          throwConflict("CART_REVIEW_CONFLICT")
+        }
+        throwNotFound()
+      }
+
+      if (requestedReview.cart_id !== input.cartId) {
+        throwNotFound()
+      }
+
+      if (requestedReview.status === "acknowledged") {
+        if (requestedReview.produced_cart_version !== versionRow.version) {
+          throwConflict("CART_REVIEW_VERSION_CONFLICT")
+        }
+
+        return {
+          cart,
+          version: versionRow.version,
+          review: {
+            requiresReview: false,
+            reviewRef: null,
+            rejectedItems: [],
+          },
+        }
+      }
+
+      if (requestedReview.produced_cart_version !== versionRow.version) {
+        throwConflict("CART_REVIEW_VERSION_CONFLICT")
+      }
+
+      await transactionContext.raw(
+        `
+          update cart_review
+          set status = 'acknowledged', acknowledged_at = now(), updated_at = now()
+          where id = ? and status = 'pending' and deleted_at is null
+        `,
+        [requestedReview.id]
+      )
+
+      return {
+        cart,
+        version: versionRow.version,
+        review: {
+          requiresReview: false,
+          reviewRef: null,
+          rejectedItems: [],
+        },
+      }
+    })
+  }
+
   async executeCartMerge(
     input: CartMergeExecutionInput
   ): Promise<CartMergeExecutionResult> {

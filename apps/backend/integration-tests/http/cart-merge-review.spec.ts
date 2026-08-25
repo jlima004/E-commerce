@@ -1337,6 +1337,8 @@ describe("Cart merge HTTP tracer", () => {
       const { harness, reviewRef } = await createPendingReviewHarness(boot.container)
       const cartId = harness.customerCart?.id as string
       const versionBefore = harness.versions.get(cartId)
+      const resourceVersionIncrementsBeforeAck =
+        harness.resourceVersion.increment.mock.calls.length
       const rawCallsBeforeAck = harness.transaction.raw.mock.calls.length
       const capabilityLookups =
         harness.capabilityService.lookupGuestCartCapabilityByPresentedToken.mock
@@ -1365,7 +1367,9 @@ describe("Cart merge HTTP tracer", () => {
       })
       expect(harness.cartReview?.status).toBe("acknowledged")
       expect(harness.versions.get(cartId)).toBe(versionBefore)
-      expect(harness.resourceVersion.increment).not.toHaveBeenCalled()
+      expect(harness.resourceVersion.increment.mock.calls.length).toBe(
+        resourceVersionIncrementsBeforeAck
+      )
       expect(
         harness.capabilityService.lookupGuestCartCapabilityByPresentedToken
           .mock.calls.length
@@ -1405,10 +1409,15 @@ describe("Cart merge HTTP tracer", () => {
     try {
       const { harness, reviewRef } = await createPendingReviewHarness(boot.container)
       const cartId = harness.customerCart?.id as string
+      const resourceVersionIncrementsBeforeAck =
+        harness.resourceVersion.increment.mock.calls.length
       const first = createResponse()
       await acknowledgeCartReview(
         createAcknowledgeRequest(harness, { reviewRef, version: 2 }) as never,
         first as never
+      )
+      expect(harness.resourceVersion.increment.mock.calls.length).toBe(
+        resourceVersionIncrementsBeforeAck
       )
       const rawCallsAfterFirstAck = harness.transaction.raw.mock.calls.length
       const reviewUpdatesAfterFirstAck = harness.transaction.raw.mock.calls.filter(
@@ -1441,8 +1450,46 @@ describe("Cart merge HTTP tracer", () => {
           String(sql).toLowerCase().includes("update cart_review")
         ).length
       ).toBe(reviewUpdatesAfterFirstAck)
-      expect(harness.resourceVersion.increment).not.toHaveBeenCalled()
+      expect(harness.resourceVersion.increment.mock.calls.length).toBe(
+        resourceVersionIncrementsBeforeAck
+      )
       expect(harness.versions.get(cartId)).toBe(2)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("rejeita replay acknowledged depois de mutation posterior", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const { harness, reviewRef } = await createPendingReviewHarness(boot.container)
+      const cartId = harness.customerCart?.id as string
+      const resourceVersionIncrementsBeforeAck =
+        harness.resourceVersion.increment.mock.calls.length
+
+      await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, { reviewRef, version: 2 }) as never,
+        createResponse() as never
+      )
+      harness.versions.set(cartId, 3)
+
+      const error = await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, {
+          cartId,
+          reviewRef,
+          version: 3,
+        }) as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+
+      const normalized = toStoreErrorResponse(error)
+      expect(normalized.statusCode).toBe(409)
+      expect(harness.cartReview?.status).toBe("acknowledged")
+      expect(harness.versions.get(cartId)).toBe(3)
+      expect(harness.resourceVersion.increment.mock.calls.length).toBe(
+        resourceVersionIncrementsBeforeAck
+      )
+      expect(JSON.stringify(normalized.body)).not.toContain(reviewRef)
     } finally {
       await boot.dispose()
     }
@@ -1485,6 +1532,8 @@ describe("Cart merge HTTP tracer", () => {
     const boot = await bootstrapCartMergeContainer()
     try {
       const { harness } = await createPendingReviewHarness(boot.container)
+      const resourceVersionIncrementsBeforeAck =
+        harness.resourceVersion.increment.mock.calls.length
       const error = await acknowledgeCartReview(
         createAcknowledgeRequest(harness, {
           reviewRef: null,
@@ -1496,7 +1545,9 @@ describe("Cart merge HTTP tracer", () => {
       expect(toStoreErrorResponse(error).statusCode).toBe(409)
       expect(harness.cartReview?.status).toBe("pending")
       expect(harness.versions.get(harness.customerCart?.id ?? "")).toBe(2)
-      expect(harness.resourceVersion.increment).not.toHaveBeenCalled()
+      expect(harness.resourceVersion.increment.mock.calls.length).toBe(
+        resourceVersionIncrementsBeforeAck
+      )
       expect(JSON.stringify(toStoreErrorResponse(error).body)).not.toContain(
         "review_"
       )
@@ -1560,6 +1611,8 @@ describe("Cart merge HTTP tracer", () => {
     try {
       const { harness, reviewRef } = await createPendingReviewHarness(boot.container)
       const cartId = harness.customerCart?.id as string
+      const resourceVersionIncrementsBeforeAck =
+        harness.resourceVersion.increment.mock.calls.length
       harness.versions.set(cartId, 3)
 
       const error = await acknowledgeCartReview(
@@ -1574,7 +1627,9 @@ describe("Cart merge HTTP tracer", () => {
       expect(normalized.statusCode).toBe(412)
       expect(harness.cartReview?.status).toBe("pending")
       expect(harness.versions.get(cartId)).toBe(3)
-      expect(harness.resourceVersion.increment).not.toHaveBeenCalled()
+      expect(harness.resourceVersion.increment.mock.calls.length).toBe(
+        resourceVersionIncrementsBeforeAck
+      )
       expect(JSON.stringify(normalized.body)).not.toContain(reviewRef)
     } finally {
       await boot.dispose()
