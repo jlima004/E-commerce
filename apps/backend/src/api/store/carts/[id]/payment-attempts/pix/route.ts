@@ -3,6 +3,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import {
   ContainerRegistrationKeys,
   MedusaError,
+  Modules,
   remoteQueryObjectFromString,
 } from "@medusajs/framework/utils"
 import { rejectClientMoneyFields } from "../../../payment-attempts/validators"
@@ -17,6 +18,20 @@ import {
 import { resolveActiveCartIdentity } from "../../../../../../modules/checkout/active-cart"
 import { PAYMENT_ATTEMPT_MODULE } from "../../../../../../modules/payment-attempt"
 import type { PaymentAttemptRecord } from "../../../../../../modules/payment-attempt/types"
+import { assertNoPendingCartReview } from "../../../../../../modules/cart-merge/review-guard"
+import {
+  lockCartOrderAuthority,
+  type PaymentAttemptSqlTransaction,
+} from "../../../../../../modules/payment-attempt/transactional-authority"
+import {
+  STORE_RESOURCE_VERSION_MODULE,
+  type StoreResourceVersionModuleService,
+} from "../../../../../../modules/store-resource-version"
+import type {
+  KnexLike,
+  SharedTransactionContext,
+  TransactionalManagerLike,
+} from "../../../../../../infrastructure/store-foundation-transaction-compatibility"
 import { initializeCartResourceVersion } from "../../../concurrency"
 
 type SessionCapableRequest = MedusaRequest & {
@@ -34,15 +49,95 @@ type SessionCapableRequest = MedusaRequest & {
 }
 
 type PaymentAttemptModuleLike = {
-  listPaymentAttempts?: (filters?: { cart_id?: string }) => Promise<PaymentAttemptRecord[]>
+  listPaymentAttempts?: (
+    filters?: { cart_id?: string },
+    configOrContext?: unknown,
+    sharedContext?: SharedTransactionContext
+  ) => Promise<PaymentAttemptRecord[]>
   createPaymentAttempts?: (
-    data: PaymentAttemptRecord | PaymentAttemptRecord[]
+    data: PaymentAttemptRecord | PaymentAttemptRecord[],
+    sharedContext?: SharedTransactionContext
   ) => Promise<PaymentAttemptRecord[]>
   updatePaymentAttempts?: (
-    data: PaymentAttemptRecord | PaymentAttemptRecord[]
+    data: PaymentAttemptRecord | PaymentAttemptRecord[],
+    sharedContext?: SharedTransactionContext
   ) => Promise<PaymentAttemptRecord[]>
   resolveStripePixInitiationLayer?: () =>
     Promise<StripePixInitiationLayer | null>
+}
+
+type CartModuleForPaymentTransaction = {
+  baseRepository_?: {
+    transaction<T>(
+      callback: (transactionManager: TransactionalManagerLike) => Promise<T>
+    ): Promise<T>
+  }
+}
+
+type PgConnectionForPaymentTransaction = {
+  transaction<T>(callback: (transaction: KnexLike) => Promise<T>): Promise<T>
+}
+
+function currentPaymentTransactionContext(
+  transactionManager: TransactionalManagerLike
+): SharedTransactionContext {
+  return {
+    __type: "MedusaContext",
+    transactionManager,
+    manager: transactionManager,
+  }
+}
+
+async function withCartPaymentTransaction<T>(
+  req: SessionCapableRequest,
+  callback: (sharedContext: SharedTransactionContext) => Promise<T>
+): Promise<T> {
+  let cartModule: CartModuleForPaymentTransaction | undefined
+
+  try {
+    cartModule = req.scope.resolve(
+      Modules.CART
+    ) as CartModuleForPaymentTransaction
+  } catch {
+    cartModule = undefined
+  }
+
+  const cartTransaction = cartModule?.baseRepository_?.transaction
+  if (typeof cartTransaction === "function") {
+    return cartTransaction.call(
+      cartModule?.baseRepository_,
+      async (transactionManager) => {
+        if (!transactionManager.getTransactionContext?.()) {
+          throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
+        }
+
+        return callback(currentPaymentTransactionContext(transactionManager))
+      }
+    )
+  }
+
+  let pgConnection: PgConnectionForPaymentTransaction | undefined
+  try {
+    pgConnection = req.scope.resolve(
+      ContainerRegistrationKeys.PG_CONNECTION
+    ) as PgConnectionForPaymentTransaction
+  } catch {
+    pgConnection = undefined
+  }
+
+  if (typeof pgConnection?.transaction === "function") {
+    return pgConnection.transaction(async (transaction) => {
+      const transactionManager: TransactionalManagerLike = {
+        getTransactionContext: () => transaction,
+      }
+      return callback(currentPaymentTransactionContext(transactionManager))
+    })
+  }
+
+  throw new MedusaError(
+    MedusaError.Types.INVALID_DATA,
+    "Autoridade transacional do cart indisponivel."
+  )
 }
 
 const PAYMENT_ATTEMPT_LIST_ERROR_MESSAGE =
@@ -117,9 +212,22 @@ async function fetchCartById(
 
 async function readCartResourceVersion(
   req: SessionCapableRequest,
-  cartId: string
+  cartId: string,
+  sharedContext?: SharedTransactionContext
 ): Promise<number | null> {
   try {
+    if (sharedContext) {
+      const versionService = req.scope.resolve<StoreResourceVersionModuleService>(
+        STORE_RESOURCE_VERSION_MODULE
+      )
+      const versionRow = await versionService.initialize(
+        "cart",
+        cartId,
+        sharedContext
+      )
+      return versionRow.version
+    }
+
     return await initializeCartResourceVersion(req, cartId)
   } catch {
     // A missing binding is safe only because Order authority rejects it
@@ -130,7 +238,8 @@ async function readCartResourceVersion(
 
 async function listExistingAttemptsForCart(
   req: SessionCapableRequest,
-  cartId: string
+  cartId: string,
+  sharedContext?: SharedTransactionContext
 ): Promise<PaymentAttemptRecord[]> {
   let service: PaymentAttemptModuleLike
 
@@ -153,7 +262,17 @@ async function listExistingAttemptsForCart(
   }
 
   try {
-    return (await service.listPaymentAttempts({ cart_id: cartId })) ?? []
+    const filters = { cart_id: cartId }
+    if (sharedContext && service.listPaymentAttempts.length >= 3) {
+      return (
+        (await service.listPaymentAttempts(filters, undefined, sharedContext)) ??
+        []
+      )
+    }
+    if (sharedContext && service.listPaymentAttempts.length >= 2) {
+      return (await service.listPaymentAttempts(filters, sharedContext)) ?? []
+    }
+    return (await service.listPaymentAttempts(filters)) ?? []
   } catch {
     throw new MedusaError(
       MedusaError.Types.INVALID_DATA,
@@ -164,7 +283,8 @@ async function listExistingAttemptsForCart(
 
 async function persistPixPaymentAttemptResult(
   req: SessionCapableRequest,
-  result: Awaited<ReturnType<typeof startPixPaymentAttempt>>
+  result: Awaited<ReturnType<typeof startPixPaymentAttempt>>,
+  sharedContext?: SharedTransactionContext
 ): Promise<void> {
   let service: PaymentAttemptModuleLike
 
@@ -204,14 +324,34 @@ async function persistPixPaymentAttemptResult(
 
   try {
     for (const invalidated of result.invalidatedAttempts) {
-      await service.updatePaymentAttempts?.(invalidated)
+      if (
+        sharedContext &&
+        service.updatePaymentAttempts &&
+        service.updatePaymentAttempts.length >= 2
+      ) {
+        await service.updatePaymentAttempts(invalidated, sharedContext)
+      } else {
+        await service.updatePaymentAttempts?.(invalidated)
+      }
     }
 
     for (const superseded of result.supersededAttempts) {
-      await service.updatePaymentAttempts?.(superseded)
+      if (
+        sharedContext &&
+        service.updatePaymentAttempts &&
+        service.updatePaymentAttempts.length >= 2
+      ) {
+        await service.updatePaymentAttempts(superseded, sharedContext)
+      } else {
+        await service.updatePaymentAttempts?.(superseded)
+      }
     }
 
-    await service.createPaymentAttempts(result.attempt)
+    if (sharedContext && service.createPaymentAttempts.length >= 2) {
+      await service.createPaymentAttempts(result.attempt, sharedContext)
+    } else {
+      await service.createPaymentAttempts(result.attempt)
+    }
   } catch {
     throw new MedusaError(
       MedusaError.Types.INVALID_DATA,
@@ -253,23 +393,45 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   const cart = await fetchCartById(request, cartId)
   const actor = resolvePaymentStartActor(request)
-  const existingAttempts = await listExistingAttemptsForCart(request, cartId)
-  const cartResourceVersion = await readCartResourceVersion(request, cartId)
-  const stripeLayer = await resolveStripePixInitiationLayer(request)
+  const result = await withCartPaymentTransaction(request, async (sharedContext) => {
+    const transaction = sharedContext.transactionManager.getTransactionContext?.()
+    if (!transaction) {
+      throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
+    }
 
-  const result = await startPixPaymentAttempt({
-    cart,
-    actor,
-    sessionActiveCartId: request.session?.active_cart_id,
-    existingAttempts,
-    stripeLayer,
-    generateId: () => `payatt_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
-    cartResourceVersion,
-    generatePaymentCollectionId: () =>
-      `paycol_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
+    await lockCartOrderAuthority(
+      transaction as unknown as PaymentAttemptSqlTransaction,
+      cartId
+    )
+    await assertNoPendingCartReview(cartId, sharedContext)
+
+    const existingAttempts = await listExistingAttemptsForCart(
+      request,
+      cartId,
+      sharedContext
+    )
+    const cartResourceVersion = await readCartResourceVersion(
+      request,
+      cartId,
+      sharedContext
+    )
+    const stripeLayer = await resolveStripePixInitiationLayer(request)
+
+    const paymentResult = await startPixPaymentAttempt({
+      cart,
+      actor,
+      sessionActiveCartId: request.session?.active_cart_id,
+      existingAttempts,
+      stripeLayer,
+      generateId: () => `payatt_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
+      cartResourceVersion,
+      generatePaymentCollectionId: () =>
+        `paycol_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
+    })
+
+    await persistPixPaymentAttemptResult(request, paymentResult, sharedContext)
+    return paymentResult
   })
-
-  await persistPixPaymentAttemptResult(request, result)
 
   res.status(201).json({
     payment_attempt: serializePixPaymentAttemptResponse(result.response),
