@@ -3,10 +3,12 @@ import {
   deleteLineItemsWorkflow,
   updateLineItemInCartWorkflow,
 } from "@medusajs/core-flows"
+import { asValue } from "@medusajs/framework/awilix"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import {
   ContainerRegistrationKeys,
   MedusaError,
+  MedusaContext,
   Modules,
   remoteQueryObjectFromString,
 } from "@medusajs/framework/utils"
@@ -66,6 +68,7 @@ import {
 } from "./line-items/validators"
 import { storeCartPreOrderFields } from "./query-config"
 import type { StoreCartPreOrderRecord } from "./serializers"
+import type { TransactionalManagerLike } from "../../../infrastructure/store-foundation-transaction-compatibility"
 
 export type LineItemMutationKind = "add" | "update" | "delete" | "clear"
 
@@ -73,14 +76,7 @@ type RequestWithCustomerAuth = MedusaRequest & {
   customerAuth?: CustomerAuthAccessContext
 }
 
-type TransactionManager = {
-  getTransactionContext?: () => {
-    raw(
-      sql: string,
-      bindings?: unknown[]
-    ): Promise<{ rows?: Array<Record<string, unknown>> }>
-  } | null
-}
+type TransactionManager = TransactionalManagerLike
 
 type CartModuleForTransactionalMutation = {
   baseRepository_?: {
@@ -277,21 +273,15 @@ function currentActorScope(
     : customerActorScope({ customerId: actor.customerId })
 }
 
-function currentVersionContext(trx: {
-  raw(
-    sql: string,
-    bindings?: unknown[]
-  ): Promise<{ rows?: Array<Record<string, unknown>> }>
-}): StoreResourceVersionMutationContext {
-  const transactionManager = {
-    getTransactionContext: () => trx as never,
-  }
-
+function currentVersionContext(
+  transactionManager: TransactionManager
+): StoreResourceVersionMutationContext {
   return {
     __type: "MedusaContext",
-    // Medusa's resource-version service verifies that both context aliases
-    // identify the exact same transaction manager. Keeping two wrapper
-    // objects here would silently turn this into a cross-manager operation.
+    // Keep the exact MikroORM manager supplied by the repository callback in
+    // both aliases. The native Cart repository needs its manager methods
+    // (including getDriver), while SQL modules obtain the Knex transaction via
+    // manager.getTransactionContext().
     transactionManager,
     manager: transactionManager,
   }
@@ -301,32 +291,30 @@ function createTransactionalCartModule(
   cartModule: CartModuleForTransactionalMutation,
   sharedContext: StoreResourceVersionMutationContext
 ): CartModuleForTransactionalMutation {
-  const contextAwareMethods = new Set([
-    "addLineItems",
-    "updateLineItems",
-    "softDeleteLineItems",
-    "restoreLineItems",
-    "deleteLineItems",
-    "listLineItems",
-    "retrieveCart",
-    "listCarts",
-    "retrieveLineItem",
-  ])
+  const facade = Object.create(null) as object
+  return new Proxy(facade, {
+    get(_target, property) {
+      if (property === "constructor") {
+        return Object
+      }
 
-  return new Proxy(cartModule, {
-    get(target, property, receiver) {
-      const value = Reflect.get(target, property, receiver)
-      if (
-        typeof property !== "string" ||
-        !contextAwareMethods.has(property) ||
-        typeof value !== "function"
-      ) {
+      const value = Reflect.get(cartModule as object, property)
+      if (typeof property !== "string" || typeof value !== "function") {
         return value
       }
 
-      return (...args: unknown[]) => value.apply(target, [...args, sharedContext])
+      return (...args: unknown[]) => {
+        const contextIndex = MedusaContext.getIndex(cartModule, property)
+        if (!Number.isInteger(contextIndex)) {
+          return value.apply(cartModule, args)
+        }
+
+        const contextArgs = [...args]
+        contextArgs[contextIndex as number] = sharedContext
+        return value.apply(cartModule, contextArgs)
+      }
     },
-  })
+  }) as CartModuleForTransactionalMutation
 }
 
 function createTransactionalWorkflowScope(
@@ -338,15 +326,10 @@ function createTransactionalWorkflowScope(
     cartModule,
     sharedContext
   )
+  const transactionalScope = req.scope.createScope()
+  transactionalScope.register(Modules.CART, asValue(transactionalCartModule))
 
-  return {
-    resolve(key: unknown) {
-      if (key === Modules.CART) {
-        return transactionalCartModule
-      }
-      return req.scope.resolve(key as never)
-    },
-  }
+  return transactionalScope
 }
 
 const transactionalCartSnapshotConfig = {
@@ -428,7 +411,7 @@ async function readCartSnapshotWithVersion(
     }
 
     await lockCartOrderAuthority(transactionContext, cartId)
-    const context = currentVersionContext(transactionContext)
+    const context = currentVersionContext(transactionManager)
     const versionRow = await versionService.initialize("cart", cartId, context)
     return retrieveCartSnapshotInTransaction(
       cartModule,
@@ -539,7 +522,7 @@ async function runWorkflowWithinCas(
     // PaymentAttempt invalidation against webhook and Order authority.
     await lockCartOrderAuthority(transactionContext, cartId)
 
-    const context = currentVersionContext(transactionContext)
+    const context = currentVersionContext(transactionManager)
 
     if (actor.actorType === "guest") {
       const presentedToken = readHeaderString(
