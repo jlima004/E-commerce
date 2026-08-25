@@ -188,6 +188,12 @@ function normalizeCustomerQuantities(
     )
   }
 
+  if ([...quantities.values()].some((quantity) => quantity > CART_MERGE_MAX_QUANTITY)) {
+    throw new CartMergeStateConflictError(
+      "Customer cart quantity exceeds the merge ceiling"
+    )
+  }
+
   return quantities
 }
 
@@ -202,6 +208,11 @@ function readAvailability(
       : availability[variantId]
     if (value === undefined) {
       return "valid"
+    }
+    if (value !== "valid" && value !== "invalid" && value !== "unavailable") {
+      throw new CartMergeStateConflictError(
+        "Persisted variant availability is inconsistent"
+      )
     }
     return value
   }

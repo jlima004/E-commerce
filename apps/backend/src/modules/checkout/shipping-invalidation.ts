@@ -76,6 +76,10 @@ export type PaymentAttemptModuleForCartInvalidation = {
   updatePaymentAttempts?: (input: PaymentAttemptRecord) => Promise<unknown>
 }
 
+export type StructuralCartInvalidationContext = {
+  transaction?: PaymentAttemptSqlTransaction
+}
+
 export type StructuralCartInvalidationDependencies = {
   paymentAttemptModule?: PaymentAttemptModuleForCartInvalidation
   transaction?: PaymentAttemptSqlTransaction
@@ -83,23 +87,41 @@ export type StructuralCartInvalidationDependencies = {
     cartId: string,
     at: Date
   ) => Promise<void> | void
-  invalidateShippingQuote?: (cartId: string, at: Date) => Promise<void> | void
-  invalidateShippingSelection?: (cartId: string, at: Date) => Promise<void> | void
+  invalidateShippingQuote?: (
+    cartId: string,
+    at: Date,
+    context?: StructuralCartInvalidationContext
+  ) => Promise<void> | void
+  invalidateShippingSelection?: (
+    cartId: string,
+    at: Date,
+    context?: StructuralCartInvalidationContext
+  ) => Promise<void> | void
 }
 
 export type DefaultShippingInvalidationSeams = {
-  invalidateShippingQuote: (cartId: string, at: Date) => Promise<void> | void
-  invalidateShippingSelection: (cartId: string, at: Date) => Promise<void> | void
+  invalidateShippingQuote: (
+    cartId: string,
+    at: Date,
+    context?: StructuralCartInvalidationContext
+  ) => Promise<void> | void
+  invalidateShippingSelection: (
+    cartId: string,
+    at: Date,
+    context?: StructuralCartInvalidationContext
+  ) => Promise<void> | void
 }
 
 export async function defaultInvalidateShippingQuote(
   _cartId: string,
-  _at: Date
+  _at: Date,
+  _context?: StructuralCartInvalidationContext
 ): Promise<void> {}
 
 export async function defaultInvalidateShippingSelection(
   _cartId: string,
-  _at: Date
+  _at: Date,
+  _context?: StructuralCartInvalidationContext
 ): Promise<void> {}
 
 async function persistPaymentAttemptInvalidation(
@@ -163,8 +185,9 @@ export function createStructuralCartInvalidationRunner(
       dependencies.invalidateShippingSelection ??
       defaultShippingSeams.invalidateShippingSelection
 
-    await invalidateQuote(cartId, at)
-    await invalidateSelection(cartId, at)
+    const context = { transaction: dependencies.transaction }
+    await invalidateQuote(cartId, at, context)
+    await invalidateSelection(cartId, at, context)
   }
 }
 

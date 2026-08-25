@@ -1,3 +1,5 @@
+import { addToCartWorkflow, deleteLineItemsWorkflow, updateLineItemInCartWorkflow } from "@medusajs/core-flows"
+import { randomBytes } from "node:crypto"
 import type { MedusaRequest } from "@medusajs/framework/http"
 import {
   MedusaError,
@@ -10,6 +12,7 @@ import {
 } from "../checkout/shipping-invalidation"
 import {
   assertNoPaymentOrOrderFields,
+  markCartSupersededInput,
 } from "../checkout/active-cart"
 import {
   CartVersionMismatchError,
@@ -48,12 +51,15 @@ import {
   resolveCanonicalCustomerCartAuthority,
 } from "../../api/store/carts/customer-active-cart"
 import type { CustomerCartAuthoritySharedContext } from "../../api/store/carts/customer-active-cart"
+import { isSellableVariant } from "../../workflows/catalog/validate-sellable-variant"
 import { buildCartMergeDecision } from "./decision"
 import CustomerCartAuthority from "./models/customer-cart-authority"
 import CartMergeResult from "./models/cart-merge-result"
 import CartReview from "./models/cart-review"
 import {
   CART_MERGE_OUTCOMES,
+  type CartMergeDecision,
+  CartMergeStateConflictError,
   type CartMergeOutcome,
   type CartReviewState,
 } from "./types"
@@ -78,6 +84,62 @@ type CartModule = {
   }
   retrieveCart?: (...args: unknown[]) => Promise<StoreCartPreOrderRecord | null>
   updateCarts?: (...args: unknown[]) => Promise<unknown>
+}
+
+type TransactionalWorkflowScope = {
+  resolve: (key: unknown) => unknown
+}
+
+function createTransactionalCartModule(
+  cartModule: CartModule,
+  sharedContext: StoreResourceVersionMutationContext
+): CartModule {
+  const contextAwareMethods = new Set([
+    "addLineItems",
+    "updateLineItems",
+    "softDeleteLineItems",
+    "restoreLineItems",
+    "deleteLineItems",
+    "listLineItems",
+    "retrieveCart",
+    "listCarts",
+    "retrieveLineItem",
+  ])
+
+  return new Proxy(cartModule, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver)
+      if (
+        typeof property !== "string" ||
+        !contextAwareMethods.has(property) ||
+        typeof value !== "function"
+      ) {
+        return value
+      }
+
+      return (...args: unknown[]) => value.apply(target, [...args, sharedContext])
+    },
+  })
+}
+
+function createTransactionalWorkflowScope(
+  request: MergeRequest,
+  cartModule: CartModule,
+  sharedContext: StoreResourceVersionMutationContext
+): TransactionalWorkflowScope {
+  const transactionalCartModule = createTransactionalCartModule(
+    cartModule,
+    sharedContext
+  )
+
+  return {
+    resolve(key: unknown) {
+      if (key === Modules.CART) {
+        return transactionalCartModule
+      }
+      return request.scope.resolve(key as never)
+    },
+  }
 }
 
 type CartMergeFailpoint = {
@@ -138,9 +200,14 @@ type CartMergeReceiptRow = {
   idempotency_expires_at: string | Date | null
 }
 
+type CartMergeReviewIdentity = {
+  id: string
+  reviewRef: string
+}
+
 function cartMergeCartRetrieveConfig(): { relations: string[] } {
   return {
-    relations: ["items", "customer"],
+    relations: ["items", "items.variant", "customer"],
   }
 }
 
@@ -195,6 +262,20 @@ function isActiveGuestCart(cart: StoreCartPreOrderRecord): boolean {
   )
 }
 
+function isActiveCustomerCart(
+  cart: StoreCartPreOrderRecord,
+  customerId: string
+): boolean {
+  return (
+    !cart.completed_at &&
+    (!cart.metadata ||
+      typeof cart.metadata !== "object" ||
+      Array.isArray(cart.metadata) ||
+      (cart.metadata as Record<string, unknown>).active_for_checkout !== false) &&
+    cart.customer?.id === customerId
+  )
+}
+
 async function lockCartRows(
   transaction: TransactionContext,
   cartIds: string[]
@@ -205,6 +286,297 @@ async function lockCartRows(
       "select id from cart where id = ? and deleted_at is null for update",
       [cartId]
     )
+  }
+}
+
+async function assertNoPendingCartReview(
+  transaction: TransactionContext,
+  cartIds: readonly string[]
+): Promise<void> {
+  const ids = [...new Set(cartIds)].filter(Boolean)
+  if (ids.length === 0) {
+    return
+  }
+
+  const bindings = ids.map(() => "?").join(", ")
+  const result = await transaction.raw(
+    `
+      select id
+      from cart_review
+      where cart_id in (${bindings})
+        and status = 'pending'
+        and deleted_at is null
+      order by id
+      for update
+    `,
+    ids
+  )
+  if (requireRows(result).length > 0) {
+    throwConflict("REVIEW_REQUIRED")
+  }
+}
+
+async function updateCartWithContext(
+  cartModule: CartModule,
+  selector: Record<string, unknown>,
+  data: Record<string, unknown>,
+  sharedContext: StoreResourceVersionMutationContext
+): Promise<void> {
+  if (typeof cartModule.updateCarts !== "function") {
+    throw new Error("CART_UPDATE_AUTHORITY_UNAVAILABLE")
+  }
+
+  if (cartModule.updateCarts.length === 1) {
+    await cartModule.updateCarts({ ...selector, ...data }, sharedContext)
+    return
+  }
+
+  await cartModule.updateCarts(selector, data, sharedContext)
+}
+
+function persistedVariantAvailability(
+  cart: StoreCartPreOrderRecord
+): ReadonlyMap<string, "valid" | "invalid" | "unavailable"> {
+  const availability = new Map<
+    string,
+    "valid" | "invalid" | "unavailable"
+  >()
+
+  for (const item of cart.items ?? []) {
+    if (typeof item.variant_id !== "string" || item.variant_id.trim() === "") {
+      continue
+    }
+
+    // The narrow HTTP tracer does not expose catalog relations. Real Medusa
+    // snapshots do when the relation is loaded above; only then do we derive
+    // deterministic catalog availability.
+    if (!Object.prototype.hasOwnProperty.call(item, "variant")) {
+      continue
+    }
+
+    const variant = item.variant as
+      | {
+          id?: unknown
+          metadata?: Record<string, unknown> | null
+          prices?: Array<{ amount?: unknown; currency_code?: unknown }>
+          product?: { status?: unknown } | null
+        }
+      | null
+      | undefined
+
+    let value: "valid" | "invalid" | "unavailable"
+    if (!variant || typeof variant !== "object") {
+      value = "invalid"
+    } else if (
+      typeof variant.id !== "string" ||
+      variant.id.trim() !== item.variant_id.trim()
+    ) {
+      throw new CartMergeStateConflictError(
+        "Persisted cart variant relation is inconsistent"
+      )
+    } else if (
+      variant.product?.status !== undefined &&
+      variant.product.status !== "published"
+    ) {
+      value = "unavailable"
+    } else {
+      try {
+        value = isSellableVariant(variant as never)
+          ? "valid"
+          : "unavailable"
+      } catch {
+        throw new CartMergeStateConflictError(
+          "Persisted cart variant projection is malformed"
+        )
+      }
+    }
+
+    const previous = availability.get(item.variant_id.trim())
+    if (previous !== undefined && previous !== value) {
+      throw new CartMergeStateConflictError(
+        "Persisted cart variant availability is inconsistent"
+      )
+    }
+    availability.set(item.variant_id.trim(), value)
+  }
+
+  return availability
+}
+
+function mergeVariantItems(
+  cart: StoreCartPreOrderRecord,
+  variantId: string
+) {
+  return (cart.items ?? []).filter(
+    (item) =>
+      typeof item.variant_id === "string" &&
+      item.variant_id.trim() === variantId
+  )
+}
+
+async function retrieveMergeCart(
+  cartModule: CartModule,
+  cartId: string,
+  sharedContext: StoreResourceVersionMutationContext
+): Promise<StoreCartPreOrderRecord | null> {
+  if (typeof cartModule.retrieveCart !== "function") {
+    return null
+  }
+
+  return projectCartCustomer(
+    await cartModule.retrieveCart(
+      cartId,
+      cartMergeCartRetrieveConfig(),
+      sharedContext
+    )
+  )
+}
+
+async function applyAcceptedItemsToCart(
+  request: MergeRequest,
+  cartModule: CartModule,
+  cart: StoreCartPreOrderRecord,
+  desiredQuantity: (variantId: string) => number,
+  sharedContext: StoreResourceVersionMutationContext
+): Promise<void> {
+  const workflowScope = createTransactionalWorkflowScope(
+    request,
+    cartModule,
+    sharedContext
+  )
+
+  const variantIds = [
+    ...new Set(
+      (cart.items ?? []).map((item) =>
+        typeof item.variant_id === "string"
+          ? item.variant_id.trim()
+          : item.variant_id
+      )
+    ),
+  ]
+  for (const variantId of variantIds) {
+    if (typeof variantId !== "string" || variantId.length === 0) {
+      throwConflict("CART_MERGE_LINE_VARIANT_ID_UNAVAILABLE")
+    }
+
+    const matchingItems = mergeVariantItems(cart, variantId)
+    const wantedQuantity = desiredQuantity(variantId)
+    if (!Number.isSafeInteger(wantedQuantity) || wantedQuantity < 0) {
+      throwConflict("CART_MERGE_DECISION_QUANTITY_INVALID")
+    }
+
+    const lineIds = matchingItems.map((item) => item.id)
+    if (lineIds.some((id) => typeof id !== "string" || id.length === 0)) {
+      throwConflict("CART_MERGE_LINE_ID_UNAVAILABLE")
+    }
+    const safeLineIds = lineIds as string[]
+
+    const primaryItem = matchingItems[0]
+
+    if (wantedQuantity === 0) {
+      await deleteLineItemsWorkflow(workflowScope as never).run({
+        input: { cart_id: cart.id, ids: safeLineIds },
+        context: sharedContext as never,
+      })
+      continue
+    }
+
+    const primaryItemId = primaryItem?.id
+    if (!primaryItem || typeof primaryItemId !== "string") {
+      throwConflict("CART_MERGE_LINE_MISSING")
+    }
+
+    if (primaryItem.quantity !== wantedQuantity || matchingItems.length > 1) {
+      await updateLineItemInCartWorkflow(workflowScope as never).run({
+        input: {
+          cart_id: cart.id,
+          item_id: primaryItemId,
+          update: { quantity: wantedQuantity },
+        },
+        context: sharedContext as never,
+      })
+    }
+
+    const duplicateIds = safeLineIds.slice(1)
+    if (duplicateIds.length > 0) {
+      await deleteLineItemsWorkflow(workflowScope as never).run({
+        input: {
+          cart_id: cart.id,
+          ids: duplicateIds,
+        },
+        context: sharedContext as never,
+      })
+    }
+  }
+}
+
+async function applyAcceptedCustomerItems(
+  request: MergeRequest,
+  cartModule: CartModule,
+  customerCart: StoreCartPreOrderRecord,
+  decision: CartMergeDecision,
+  sharedContext: StoreResourceVersionMutationContext
+): Promise<void> {
+  const workflowScope = createTransactionalWorkflowScope(
+    request,
+    cartModule,
+    sharedContext
+  )
+
+  for (const accepted of decision.acceptedItems) {
+    const variantDecision = decision.decisions.find(
+      (candidate) => candidate.variantId === accepted.variantId
+    )
+    if (!variantDecision) {
+      throw new Error("CART_MERGE_DECISION_VARIANT_MISSING")
+    }
+
+    const matchingItems = mergeVariantItems(customerCart, accepted.variantId)
+    const primaryItem = matchingItems[0]
+
+    if (!primaryItem) {
+      await addToCartWorkflow(workflowScope as never).run({
+        input: {
+          cart_id: customerCart.id,
+          items: [
+            {
+              variant_id: accepted.variantId,
+              quantity: accepted.quantity,
+            },
+          ],
+        },
+        context: sharedContext as never,
+      })
+      continue
+    }
+
+    const primaryItemId = primaryItem?.id
+    if (!primaryItem || typeof primaryItemId !== "string") {
+      throwConflict("CART_MERGE_CUSTOMER_LINE_ID_UNAVAILABLE")
+    }
+
+    await updateLineItemInCartWorkflow(workflowScope as never).run({
+      input: {
+        cart_id: customerCart.id,
+        item_id: primaryItemId,
+        update: { quantity: variantDecision.customerQuantityAfter },
+      },
+      context: sharedContext as never,
+    })
+
+    const duplicateIds = matchingItems.slice(1).map((item) => item.id)
+    if (duplicateIds.some((id) => !id)) {
+      throwConflict("CART_MERGE_CUSTOMER_LINE_ID_UNAVAILABLE")
+    }
+    if (duplicateIds.length > 0) {
+      await deleteLineItemsWorkflow(workflowScope as never).run({
+        input: {
+          cart_id: customerCart.id,
+          ids: duplicateIds as string[],
+        },
+        context: sharedContext as never,
+      })
+    }
   }
 }
 
@@ -389,7 +761,7 @@ function replayResultFromReceipt(
   return {
     outcome: receipt.outcome,
     cart: receiptCart(receipt),
-    version: receipt.guest_version_after,
+    version: receipt.customer_version_after ?? receipt.guest_version_after,
     review: receiptReview(receipt),
   }
 }
@@ -540,9 +912,46 @@ async function replayCommittedReceipt(
   return replayResultFromReceipt(receipt)
 }
 
+function createCartMergeReviewIdentity(): CartMergeReviewIdentity {
+  return {
+    id: generateEntityId(undefined, "cmrev"),
+    reviewRef: `review_${randomBytes(24).toString("base64url")}`,
+  }
+}
+
+async function insertCartReview(
+  transaction: TransactionContext,
+  input: {
+    id: string
+    cartId: string
+    reviewRef: string
+    mergeResultId: string
+    producedCartVersion: number
+    rejectedItems: unknown
+  }
+): Promise<void> {
+  await transaction.raw(
+    `
+      insert into cart_review (
+        id, cart_id, review_ref, merge_result_id, produced_cart_version,
+        status, rejected_items
+      ) values (?, ?, ?, ?, ?, 'pending', cast(? as jsonb))
+    `,
+    [
+      input.id,
+      input.cartId,
+      input.reviewRef,
+      input.mergeResultId,
+      input.producedCartVersion,
+      JSON.stringify(input.rejectedItems),
+    ]
+  )
+}
+
 async function insertCartMergeResult(
   transaction: TransactionContext,
   input: {
+    id?: string
     idempotencyRecordId: string
     customerId: string
     guestCartId: string
@@ -565,7 +974,7 @@ async function insertCartMergeResult(
     expiresAt: Date
   }
 ): Promise<string> {
-  const id = generateEntityId(undefined, "cmres")
+  const id = input.id ?? generateEntityId(undefined, "cmres")
   await transaction.raw(
     `
       insert into cart_merge_result (
@@ -711,19 +1120,25 @@ class CartMergeModuleService extends MedusaService({
         input.customerId
       )
 
-      // Destination selection and all non-tracer outcomes belong to later
-      // plans. Never turn this fail-closed branch into CUSTOMER_CART_PRESERVED.
       if (
         customerAuthority.type === "ambiguous" ||
         customerAuthority.type === "conflict"
       ) {
         throwConflict("CUSTOMER_CART_AUTHORITY_CONFLICT")
       }
-      if (customerAuthority.type === "single") {
-        throwConflict("CART_MERGE_CUSTOMER_DESTINATION_UNSUPPORTED")
-      }
+      const customerCartId =
+        customerAuthority.type === "single"
+          ? customerAuthority.cartId
+          : null
 
-      await lockCartRows(transactionContext, [input.guestCartId])
+      await lockCartRows(
+        transactionContext,
+        [input.guestCartId, ...(customerCartId ? [customerCartId] : [])]
+      )
+      await assertNoPendingCartReview(
+        transactionContext,
+        [input.guestCartId, ...(customerCartId ? [customerCartId] : [])]
+      )
 
       const preflightCapability = (await capabilityService.lookupGuestCartCapabilityByPresentedToken(
         input.presentedCapability,
@@ -738,31 +1153,64 @@ class CartMergeModuleService extends MedusaService({
       const versionService = request.scope.resolve<StoreResourceVersionModuleService>(
         STORE_RESOURCE_VERSION_MODULE
       )
-      const versionRow = await versionService.initialize(
+      const guestVersionRow = await versionService.initialize(
         "cart",
         input.guestCartId,
         sharedContext
       )
-
-      const cart = cartModule.retrieveCart
-        ? projectCartCustomer(
-            await cartModule.retrieveCart(
-              input.guestCartId,
-              cartMergeCartRetrieveConfig(),
-              sharedContext
-            )
-          )
+      const customerVersionRow = customerCartId
+        ? await versionService.initialize("cart", customerCartId, sharedContext)
         : null
-      if (!cart || !isActiveGuestCart(cart)) {
+
+      const guestCart = await retrieveMergeCart(
+        cartModule,
+        input.guestCartId,
+        sharedContext
+      )
+      const customerCart = customerCartId
+        ? await retrieveMergeCart(cartModule, customerCartId, sharedContext)
+        : null
+
+      if (!guestCart || !isActiveGuestCart(guestCart)) {
         throwConflict("CART_MERGE_GUEST_CART_UNSUPPORTED")
       }
-      assertNoPaymentOrOrderFields(cart)
+      assertNoPaymentOrOrderFields(guestCart)
 
-      if (versionRow.version !== input.expectedGuestVersion) {
-        throw new CartVersionMismatchError(cart, versionRow.version)
+      if (
+        customerCartId &&
+        (!customerCart || !isActiveCustomerCart(customerCart, input.customerId))
+      ) {
+        throwConflict("CUSTOMER_CART_AUTHORITY_CONFLICT")
+      }
+      if (customerCart) {
+        assertNoPaymentOrOrderFields(customerCart)
       }
 
-      const decision = buildCartMergeDecision({ guestCart: cart })
+      if (guestVersionRow.version !== input.expectedGuestVersion) {
+        throw new CartVersionMismatchError(guestCart, guestVersionRow.version)
+      }
+
+      let decision: CartMergeDecision
+      try {
+        const variantAvailability = persistedVariantAvailability(guestCart)
+        decision = buildCartMergeDecision(
+          customerCart
+            ? {
+                guestCart,
+                customerCart,
+                variantAvailability,
+              }
+            : {
+                guestCart,
+                variantAvailability,
+              }
+        )
+      } catch (error) {
+        if (error instanceof CartMergeStateConflictError) {
+          throwConflict("CART_MERGE_STATE_CONFLICT")
+        }
+        throw error
+      }
 
       const idempotencyService = request.scope.resolve<StoreIdempotencyModuleService>(
         STORE_IDEMPOTENCY_MODULE
@@ -771,9 +1219,9 @@ class CartMergeModuleService extends MedusaService({
         operation: CART_MERGE_FINGERPRINT_OPERATION,
         customerId: input.customerId,
         guestCartId: input.guestCartId,
-        customerCartId: null,
-        guestVersion: versionRow.version,
-        customerVersion: null,
+        customerCartId,
+        guestVersion: guestVersionRow.version,
+        customerVersion: customerVersionRow?.version ?? null,
         normalizedGuestIntent: decision.normalizedGuestIntent,
       }
       const claim = await idempotencyService.claim({
@@ -785,7 +1233,7 @@ class CartMergeModuleService extends MedusaService({
         resourceScope: {
           resource_type: "cart_merge",
           guest_cart_id: input.guestCartId,
-          customer_cart_id: null,
+          customer_cart_id: customerCartId,
           capability_id: preflightCapability.id,
         },
         rawIdempotencyKey: input.rawIdempotencyKey,
@@ -824,28 +1272,31 @@ class CartMergeModuleService extends MedusaService({
       )
 
       if (decision.outcome === "NO_ITEMS") {
-        const originalPublicCartSnapshot = stableReceiptCart(cart)
+        const canonicalCart = customerCart ?? guestCart
+        const canonicalVersion =
+          customerVersionRow?.version ?? guestVersionRow.version
+        const originalPublicCartSnapshot = stableReceiptCart(canonicalCart)
 
         const resultId = await insertCartMergeResult(transactionContext, {
           idempotencyRecordId: claim.record.id,
           customerId: input.customerId,
           guestCartId: input.guestCartId,
-          customerCartId: null,
-          canonicalCartId: input.guestCartId,
+          customerCartId,
+          canonicalCartId: canonicalCart.id,
           capabilityId: preflightCapability.id,
           capabilityHash: preflightCapability.token_hash,
           requestFingerprint,
-          guestVersionBefore: versionRow.version,
-          customerVersionBefore: null,
-          guestVersionAfter: versionRow.version,
-          customerVersionAfter: null,
+          guestVersionBefore: guestVersionRow.version,
+          customerVersionBefore: customerVersionRow?.version ?? null,
+          guestVersionAfter: guestVersionRow.version,
+          customerVersionAfter: customerVersionRow?.version ?? null,
           outcome: decision.outcome,
           rejectedItems: decision.rejectedItems,
           reviewId: null,
           reviewRef: null,
           originalPublicCartSnapshot,
           originalReviewSnapshot: decision.review,
-          originalEtag: formatCartEtag(versionRow.version),
+          originalEtag: formatCartEtag(canonicalVersion),
           expiresAt,
         })
         tripFailpoint(request, "result")
@@ -879,13 +1330,9 @@ class CartMergeModuleService extends MedusaService({
         return {
           outcome: decision.outcome,
           cart: originalPublicCartSnapshot,
-          version: versionRow.version,
+          version: canonicalVersion,
           review: decision.review,
         }
-      }
-
-      if (decision.outcome !== "GUEST_CART_ATTACHED") {
-        throwConflict("CART_MERGE_OUTCOME_UNSUPPORTED")
       }
 
       await capabilityService.authorizeGuestCartCapabilityForMutation(
@@ -895,84 +1342,161 @@ class CartMergeModuleService extends MedusaService({
         sharedContext as GuestCartCapabilityMutationContext
       )
 
-      if (typeof cartModule.updateCarts !== "function") {
-        throw new Error("CART_UPDATE_AUTHORITY_UNAVAILABLE")
-      }
-      if (cartModule.updateCarts.length === 1) {
-        await cartModule.updateCarts(
-          { id: input.guestCartId, customer_id: input.customerId },
+      const acceptedQuantities = new Map(
+        decision.acceptedItems.map((item) => [item.variantId, item.quantity])
+      )
+      let guestVersionAfter = guestVersionRow.version
+      let customerVersionAfter = customerVersionRow?.version ?? null
+
+      if (customerCart) {
+        await applyAcceptedCustomerItems(
+          request,
+          cartModule,
+          customerCart,
+          decision,
           sharedContext
         )
+
+        const superseded = markCartSupersededInput(guestCart, {
+          supersededByCartId: customerCart.id,
+          supersededAt: operationAt.toISOString(),
+        })
+        await updateCartWithContext(
+          cartModule,
+          { id: guestCart.id },
+          { metadata: superseded.metadata },
+          sharedContext
+        )
+        tripFailpoint(request, "supersede")
       } else {
-        await cartModule.updateCarts(
-          { id: input.guestCartId },
+        await applyAcceptedItemsToCart(
+          request,
+          cartModule,
+          guestCart,
+          (variantId) => acceptedQuantities.get(variantId) ?? 0,
+          sharedContext
+        )
+        await updateCartWithContext(
+          cartModule,
+          { id: guestCart.id },
           { customer_id: input.customerId },
           sharedContext
         )
       }
       tripFailpoint(request, "cart")
 
-      await applyStructuralCartInvalidation(
-        input.guestCartId,
-        operationAt,
-        { transaction: transactionContext }
-      )
+      const affectedCartIds = [
+        guestCart.id,
+        ...(customerCart ? [customerCart.id] : []),
+      ].sort()
+      for (const cartId of affectedCartIds) {
+        await applyStructuralCartInvalidation(cartId, operationAt, {
+          transaction: transactionContext,
+        })
+      }
       tripFailpoint(request, "invalidation")
 
-      const bumped = await versionService.increment(
-        "cart",
-        input.guestCartId,
-        versionRow.version,
-        sharedContext
-      )
-      if (bumped.type !== "updated") {
-        throw new CartVersionMismatchError(cart, bumped.actualVersion)
+      for (const cartId of affectedCartIds) {
+        const versionBefore =
+          cartId === guestCart.id
+            ? guestVersionRow.version
+            : customerVersionRow?.version
+        const cartBefore =
+          cartId === guestCart.id ? guestCart : customerCart
+        if (versionBefore === undefined || versionBefore === null || !cartBefore) {
+          throw new Error("CART_MERGE_VERSION_STATE_UNAVAILABLE")
+        }
+
+        const bumped = await versionService.increment(
+          "cart",
+          cartId,
+          versionBefore,
+          sharedContext
+        )
+        if (bumped.type !== "updated") {
+          throw new CartVersionMismatchError(cartBefore, bumped.actualVersion)
+        }
+        if (cartId === guestCart.id) {
+          guestVersionAfter = bumped.version
+        } else {
+          customerVersionAfter = bumped.version
+        }
       }
       tripFailpoint(request, "version")
 
-      await insertCustomerCartAuthority(
-        transactionContext,
-        input.customerId,
-        input.guestCartId
-      )
+      if (!customerCart) {
+        await insertCustomerCartAuthority(
+          transactionContext,
+          input.customerId,
+          guestCart.id
+        )
+      }
       tripFailpoint(request, "association")
 
-      const snapshot = cartModule.retrieveCart
-        ? projectCartCustomer(
-            await cartModule.retrieveCart(
-              input.guestCartId,
-              cartMergeCartRetrieveConfig(),
-              sharedContext
-            )
-          )
-        : null
+      const canonicalCartId = customerCart?.id ?? guestCart.id
+      const snapshot = await retrieveMergeCart(
+        cartModule,
+        canonicalCartId,
+        sharedContext
+      )
       if (!snapshot) throwConflict("CART_MERGE_SNAPSHOT_UNAVAILABLE")
       assertNoPaymentOrOrderFields(snapshot)
       const originalPublicCartSnapshot = stableReceiptCart(snapshot)
 
-      const resultId = await insertCartMergeResult(transactionContext, {
+      const reviewIdentity =
+        decision.outcome === "MERGED_PARTIAL"
+          ? createCartMergeReviewIdentity()
+          : null
+      const review: CartReviewState = reviewIdentity
+        ? {
+            ...decision.review,
+            reviewRef: reviewIdentity.reviewRef,
+          }
+        : decision.review
+      const canonicalVersion = customerCart
+        ? customerVersionAfter
+        : guestVersionAfter
+      if (canonicalVersion === null) {
+        throw new Error("CART_MERGE_CANONICAL_VERSION_UNAVAILABLE")
+      }
+      const resultId = generateEntityId(undefined, "cmres")
+
+      await insertCartMergeResult(transactionContext, {
+        id: resultId,
         idempotencyRecordId: claim.record.id,
         customerId: input.customerId,
         guestCartId: input.guestCartId,
-        customerCartId: null,
-        canonicalCartId: input.guestCartId,
+        customerCartId,
+        canonicalCartId,
         capabilityId: preflightCapability.id,
         capabilityHash: preflightCapability.token_hash,
         requestFingerprint,
-        guestVersionBefore: versionRow.version,
-        customerVersionBefore: null,
-        guestVersionAfter: bumped.version,
-        customerVersionAfter: null,
+        guestVersionBefore: guestVersionRow.version,
+        customerVersionBefore: customerVersionRow?.version ?? null,
+        guestVersionAfter,
+        customerVersionAfter,
         outcome: decision.outcome,
         rejectedItems: decision.rejectedItems,
-        reviewId: null,
-        reviewRef: null,
+        reviewId: reviewIdentity?.id ?? null,
+        reviewRef: reviewIdentity?.reviewRef ?? null,
         originalPublicCartSnapshot,
-        originalReviewSnapshot: decision.review,
-        originalEtag: formatCartEtag(bumped.version),
+        originalReviewSnapshot: review,
+        originalEtag: formatCartEtag(canonicalVersion),
         expiresAt,
       })
       tripFailpoint(request, "result")
+
+      if (reviewIdentity) {
+        await insertCartReview(transactionContext, {
+          id: reviewIdentity.id,
+          cartId: canonicalCartId,
+          reviewRef: reviewIdentity.reviewRef,
+          mergeResultId: resultId,
+          producedCartVersion: canonicalVersion,
+          rejectedItems: decision.rejectedItems,
+        })
+        tripFailpoint(request, "review")
+      }
 
       await capabilityService.consumeGuestCartCapability(
         preflightCapability.id,
@@ -1010,8 +1534,8 @@ class CartMergeModuleService extends MedusaService({
       return {
         outcome: decision.outcome,
         cart: originalPublicCartSnapshot,
-        version: bumped.version,
-        review: decision.review,
+        version: canonicalVersion,
+        review,
       }
     })
   }
