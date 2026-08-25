@@ -221,6 +221,17 @@ describe("Phase 16 cart merge decision engine", () => {
     ).toThrow(CartMergeStateConflictError)
   })
 
+  it("falha fechado para quantidade Customer persistida acima do teto", () => {
+    expect(() =>
+      buildCartMergeDecision({
+        guestCart: guestCart([{ variantId: "variant_a", quantity: 1 }]),
+        customerCart: customerCart([
+          { variantId: "variant_a", quantity: CART_MERGE_MAX_QUANTITY + 1 },
+        ]),
+      })
+    ).toThrow(CartMergeStateConflictError)
+  })
+
   it("conserva requested = accepted + rejected por variante", () => {
     const decision = buildCartMergeDecision({
       guestCart: guestCart([
