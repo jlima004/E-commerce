@@ -1,4 +1,5 @@
 import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route"
+import { POST as acknowledgeCartReview } from "../../src/api/store/carts/[id]/review/acknowledge/route"
 import {
   addToCartWorkflow,
   deleteLineItemsWorkflow,
@@ -135,6 +136,17 @@ type CartMergeHarnessOptions = {
   customerItems?: Array<Record<string, unknown>>
 }
 
+type CartReviewHarnessRow = {
+  id: string
+  cart_id: string
+  review_ref: string
+  merge_result_id: string
+  produced_cart_version: number
+  status: "pending" | "acknowledged"
+  rejected_items: unknown
+  acknowledged_at: string | null
+}
+
 function sellableVariant(id: string) {
   return {
     id,
@@ -259,6 +271,7 @@ function createTracerHarness(
   if (customerCart) versions.set(customerCart.id, 1)
   const idempotencyRecords = new Map<string, any>()
   let committedReceiptRow: Record<string, unknown> | null = null
+  let reviewRow: CartReviewHarnessRow | null = null
   const transaction = {
     id: "tx_cart_merge_01",
     raw: jest.fn(async (sql: string, bindings: unknown[] = []) => {
@@ -285,6 +298,9 @@ function createTracerHarness(
           ],
         }
       }
+      if (normalized.includes("from cart_review")) {
+        return { rows: reviewRow ? [{ ...reviewRow }] : [] }
+      }
       if (normalized.includes("from customer_cart_authority")) {
         return {
           rows: customerCart
@@ -309,6 +325,24 @@ function createTracerHarness(
                   completed_at: null,
                   deleted_at: null,
                   metadata: customerCart.metadata,
+                },
+              ]
+          : [],
+        }
+      }
+      if (normalized.includes("from cart where id")) {
+        const cart = [...carts.values()].find((candidate) =>
+          bindings.some((binding) => binding === candidate.id)
+        )
+        return {
+          rows: cart
+            ? [
+                {
+                  id: cart.id,
+                  customer_id: cart.customer_id,
+                  completed_at: cart.completed_at,
+                  deleted_at: null,
+                  metadata: cart.metadata,
                 },
               ]
             : [],
@@ -337,6 +371,30 @@ function createTracerHarness(
           original_review_snapshot: bindings[18],
           original_etag: bindings[19],
           expires_at: bindings[20],
+        }
+      }
+      if (normalized.startsWith("insert into cart_review")) {
+        reviewRow = {
+          id: String(bindings[0]),
+          cart_id: String(bindings[1]),
+          review_ref: String(bindings[2]),
+          merge_result_id: String(bindings[3]),
+          produced_cart_version: Number(bindings[4]),
+          status: "pending",
+          rejected_items:
+            typeof bindings[5] === "string"
+              ? JSON.parse(bindings[5])
+              : bindings[5],
+          acknowledged_at: null,
+        }
+      }
+      if (
+        normalized.startsWith("update cart_review") ||
+        (normalized.includes("cart_review") && normalized.startsWith("update"))
+      ) {
+        if (reviewRow) {
+          reviewRow.status = "acknowledged"
+          reviewRow.acknowledged_at = "2026-08-25T12:00:01.000Z"
         }
       }
       return { rows: [] }
@@ -424,6 +482,12 @@ function createTracerHarness(
       versions.set(id, actual + 1)
       return { type: "updated", previousVersion: actual, version: actual + 1 }
     }),
+    loadForUpdate: jest.fn(async (_type: string, id: string) => ({
+      id: `strver_${id}`,
+      resource_type: "cart",
+      resource_id: id,
+      version: versions.get(id) ?? 1,
+    })),
   }
   ;(
     addToCartWorkflow as unknown as jest.Mock
@@ -476,6 +540,7 @@ function createTracerHarness(
           ? versions.get(customerCart.id)
           : undefined
         const receiptSnapshot = committedReceiptRow
+        const reviewSnapshot = reviewRow ? { ...reviewRow } : null
 
         try {
           return await callback({ getTransactionContext: () => transaction })
@@ -488,6 +553,7 @@ function createTracerHarness(
           versions.set(guestCart.id, versionSnapshot ?? 1)
           if (customerCart) versions.set(customerCart.id, customerVersionSnapshot ?? 1)
           committedReceiptRow = receiptSnapshot
+          reviewRow = reviewSnapshot
           throw error
         }
       },
@@ -524,7 +590,11 @@ function createTracerHarness(
     idempotency,
     capabilityService,
     resourceVersion,
+    get cartReview() {
+      return reviewRow
+    },
     cartModule,
+    scope,
     transaction,
     request: {
       method: "POST",
@@ -542,6 +612,110 @@ function createTracerHarness(
       },
       scope,
     },
+  }
+}
+
+function createAcknowledgeRequest(
+  harness: ReturnType<typeof createTracerHarness>,
+  options: {
+    cartId?: string
+    reviewRef: string | null
+    version?: number
+    headers?: Record<string, string | undefined>
+  }
+) {
+  const headers = { ...harness.request.headers }
+  delete headers[GUEST_CART_CAPABILITY_HEADER]
+  delete headers["idempotency-key"]
+  headers["if-match"] = `"${options.version ?? 2}"`
+  for (const [name, value] of Object.entries(options.headers ?? {})) {
+    if (value === undefined) delete headers[name]
+    else headers[name] = value
+  }
+
+  return {
+    ...harness.request,
+    method: "POST",
+    url: `/store/carts/${options.cartId ?? harness.customerCart?.id ?? harness.guestCart.id}/review/acknowledge`,
+    originalUrl: `/store/carts/${options.cartId ?? harness.customerCart?.id ?? harness.guestCart.id}/review/acknowledge`,
+    params: {
+      id: options.cartId ?? harness.customerCart?.id ?? harness.guestCart.id,
+    },
+    body: { reviewRef: options.reviewRef },
+    headers,
+  }
+}
+
+function expectPublicAcknowledgeBody(body: any) {
+  expect(Object.keys(body).sort()).toEqual(["cart", "review"])
+  expect(Object.keys(body.review).sort()).toEqual([
+    "rejectedItems",
+    "requiresReview",
+    "reviewRef",
+  ])
+  expect(Object.keys(body.cart).sort()).toEqual([
+    "checkout_data_complete",
+    "created_at",
+    "currency_code",
+    "customer",
+    "discount_total",
+    "email",
+    "id",
+    "item_total",
+    "items",
+    "locale",
+    "region_id",
+    "shipping_address",
+    "shipping_total",
+    "subtotal",
+    "tax_total",
+    "total",
+    "updated_at",
+  ])
+  expect(JSON.stringify(body)).not.toMatch(
+    /review_id|merge_result_id|acknowledged_at|produced_cart_version|capability|idempotency|authorization|jwt|secret|hash|order/i
+  )
+}
+
+async function createPendingReviewHarness(
+  container: ReturnType<typeof createMedusaContainer>
+) {
+  const harness = createTracerHarness(container, {
+    customerCart: true,
+    customerItems: [
+      {
+        id: "li_customer_merge_01",
+        variant_id: "variant_tshirt_black_m",
+        quantity: 80,
+        title: "Camiseta preta M",
+        variant_title: "Preta / M",
+        unit_price: 9900,
+        variant: sellableVariant("variant_tshirt_black_m"),
+      },
+    ],
+    guestItems: [
+      {
+        id: "li_guest_merge_01",
+        variant_id: "variant_tshirt_black_m",
+        quantity: 30,
+        title: "Camiseta preta M",
+        variant_title: "Preta / M",
+        unit_price: 9900,
+        variant: sellableVariant("variant_tshirt_black_m"),
+      },
+    ],
+  })
+  const mergeResponse = createResponse()
+  await mergeCart(harness.request as never, mergeResponse as never)
+
+  expect((mergeResponse.body as any).review.requiresReview).toBe(true)
+  expect(harness.cartReview?.status).toBe("pending")
+  expect(harness.cartReview?.cart_id).toBe(harness.customerCart?.id)
+
+  return {
+    harness,
+    mergeResponse,
+    reviewRef: (mergeResponse.body as any).review.reviewRef as string,
   }
 }
 
@@ -1151,6 +1325,340 @@ describe("Cart merge HTTP tracer", () => {
       expect(harness.capability.consumed_at).toBeNull()
       expect(harness.idempotency.claim).toHaveBeenCalledTimes(1)
       expect(harness.idempotency.markCompleted).toHaveBeenCalledTimes(1)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("aplica ACK pending com reviewRef e If-Match correspondentes sem bump estrutural", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    let resolveSpy: jest.SpyInstance | undefined
+    try {
+      const { harness, reviewRef } = await createPendingReviewHarness(boot.container)
+      const cartId = harness.customerCart?.id as string
+      const versionBefore = harness.versions.get(cartId)
+      const rawCallsBeforeAck = harness.transaction.raw.mock.calls.length
+      const capabilityLookups =
+        harness.capabilityService.lookupGuestCartCapabilityByPresentedToken.mock
+          .calls.length
+      const capabilityConsumes =
+        harness.capabilityService.consumeGuestCartCapability.mock.calls.length
+      const idempotencyClaims = harness.idempotency.claim.mock.calls.length
+      resolveSpy = jest.spyOn(harness.scope, "resolve")
+
+      const response = createResponse()
+      await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, {
+          reviewRef,
+          version: versionBefore,
+        }) as never,
+        response as never
+      )
+
+      expect(response.statusCode).toBe(200)
+      expect(response.headers.etag).toBe(`"${versionBefore}"`)
+      expect(response.headers["cache-control"]).toBe("no-store")
+      expect((response.body as any).review).toEqual({
+        requiresReview: false,
+        reviewRef: null,
+        rejectedItems: [],
+      })
+      expect(harness.cartReview?.status).toBe("acknowledged")
+      expect(harness.versions.get(cartId)).toBe(versionBefore)
+      expect(harness.resourceVersion.increment).not.toHaveBeenCalled()
+      expect(
+        harness.capabilityService.lookupGuestCartCapabilityByPresentedToken
+          .mock.calls.length
+      ).toBe(capabilityLookups)
+      expect(
+        harness.capabilityService.consumeGuestCartCapability.mock.calls.length
+      ).toBe(capabilityConsumes)
+      expect(harness.idempotency.claim.mock.calls.length).toBe(idempotencyClaims)
+      expectPublicAcknowledgeBody(response.body)
+
+      const ackSql = harness.transaction.raw.mock.calls
+        .slice(rawCallsBeforeAck)
+        .map(([sql]) => String(sql).toLowerCase())
+      expect(ackSql.some((sql) => sql.includes("pg_advisory_xact_lock"))).toBe(
+        true
+      )
+      expect(ackSql.some((sql) => sql.includes("for update"))).toBe(true)
+      expect(ackSql.some((sql) => sql.includes("cart_review"))).toBe(true)
+      expect(ackSql.join(" ")).not.toMatch(
+        /(?:from|into|update)\s+"?order"?(?:\s|\(|$)/i
+      )
+      expect(
+        resolveSpy.mock.calls.some(([key]) =>
+          [STORE_IDEMPOTENCY_MODULE, GUEST_CART_CAPABILITY_MODULE].includes(
+            key as string
+          )
+        )
+      ).toBe(false)
+    } finally {
+      resolveSpy?.mockRestore()
+      await boot.dispose()
+    }
+  })
+
+  it("repete o mesmo reviewRef acknowledged sem write e sem alterar ETag", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const { harness, reviewRef } = await createPendingReviewHarness(boot.container)
+      const cartId = harness.customerCart?.id as string
+      const first = createResponse()
+      await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, { reviewRef, version: 2 }) as never,
+        first as never
+      )
+      const rawCallsAfterFirstAck = harness.transaction.raw.mock.calls.length
+      const reviewUpdatesAfterFirstAck = harness.transaction.raw.mock.calls.filter(
+        ([sql]) => String(sql).toLowerCase().includes("update cart_review")
+      ).length
+
+      const replay = createResponse()
+      await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, {
+          cartId,
+          reviewRef,
+          version: 2,
+        }) as never,
+        replay as never
+      )
+
+      expect(replay.statusCode).toBe(200)
+      expect(replay.headers.etag).toBe('"2"')
+      expect(replay.headers["cache-control"]).toBe("no-store")
+      expect((replay.body as any).review).toEqual({
+        requiresReview: false,
+        reviewRef: null,
+        rejectedItems: [],
+      })
+      expect(harness.transaction.raw.mock.calls.length).toBeGreaterThan(
+        rawCallsAfterFirstAck
+      )
+      expect(
+        harness.transaction.raw.mock.calls.filter(([sql]) =>
+          String(sql).toLowerCase().includes("update cart_review")
+        ).length
+      ).toBe(reviewUpdatesAfterFirstAck)
+      expect(harness.resourceVersion.increment).not.toHaveBeenCalled()
+      expect(harness.versions.get(cartId)).toBe(2)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("faz no-op 200 com reviewRef null quando não há pending", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container, { customerCart: true })
+      const response = createResponse()
+
+      await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, {
+          cartId: harness.customerCart?.id,
+          reviewRef: null,
+          version: 1,
+        }) as never,
+        response as never
+      )
+
+      expect(response.statusCode).toBe(200)
+      expect(response.headers.etag).toBe('"1"')
+      expect(response.headers["cache-control"]).toBe("no-store")
+      expect((response.body as any).review).toEqual({
+        requiresReview: false,
+        reviewRef: null,
+        rejectedItems: [],
+      })
+      expect(harness.cartReview).toBeNull()
+      expect(harness.resourceVersion.increment).not.toHaveBeenCalled()
+      expect(harness.transaction.raw.mock.calls.join(" ")).not.toMatch(
+        /insert into cart_review|update cart_review/i
+      )
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("rejeita pending + reviewRef null preservando review e versão", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const { harness } = await createPendingReviewHarness(boot.container)
+      const error = await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, {
+          reviewRef: null,
+          version: 2,
+        }) as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+
+      expect(toStoreErrorResponse(error).statusCode).toBe(409)
+      expect(harness.cartReview?.status).toBe("pending")
+      expect(harness.versions.get(harness.customerCart?.id ?? "")).toBe(2)
+      expect(harness.resourceVersion.increment).not.toHaveBeenCalled()
+      expect(JSON.stringify(toStoreErrorResponse(error).body)).not.toContain(
+        "review_"
+      )
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("falha fechado para ref divergente, unknown e foreign sem enumerar a revisão", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const { harness, reviewRef } = await createPendingReviewHarness(boot.container)
+      const divergent = await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, {
+          reviewRef: "review_divergent_public_01",
+          version: 2,
+        }) as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+      expect(toStoreErrorResponse(divergent).statusCode).toBe(409)
+      expect(JSON.stringify(toStoreErrorResponse(divergent).body)).not.toMatch(
+        /review_divergent_public_01|review_id|merge_result_id/i
+      )
+      expect(harness.cartReview?.status).toBe("pending")
+
+      const unknown = await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, {
+          reviewRef: "review_unknown_public_01",
+          version: 2,
+        }) as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+      expect([404, 409]).toContain(toStoreErrorResponse(unknown).statusCode)
+      expect(JSON.stringify(toStoreErrorResponse(unknown).body)).not.toMatch(
+        /review_unknown_public_01|review_id|merge_result_id/i
+      )
+      expect(harness.cartReview?.status).toBe("pending")
+
+      harness.cartReview!.cart_id = "cart_foreign_public_01"
+      harness.cartReview!.review_ref = "review_foreign_public_01"
+      const foreign = await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, {
+          reviewRef: "review_foreign_public_01",
+          version: 2,
+        }) as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+      expect([404, 409]).toContain(toStoreErrorResponse(foreign).statusCode)
+      expect(JSON.stringify(toStoreErrorResponse(foreign).body)).not.toMatch(
+        /review_foreign_public_01|review_id|merge_result_id/i
+      )
+      expect(harness.cartReview?.status).toBe("pending")
+      expect(reviewRef).not.toBe("review_foreign_public_01")
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("retorna 412 para If-Match stale e mantém pending aplicável somente à versão produzida", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const { harness, reviewRef } = await createPendingReviewHarness(boot.container)
+      const cartId = harness.customerCart?.id as string
+      harness.versions.set(cartId, 3)
+
+      const error = await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, {
+          reviewRef,
+          version: 2,
+        }) as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+
+      const normalized = toStoreErrorResponse(error)
+      expect(normalized.statusCode).toBe(412)
+      expect(harness.cartReview?.status).toBe("pending")
+      expect(harness.versions.get(cartId)).toBe(3)
+      expect(harness.resourceVersion.increment).not.toHaveBeenCalled()
+      expect(JSON.stringify(normalized.body)).not.toContain(reviewRef)
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("não aceita capability no ACK e não entra em path de capability/idempotência", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    let resolveSpy: jest.SpyInstance | undefined
+    try {
+      const { harness, reviewRef } = await createPendingReviewHarness(boot.container)
+      const capabilityLookups =
+        harness.capabilityService.lookupGuestCartCapabilityByPresentedToken.mock
+          .calls.length
+      const capabilityConsumes =
+        harness.capabilityService.consumeGuestCartCapability.mock.calls.length
+      const idempotencyClaims = harness.idempotency.claim.mock.calls.length
+      resolveSpy = jest.spyOn(harness.scope, "resolve")
+
+      const error = await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, {
+          reviewRef,
+          version: 2,
+          headers: {
+            [GUEST_CART_CAPABILITY_HEADER]: "capability-present-public_01",
+          },
+        }) as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+
+      expect([400, 404]).toContain(toStoreErrorResponse(error).statusCode)
+      expect(harness.cartReview?.status).toBe("pending")
+      expect(
+        harness.capabilityService.lookupGuestCartCapabilityByPresentedToken
+          .mock.calls.length
+      ).toBe(capabilityLookups)
+      expect(
+        harness.capabilityService.consumeGuestCartCapability.mock.calls.length
+      ).toBe(capabilityConsumes)
+      expect(harness.idempotency.claim.mock.calls.length).toBe(idempotencyClaims)
+      expect(
+        resolveSpy.mock.calls.some(([key]) =>
+          [STORE_IDEMPOTENCY_MODULE, GUEST_CART_CAPABILITY_MODULE].includes(
+            key as string
+          )
+        )
+      ).toBe(false)
+    } finally {
+      resolveSpy?.mockRestore()
+      await boot.dispose()
+    }
+  })
+
+  it("falha fechado quando Customer ou cart não pertencem ao ACK", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const { harness, reviewRef } = await createPendingReviewHarness(boot.container)
+      const foreignCustomerRequest = createAcknowledgeRequest(harness, {
+        reviewRef,
+        version: 2,
+      })
+      foreignCustomerRequest.auth_context = {
+        actor_type: "customer",
+        actor_id: "cus_foreign_public_01",
+      }
+      const foreignCustomer = await acknowledgeCartReview(
+        foreignCustomerRequest as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+      expect([404, 409]).toContain(
+        toStoreErrorResponse(foreignCustomer).statusCode
+      )
+      expect(harness.cartReview?.status).toBe("pending")
+
+      const foreignCart = await acknowledgeCartReview(
+        createAcknowledgeRequest(harness, {
+          cartId: harness.guestCart.id,
+          reviewRef,
+          version: 2,
+        }) as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+      expect([404, 409]).toContain(toStoreErrorResponse(foreignCart).statusCode)
+      expect(harness.cartReview?.status).toBe("pending")
     } finally {
       await boot.dispose()
     }
