@@ -581,3 +581,21 @@ describe("amount|currency|money — provas negativas de escopo 04-03", () => {
     )
   })
 })
+
+describe("payment eligibility pure contract", () => {
+  it("nao decide review como authority e permanece elegivel para cart completo", () => {
+    const eligibilitySource = require("fs").readFileSync(
+      require("path").join(__dirname, "../eligibility.ts"),
+      "utf8"
+    )
+
+    expect(eligibilitySource).not.toMatch(
+      /requiresReview|REVIEW_REQUIRED|cart_review|acknowledgeCartReview/
+    )
+    expect(evaluatePaymentStartEligibility(buildEligibleInput())).toMatchObject({
+      eligible: true,
+      provider_amount_minor: 9900,
+      currency_code: "BRL",
+    })
+  })
+})

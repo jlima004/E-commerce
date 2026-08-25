@@ -1330,6 +1330,47 @@ describe("Cart merge HTTP tracer", () => {
     }
   })
 
+  it("nega novo merge enquanto a review permanece pending, antes de claim/workflow/bump/consume", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const { harness, reviewRef } = await createPendingReviewHarness(boot.container)
+      const customerCartId = harness.customerCart?.id as string
+      const versionBefore = harness.versions.get(customerCartId)
+      const itemSnapshot = JSON.stringify(harness.customerCart?.items)
+      const claimCount = harness.idempotency.claim.mock.calls.length
+      const consumeCount =
+        harness.capabilityService.consumeGuestCartCapability.mock.calls.length
+      const workflowCount = (addToCartWorkflow as unknown as jest.Mock).mock.calls.length
+
+      harness.request.headers["idempotency-key"] = "merge-after-pending-review"
+      const error = await mergeCart(
+        harness.request as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+      const normalized = toStoreErrorResponse(error)
+
+      expect(normalized.statusCode).toBe(409)
+      expect(error).toMatchObject({
+        code: "REVIEW_REQUIRED",
+        statusCode: 409,
+        status: 409,
+      })
+      expect(JSON.stringify(normalized.body)).not.toContain(reviewRef)
+      expect(harness.versions.get(customerCartId)).toBe(versionBefore)
+      expect(JSON.stringify(harness.customerCart?.items)).toBe(itemSnapshot)
+      expect(harness.cartReview?.status).toBe("pending")
+      expect(harness.idempotency.claim.mock.calls.length).toBe(claimCount)
+      expect(
+        harness.capabilityService.consumeGuestCartCapability.mock.calls.length
+      ).toBe(consumeCount)
+      expect((addToCartWorkflow as unknown as jest.Mock).mock.calls.length).toBe(
+        workflowCount
+      )
+    } finally {
+      await boot.dispose()
+    }
+  })
+
   it("aplica ACK pending com reviewRef e If-Match correspondentes sem bump estrutural", async () => {
     const boot = await bootstrapCartMergeContainer()
     let resolveSpy: jest.SpyInstance | undefined

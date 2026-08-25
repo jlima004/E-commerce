@@ -1,3 +1,5 @@
+import fs from "fs"
+import path from "path"
 import { MedusaError } from "@medusajs/framework/utils"
 import { POST as acknowledgeCartReview } from "../../../api/store/carts/[id]/review/acknowledge/route"
 import { toStoreErrorResponse } from "../../../api/store-surface/errors"
@@ -207,4 +209,34 @@ describe("Cart review ACK route contract", () => {
     expect(toStoreErrorResponse(error).statusCode).toBe(400)
     expect(harness.service.acknowledgeCartReview).not.toHaveBeenCalled()
   })
+})
+
+describe("pending review structural mutation guard contract", () => {
+  it.each(["add", "update", "delete", "clear"])(
+    "%s exige a guarda antes de claim, workflow, bump, invalidation e consume",
+    (operation) => {
+      const source = fs.readFileSync(
+        path.join(__dirname, "../../../api/store/carts/line-item-mutation.ts"),
+        "utf8"
+      )
+      const guard = source.indexOf("assertNoPendingCartReview")
+
+      expect(operation).toBeTruthy()
+      expect(guard).toBeGreaterThanOrEqual(0)
+      expect(guard).toBeLessThan(
+        source.indexOf("await idempotencyService.claim(")
+      )
+      expect(guard).toBeLessThan(
+        source.indexOf("await versionService.compareAndSwapWithMutation(")
+      )
+      expect(guard).toBeLessThan(
+        source.indexOf("await applyStructuralCartInvalidation(")
+      )
+      expect(guard).toBeLessThan(
+        source.indexOf(
+          "await guestCapabilityService.authorizeGuestCartCapabilityForMutation("
+        )
+      )
+    }
+  )
 })

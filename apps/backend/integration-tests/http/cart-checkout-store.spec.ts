@@ -1377,3 +1377,54 @@ function collectSourceFiles(root: string): string[] {
 
   return files
 }
+
+describe("pending review guards precede payment and line-item side effects", () => {
+  function readSource(relativePath: string): string {
+    return fs.readFileSync(
+      path.join(__dirname, "../../src", relativePath),
+      "utf8"
+    )
+  }
+
+  function expectGuardBefore(source: string, markers: string[]) {
+    const guard = source.indexOf("assertNoPendingCartReview")
+    expect(guard).toBeGreaterThanOrEqual(0)
+    for (const marker of markers) {
+      const sideEffect = source.indexOf(marker)
+      expect(sideEffect).toBeGreaterThanOrEqual(0)
+      expect(guard).toBeLessThan(sideEffect)
+    }
+  }
+
+  it("bloqueia add/update/delete/clear antes do pipeline estrutural", () => {
+    expectGuardBefore(readSource("api/store/carts/line-item-mutation.ts"), [
+      "await idempotencyService.claim(",
+      "await versionService.compareAndSwapWithMutation(",
+      "await applyStructuralCartInvalidation(",
+      "await guestCapabilityService.authorizeGuestCartCapabilityForMutation(",
+    ])
+  })
+
+  it("bloqueia card antes de PaymentCollection/PaymentSession, Stripe e PaymentAttempt", () => {
+    expectGuardBefore(
+      readSource("api/store/carts/[id]/payment-attempts/card/route.ts"),
+      [
+        "await ensurePaymentCollectionForCart(",
+        "await createMedusaCardPaymentSession(",
+        "await resolveStripeCardInitiationLayer(",
+        "await startCardPaymentAttempt(",
+      ]
+    )
+  })
+
+  it("bloqueia Pix antes de Stripe e PaymentAttempt", () => {
+    expectGuardBefore(
+      readSource("api/store/carts/[id]/payment-attempts/pix/route.ts"),
+      [
+        "await resolveStripePixInitiationLayer(",
+        "await startPixPaymentAttempt(",
+        "await persistPixPaymentAttemptResult(",
+      ]
+    )
+  })
+})
