@@ -294,6 +294,7 @@ describe("Cart merge HTTP tracer", () => {
 
       expect(response.statusCode).toBe(200)
       expect(response.headers.etag).toBe('"2"')
+      expect(response.headers["cache-control"]).toBe("no-store")
       expect((response.body as any).outcome).toBe("GUEST_CART_ATTACHED")
       expect((response.body as any).review).toEqual({
         requiresReview: false,
@@ -317,6 +318,68 @@ describe("Cart merge HTTP tracer", () => {
         "customer-jwt-is-not-persisted"
       )
     } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("projeta o review parcial do mesmo resultado e impede leakage", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    let executeCartMerge: jest.SpyInstance | undefined
+    try {
+      const harness = createTracerHarness(boot.container)
+      const service = harness.request.scope.resolve<any>(CART_MERGE_MODULE)
+      executeCartMerge = jest.spyOn(service, "executeCartMerge")
+      executeCartMerge.mockResolvedValue({
+        outcome: "MERGED_PARTIAL",
+        cart: harness.guestCart,
+        version: 7,
+        review: {
+          requiresReview: true,
+          reviewRef: "review_public_01",
+          rejectedItems: [
+            {
+              variantId: "variant_tshirt_black_m",
+              requestedQuantity: 30,
+              acceptedQuantity: 19,
+              rejectedQuantity: 11,
+              reason: "QUANTITY_LIMIT_EXCEEDED",
+            },
+          ],
+          internalMetadata: "must-not-cross-boundary",
+        },
+      })
+
+      const response = createResponse()
+      await mergeCart(harness.request as never, response as never)
+
+      expect(response.statusCode).toBe(200)
+      expect(response.headers.etag).toBe('"7"')
+      expect(response.headers["cache-control"]).toBe("no-store")
+      expect((response.body as any).outcome).toBe("MERGED_PARTIAL")
+      expect((response.body as any).review).toEqual({
+        requiresReview: true,
+        reviewRef: "review_public_01",
+        rejectedItems: [
+          {
+            variantId: "variant_tshirt_black_m",
+            requestedQuantity: 30,
+            acceptedQuantity: 19,
+            rejectedQuantity: 11,
+            reason: "QUANTITY_LIMIT_EXCEEDED",
+          },
+        ],
+      })
+      expect(JSON.stringify(response.body)).not.toContain(
+        "must-not-cross-boundary"
+      )
+      expect(JSON.stringify(response.body)).not.toContain(
+        "guest-capability-is-not-persisted"
+      )
+      expect(JSON.stringify(response.body)).not.toContain(
+        "customer-jwt-is-not-persisted"
+      )
+    } finally {
+      executeCartMerge?.mockRestore()
       await boot.dispose()
     }
   })
