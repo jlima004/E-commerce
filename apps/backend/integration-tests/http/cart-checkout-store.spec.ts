@@ -227,6 +227,50 @@ type RemoteQueryShape = {
   >
 }
 
+type CustomerAuthorityCart = StoreCartPreOrderRecord & {
+  customer_id: string
+}
+
+function createCustomerCartAuthorityModule(
+  cart: CustomerAuthorityCart
+) {
+  const raw = jest.fn(async (sql: string) => {
+    const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase()
+
+    if (normalized.includes("from customer_cart_authority")) {
+      return { rows: [] }
+    }
+
+    if (normalized.includes("from cart") && normalized.includes("customer_id")) {
+      return {
+        rows: [
+          {
+            id: cart.id,
+            customer_id: cart.customer_id,
+            completed_at: cart.completed_at ?? null,
+            deleted_at: cart.deleted_at ?? null,
+            metadata: cart.metadata,
+          },
+        ],
+      }
+    }
+
+    return { rows: [] }
+  })
+
+  const transaction = jest.fn(
+    async (callback: (manager: unknown) => Promise<unknown>) =>
+      callback({
+        getTransactionContext: () => ({ raw }),
+      })
+  )
+
+  return {
+    baseRepository_: { transaction },
+    raw,
+  }
+}
+
 function readRemoteQueryTarget(queryObject: RemoteQueryShape): {
   entryPoint?: string
   filters: Record<string, unknown>
@@ -311,6 +355,7 @@ function wireScope(
     workflowRun?: jest.Mock
     guestCapService?: any
     pgConnection?: any
+    cartModule?: any
   } = {}
 ) {
   const remoteQuery = options.remoteQuery ?? createRemoteQueryResolver({})
@@ -340,6 +385,7 @@ function wireScope(
       })
     ),
   }
+  const cartModule = options.cartModule
   const storeResourceVersionService = {
     initialize: jest.fn(async (resourceType: string, resourceId: string) => ({
       id: `strver_${resourceId}`,
@@ -404,6 +450,10 @@ function wireScope(
 
     if (key === Modules.WORKFLOW_ENGINE) {
       return { run: workflowRun }
+    }
+
+    if (key === Modules.CART) {
+      return cartModule
     }
 
     if (key === GUEST_CART_CAPABILITY_MODULE) {
@@ -562,7 +612,8 @@ describe("cart checkout store contract", () => {
           id: "cus_123",
           email: "cliente@exemplo.com",
         },
-      })
+      }) as CustomerAuthorityCart
+      customerCart.customer_id = "cus_123"
       const remoteQuery = createRemoteQueryResolver({
         carts: {
           [customerCart.id]: customerCart,
@@ -585,7 +636,10 @@ describe("cart checkout store contract", () => {
           customer_id: "cus_spoofed",
         },
       })
-      wireScope(req, { remoteQuery })
+      wireScope(req, {
+        remoteQuery,
+        cartModule: createCustomerCartAuthorityModule(customerCart),
+      })
 
       const res = await invokeActiveCartRoute("POST", req)
 
@@ -607,7 +661,8 @@ describe("cart checkout store contract", () => {
           id: "cus_123",
           email: "cliente@exemplo.com",
         },
-      })
+      }) as CustomerAuthorityCart
+      customerCart.customer_id = "cus_123"
       const remoteQuery = createRemoteQueryResolver({
         carts: {
           [customerCart.id]: customerCart,
@@ -626,7 +681,10 @@ describe("cart checkout store contract", () => {
           actor_type: "customer",
         },
       })
-      wireScope(req, { remoteQuery })
+      wireScope(req, {
+        remoteQuery,
+        cartModule: createCustomerCartAuthorityModule(customerCart),
+      })
 
       const res = await invokeActiveCartRoute("GET", req)
 
