@@ -5,9 +5,11 @@ import {
   ContainerRegistrationKeys,
   MedusaError,
   Modules,
+  PaymentSessionStatus,
 } from "@medusajs/framework/utils"
 import {
   createCartWorkflow,
+  createPaymentCollectionForCartWorkflowId,
   transferCartCustomerWorkflowId,
   updateCartWorkflowId,
 } from "@medusajs/core-flows"
@@ -26,6 +28,9 @@ import {
   POST as postActiveCart,
 } from "../../src/api/store/carts/active/route"
 import { POST as attachGuestCart } from "../../src/api/store/customers/me/cart/attach/route"
+import { POST as startCardPaymentAttemptRoute } from "../../src/api/store/carts/[id]/payment-attempts/card/route"
+import { POST as startPixPaymentAttemptRoute } from "../../src/api/store/carts/[id]/payment-attempts/pix/route"
+import { toStoreErrorResponse } from "../../src/api/store-surface/errors"
 import { decideStoreSurfaceAccess } from "../../src/api/store-surface/guard"
 import {
   validateBrazilShippingAddress,
@@ -37,6 +42,7 @@ jest.mock("@medusajs/core-flows", () => ({
   createCartWorkflow: jest.fn(),
   transferCartCustomerWorkflowId: "transferCartCustomerWorkflow",
   updateCartWorkflowId: "updateCartWorkflow",
+  createPaymentCollectionForCartWorkflowId: "createPaymentCollectionForCart",
 }))
 
 const COMPLETE_GELATO_METADATA = {
@@ -156,6 +162,16 @@ import {
 } from "../../src/modules/guest-cart-capability/types"
 import { STORE_IDEMPOTENCY_MODULE } from "../../src/modules/store-idempotency"
 import { STORE_RESOURCE_VERSION_MODULE } from "../../src/modules/store-resource-version"
+import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
+import {
+  STRIPE_CARD_INITIATION_LAYER,
+  type StripeCardInitiationLayer,
+} from "../../src/modules/payment-attempt/card"
+import {
+  STRIPE_PIX_INITIATION_LAYER,
+  type StripePixInitiationLayer,
+} from "../../src/modules/payment-attempt/pix"
+import type { PaymentAttemptRecord } from "../../src/modules/payment-attempt/types"
 
 type SessionCapableRequest = MedusaRequest & {
   method?: "GET" | "POST"
@@ -1484,5 +1500,813 @@ describe("pending review guards precede payment and line-item side effects", () 
         "await persistPixPaymentAttemptResult(",
       ]
     )
+  })
+})
+
+const HR08_CUSTOMER_A = "cus_hr08_a"
+const HR08_CUSTOMER_B = "cus_hr08_b"
+const HR08_REVIEW_REF_CANARY = "revref_CANARY_hr08_do_not_leak"
+const HR08_JWT_CANARY = "CANARY_JWT_hr08"
+const HR08_CAP_CANARY = "CANARY_CAP_hr08"
+const HR08_CANARIES = [
+  HR08_JWT_CANARY,
+  HR08_CAP_CANARY,
+  HR08_REVIEW_REF_CANARY,
+] as const
+
+type Hr08LedgerEvent = {
+  type: string
+  cartId?: string
+  customerId?: string | null
+}
+
+type Hr08Cart = StoreCartPreOrderRecord & { total?: number | null }
+
+function buildHr08CustomerCart(
+  id: string,
+  customerId: string
+): Hr08Cart {
+  return {
+    ...buildCompleteGuestCart({
+      id,
+      email: `${customerId}@exemplo.com`,
+      customer: {
+        id: customerId,
+        email: `${customerId}@exemplo.com`,
+      },
+    }),
+    total: 99,
+  }
+}
+
+function classifyHr08Sql(sql: string): string {
+  const normalized = String(sql).replace(/\s+/g, " ").trim().toLowerCase()
+
+  if (normalized.includes("pg_advisory_xact_lock")) {
+    return "lock"
+  }
+
+  if (normalized.includes("from cart_review") && normalized.includes("for update")) {
+    return "review-read"
+  }
+
+  return "raw-other"
+}
+
+function hr08LedgerIndex(ledger: Hr08LedgerEvent[], type: string): number {
+  const index = ledger.findIndex((event) => event.type === type)
+  expect(index).toBeGreaterThanOrEqual(0)
+  return index
+}
+
+function expectHr08LedgerOrder(ledger: Hr08LedgerEvent[], types: string[]) {
+  let previous = -1
+
+  for (const type of types) {
+    const index = hr08LedgerIndex(ledger, type)
+    expect(index).toBeGreaterThan(previous)
+    previous = index
+  }
+}
+
+function serializeHr08Unknown(value: unknown): string {
+  const parts: string[] = []
+
+  try {
+    parts.push(JSON.stringify(value))
+  } catch {
+    parts.push(String(value))
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>
+    parts.push(
+      JSON.stringify({
+        name: record.name,
+        message: record.message,
+        code: record.code,
+        type: record.type,
+        statusCode: record.statusCode,
+        status: record.status,
+        stack: record.stack,
+      })
+    )
+  }
+
+  return parts.join("\n")
+}
+
+function assertHr08NoPublicLeakage(...values: unknown[]) {
+  const serialized = values.map(serializeHr08Unknown).join("\n")
+
+  for (const canary of HR08_CANARIES) {
+    expect(serialized).not.toContain(canary)
+  }
+}
+
+function createHr08MedusaPaymentState() {
+  return {
+    collectionSequence: 1,
+    sessionSequence: 1,
+    cartPaymentCollections: {} as Record<
+      string,
+      {
+        id: string
+        payment_sessions: Array<{
+          id: string
+          status: string
+          amount?: number
+          currency_code?: string
+          data?: Record<string, unknown>
+        }>
+      }
+    >,
+  }
+}
+
+function createHr08WorkflowEngineMock(
+  medusaPaymentState: ReturnType<typeof createHr08MedusaPaymentState>
+) {
+  return {
+    run: jest.fn(
+      async (
+        workflowId: string,
+        options: { input?: { cart_id?: string } }
+      ) => {
+        if (workflowId !== createPaymentCollectionForCartWorkflowId) {
+          throw new Error(`unexpected workflow ${workflowId}`)
+        }
+
+        const cartId = options.input?.cart_id
+        if (!cartId) {
+          throw new Error("cart_id required")
+        }
+
+        medusaPaymentState.cartPaymentCollections[cartId] ??= {
+          id: `pay_col_hr08_${String(
+            medusaPaymentState.collectionSequence++
+          ).padStart(2, "0")}`,
+          payment_sessions: [],
+        }
+      }
+    ),
+  }
+}
+
+function createHr08MedusaPaymentModuleMock(
+  medusaPaymentState: ReturnType<typeof createHr08MedusaPaymentState>
+) {
+  function findCollectionById(collectionId: string) {
+    return Object.values(medusaPaymentState.cartPaymentCollections).find(
+      (collection) => collection.id === collectionId
+    )
+  }
+
+  function updateSession(patch: {
+    id: string
+    status?: string
+    data?: Record<string, unknown>
+  }) {
+    for (const collection of Object.values(
+      medusaPaymentState.cartPaymentCollections
+    )) {
+      const session = collection.payment_sessions.find(
+        (item) => item.id === patch.id
+      )
+
+      if (session) {
+        if (patch.status) {
+          session.status = patch.status
+        }
+
+        if (patch.data) {
+          session.data = patch.data
+        }
+
+        return session
+      }
+    }
+
+    return null
+  }
+
+  return {
+    createPaymentSession_: jest.fn(
+      async (
+        paymentCollectionId: string,
+        data: {
+          provider_id: string
+          amount: number
+          currency_code: string
+          data?: Record<string, unknown>
+        }
+      ) => {
+        const collection = findCollectionById(paymentCollectionId)
+        if (!collection) {
+          throw new Error("payment collection not found")
+        }
+
+        const session = {
+          id: `payses_hr08_${String(
+            medusaPaymentState.sessionSequence++
+          ).padStart(2, "0")}`,
+          status: PaymentSessionStatus.PENDING,
+          amount: data.amount,
+          currency_code: data.currency_code,
+          data: data.data ?? {},
+        }
+        collection.payment_sessions.push(session)
+
+        return session
+      }
+    ),
+    updatePaymentSessions: jest.fn(async (data) => {
+      const rows = Array.isArray(data) ? data : [data]
+
+      return rows.map((row) => updateSession(row)).filter(Boolean)
+    }),
+  }
+}
+
+function createHr08PaymentAttemptModuleMock(
+  existingAttempts: PaymentAttemptRecord[] = []
+) {
+  const attempts = [...existingAttempts]
+
+  return {
+    listPaymentAttempts: jest.fn(async () => attempts),
+    createPaymentAttempts: jest.fn(
+      async (data: PaymentAttemptRecord | PaymentAttemptRecord[]) => {
+        const rows = Array.isArray(data) ? data : [data]
+        attempts.push(...rows)
+        return rows
+      }
+    ),
+    updatePaymentAttempts: jest.fn(
+      async (data: PaymentAttemptRecord | PaymentAttemptRecord[]) => {
+        const rows = Array.isArray(data) ? data : [data]
+        for (const row of rows) {
+          const index = attempts.findIndex((item) => item.id === row.id)
+          if (index >= 0) {
+            attempts[index] = row
+          }
+        }
+        return rows
+      }
+    ),
+    resolveStripeCardInitiationLayer: jest.fn(async () => null),
+    resolveStripePixInitiationLayer: jest.fn(async () => null),
+    attempts,
+  }
+}
+
+function createHr08StripeCardInitiationLayerMock(
+  overrides: Record<string, unknown> = {}
+): StripeCardInitiationLayer {
+  return {
+    createCardPaymentIntent: jest.fn(async (request) => ({
+      id: "pi_http_card_mock",
+      object: "payment_intent",
+      status: "requires_payment_method",
+      amount: request.amount_minor,
+      currency: request.currency_code,
+      client_secret: "pi_http_card_mock_secret_test",
+      metadata: {
+        cart_id: request.cart_id,
+        session_id: request.payment_session_id ?? "payses_http_card_mock",
+      },
+      ...overrides,
+    })),
+  }
+}
+
+function createHr08StripePixInitiationLayerMock(
+  overrides: Record<string, unknown> = {}
+): StripePixInitiationLayer {
+  return {
+    createPixPaymentIntent: jest.fn(async (request) => ({
+      id: "pi_http_pix_mock",
+      object: "payment_intent",
+      status: "requires_action",
+      amount: request.amount_minor,
+      currency: request.currency_code,
+      client_secret: "pi_http_pix_mock_secret_test",
+      metadata: {
+        cart_id: request.cart_id,
+        session_id: "payses_http_pix_mock",
+      },
+      next_action: {
+        type: "pix_display_qr_code",
+        pix_display_qr_code: {
+          expires_at: 1782863999,
+          data: "00020126580014BR.GOV.BCB.PIX0136http_pix_copy_paste_test",
+          hosted_instructions_url: "https://payments.stripe.com/pix/http_mock",
+          image_url_png: "https://payments.stripe.com/pix/http_mock.png",
+        },
+      },
+      ...overrides,
+    })),
+  }
+}
+
+function wrapHr08PostLockCart(
+  cart: Hr08Cart,
+  ledger: Hr08LedgerEvent[]
+): Hr08Cart {
+  let ownershipRecorded = false
+
+  return new Proxy(cart, {
+    get(target, prop, receiver) {
+      if ((prop === "id" || prop === "customer") && !ownershipRecorded) {
+        ownershipRecorded = true
+        ledger.push({
+          type: "ownership-check-input",
+          cartId: target.id,
+          customerId: target.customer?.id ?? null,
+        })
+      }
+
+      return Reflect.get(target, prop, receiver)
+    },
+  })
+}
+
+function createHr08PendingReviewRow(cartId: string) {
+  return {
+    id: `crev_hr08_pending_${cartId}`,
+    cart_id: cartId,
+    review_ref: HR08_REVIEW_REF_CANARY,
+    merge_result_id: `cmres_hr08_pending_${cartId}`,
+    produced_cart_version: 1,
+    status: "pending" as const,
+    acknowledged_at: null,
+  }
+}
+
+function createHr08AcknowledgedReviewRow(cartId: string) {
+  return {
+    id: `crev_hr08_ack_${cartId}`,
+    cart_id: cartId,
+    review_ref: "revref_hr08_acknowledged",
+    merge_result_id: `cmres_hr08_ack_${cartId}`,
+    produced_cart_version: 1,
+    status: "acknowledged" as const,
+    acknowledged_at: "2026-08-26T12:00:00.000Z",
+  }
+}
+
+function createHr08PaymentStartRequest(cartId: string) {
+  return createRequest({
+    method: "POST",
+    params: { id: cartId },
+    body: {},
+    auth_context: {
+      actor_id: HR08_CUSTOMER_A,
+      actor_type: "customer",
+    },
+    headers: {
+      Authorization: `Bearer ${HR08_JWT_CANARY}`,
+      [GUEST_CART_CAPABILITY_HEADER]: HR08_CAP_CANARY,
+    },
+  })
+}
+
+function wireHr08PaymentStartScope(
+  req: SessionCapableRequest,
+  options: {
+    cart: Hr08Cart
+    review: "pending" | "acknowledged"
+  }
+) {
+  const ledger: Hr08LedgerEvent[] = []
+  const resolvedKeys: string[] = []
+  const medusaPaymentState = createHr08MedusaPaymentState()
+  medusaPaymentState.cartPaymentCollections[options.cart.id] = {
+    id: `pay_col_hr08_${options.cart.id}`,
+    payment_sessions: [],
+  }
+
+  const paymentAttemptModule = createHr08PaymentAttemptModuleMock()
+  const originalCreatePaymentAttempts =
+    paymentAttemptModule.createPaymentAttempts
+  paymentAttemptModule.createPaymentAttempts = jest.fn(
+    async (data: PaymentAttemptRecord | PaymentAttemptRecord[]) => {
+      ledger.push({ type: "payment-attempt-persist" })
+      return originalCreatePaymentAttempts(data)
+    }
+  )
+
+  const medusaPaymentModule =
+    createHr08MedusaPaymentModuleMock(medusaPaymentState)
+  const workflowEngine = createHr08WorkflowEngineMock(medusaPaymentState)
+  const stripeCardInitiationLayer = createHr08StripeCardInitiationLayerMock()
+  const stripePixInitiationLayer = createHr08StripePixInitiationLayerMock()
+  const originalCreateCardPaymentIntent =
+    stripeCardInitiationLayer.createCardPaymentIntent
+  stripeCardInitiationLayer.createCardPaymentIntent = jest.fn(
+    async (request) => {
+      ledger.push({ type: "provider-call" })
+      return originalCreateCardPaymentIntent(request)
+    }
+  )
+  const originalCreatePixPaymentIntent =
+    stripePixInitiationLayer.createPixPaymentIntent
+  stripePixInitiationLayer.createPixPaymentIntent = jest.fn(async (request) => {
+    ledger.push({ type: "provider-call" })
+    return originalCreatePixPaymentIntent(request)
+  })
+
+  const reviewRows =
+    options.review === "pending"
+      ? [createHr08PendingReviewRow(options.cart.id)]
+      : [createHr08AcknowledgedReviewRow(options.cart.id)]
+
+  const knex = {
+    raw: jest.fn(async (sql: string) => {
+      const type = classifyHr08Sql(sql)
+      ledger.push({ type })
+
+      if (type === "review-read") {
+        return { rows: reviewRows }
+      }
+
+      return { rows: [] }
+    }),
+  }
+
+  const transactionManager = {
+    getTransactionContext: () => knex,
+  }
+
+  const cartModule = {
+    baseRepository_: {
+      transaction: jest.fn(
+        async (callback: (manager: typeof transactionManager) => Promise<unknown>) => {
+          ledger.push({ type: "transaction-start" })
+          try {
+            return await callback(transactionManager)
+          } catch (error) {
+            ledger.push({ type: "failure" })
+            throw error
+          }
+        }
+      ),
+    },
+  }
+
+  let cartQueryCount = 0
+  let paymentCollectionQueryCount = 0
+  const wrappedCart = wrapHr08PostLockCart(options.cart, ledger)
+
+  const remoteQuery = jest.fn(async (queryObject: RemoteQueryShape) => {
+    const { entryPoint, filters } = readRemoteQueryTarget(queryObject)
+
+    if (entryPoint === "cart") {
+      cartQueryCount += 1
+      ledger.push({ type: "post-lock-query" })
+      const cartId = String(filters.id ?? "")
+      return cartId === options.cart.id ? [wrappedCart] : []
+    }
+
+    if (entryPoint === "cart_payment_collection") {
+      paymentCollectionQueryCount += 1
+      const cartId = String(filters.cart_id ?? "")
+      const paymentCollection =
+        medusaPaymentState.cartPaymentCollections[cartId]
+      return paymentCollection
+        ? [{ payment_collection: paymentCollection }]
+        : []
+    }
+
+    return []
+  })
+
+  const storeResourceVersionService = {
+    initialize: jest.fn(async (resourceType: string, resourceId: string) => ({
+      id: `strver_${resourceId}`,
+      resource_type: resourceType,
+      resource_id: resourceId,
+      version: 1,
+      created_at: "2026-08-26T10:00:00.000Z",
+      updated_at: "2026-08-26T10:00:00.000Z",
+    })),
+  }
+
+  req.scope.resolve = jest.fn((key: string) => {
+    const keyText = String(key)
+    resolvedKeys.push(keyText)
+
+    if (key === Modules.ORDER || /completeCart|createOrder/i.test(keyText)) {
+      ledger.push({ type: "order-resolve" })
+      throw new Error("ORDER_PATH_MUST_NOT_RESOLVE")
+    }
+
+    if (key === Modules.CART) {
+      return cartModule
+    }
+
+    if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
+      return remoteQuery
+    }
+
+    if (key === PAYMENT_ATTEMPT_MODULE) {
+      return paymentAttemptModule
+    }
+
+    if (key === STRIPE_CARD_INITIATION_LAYER) {
+      return stripeCardInitiationLayer
+    }
+
+    if (key === STRIPE_PIX_INITIATION_LAYER) {
+      return stripePixInitiationLayer
+    }
+
+    if (key === Modules.PAYMENT) {
+      return medusaPaymentModule
+    }
+
+    if (key === Modules.WORKFLOW_ENGINE) {
+      return workflowEngine
+    }
+
+    if (key === STORE_RESOURCE_VERSION_MODULE) {
+      return storeResourceVersionService
+    }
+
+    return undefined
+  }) as SessionCapableRequest["scope"]["resolve"]
+
+  return {
+    ledger,
+    resolvedKeys,
+    paymentAttemptModule,
+    medusaPaymentModule,
+    workflowEngine,
+    stripeCardInitiationLayer,
+    stripePixInitiationLayer,
+    get cartQueryCount() {
+      return cartQueryCount
+    },
+    get paymentCollectionQueryCount() {
+      return paymentCollectionQueryCount
+    },
+  }
+}
+
+function assertHr08PendingBeforeProvider(input: {
+  error: unknown
+  harness: ReturnType<typeof wireHr08PaymentStartScope>
+  stripeIntent: jest.Mock
+}) {
+  expect(input.error).toMatchObject({
+    code: "REVIEW_REQUIRED",
+    statusCode: 409,
+    status: 409,
+  })
+
+  const publicError = toStoreErrorResponse(input.error)
+  expect(publicError.statusCode).toBe(409)
+  expect(publicError.body.code).toBe("CONFLICT")
+  expect(publicError.body.message).toBe("Conflict")
+  expect(publicError.body).not.toHaveProperty("cart")
+
+  assertHr08NoPublicLeakage(input.error, publicError, publicError.body)
+
+  expect(input.stripeIntent).not.toHaveBeenCalled()
+  expect(input.harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+  expect(input.harness.paymentAttemptModule.createPaymentAttempts).not.toHaveBeenCalled()
+  expect(input.harness.ledger.filter((event) => event.type === "provider-call")).toHaveLength(0)
+  expect(input.harness.ledger.filter((event) => event.type === "payment-attempt-persist")).toHaveLength(0)
+  expect(input.harness.ledger.filter((event) => event.type === "order-resolve")).toHaveLength(0)
+  expect(input.harness.ledger.filter((event) => event.type === "raw-other")).toHaveLength(0)
+  expect(input.harness.cartQueryCount).toBe(1)
+  expect(input.harness.paymentCollectionQueryCount).toBe(0)
+
+  expectHr08LedgerOrder(input.harness.ledger, [
+    "transaction-start",
+    "lock",
+    "post-lock-query",
+    "ownership-check-input",
+    "review-read",
+    "failure",
+  ])
+}
+
+describe("B16-09-HR-08 Card dynamic HTTP evidence", () => {
+  it("B16-09-HR-08 Card pending review returns 409 REVIEW_REQUIRED before provider", async () => {
+    const cart = buildHr08CustomerCart("cart_hr08_card_pending", HR08_CUSTOMER_A)
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "pending",
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await startCardPaymentAttemptRoute(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeDefined()
+    assertHr08PendingBeforeProvider({
+      error: thrown,
+      harness,
+      stripeIntent: harness.stripeCardInitiationLayer
+        .createCardPaymentIntent as jest.Mock,
+    })
+    expect(res.jsonSpy).not.toHaveBeenCalled()
+  })
+
+  it("B16-09-HR-08 Card allowed after review progresses with local provider", async () => {
+    const cart = buildHr08CustomerCart("cart_hr08_card_allowed", HR08_CUSTOMER_A)
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "acknowledged",
+    })
+    const res = createResponse()
+
+    await startCardPaymentAttemptRoute(req, res)
+
+    expect(res.statusCode).toBe(201)
+    const body = res.jsonSpy.mock.calls[0][0] as {
+      payment_attempt: {
+        payment_method_type: string
+        status: string
+        amount: number
+        currency_code: string
+        client_secret: string
+      }
+    }
+    expect(body.payment_attempt).toEqual(
+      expect.objectContaining({
+        payment_method_type: "card",
+        status: "card_client_secret_created",
+        amount: 9900,
+        currency_code: "BRL",
+        client_secret: expect.stringMatching(/_secret_/),
+      })
+    )
+    expect(
+      harness.stripeCardInitiationLayer.createCardPaymentIntent
+    ).toHaveBeenCalledTimes(1)
+    expect(
+      harness.paymentAttemptModule.createPaymentAttempts
+    ).toHaveBeenCalledTimes(1)
+    const persisted = harness.paymentAttemptModule.createPaymentAttempts.mock
+      .calls[0][0] as PaymentAttemptRecord
+    expect(persisted.order_id).toBeNull()
+    expect(harness.ledger.filter((event) => event.type === "order-resolve")).toHaveLength(
+      0
+    )
+    expect(harness.ledger.filter((event) => event.type === "failure")).toHaveLength(0)
+    expectHr08LedgerOrder(harness.ledger, [
+      "lock",
+      "post-lock-query",
+      "review-read",
+      "provider-call",
+    ])
+    assertHr08NoPublicLeakage(body)
+  })
+
+  it("B16-09-HR-08 Card post-lock ownership mismatch fails closed before provider", async () => {
+    const cart = buildHr08CustomerCart(
+      "cart_hr08_card_foreign",
+      HR08_CUSTOMER_B
+    )
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "pending",
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await startCardPaymentAttemptRoute(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(MedusaError)
+    expect(thrown).toMatchObject({
+      type: MedusaError.Types.INVALID_DATA,
+    })
+    expect(
+      (thrown as { code?: string } | undefined)?.code
+    ).not.toBe("REVIEW_REQUIRED")
+    expect(
+      harness.stripeCardInitiationLayer.createCardPaymentIntent
+    ).not.toHaveBeenCalled()
+    expect(harness.ledger.filter((event) => event.type === "provider-call")).toHaveLength(
+      0
+    )
+    expect(harness.ledger.filter((event) => event.type === "review-read")).toHaveLength(
+      0
+    )
+    expect(harness.ledger.filter((event) => event.type === "order-resolve")).toHaveLength(
+      0
+    )
+
+    const ownershipEvent = harness.ledger.find(
+      (event) => event.type === "ownership-check-input"
+    )
+    expect(ownershipEvent).toEqual(
+      expect.objectContaining({
+        type: "ownership-check-input",
+        cartId: cart.id,
+        customerId: HR08_CUSTOMER_B,
+      })
+    )
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "post-lock-query",
+      "ownership-check-input",
+      "failure",
+    ])
+    expect(res.jsonSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe("B16-09-HR-08 Pix dynamic HTTP evidence", () => {
+  it("B16-09-HR-08 Pix pending review returns 409 REVIEW_REQUIRED before provider", async () => {
+    const cart = buildHr08CustomerCart("cart_hr08_pix_pending", HR08_CUSTOMER_A)
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "pending",
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await startPixPaymentAttemptRoute(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeDefined()
+    assertHr08PendingBeforeProvider({
+      error: thrown,
+      harness,
+      stripeIntent: harness.stripePixInitiationLayer
+        .createPixPaymentIntent as jest.Mock,
+    })
+    expect(res.jsonSpy).not.toHaveBeenCalled()
+  })
+
+  it("B16-09-HR-08 Pix allowed after review progresses with local provider", async () => {
+    const cart = buildHr08CustomerCart("cart_hr08_pix_allowed", HR08_CUSTOMER_A)
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "acknowledged",
+    })
+    const res = createResponse()
+
+    await startPixPaymentAttemptRoute(req, res)
+
+    expect(res.statusCode).toBe(201)
+    const body = res.jsonSpy.mock.calls[0][0] as {
+      payment_attempt: {
+        payment_method_type: string
+        status: string
+        copy_paste: string
+        qr_code: string
+        expires_at: string
+      }
+    }
+    expect(body.payment_attempt).toEqual(
+      expect.objectContaining({
+        payment_method_type: "pix",
+        status: "awaiting_pix_payment",
+        copy_paste: expect.any(String),
+        qr_code: expect.any(String),
+        expires_at: expect.any(String),
+      })
+    )
+    expect(
+      harness.stripePixInitiationLayer.createPixPaymentIntent
+    ).toHaveBeenCalledTimes(1)
+    expect(
+      harness.paymentAttemptModule.createPaymentAttempts
+    ).toHaveBeenCalledTimes(1)
+    const persisted = harness.paymentAttemptModule.createPaymentAttempts.mock
+      .calls[0][0] as PaymentAttemptRecord
+    expect(persisted.order_id).toBeNull()
+    expect(harness.resolvedKeys).not.toContain(Modules.PAYMENT)
+    expect(harness.resolvedKeys).not.toContain(Modules.WORKFLOW_ENGINE)
+    expect(harness.ledger.filter((event) => event.type === "order-resolve")).toHaveLength(
+      0
+    )
+    expectHr08LedgerOrder(harness.ledger, [
+      "lock",
+      "post-lock-query",
+      "review-read",
+      "provider-call",
+    ])
   })
 })

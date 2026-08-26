@@ -715,6 +715,29 @@ function resolvePaymentStartActor(req: SessionCapableRequest) {
   }
 }
 
+function assertPostLockCartOwnership(
+  cart: StoreCartPreOrderRecord,
+  actor: ReturnType<typeof resolvePaymentStartActor>,
+  sessionActiveCartId?: string | null
+): void {
+  if (actor.actorType === "customer") {
+    if (cart.customer?.id !== actor.customerId) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "Cart nao pertence ao cliente autenticado."
+      )
+    }
+    return
+  }
+
+  if (cart.id !== sessionActiveCartId || Boolean(cart.customer?.id)) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Cart nao pertence a sessao atual."
+    )
+  }
+}
+
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const request = req as SessionCapableRequest
   const cartId = request.params?.id
@@ -725,14 +748,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   rejectClientMoneyFields(request.body)
 
-  const cart = await fetchCartById(request, cartId)
   const actor = resolvePaymentStartActor(request)
-  const eligibility = assertPaymentStartEligible({
-    cart,
-    actor,
-    paymentMethod: "card",
-    sessionActiveCartId: request.session?.active_cart_id,
-  })
   const result = await withCartPaymentTransaction(request, async (sharedContext) => {
     const transaction = sharedContext.transactionManager.getTransactionContext?.()
     if (!transaction) {
@@ -743,7 +759,19 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       transaction as unknown as PaymentAttemptSqlTransaction,
       cartId
     )
+    const cart = await fetchCartById(request, cartId)
+    assertPostLockCartOwnership(
+      cart,
+      actor,
+      request.session?.active_cart_id
+    )
     await assertNoPendingCartReview(cartId, sharedContext)
+    const eligibility = assertPaymentStartEligible({
+      cart,
+      actor,
+      paymentMethod: "card",
+      sessionActiveCartId: request.session?.active_cart_id,
+    })
 
     const existingAttempts = await listExistingAttemptsForCart(
       request,
