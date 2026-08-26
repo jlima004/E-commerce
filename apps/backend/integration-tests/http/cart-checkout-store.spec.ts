@@ -8,10 +8,13 @@ import {
   PaymentSessionStatus,
 } from "@medusajs/framework/utils"
 import {
+  addToCartWorkflow,
   createCartWorkflow,
   createPaymentCollectionForCartWorkflowId,
+  deleteLineItemsWorkflow,
   transferCartCustomerWorkflowId,
   updateCartWorkflowId,
+  updateLineItemInCartWorkflow,
 } from "@medusajs/core-flows"
 import defaultMiddlewares from "../../src/api/middlewares"
 import {
@@ -30,6 +33,14 @@ import {
 import { POST as attachGuestCart } from "../../src/api/store/customers/me/cart/attach/route"
 import { POST as startCardPaymentAttemptRoute } from "../../src/api/store/carts/[id]/payment-attempts/card/route"
 import { POST as startPixPaymentAttemptRoute } from "../../src/api/store/carts/[id]/payment-attempts/pix/route"
+import {
+  DELETE as clearLineItems,
+  POST as addLineItem,
+} from "../../src/api/store/carts/[id]/line-items/route"
+import {
+  DELETE as deleteLineItem,
+  POST as updateLineItem,
+} from "../../src/api/store/carts/[id]/line-items/[line_id]/route"
 import { toStoreErrorResponse } from "../../src/api/store-surface/errors"
 import { decideStoreSurfaceAccess } from "../../src/api/store-surface/guard"
 import {
@@ -40,6 +51,9 @@ import type { StoreCartPreOrderRecord } from "../../src/api/store/carts/serializ
 
 jest.mock("@medusajs/core-flows", () => ({
   createCartWorkflow: jest.fn(),
+  addToCartWorkflow: jest.fn(),
+  deleteLineItemsWorkflow: jest.fn(),
+  updateLineItemInCartWorkflow: jest.fn(),
   transferCartCustomerWorkflowId: "transferCartCustomerWorkflow",
   updateCartWorkflowId: "updateCartWorkflow",
   createPaymentCollectionForCartWorkflowId: "createPaymentCollectionForCart",
@@ -174,7 +188,7 @@ import {
 import type { PaymentAttemptRecord } from "../../src/modules/payment-attempt/types"
 
 type SessionCapableRequest = MedusaRequest & {
-  method?: "GET" | "POST"
+  method?: "GET" | "POST" | "DELETE"
   auth_context?: {
     actor_id?: string
     actor_type?: string
@@ -2309,4 +2323,556 @@ describe("B16-09-HR-08 Pix dynamic HTTP evidence", () => {
       "provider-call",
     ])
   })
+})
+
+const HR05_CUSTOMER_A = "cus_hr05_a"
+const HR05_CUSTOMER_B = "cus_hr05_b"
+const HR05_REVIEW_REF_CANARY = "revref_CANARY_hr05_do_not_leak"
+const HR05_JWT_CANARY = "CANARY_JWT_hr05"
+const HR05_CAP_CANARY = "CANARY_CAP_hr05"
+const HR05_CANARIES = [
+  HR05_JWT_CANARY,
+  HR05_CAP_CANARY,
+  HR05_REVIEW_REF_CANARY,
+] as const
+
+const HR05_PUBLIC_LEAK_MARKERS = [
+  "reviewRef",
+  "review_ref",
+  "Authorization",
+  "authorization",
+  "gelato_product_uid",
+  "gelato_template_id",
+  "pg_advisory",
+  "cart_review",
+  "customer_cart_authority",
+  "at Object.",
+] as const
+
+type Hr05LineItemOperation = "add" | "update" | "delete" | "clear"
+
+type Hr05LineItemHandler = (
+  req: MedusaRequest,
+  res: MedusaResponse
+) => Promise<unknown>
+
+const HR05_LINE_ITEM_OPERATIONS: Array<{
+  operation: Hr05LineItemOperation
+  handler: Hr05LineItemHandler
+}> = [
+  { operation: "add", handler: addLineItem },
+  { operation: "update", handler: updateLineItem },
+  { operation: "delete", handler: deleteLineItem },
+  { operation: "clear", handler: clearLineItems },
+]
+
+function hr05LedgerCount(ledger: Hr08LedgerEvent[], type: string): number {
+  return ledger.filter((event) => event.type === type).length
+}
+
+function buildHr05CustomerCart(id: string, customerId: string): Hr08Cart {
+  return {
+    ...buildHr08CustomerCart(id, customerId),
+    customer_id: customerId,
+  } as Hr08Cart & { customer_id: string }
+}
+
+function classifyHr05MutationSql(sql: string): string {
+  const normalized = String(sql).replace(/\s+/g, " ").trim().toLowerCase()
+
+  if (normalized.includes("payment_attempt")) {
+    return "invalidation"
+  }
+
+  if (normalized.includes("store_resource_version")) {
+    return "cas"
+  }
+
+  if (normalized.includes("pg_advisory_xact_lock") && normalized.includes("1616")) {
+    return "customer-authority-lock"
+  }
+
+  return classifyHr08Sql(sql)
+}
+
+function assertHr05NoPublicLeakage(error: unknown, publicError: unknown) {
+  const allSerialized = [error, publicError].map(serializeHr08Unknown).join("\n")
+
+  for (const canary of HR05_CANARIES) {
+    expect(allSerialized).not.toContain(canary)
+  }
+
+  const publicSerialized = serializeHr08Unknown(publicError)
+  for (const marker of HR05_PUBLIC_LEAK_MARKERS) {
+    expect(publicSerialized).not.toContain(marker)
+  }
+}
+
+function createHr05PendingReviewRow(cartId: string) {
+  return {
+    id: `crev_hr05_pending_${cartId}`,
+    cart_id: cartId,
+    review_ref: HR05_REVIEW_REF_CANARY,
+    merge_result_id: `cmres_hr05_pending_${cartId}`,
+    produced_cart_version: 1,
+    status: "pending" as const,
+    acknowledged_at: null,
+  }
+}
+
+function createHr05LineItemRequest(
+  cart: Hr08Cart,
+  operation: Hr05LineItemOperation
+) {
+  const lineId = cart.items?.[0]?.id ?? "item_01"
+  const method = operation === "add" || operation === "update" ? "POST" : "DELETE"
+
+  return createRequest({
+    method,
+    params: {
+      id: cart.id,
+      ...(operation === "update" || operation === "delete"
+        ? { line_id: lineId }
+        : {}),
+    },
+    body:
+      operation === "add"
+        ? { variant_id: "variant_sellable", quantity: 1 }
+        : operation === "update"
+          ? { quantity: 2 }
+          : {},
+    customerAuth: {
+      customerId: HR05_CUSTOMER_A,
+    },
+    auth_context: {
+      actor_id: HR05_CUSTOMER_A,
+      actor_type: "customer",
+    },
+    headers: {
+      authorization: `Bearer ${HR05_JWT_CANARY}`,
+      "idempotency-key": `idem_hr05_${operation}_${cart.id}`,
+    },
+  })
+}
+
+function instrumentHr05Workflows(ledger: Hr08LedgerEvent[]) {
+  for (const workflow of [
+    addToCartWorkflow,
+    deleteLineItemsWorkflow,
+    updateLineItemInCartWorkflow,
+  ]) {
+    const mock = workflow as unknown as jest.Mock
+    mock.mockImplementation(() => ({
+      run: jest.fn(async () => {
+        ledger.push({ type: "workflow" })
+        return { result: {} }
+      }),
+    }))
+  }
+}
+
+function wireHr05LineItemMutationScope(
+  req: SessionCapableRequest,
+  options: {
+    canonicalCart: Hr08Cart
+    lockedCart: Hr08Cart
+    review: "pending" | "none"
+  }
+) {
+  const ledger: Hr08LedgerEvent[] = []
+  const resolvedKeys: string[] = []
+  instrumentHr05Workflows(ledger)
+
+  const reviewRows =
+    options.review === "pending"
+      ? [createHr05PendingReviewRow(options.canonicalCart.id)]
+      : []
+
+  const preLockKnex = {
+    raw: jest.fn(async (sql: string) => {
+      const type = classifyHr05MutationSql(sql)
+      ledger.push({ type: `pre-lock-${type}` })
+      const normalized = String(sql).replace(/\s+/g, " ").trim().toLowerCase()
+
+      if (
+        normalized.includes("from cart") &&
+        normalized.includes("customer_id")
+      ) {
+        return {
+          rows: [
+            {
+              id: options.canonicalCart.id,
+              customer_id: HR05_CUSTOMER_A,
+              completed_at: options.canonicalCart.completed_at ?? null,
+              deleted_at: null,
+              metadata: options.canonicalCart.metadata,
+            },
+          ],
+        }
+      }
+
+      return { rows: [] }
+    }),
+  }
+
+  const mutationKnex = {
+    raw: jest.fn(async (sql: string) => {
+      const type = classifyHr05MutationSql(sql)
+      ledger.push({ type })
+
+      if (type === "review-read") {
+        return { rows: reviewRows }
+      }
+
+      return { rows: [] }
+    }),
+  }
+
+  let cartTransactionCalls = 0
+  const cartModule = {
+    baseRepository_: {
+      transaction: jest.fn(
+        async (callback: (manager: unknown) => Promise<unknown>) => {
+          cartTransactionCalls += 1
+          const isMutationTx = cartTransactionCalls > 1
+          if (isMutationTx) {
+            ledger.push({ type: "transaction-start" })
+          } else {
+            ledger.push({ type: "pre-lock-canonical-transaction" })
+          }
+
+          const knex = isMutationTx ? mutationKnex : preLockKnex
+
+          try {
+            return await callback({
+              getTransactionContext: () => knex,
+            })
+          } catch (error) {
+            if (isMutationTx) {
+              ledger.push({ type: "failure" })
+            }
+            throw error
+          }
+        }
+      ),
+    },
+    retrieveCart: jest.fn(async (cartId: string) => {
+      ledger.push({
+        type: "post-lock-query",
+        cartId,
+        customerId: options.lockedCart.customer?.id ?? null,
+      })
+      return wrapHr08PostLockCart(options.lockedCart, ledger)
+    }),
+  }
+
+  const remoteQuery = jest.fn(async (queryObject: RemoteQueryShape) => {
+    const { entryPoint, filters } = readRemoteQueryTarget(queryObject)
+
+    if (entryPoint === "order" || /completeCart|createOrder/i.test(String(entryPoint))) {
+      ledger.push({ type: "order-resolve" })
+      throw new Error("ORDER_PATH_MUST_NOT_RESOLVE")
+    }
+
+    if (entryPoint === "cart") {
+      if (filters.id) {
+        const cartId = String(filters.id)
+        ledger.push({
+          type: "pre-lock-canonical-query",
+          cartId,
+          customerId: options.canonicalCart.customer?.id ?? null,
+        })
+        return cartId === options.canonicalCart.id ? [options.canonicalCart] : []
+      }
+
+      if (filters.customer_id) {
+        return String(filters.customer_id) === HR05_CUSTOMER_A
+          ? [options.canonicalCart]
+          : []
+      }
+    }
+
+    return []
+  })
+
+  const guestCapabilityService = {
+    lookupGuestCartCapabilityByPresentedToken: jest.fn(async () => {
+      ledger.push({ type: "capability-lookup" })
+      throw new Error("CUSTOMER_MUST_NOT_LOOKUP_GUEST_CAPABILITY")
+    }),
+    authorizeGuestCartCapabilityForMutation: jest.fn(async () => {
+      ledger.push({ type: "capability-mutation-auth" })
+    }),
+  }
+
+  const idempotencyService = {
+    claim: jest.fn(async () => {
+      ledger.push({ type: "idempotency-claim" })
+      return {
+        type: "claimed" as const,
+        record: {
+          id: "stidem_hr05",
+          state: "processing",
+          state_version: 1,
+          retry_attempt_count: 0,
+          failure_code: null,
+          result_id: null,
+        },
+      }
+    }),
+    markCompleted: jest.fn(),
+    markFailedRetryable: jest.fn(),
+    markFailedTerminal: jest.fn(),
+    markReconciliationRequired: jest.fn(),
+    recordProcessingResult: jest.fn(),
+  }
+
+  const versionService = {
+    initialize: jest.fn(async (resourceType: string, resourceId: string) => ({
+      id: `strver_${resourceId}`,
+      resource_type: resourceType,
+      resource_id: resourceId,
+      version: 1,
+      created_at: "2026-08-26T10:00:00.000Z",
+      updated_at: "2026-08-26T10:00:00.000Z",
+    })),
+    compareAndSwapWithMutation: jest.fn(
+      async (input: { mutate: (context: unknown) => Promise<unknown> }) => {
+        ledger.push({ type: "cas" })
+        await input.mutate({})
+        return { type: "updated", version: 2, previousVersion: 1 }
+      }
+    ),
+  }
+
+  const workflowEngine = {
+    run: jest.fn(async (workflowId: string) => {
+      if (
+        FORBIDDEN_WORKFLOW_IDS.some((id) => workflowId.includes(id)) ||
+        /completeCart|createOrder/i.test(workflowId)
+      ) {
+        ledger.push({ type: "order-resolve" })
+        throw new Error("ORDER_PATH_MUST_NOT_RESOLVE")
+      }
+      ledger.push({ type: "workflow" })
+    }),
+  }
+
+  const createScope = jest.fn(() => {
+    ledger.push({ type: "workflow" })
+    return {
+      register: jest.fn(),
+      resolve: req.scope.resolve,
+    }
+  })
+
+  req.scope.resolve = jest.fn((key: string) => {
+    const keyText = String(key)
+    resolvedKeys.push(keyText)
+
+    if (key === Modules.ORDER || /completeCart|createOrder/i.test(keyText)) {
+      ledger.push({ type: "order-resolve" })
+      throw new Error("ORDER_PATH_MUST_NOT_RESOLVE")
+    }
+
+    if (key === Modules.CART) {
+      return cartModule
+    }
+
+    if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
+      return remoteQuery
+    }
+
+    if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+      return {
+        raw: jest.fn(async () => ({ rows: [] })),
+        transaction: jest.fn(async (callback: (trx: unknown) => unknown) =>
+          callback({ raw: jest.fn(async () => ({ rows: [] })) })
+        ),
+      }
+    }
+
+    if (key === GUEST_CART_CAPABILITY_MODULE) {
+      return guestCapabilityService
+    }
+
+    if (key === STORE_IDEMPOTENCY_MODULE) {
+      return idempotencyService
+    }
+
+    if (key === STORE_RESOURCE_VERSION_MODULE) {
+      return versionService
+    }
+
+    if (key === Modules.WORKFLOW_ENGINE) {
+      return workflowEngine
+    }
+
+    return undefined
+  }) as SessionCapableRequest["scope"]["resolve"]
+
+  Object.assign(req.scope, { createScope })
+
+  return {
+    ledger,
+    resolvedKeys,
+    cartModule,
+    remoteQuery,
+    guestCapabilityService,
+    idempotencyService,
+    versionService,
+    workflowEngine,
+    createScope,
+    get cartTransactionCalls() {
+      return cartTransactionCalls
+    },
+  }
+}
+
+function assertHr05NoMutationSideEffects(
+  harness: ReturnType<typeof wireHr05LineItemMutationScope>
+) {
+  expect(hr05LedgerCount(harness.ledger, "idempotency-claim")).toBe(0)
+  expect(hr05LedgerCount(harness.ledger, "cas")).toBe(0)
+  expect(hr05LedgerCount(harness.ledger, "workflow")).toBe(0)
+  expect(hr05LedgerCount(harness.ledger, "invalidation")).toBe(0)
+  expect(hr05LedgerCount(harness.ledger, "capability-mutation-auth")).toBe(0)
+  expect(hr05LedgerCount(harness.ledger, "order-resolve")).toBe(0)
+  expect(harness.idempotencyService.claim).not.toHaveBeenCalled()
+  expect(harness.versionService.compareAndSwapWithMutation).not.toHaveBeenCalled()
+  expect(addToCartWorkflow as unknown as jest.Mock).not.toHaveBeenCalled()
+  expect(updateLineItemInCartWorkflow as unknown as jest.Mock).not.toHaveBeenCalled()
+  expect(deleteLineItemsWorkflow as unknown as jest.Mock).not.toHaveBeenCalled()
+    expect(
+      harness.guestCapabilityService.authorizeGuestCartCapabilityForMutation
+    ).not.toHaveBeenCalled()
+  expect(harness.createScope).not.toHaveBeenCalled()
+  expect(harness.workflowEngine.run).not.toHaveBeenCalled()
+  expect(harness.resolvedKeys).not.toContain(Modules.ORDER)
+}
+
+describe("B16-09-HR-05 line-item dynamic HTTP evidence", () => {
+  it("B16-09-HR-05 add post-lock ownership mismatch fails closed before review", async () => {
+    const canonicalCart = buildHr05CustomerCart(
+      "cart_hr05_add_foreign",
+      HR05_CUSTOMER_A
+    )
+    const lockedCart = buildHr05CustomerCart(
+      "cart_hr05_add_foreign",
+      HR05_CUSTOMER_B
+    )
+    const req = createHr05LineItemRequest(canonicalCart, "add")
+    const harness = wireHr05LineItemMutationScope(req, {
+      canonicalCart,
+      lockedCart,
+      review: "pending",
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await addLineItem(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(MedusaError)
+    expect(thrown).toMatchObject({
+      type: MedusaError.Types.NOT_FOUND,
+    })
+    expect((thrown as { code?: string } | undefined)?.code).not.toBe(
+      "REVIEW_REQUIRED"
+    )
+
+    const publicError = toStoreErrorResponse(thrown)
+    expect(publicError.statusCode).toBe(404)
+    expect(publicError.body.code).toBe("NOT_FOUND")
+    expect(publicError.body.message).toBe("Not Found")
+    expect(publicError.body).not.toHaveProperty("cart")
+    expect(publicError.body).not.toHaveProperty("stack")
+    assertHr05NoPublicLeakage(thrown, publicError)
+
+    expect(hr05LedgerCount(harness.ledger, "review-read")).toBe(0)
+    assertHr05NoMutationSideEffects(harness)
+
+    const ownershipEvent = harness.ledger.find(
+      (event) => event.type === "ownership-check-input"
+    )
+    expect(ownershipEvent).toEqual(
+      expect.objectContaining({
+        type: "ownership-check-input",
+        cartId: lockedCart.id,
+        customerId: HR05_CUSTOMER_B,
+      })
+    )
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "post-lock-query",
+      "ownership-check-input",
+      "failure",
+    ])
+    expect(res.jsonSpy).not.toHaveBeenCalled()
+  })
+
+  it.each(HR05_LINE_ITEM_OPERATIONS)(
+    "B16-09-HR-05 $operation pending review returns 409 REVIEW_REQUIRED after post-lock ownership",
+    async ({ operation, handler }) => {
+      const cart = buildHr05CustomerCart(
+        `cart_hr05_pending_${operation}`,
+        HR05_CUSTOMER_A
+      )
+      const req = createHr05LineItemRequest(cart, operation)
+      const harness = wireHr05LineItemMutationScope(req, {
+        canonicalCart: cart,
+        lockedCart: cart,
+        review: "pending",
+      })
+      const res = createResponse()
+
+      let thrown: unknown
+      try {
+        await handler(req, res)
+      } catch (error) {
+        thrown = error
+      }
+
+      expect(thrown).toBeDefined()
+      expect(thrown).toMatchObject({
+        code: "REVIEW_REQUIRED",
+        statusCode: 409,
+        status: 409,
+      })
+
+      const publicError = toStoreErrorResponse(thrown)
+      expect(publicError.statusCode).toBe(409)
+      expect(publicError.body.code).toBe("CONFLICT")
+      expect(publicError.body.message).toBe("Conflict")
+      expect(publicError.body).not.toHaveProperty("cart")
+      expect(publicError.body).not.toHaveProperty("stack")
+      assertHr05NoPublicLeakage(thrown, publicError)
+
+      const ownershipEvent = harness.ledger.find(
+        (event) => event.type === "ownership-check-input"
+      )
+      expect(ownershipEvent).toEqual(
+        expect.objectContaining({
+          type: "ownership-check-input",
+          cartId: cart.id,
+          customerId: HR05_CUSTOMER_A,
+        })
+      )
+
+      assertHr05NoMutationSideEffects(harness)
+      expectHr08LedgerOrder(harness.ledger, [
+        "transaction-start",
+        "lock",
+        "post-lock-query",
+        "ownership-check-input",
+        "review-read",
+        "failure",
+      ])
+      expect(res.jsonSpy).not.toHaveBeenCalled()
+    }
+  )
 })
