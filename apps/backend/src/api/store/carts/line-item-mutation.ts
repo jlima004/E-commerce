@@ -10,7 +10,6 @@ import {
   MedusaError,
   MedusaContext,
   Modules,
-  remoteQueryObjectFromString,
 } from "@medusajs/framework/utils"
 import {
   applyStructuralCartInvalidation,
@@ -67,7 +66,6 @@ import {
   type AddCartLineItemBody,
   type UpdateCartLineItemBody,
 } from "./line-items/validators"
-import { storeCartPreOrderFields } from "./query-config"
 import type { StoreCartPreOrderRecord } from "./serializers"
 import type {
   KnexLike,
@@ -195,24 +193,6 @@ function throwActorError(actor: M1CartActorDecision): void {
   }
 }
 
-async function refetchCart(
-  req: MedusaRequest,
-  cartId: string
-): Promise<StoreCartPreOrderRecord> {
-  const remoteQuery = req.scope.resolve(ContainerRegistrationKeys.REMOTE_QUERY)
-  const queryObject = remoteQueryObjectFromString({
-    entryPoint: "cart",
-    variables: { filters: { id: cartId } },
-    fields: [...storeCartPreOrderFields],
-  })
-  const [cart] = (await remoteQuery(queryObject)) as StoreCartPreOrderRecord[]
-  if (!cart || !isActiveCart(cart)) {
-    notFound()
-  }
-  assertNoPaymentOrOrderFields(cart)
-  return cart
-}
-
 function assertActorOwnsCart(
   actor: Extract<M1CartActorDecision, { actorType: "guest" | "customer" }>,
   cart: StoreCartPreOrderRecord
@@ -233,6 +213,28 @@ function assertActorOwnsCart(
 
   if (cart.customer?.id !== actor.customerId) {
     notFound()
+  }
+}
+
+function projectCartCustomer(
+  cart: StoreCartPreOrderRecord
+): StoreCartPreOrderRecord {
+  const customerId =
+    typeof cart.customer_id === "string" && cart.customer_id.length > 0
+      ? cart.customer_id
+      : undefined
+
+  if (cart.customer?.id && customerId && cart.customer.id !== customerId) {
+    notFound()
+  }
+
+  if (cart.customer?.id || !customerId) {
+    return cart
+  }
+
+  return {
+    ...cart,
+    customer: { id: customerId },
   }
 }
 
@@ -362,6 +364,7 @@ const transactionalCartSnapshotConfig = {
     "tax_total",
     "discount_total",
     "region_id",
+    "customer_id",
     "created_at",
     "updated_at",
     "completed_at",
@@ -397,12 +400,13 @@ async function retrieveCartInTransaction(
     cartId,
     transactionalCartSnapshotConfig
   )) as StoreCartPreOrderRecord
+  const projectedCart = cart ? projectCartCustomer(cart) : cart
 
-  if (!cart || !isActiveCart(cart)) {
+  if (!projectedCart || !isActiveCart(projectedCart)) {
     notFound()
   }
-  assertNoPaymentOrOrderFields(cart)
-  return cart
+  assertNoPaymentOrOrderFields(projectedCart)
+  return projectedCart
 }
 
 async function retrieveCartSnapshotInTransaction(
@@ -634,10 +638,11 @@ async function runWorkflowWithinCas(
 
 /**
  * Shared M1 mutation pipeline. The ordering is contractual:
- * actor -> cart ownership -> input validation -> Cart/order lock -> review
- * guard -> Idempotency-Key claim -> replay short-circuit -> If-Match -> final
- * capability authority -> PostgreSQL CAS wrapping the native Medusa workflow ->
- * CART-09 invalidation -> terminalize claim -> canonical snapshot/current ETag.
+ * actor/input validation -> Cart/order lock -> authoritative cart reread and
+ * ownership revalidation -> review guard -> Idempotency-Key claim -> replay
+ * short-circuit -> If-Match -> final capability authority -> PostgreSQL CAS
+ * wrapping the native Medusa workflow -> CART-09 invalidation -> terminalize
+ * claim -> canonical snapshot/current ETag.
  */
 export async function executeLineItemMutation(
   req: CartMutationRequest,
@@ -665,9 +670,6 @@ export async function executeLineItemMutation(
       notFound()
     }
   }
-  const cart = await refetchCart(req, cartId)
-  assertActorOwnsCart(actorWithOwnership, cart)
-
   const lineId =
     kind === "update" || kind === "delete" ? requireLineId(req) : undefined
   const body = parseMutationBody(kind, req.body)
@@ -701,13 +703,13 @@ export async function executeLineItemMutation(
       // The Cart/order lock is the authority boundary for the entire mutation.
       // Re-read ownership under that lock without initializing/bumping the
       // resource version, so a pending review still produces zero writes.
+      await lockCartOrderAuthority(transactionContext, cartId)
       const lockedCart = await retrieveCartInTransaction(
         cartModule,
         cartId,
         sharedContext
       )
       assertActorOwnsCart(actorWithOwnership, lockedCart)
-      await lockCartOrderAuthority(transactionContext, cartId)
       await assertNoPendingCartReview(cartId, sharedContext)
 
       const claimResult = await idempotencyService.claim({

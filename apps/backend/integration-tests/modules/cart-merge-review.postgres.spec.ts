@@ -1618,13 +1618,15 @@ if (!requestedDatabaseName) {
         )
         console.info(
           `[P16_RACE_EVIDENCE] case=merge-vs-Customer workers=${JSON.stringify(
-            race.workers.map(({ role, pid, connectionPid, txid, statusCode, code }) => ({
+            race.workers.map(({ role, pid, connectionPid, txid, statusCode, code, message, error }) => ({
               role,
               pid,
               connectionPid,
               txid,
               statusCode,
               code,
+              ...(role === "B" && message != null ? { message } : {}),
+              ...(error ? { error } : {}),
             }))
           )} lockTxids=${JSON.stringify(race.lockTxids)}`
         )
@@ -1707,6 +1709,211 @@ if (!requestedDatabaseName) {
         expect(authority.activeAuthorityCartId).toBe(customerCart.cartId)
         expect(authority.usableCustomerCartIds).toEqual([customerCart.cartId])
         expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+      })
+
+      it("B16-09-HR-03 discrimina ownership Customer na releitura PostgreSQL real", async () => {
+        const container = getContainer()
+        const actorFixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0903_ownership_actor",
+          { withItems: false }
+        )
+        const actorCart = await createRealCustomerCartFixture(
+          container,
+          actorFixture,
+          "p16_task0903_ownership_actor"
+        )
+        const foreignIdFixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0903_ownership_foreign_id",
+          { withItems: false }
+        )
+        const foreignIdCart = await createRealCustomerCartFixture(
+          container,
+          foreignIdFixture,
+          "p16_task0903_ownership_foreign_id"
+        )
+        const bothPresentFixture = await createRealCartMergeFixture(
+          container,
+          "p16_task0903_ownership_both_present",
+          { withItems: false }
+        )
+        const bothPresentCart = await createRealCustomerCartFixture(
+          container,
+          bothPresentFixture,
+          "p16_task0903_ownership_both_present"
+        )
+
+        const readOwnershipShape = async (cartId: string) => {
+          const result = await connection.raw(
+            `
+              select
+                c.customer_id,
+                customer.id as customer_record_id
+              from cart c
+              left join customer
+                on customer.id = c.customer_id
+               and customer.deleted_at is null
+              where c.id = ? and c.deleted_at is null
+            `,
+            [cartId]
+          )
+          const row = result.rows?.[0]
+          if (!row) throw new Error("P16_OWNERSHIP_CART_ROW_MISSING")
+          return {
+            customerId: row.customer_id == null ? null : String(row.customer_id),
+            customerRecordId:
+              row.customer_record_id == null
+                ? null
+                : String(row.customer_record_id),
+          }
+        }
+
+        const readIdempotencyCount = async () => {
+          const result = await connection.raw(
+            "select count(*)::int as count from store_idempotency_record where deleted_at is null"
+          )
+          return Number(result.rows?.[0]?.count ?? 0)
+        }
+
+        const targetFixture = (target: {
+          cartId: string
+          version: number
+          variantId: string
+        }) => ({
+          ...actorFixture,
+          mutationCartId: target.cartId,
+          mutationVersion: target.version,
+          mutationVariantId: actorFixture.secondaryVariantId,
+        })
+
+        const runOwnershipRace = async (
+          fixture: ReturnType<typeof targetFixture>,
+          keyPrefix: string
+        ) => {
+          const race = await runCartMergeRace(
+            process.env.DATABASE_URL!,
+            "customer-mutation",
+            "customer-mutation",
+            fixture,
+            fixture,
+            `${keyPrefix}-a`,
+            `${keyPrefix}-b`
+          )
+          expect(new Set(race.workers.map((worker) => worker.pid)).size).toBe(2)
+          expect(
+            new Set(race.workers.map((worker) => worker.connectionPid)).size
+          ).toBe(2)
+          expect(new Set(race.lockTxids).size).toBe(2)
+          return race
+        }
+
+        const assertClosedOwnership = async (
+          target: {
+            cartId: string
+            version: number
+            variantId: string
+          },
+          keyPrefix: string,
+          expectedShape: Partial<{
+            customerId: string | null
+            customerRecordId: string | null
+          }>
+        ) => {
+          const before = await readCartRow(target.cartId)
+          const beforeIdempotency = await readIdempotencyCount()
+          const beforeOrders = await countPersistedOrders(connection)
+          expect(await readOwnershipShape(target.cartId)).toMatchObject(expectedShape)
+
+          const race = await runOwnershipRace(targetFixture(target), keyPrefix)
+          expect(race.workers).toEqual([
+            expect.objectContaining({
+              statusCode: null,
+              code: null,
+              message: "Not Found",
+              cartId: null,
+              outcome: null,
+            }),
+            expect.objectContaining({
+              statusCode: null,
+              code: null,
+              message: "Not Found",
+              cartId: null,
+              outcome: null,
+            }),
+          ])
+          expect(await readCartRow(target.cartId)).toEqual(before)
+          expect(await readIdempotencyCount()).toBe(beforeIdempotency)
+          expect(await countPersistedOrders(connection)).toBe(beforeOrders)
+        }
+
+        // A foreign persisted customer_id is denied even when the caller has
+        // a different, valid canonical Customer cart.
+        await assertClosedOwnership(
+          foreignIdCart,
+          "p16-task0903-foreign-customer-id",
+          {
+            customerId: foreignIdFixture.customerId,
+          }
+        )
+
+        // Both ownership sources absent (a real Guest cart) remain denied to
+        // a Customer actor and cannot create a claim or mutate the cart.
+        await assertClosedOwnership(
+          {
+            cartId: actorFixture.guestCartId,
+            version: actorFixture.guestVersion,
+            variantId: actorFixture.secondaryVariantId,
+          },
+          "p16-task0903-customer-on-guest",
+          { customerId: null, customerRecordId: null }
+        )
+
+        // A real foreign Customer row plus its persisted cart.customer_id is
+        // present, but both diverge from the authenticated actor.
+        await assertClosedOwnership(
+          bothPresentCart,
+          "p16-task0903-both-present-divergent",
+          {
+            customerId: bothPresentFixture.customerId,
+            customerRecordId: bothPresentFixture.customerId,
+          }
+        )
+
+        const actorBefore = await readCartRow(actorCart.cartId)
+        expect(await readOwnershipShape(actorCart.cartId)).toEqual({
+          customerId: actorFixture.customerId,
+          customerRecordId: actorFixture.customerId,
+        })
+        const actorBeforeOrders = await countPersistedOrders(connection)
+        const actorRace = await runOwnershipRace(
+          targetFixture(actorCart),
+          "p16-task0903-same-customer"
+        )
+
+        // RED discriminator: current transactional reread has the persisted
+        // customer_id but no normalized cart.customer projection, so both
+        // real workers fail ownership here. After the production fix, one
+        // worker must apply and the other must lose only the version CAS.
+        expect(actorRace.workers.every((worker) =>
+          worker.statusCode === 200 ||
+          (worker.statusCode === 412 && worker.code === "CART_VERSION_MISMATCH")
+        )).toBe(true)
+        expect(actorRace.workers.some((worker) => worker.statusCode === 200)).toBe(
+          true
+        )
+        const actorAfter = await readCartRow(actorCart.cartId)
+        expect(actorAfter.customer_id).toBe(actorFixture.customerId)
+        expect(actorAfter.version).toBe(Number(actorBefore.version) + 1)
+        expect(actorAfter.line_items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              variant_id: actorFixture.secondaryVariantId,
+              quantity: 1,
+            }),
+          ])
+        )
+        expect(await countPersistedOrders(connection)).toBe(actorBeforeOrders)
       })
 
       it("falha fechado em ambiguity pré-existente nos dois processos", async () => {

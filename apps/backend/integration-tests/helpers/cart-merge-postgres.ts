@@ -85,6 +85,13 @@ export type CartMergeRaceWorkerResult = {
   message: string | null
   etag: string | null
   responseFingerprint: string
+  error?: {
+    name?: string
+    statusCode?: number
+    code?: string
+    message?: string
+    stack?: string
+  }
 }
 
 export type CartMergeRaceResult = {
@@ -806,12 +813,45 @@ function response() {
   }
 }
 
+function sanitizeDiagnosticText(value, maxLength) {
+  return String(value)
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\bBearer\s+\S+/gi, "Bearer [REDACTED]")
+    .replace(/\b(?:postgres(?:ql)?|redis):\/\/[^\s]+/gi, "[REDACTED_DSN]")
+    .replace(
+      /\b(?:authorization|cookie|token|secret|password|api[-_]?key|idempotency[-_]?key)\s*[:=]\s*\S+/gi,
+      "[REDACTED_SECRET]"
+    )
+    .replace(
+      /\b(?:cart|cus|customer|guest|order|payment|pay|line|item|variant|prod|review|result|authority|capability|idempotency)[_-][a-z0-9]{12,}\b/gi,
+      "[REDACTED_ID]"
+    )
+    .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, "[REDACTED_ID]")
+    .replace(/\b[0-9a-f]{24,}\b/gi, "[REDACTED_ID]")
+    .slice(0, maxLength)
+}
+
 function errorShape(error) {
-  return {
-    code: typeof error?.code === "string" ? error.code : null,
+  const shape = {
+    code: typeof error?.code === "string" ? sanitizeDiagnosticText(error.code, 120) : null,
     statusCode: Number.isInteger(error?.statusCode) ? error.statusCode : null,
-    message: typeof error?.message === "string" ? error.message : "WORKER_ERROR",
+    message: typeof error?.message === "string" ? sanitizeDiagnosticText(error.message, 500) : null,
   }
+  const diagnostic = {}
+  if (typeof error?.name === "string") {
+    diagnostic.name = sanitizeDiagnosticText(error.name, 120)
+  }
+  if (Number.isInteger(error?.statusCode)) diagnostic.statusCode = error.statusCode
+  if (typeof error?.code === "string") {
+    diagnostic.code = sanitizeDiagnosticText(error.code, 120)
+  }
+  if (typeof error?.message === "string") {
+    diagnostic.message = sanitizeDiagnosticText(error.message, 500)
+  }
+  if (typeof error?.stack === "string") {
+    diagnostic.stack = sanitizeDiagnosticText(error.stack, 4_000)
+  }
+  return Object.keys(diagnostic).length > 0 ? { ...shape, error: diagnostic } : shape
 }
 
 function awaitRunRelease(runId, releaseTypes) {
@@ -1191,6 +1231,7 @@ export async function runCartMergeRace(
         message: result.message == null ? null : String(result.message),
         etag: result.etag == null ? null : String(result.etag),
         responseFingerprint: String(result.responseFingerprint ?? ""),
+        error: result.error == null ? undefined : result.error,
       })
     }
 
