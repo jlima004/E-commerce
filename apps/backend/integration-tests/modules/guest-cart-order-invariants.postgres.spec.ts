@@ -7,6 +7,7 @@ import {
   createCartWorkflow,
   createPaymentCollectionForCartWorkflow,
   createProductsWorkflow,
+  createRegionsWorkflow,
   deleteLineItemsWorkflow,
   updateLineItemInCartWorkflow,
 } from "@medusajs/core-flows"
@@ -22,6 +23,8 @@ import {
 } from "../../src/api/store/carts/[id]/line-items/[line_id]/route"
 import { POST as completeCartOverride } from "../../src/api/store/carts/[id]/complete/route"
 import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route"
+import { POST as acknowledgeCartReview } from "../../src/api/store/carts/[id]/review/acknowledge/route"
+import { POST as startCardPaymentAttemptRoute } from "../../src/api/store/carts/[id]/payment-attempts/card/route"
 import { createStripeWebhookPostHandler } from "../../src/api/hooks/stripe/route"
 import { createStoreSurfaceGuardMiddleware } from "../../src/api/store-surface/guard"
 import {
@@ -45,6 +48,17 @@ import {
   buildDisposableMedusaEnvironment,
   requireDisposableDatabaseName,
 } from "../postgres/disposable-postgres-harness"
+import {
+  countPersistedOrders,
+  createCartMergeRequest,
+  createCartMergeResponse,
+  createRealCartMergeFixture,
+  createRealCustomerCartFixture,
+  createRealPendingCartReviewFixture,
+  readCartReviewRaceLedger,
+  runCartReviewRace,
+  type CartMergePostgresRawConnection,
+} from "../helpers/cart-merge-postgres"
 
 jest.mock("@medusajs/core-flows", () => {
   const actual = jest.requireActual("@medusajs/core-flows")
@@ -773,6 +787,684 @@ if (!requestedDatabaseName) {
         expect(replayOrders).toHaveLength(1)
         expect(replayOrders[0].id).toBe(orders[0].id)
         expect(await countOrders()).toBe(1)
+      })
+
+      describe("B16-09-HR-06 zero Order after review ACK and races", () => {
+        const connection =
+          dbConnection as unknown as CartMergePostgresRawConnection
+
+        const restoreRealCartWorkflows = () => {
+          const actual = jest.requireActual(
+            "@medusajs/core-flows"
+          ) as typeof import("@medusajs/core-flows")
+          ;(addToCartWorkflow as unknown as jest.Mock).mockImplementation(
+            (...args: unknown[]) => (actual.addToCartWorkflow as Function)(...args)
+          )
+          ;(updateLineItemInCartWorkflow as unknown as jest.Mock).mockImplementation(
+            (...args: unknown[]) =>
+              (actual.updateLineItemInCartWorkflow as Function)(...args)
+          )
+          ;(deleteLineItemsWorkflow as unknown as jest.Mock).mockImplementation(
+            (...args: unknown[]) =>
+              (actual.deleteLineItemsWorkflow as Function)(...args)
+          )
+        }
+
+        const ensureBrazilRegion = async (): Promise<string> => {
+          const existing = await connection.raw(
+            "select id from region where currency_code = ? and deleted_at is null limit 1",
+            ["brl"]
+          )
+          const existingId = existing.rows?.[0]?.id
+          if (existingId) return String(existingId)
+          await createRegionsWorkflow(getContainer()).run({
+            input: {
+              regions: [
+                {
+                  name: "P16 HR-06 Brazil",
+                  currency_code: "brl",
+                  countries: ["br"],
+                  payment_providers: ["pp_system_default"],
+                },
+              ],
+            },
+          })
+          const created = await connection.raw(
+            "select id from region where currency_code = ? and deleted_at is null limit 1",
+            ["brl"]
+          )
+          const createdId = created.rows?.[0]?.id
+          if (!createdId) {
+            throw new Error("P16_REAL_PENDING_REVIEW_REGION_MISSING")
+          }
+          return String(createdId)
+        }
+
+        const createPendingReviewFixture = async (identity: string) =>
+          createRealPendingCartReviewFixture(getContainer(), identity, {
+            regionId: await ensureBrazilRegion(),
+          })
+
+        const customerAuthFields = (customerId: string) => ({
+          auth_context: {
+            actor_type: "customer" as const,
+            actor_id: customerId,
+          },
+          customerAuth: { authorized: true, customerId },
+          customerAuthBff: { authorized: true },
+        })
+
+        const createAcknowledgeRequest = (
+          fixture: {
+            customerId: string
+            reviewCartId?: string
+            guestCartId: string
+            reviewRef?: string
+            reviewVersion?: number
+          },
+          overrides: {
+            reviewRef?: string | null
+            version?: number
+            cartId?: string
+          } = {}
+        ) => {
+          const cartId =
+            overrides.cartId ?? fixture.reviewCartId ?? fixture.guestCartId
+          const reviewRef =
+            "reviewRef" in overrides ? overrides.reviewRef : fixture.reviewRef
+          const version = overrides.version ?? fixture.reviewVersion ?? 1
+          return {
+            method: "POST",
+            url: `/store/carts/${cartId}/review/acknowledge`,
+            originalUrl: `/store/carts/${cartId}/review/acknowledge`,
+            params: { id: cartId },
+            body: { reviewRef },
+            headers: {
+              authorization: "Bearer test-customer-jwt",
+              "x-indicio-bff-auth": "test-bff-authority",
+              "if-match": `"${version}"`,
+            },
+            ...customerAuthFields(fixture.customerId),
+            scope: getContainer(),
+          }
+        }
+
+        const publicErrorFields = (error: unknown) => {
+          const record = (error ?? {}) as {
+            statusCode?: unknown
+            status?: unknown
+            code?: unknown
+            message?: unknown
+          }
+          return {
+            statusCode: record.statusCode ?? record.status,
+            code: record.code,
+            message: record.message,
+          }
+        }
+
+        beforeEach(() => {
+          restoreRealCartWorkflows()
+        })
+
+        it("B16-09-HR-06 MERGED_PARTIAL keeps Order delta at zero", async () => {
+          const container = getContainer()
+          const fixture = await createRealCartMergeFixture(
+            container,
+            "p16_hr06_merged_partial",
+            { guestItemQuantity: 30 }
+          )
+          const customerCart = await createRealCustomerCartFixture(
+            container,
+            fixture,
+            "p16_hr06_merged_partial",
+            { itemQuantity: 80 }
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+
+          const response = createCartMergeResponse()
+          await mergeCart(
+            createCartMergeRequest(fixture, container) as never,
+            response as never
+          )
+          const body = response.body as {
+            outcome?: unknown
+            review?: { requiresReview?: unknown }
+          }
+          const after = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            customerCart.cartId
+          )
+          const afterOrders = await countPersistedOrders(connection)
+
+          expect(response.statusCode).toBe(200)
+          expect(body.outcome).toBe("MERGED_PARTIAL")
+          expect(body.review?.requiresReview).toBe(true)
+          expect(after.review_status).toBe("pending")
+          expect(after.review_count).toBe(1)
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 REVIEW_REQUIRED line-item mutation keeps Order delta at zero", async () => {
+          const fixture = await createPendingReviewFixture("p16_hr06_review_line")
+          const before = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const response = createCartMergeResponse()
+
+          const error = await addLineItem(
+            {
+              method: "POST",
+              url: `/store/carts/${fixture.reviewCartId}/line-items`,
+              originalUrl: `/store/carts/${fixture.reviewCartId}/line-items`,
+              params: { id: fixture.reviewCartId },
+              body: {
+                variant_id: fixture.mutationVariantId,
+                quantity: 1,
+              },
+              headers: {
+                authorization: "Bearer test-customer-jwt",
+                "x-indicio-bff-auth": "test-bff-authority",
+                "idempotency-key": "p16-hr06-review-line",
+                "if-match": `"${fixture.reviewVersion}"`,
+              },
+              ...customerAuthFields(fixture.customerId),
+              scope: getContainer(),
+            } as never,
+            response as never
+          ).catch((caught: unknown) => caught)
+
+          const after = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const afterOrders = await countPersistedOrders(connection)
+
+          expect(error).toMatchObject({
+            code: "REVIEW_REQUIRED",
+            statusCode: 409,
+          })
+          expect(after.review_status).toBe("pending")
+          expect(after.line_items).toEqual(before.line_items)
+          expect(after.version).toBe(before.version)
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 REVIEW_REQUIRED merge keeps Order delta at zero", async () => {
+          const container = getContainer()
+          const fixture = await createPendingReviewFixture("p16_hr06_review_merge")
+          const competitor = await createRealCartMergeFixture(
+            container,
+            "p16_hr06_review_merge_g",
+            { customerId: fixture.customerId }
+          )
+          const beforeTarget = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const beforeGuest = await readCartReviewRaceLedger(
+            connection,
+            competitor,
+            competitor.guestCartId
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const response = createCartMergeResponse()
+
+          const error = await mergeCart(
+            createCartMergeRequest(competitor, container) as never,
+            response as never
+          ).catch((caught: unknown) => caught)
+
+          const afterTarget = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const afterGuest = await readCartReviewRaceLedger(
+            connection,
+            competitor,
+            competitor.guestCartId
+          )
+          const afterOrders = await countPersistedOrders(connection)
+
+          expect(error).toMatchObject({
+            code: "REVIEW_REQUIRED",
+            statusCode: 409,
+          })
+          expect(afterTarget.review_status).toBe("pending")
+          expect(afterTarget.version).toBe(beforeTarget.version)
+          expect(afterGuest.capability_status).toBe(beforeGuest.capability_status)
+          expect(afterGuest.merge_result_count).toBe(0)
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 REVIEW_REQUIRED payment initiation keeps Order delta at zero", async () => {
+          const fixture = await createPendingReviewFixture("p16_hr06_review_pay")
+          const before = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const response = createCartMergeResponse()
+
+          const error = await startCardPaymentAttemptRoute(
+            {
+              method: "POST",
+              url: `/store/carts/${fixture.reviewCartId}/payment-attempts/card`,
+              originalUrl: `/store/carts/${fixture.reviewCartId}/payment-attempts/card`,
+              params: { id: fixture.reviewCartId },
+              body: {},
+              headers: {
+                authorization: "Bearer test-customer-jwt",
+                "x-indicio-bff-auth": "test-bff-authority",
+              },
+              ...customerAuthFields(fixture.customerId),
+              scope: getContainer(),
+            } as never,
+            response as never
+          ).catch((caught: unknown) => caught)
+
+          const after = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const afterOrders = await countPersistedOrders(connection)
+
+          expect(error).toMatchObject({
+            code: "REVIEW_REQUIRED",
+            statusCode: 409,
+          })
+          expect(after.review_status).toBe("pending")
+          expect(after.payment_attempt_count).toBe(0)
+          expect(after.payment_collection_count).toBe(before.payment_collection_count)
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 valid ACK does not create Order", async () => {
+          const fixture = await createPendingReviewFixture("p16_hr06_ack_valid")
+          const before = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const response = createCartMergeResponse()
+
+          await acknowledgeCartReview(
+            createAcknowledgeRequest(fixture) as never,
+            response as never
+          )
+
+          const after = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const afterOrders = await countPersistedOrders(connection)
+          const body = response.body as {
+            review?: { requiresReview?: unknown; reviewRef?: unknown }
+          }
+
+          expect(response.statusCode).toBe(200)
+          expect(body.review).toEqual(
+            expect.objectContaining({
+              requiresReview: false,
+              reviewRef: null,
+            })
+          )
+          expect(after.review_status).toBe("acknowledged")
+          expect(after.review_ref).toBe(fixture.reviewRef)
+          expect(after.acknowledged_at).toEqual(expect.any(String))
+          expect(after.version).toBe(before.version)
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 ACK no-op with reviewRef null keeps Order delta at zero", async () => {
+          const container = getContainer()
+          const fixture = await createRealCartMergeFixture(
+            container,
+            "p16_hr06_ack_noop"
+          )
+          const mergeResponse = createCartMergeResponse()
+          await mergeCart(
+            createCartMergeRequest(fixture, container) as never,
+            mergeResponse as never
+          )
+          expect(mergeResponse.statusCode).toBe(200)
+          expect((mergeResponse.body as { outcome?: unknown }).outcome).toBe(
+            "GUEST_CART_ATTACHED"
+          )
+
+          const attachedVersion = fixture.guestVersion + 1
+          const before = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.guestCartId
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const response = createCartMergeResponse()
+
+          await acknowledgeCartReview(
+            createAcknowledgeRequest(fixture, {
+              cartId: fixture.guestCartId,
+              reviewRef: null,
+              version: attachedVersion,
+            }) as never,
+            response as never
+          )
+
+          const after = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.guestCartId
+          )
+          const afterOrders = await countPersistedOrders(connection)
+          const body = response.body as {
+            review?: { requiresReview?: unknown; reviewRef?: unknown }
+          }
+
+          expect(response.statusCode).toBe(200)
+          expect(body.review).toEqual(
+            expect.objectContaining({
+              requiresReview: false,
+              reviewRef: null,
+            })
+          )
+          expect(after.review_count).toBe(0)
+          expect(after.review_status).toBeNull()
+          expect(after.version).toBe(before.version)
+          expect(after.version).toBe(attachedVersion)
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 ACK replay is idempotent and keeps Order delta at zero", async () => {
+          const fixture = await createPendingReviewFixture("p16_hr06_ack_replay")
+          const first = createCartMergeResponse()
+          await acknowledgeCartReview(
+            createAcknowledgeRequest(fixture) as never,
+            first as never
+          )
+          expect(first.statusCode).toBe(200)
+
+          const before = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const replay = createCartMergeResponse()
+
+          await acknowledgeCartReview(
+            createAcknowledgeRequest(fixture) as never,
+            replay as never
+          )
+
+          const after = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const afterOrders = await countPersistedOrders(connection)
+          const body = replay.body as {
+            cart?: { id?: unknown }
+            review?: { requiresReview?: unknown; reviewRef?: unknown }
+          }
+
+          expect(replay.statusCode).toBe(200)
+          expect(body.cart?.id).toBe(fixture.reviewCartId)
+          expect(body.review).toEqual(
+            expect.objectContaining({
+              requiresReview: false,
+              reviewRef: null,
+            })
+          )
+          expect(after.review_status).toBe("acknowledged")
+          expect(after.review_ref).toBe(fixture.reviewRef)
+          expect(after.version).toBe(before.version)
+          expect(after.line_items).toEqual(before.line_items)
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 stale ACK fails closed and keeps Order delta at zero", async () => {
+          const fixture = await createPendingReviewFixture("p16_hr06_ack_stale")
+          const before = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const staleVersion = Math.max(1, fixture.reviewVersion - 1)
+          const response = createCartMergeResponse()
+
+          const error = await acknowledgeCartReview(
+            createAcknowledgeRequest(fixture, { version: staleVersion }) as never,
+            response as never
+          ).catch((caught: unknown) => caught)
+
+          const after = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const afterOrders = await countPersistedOrders(connection)
+
+          expect(error).toMatchObject({ statusCode: 412 })
+          expect(after.review_status).toBe("pending")
+          expect(after.review_ref).toBe(fixture.reviewRef)
+          expect(after.version).toBe(before.version)
+          expect(after.acknowledged_at).toBeNull()
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 divergent reviewRef fails closed and keeps Order delta at zero", async () => {
+          const fixture = await createPendingReviewFixture("p16_hr06_ack_ref")
+          const unknownRef = "review_divergent_hr06_01"
+          const before = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const response = createCartMergeResponse()
+
+          const error = await acknowledgeCartReview(
+            createAcknowledgeRequest(fixture, { reviewRef: unknownRef }) as never,
+            response as never
+          ).catch((caught: unknown) => caught)
+
+          const after = await readCartReviewRaceLedger(
+            connection,
+            fixture,
+            fixture.reviewCartId
+          )
+          const afterOrders = await countPersistedOrders(connection)
+          const serialized = JSON.stringify(publicErrorFields(error))
+
+          expect(error).toMatchObject({
+            code: "CART_REVIEW_CONFLICT",
+            statusCode: 409,
+          })
+          expect(serialized).not.toContain(fixture.reviewRef)
+          expect(serialized).not.toContain(unknownRef)
+          expect(after.review_status).toBe("pending")
+          expect(after.review_ref).toBe(fixture.reviewRef)
+          expect(after.version).toBe(before.version)
+          expect(after.acknowledged_at).toBeNull()
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 ACK-vs-line-item pending-first keeps Order delta at zero", async () => {
+          const fixture = await createPendingReviewFixture(
+            "p16_hr06_race_line_pend"
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const race = await runCartReviewRace(
+            process.env.DATABASE_URL!,
+            "customer-mutation",
+            fixture,
+            fixture,
+            "competitor-first",
+            "p16-hr06-line-item-pending-first"
+          )
+          const afterOrders = await countPersistedOrders(connection)
+          const ack = race.workers.find((worker) => worker.role === "A")!
+          const competitor = race.workers.find((worker) => worker.role === "B")!
+
+          expect(ack.statusCode).toBe(200)
+          expect(competitor.statusCode).toBe(409)
+          expect(competitor.code).toBe("REVIEW_REQUIRED")
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 ACK-vs-line-item ACK-first keeps Order delta at zero", async () => {
+          const fixture = await createPendingReviewFixture(
+            "p16_hr06_race_line_ack"
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const race = await runCartReviewRace(
+            process.env.DATABASE_URL!,
+            "customer-mutation",
+            fixture,
+            fixture,
+            "ack-first",
+            "p16-hr06-line-item-ack-first"
+          )
+          const afterOrders = await countPersistedOrders(connection)
+          const ack = race.workers.find((worker) => worker.role === "A")!
+          const competitor = race.workers.find((worker) => worker.role === "B")!
+
+          expect(ack.statusCode).toBe(200)
+          expect(competitor.statusCode).toBe(200)
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 ACK-vs-merge pending-first keeps Order delta at zero", async () => {
+          const container = getContainer()
+          const fixture = await createPendingReviewFixture(
+            "p16_hr06_race_merge_pend"
+          )
+          const competitorFixture = await createRealCartMergeFixture(
+            container,
+            "p16_hr06_race_merge_pend_g",
+            { customerId: fixture.customerId }
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const race = await runCartReviewRace(
+            process.env.DATABASE_URL!,
+            "merge",
+            fixture,
+            competitorFixture,
+            "competitor-first",
+            "p16-hr06-merge-pending-first"
+          )
+          const afterOrders = await countPersistedOrders(connection)
+          const ack = race.workers.find((worker) => worker.role === "A")!
+          const competitor = race.workers.find((worker) => worker.role === "B")!
+
+          expect(ack.statusCode).toBe(200)
+          expect(competitor.statusCode).toBe(409)
+          expect(competitor.code).toBe("REVIEW_REQUIRED")
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 ACK-vs-merge ACK-first keeps Order delta at zero", async () => {
+          const container = getContainer()
+          const fixture = await createPendingReviewFixture(
+            "p16_hr06_race_merge_ack"
+          )
+          const competitorFixture = await createRealCartMergeFixture(
+            container,
+            "p16_hr06_race_merge_ack_g",
+            { customerId: fixture.customerId }
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const race = await runCartReviewRace(
+            process.env.DATABASE_URL!,
+            "merge",
+            fixture,
+            competitorFixture,
+            "ack-first",
+            "p16-hr06-merge-ack-first"
+          )
+          const afterOrders = await countPersistedOrders(connection)
+          const ack = race.workers.find((worker) => worker.role === "A")!
+          const competitor = race.workers.find((worker) => worker.role === "B")!
+
+          expect(ack.statusCode).toBe(200)
+          expect(competitor.statusCode).toBe(200)
+          expect(competitor.outcome).toBe("MERGED")
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 ACK-vs-payment pending-first keeps Order delta at zero", async () => {
+          const fixture = await createPendingReviewFixture(
+            "p16_hr06_race_pay_pend"
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const race = await runCartReviewRace(
+            process.env.DATABASE_URL!,
+            "payment",
+            fixture,
+            fixture,
+            "competitor-first",
+            "p16-hr06-payment-pending-first"
+          )
+          const afterOrders = await countPersistedOrders(connection)
+          const ack = race.workers.find((worker) => worker.role === "A")!
+          const competitor = race.workers.find((worker) => worker.role === "B")!
+
+          expect(ack.statusCode).toBe(200)
+          expect(competitor.statusCode).toBe(409)
+          expect(competitor.code).toBe("REVIEW_REQUIRED")
+          expect(competitor.providerCalls).toBe(0)
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("B16-09-HR-06 ACK-vs-payment ACK-first keeps Order delta at zero", async () => {
+          const fixture = await createPendingReviewFixture(
+            "p16_hr06_race_pay_ack"
+          )
+          const beforeOrders = await countPersistedOrders(connection)
+          const race = await runCartReviewRace(
+            process.env.DATABASE_URL!,
+            "payment",
+            fixture,
+            fixture,
+            "ack-first",
+            "p16-hr06-payment-ack-first"
+          )
+          const afterOrders = await countPersistedOrders(connection)
+          const ack = race.workers.find((worker) => worker.role === "A")!
+          const competitor = race.workers.find((worker) => worker.role === "B")!
+
+          expect(ack.statusCode).toBe(200)
+          expect(competitor.statusCode).toBe(201)
+          expect(competitor.providerCalls).toBe(1)
+          expect(afterOrders).toBe(beforeOrders)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
       })
     },
   })
