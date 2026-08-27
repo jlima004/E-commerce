@@ -66,6 +66,7 @@ import {
   type CartMergePostgresRawConnection,
 } from "../helpers/cart-merge-postgres"
 import { hashGuestCartCapability } from "../../src/modules/guest-cart-capability/hash"
+import defaultMiddlewares from "../../src/api/middlewares"
 import { createStoreSurfaceGuardMiddleware } from "../../src/api/store-surface/guard"
 import {
   assertPublicIdentifiersDoNotEncodeSecrets,
@@ -2119,6 +2120,79 @@ if (!requestedDatabaseName) {
             })
           } finally {
             spies.restore()
+          }
+        })
+
+        it("full-contract session attach is denied at authenticate middleware with Order delta 0", async () => {
+          const container = getContainer()
+          const fixture = await createRealCartMergeFixture(
+            container,
+            "p16_hr04_session_attach"
+          )
+          const beforeOrders = await countOrders()
+          const routes = defaultMiddlewares.routes ?? []
+          const attachRoute = routes.find(
+            (entry) =>
+              String(entry.matcher) === "/store/customers/me/cart/attach"
+          )
+          expect(attachRoute?.middlewares).toBeDefined()
+          const authenticateMiddleware = (
+            attachRoute!.middlewares as unknown[]
+          )[1] as (
+            req: unknown,
+            res: unknown,
+            next: () => void
+          ) => void | Promise<void>
+          const originalResolve = container.resolve.bind(container)
+          const resolveSpy = jest.spyOn(container, "resolve")
+          resolveSpy.mockImplementation((key: unknown, ...args: unknown[]) => {
+            if (key === ContainerRegistrationKeys.CONFIG_MODULE) {
+              return {
+                projectConfig: {
+                  http: { jwtSecret: "unused-secret-for-absent-bearer" },
+                },
+              }
+            }
+            return originalResolve(key, ...args)
+          })
+
+          try {
+            const next = jest.fn()
+            const response = createCartMergeResponse()
+            const request = {
+              method: "POST",
+              url: "/store/customers/me/cart/attach",
+              originalUrl: "/store/customers/me/cart/attach",
+              customerAuthBff: { authorized: true },
+              session: {
+                id: "sess_hr04_pg",
+                active_cart_id: fixture.guestCartId,
+                auth_context: {
+                  actor_id: fixture.customerId,
+                  actor_type: "customer",
+                  auth_identity_id: "authid_hr04_pg",
+                  app_metadata: {},
+                },
+              },
+              body: { guestCartId: fixture.guestCartId },
+              headers: {
+                "x-indicio-bff-auth": "test-bff-authority",
+                [GUEST_CART_CAPABILITY_HEADER]: PHASE16_GUEST_CAPABILITY_CANARY,
+                "idempotency-key": PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+                "if-match": `"${fixture.guestVersion}"`,
+              },
+              scope: container,
+            }
+
+            await authenticateMiddleware(request, response, next)
+
+            expect(next).not.toHaveBeenCalled()
+            expect(response.statusCode).toBe(401)
+            expect(response.body).toEqual({ message: "Unauthorized" })
+            const afterOrders = await countOrders()
+            expect(afterOrders - beforeOrders).toBe(0)
+          } finally {
+            resolveSpy.mockRestore()
           }
         })
 

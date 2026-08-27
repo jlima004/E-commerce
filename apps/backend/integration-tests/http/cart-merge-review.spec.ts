@@ -1,3 +1,6 @@
+import { readFileSync } from "fs"
+import { resolve } from "path"
+import defaultMiddlewares from "../../src/api/middlewares"
 import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route"
 import { POST as attachCart } from "../../src/api/store/customers/me/cart/attach/route"
 import { POST as acknowledgeCartReview } from "../../src/api/store/carts/[id]/review/acknowledge/route"
@@ -721,6 +724,44 @@ function asAttachRequest(
     headers,
     ...(overrides.session ? { session: overrides.session } : {}),
   }
+}
+
+function getAttachRouteEntry() {
+  const routes = defaultMiddlewares.routes ?? []
+  const route = routes.find(
+    (entry) => String(entry.matcher) === "/store/customers/me/cart/attach"
+  )
+  if (!route?.middlewares) {
+    throw new Error("ATTACH_ROUTE_MIDDLEWARES_UNAVAILABLE")
+  }
+  return route
+}
+
+function getAttachAuthenticateMiddleware() {
+  const middlewares = getAttachRouteEntry().middlewares as unknown[]
+  return middlewares[1] as (
+    req: unknown,
+    res: unknown,
+    next: () => void
+  ) => void | Promise<void>
+}
+
+function wrapScopeResolveForConfigModule(
+  scope: { resolve: (...args: unknown[]) => unknown }
+) {
+  const originalResolve = scope.resolve.bind(scope)
+  const resolveSpy = jest.spyOn(scope, "resolve")
+  resolveSpy.mockImplementation((key: unknown, ...args: unknown[]) => {
+    if (key === ContainerRegistrationKeys.CONFIG_MODULE) {
+      return {
+        projectConfig: {
+          http: { jwtSecret: "unused-secret-for-absent-bearer" },
+        },
+      }
+    }
+    return originalResolve(key, ...args)
+  })
+  return resolveSpy
 }
 
 function sessionOnlyAttachRequest(
@@ -2869,6 +2910,81 @@ describe("Cart merge HTTP tracer", () => {
         executeCartMerge?.mockRestore()
         await boot.dispose()
       }
+    })
+
+    it("nega attach session-only even with full new-contract fields at middleware (HR-04)", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      let executeCartMerge: jest.SpyInstance | undefined
+      let resolveSpy: jest.SpyInstance | undefined
+      try {
+        const harness = createTracerHarness(boot.container)
+        const service = harness.scope.resolve<any>(CART_MERGE_MODULE)
+        executeCartMerge = jest.spyOn(service, "executeCartMerge")
+        resolveSpy = wrapScopeResolveForConfigModule(harness.scope)
+        const { authorization: _authorization, ...headersWithoutBearer } =
+          harness.request.headers
+        const request = {
+          method: "POST",
+          url: "/store/customers/me/cart/attach",
+          originalUrl: "/store/customers/me/cart/attach",
+          customerAuthBff: { authorized: true },
+          session: {
+            id: "sess_hr04_01",
+            active_cart_id: harness.guestCart.id,
+            auth_context: {
+              actor_id: "cus_merge_01",
+              actor_type: "customer",
+              auth_identity_id: "authid_hr04",
+              app_metadata: {},
+            },
+          },
+          body: { guestCartId: harness.guestCart.id },
+          headers: headersWithoutBearer,
+          scope: harness.scope,
+        }
+        const response = createResponse()
+        const next = jest.fn()
+        const authenticateMiddleware = getAttachAuthenticateMiddleware()
+
+        await authenticateMiddleware(request as never, response as never, next)
+
+        expect(next).not.toHaveBeenCalled()
+        expect(response.statusCode).toBe(401)
+        expect(response.body).toEqual({ message: "Unauthorized" })
+        expectAttachDeprecationZeroEffect(harness, executeCartMerge, resolveSpy)
+      } finally {
+        resolveSpy?.mockRestore()
+        executeCartMerge?.mockRestore()
+        await boot.dispose()
+      }
+    })
+
+    it("attach middleware tuple usa authenticate bearer-only sem session", () => {
+      const middlewaresSource = readFileSync(
+        resolve(__dirname, "../../src/api/middlewares.ts"),
+        "utf8"
+      )
+      const attachBlockMatch = middlewaresSource.match(
+        /matcher:\s*"\/store\/customers\/me\/cart\/attach"[\s\S]*?middlewares:\s*\[[\s\S]*?\],/
+      )
+      expect(attachBlockMatch?.[0]).toContain(
+        'authenticate("customer", ["bearer"])'
+      )
+      expect(attachBlockMatch?.[0]).not.toContain('"session"')
+    })
+
+    it("attach route delega merge sem motor legado ou request.session", () => {
+      const attachRouteSource = readFileSync(
+        resolve(
+          __dirname,
+          "../../src/api/store/customers/me/cart/attach/route.ts"
+        ),
+        "utf8"
+      )
+      expect(attachRouteSource).toContain("executeCartMerge")
+      expect(attachRouteSource).not.toContain("transferCartCustomerWorkflowId")
+      expect(attachRouteSource).not.toContain("updateCartWorkflowId")
+      expect(attachRouteSource).not.toContain("request.session")
     })
 
     it("ignora session.active_cart_id como autoridade de attach", async () => {

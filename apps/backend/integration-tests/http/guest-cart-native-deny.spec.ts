@@ -21,6 +21,12 @@ import {
   validateStoreSurfaceManifest,
 } from "../../src/api/store-surface/manifest"
 import { GUEST_CART_CAPABILITY_HEADER } from "../../src/modules/guest-cart-capability/types"
+import {
+  storeCartPreOrderQueryConfigMiddleware,
+} from "../../src/api/store/carts/query-config"
+import {
+  storeCartPreOrderResponseMiddleware,
+} from "../../src/api/store/carts/serializers"
 import defaultMiddlewares, {
   customerAuthAccessGuardMiddleware,
   customerAuthBffServiceGuardMiddleware,
@@ -440,6 +446,24 @@ describe("Guest cart native bypass denial (D15-08 / Phase 16 exact-set)", () => 
         expect(String(route.matcher)).not.toMatch(/[*?^$[]/)
       }
     }
+  })
+
+  it("attach monta BFF + Customer bearer + preorder; sem access guard", () => {
+    const routes = (defaultMiddlewares.routes ?? []) as Array<{
+      matcher: unknown
+      method?: unknown
+      middlewares?: unknown[]
+    }>
+    const route = routes.find(
+      (item) => String(item.matcher) === "/store/customers/me/cart/attach"
+    )
+    expect(route).toBeDefined()
+    expect(route?.middlewares).toHaveLength(4)
+    expect(route?.middlewares?.[0]).toBe(customerAuthBffServiceGuardMiddleware)
+    expect(typeof route?.middlewares?.[1]).toBe("function")
+    expect(route?.middlewares?.[2]).toBe(storeCartPreOrderQueryConfigMiddleware)
+    expect(route?.middlewares?.[3]).toBe(storeCartPreOrderResponseMiddleware)
+    expect(route?.middlewares).not.toContain(customerAuthAccessGuardMiddleware)
   })
 
   it("merge e ACK montam BFF + Customer bearer; Phase 15 seis permanecem BFF-only", () => {
