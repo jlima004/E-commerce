@@ -1269,6 +1269,89 @@ describe("OpenAPI Store contract wave", () => {
     expect(price?.properties?.amount?.["x-money-unit"]).toBe("brl-major")
   })
 
+  it("accepts serialized public carts and rejects internal cart fields at runtime", () => {
+    const publicCart = {
+      id: "cart_public_01",
+      email: "buyer@example.test",
+      currency_code: "brl",
+      locale: "pt-BR",
+      total: 79.9,
+      subtotal: 79.9,
+      item_total: 79.9,
+      shipping_total: 0,
+      tax_total: 0,
+      discount_total: 0,
+      region_id: "region_br",
+      created_at: "2026-08-19T00:00:00.000Z",
+      updated_at: "2026-08-19T00:00:00.000Z",
+      checkout_data_complete: false,
+      customer: {
+        id: "customer_public_01",
+        email: "buyer@example.test",
+      },
+      items: [
+        {
+          id: "item_public_01",
+          quantity: 1,
+          title: "Camiseta básica",
+          variant_id: "variant_public_01",
+          variant_title: "M",
+          unit_price: 79.9,
+        },
+      ],
+      shipping_address: {
+        first_name: "Ana",
+        last_name: "Silva",
+        company: null,
+        address_1: "Rua A, 1",
+        address_2: null,
+        city: "São Paulo",
+        postal_code: "01000-000",
+        country_code: "br",
+        province: "SP",
+        phone: null,
+        masked_federal_tax_id: null,
+      },
+    }
+    const review = {
+      requiresReview: false,
+      reviewRef: null,
+      rejectedItems: [],
+    }
+
+    expect(
+      CartMergeResponseSchema.safeParse({
+        outcome: "MERGED",
+        cart: publicCart,
+        review,
+      }).success
+    ).toBe(true)
+    expect(
+      CartReviewAcknowledgeResponseSchema.safeParse({
+        cart: publicCart,
+        review,
+      }).success
+    ).toBe(true)
+
+    const cartWithInternalField = {
+      ...publicCart,
+      metadata: { internal: "must-not-be-public" },
+    }
+    expect(
+      CartMergeResponseSchema.safeParse({
+        outcome: "MERGED",
+        cart: cartWithInternalField,
+        review,
+      }).success
+    ).toBe(false)
+    expect(
+      CartReviewAcknowledgeResponseSchema.safeParse({
+        cart: cartWithInternalField,
+        review,
+      }).success
+    ).toBe(false)
+  })
+
   it("keeps merge and review runtime bodies strict and exact", () => {
     expect(Object.keys(CartMergeRequestSchema.shape)).toEqual(["guestCartId"])
     expect(

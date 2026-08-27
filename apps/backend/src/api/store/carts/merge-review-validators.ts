@@ -74,7 +74,61 @@ export const CartReviewStateSchema = z
     }
   })
 
-const publicStoreCartSchema = z.custom<PublicStoreCartPreOrder>()
+const publicStoreCartCustomerSchema = z
+  .object({
+    id: z.string().nullable(),
+    email: z.string().nullable(),
+  })
+  .strict()
+
+const publicStoreCartItemSchema = z
+  .object({
+    id: z.string().nullable(),
+    quantity: z.number(),
+    title: z.string().nullable(),
+    variant_id: z.string().nullable(),
+    variant_title: z.string().nullable(),
+    unit_price: z.number().nullable(),
+  })
+  .strict()
+
+const publicStoreCartShippingAddressSchema = z
+  .object({
+    first_name: z.string().nullable(),
+    last_name: z.string().nullable(),
+    company: z.string().nullable(),
+    address_1: z.string().nullable(),
+    address_2: z.string().nullable(),
+    city: z.string().nullable(),
+    postal_code: z.string().nullable(),
+    country_code: z.string().nullable(),
+    province: z.string().nullable(),
+    phone: z.string().nullable(),
+    masked_federal_tax_id: z.string().nullable(),
+  })
+  .strict()
+
+const publicStoreCartSchema: z.ZodType<PublicStoreCartPreOrder> = z
+  .object({
+    id: z.string(),
+    email: z.string().nullable(),
+    currency_code: z.string().nullable(),
+    locale: z.string().nullable(),
+    total: z.number().nullable(),
+    subtotal: z.number().nullable(),
+    item_total: z.number().nullable(),
+    shipping_total: z.number().nullable(),
+    tax_total: z.number().nullable(),
+    discount_total: z.number().nullable(),
+    region_id: z.string().nullable(),
+    created_at: z.string().nullable(),
+    updated_at: z.string().nullable(),
+    checkout_data_complete: z.boolean(),
+    customer: publicStoreCartCustomerSchema.nullable(),
+    items: z.array(publicStoreCartItemSchema),
+    shipping_address: publicStoreCartShippingAddressSchema.nullable(),
+  })
+  .strict()
 
 export const CartMergeResponseSchema = z
   .object({
