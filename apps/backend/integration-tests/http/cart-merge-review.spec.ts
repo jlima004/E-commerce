@@ -43,12 +43,31 @@ import {
   STORE_ERROR_CODES,
   toStoreErrorResponse,
 } from "../../src/api/store-surface/errors"
+import {
+  isAttachNewContractPresent,
+  parseCartMergeBody,
+  parseCartMergeCustomerId,
+  parseCartMergePresentedHeaders,
+} from "../../src/api/store/carts/merge-review-validators"
 
 jest.mock("@medusajs/core-flows", () => ({
   addToCartWorkflow: jest.fn(),
   updateLineItemInCartWorkflow: jest.fn(),
   deleteLineItemsWorkflow: jest.fn(),
 }))
+
+jest.mock("../../src/api/store/carts/merge-review-validators", () => {
+  const actual = jest.requireActual<
+    typeof import("../../src/api/store/carts/merge-review-validators")
+  >("../../src/api/store/carts/merge-review-validators")
+  return {
+    ...actual,
+    parseCartMergeCustomerId: jest.fn(actual.parseCartMergeCustomerId),
+    parseCartMergeBody: jest.fn(actual.parseCartMergeBody),
+    parseCartMergePresentedHeaders: jest.fn(actual.parseCartMergePresentedHeaders),
+    isAttachNewContractPresent: jest.fn(actual.isAttachNewContractPresent),
+  }
+})
 
 type MedusaConfigModule = {
   modules: Record<string, unknown>
@@ -1313,6 +1332,55 @@ describe("Cart merge HTTP tracer", () => {
       expect(error).toMatchObject({ type: MedusaError.Types.INVALID_DATA })
       expect(toStoreErrorResponse(error).statusCode).toBe(400)
       expect(harness.idempotency.claim).not.toHaveBeenCalled()
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("merge consome parseCartMerge* compartilhados e não isAttachNewContractPresent", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      jest.mocked(parseCartMergeCustomerId).mockClear()
+      jest.mocked(parseCartMergeBody).mockClear()
+      jest.mocked(parseCartMergePresentedHeaders).mockClear()
+      jest.mocked(isAttachNewContractPresent).mockClear()
+
+      const harness = createTracerHarness(boot.container)
+      const response = createResponse()
+
+      await mergeCart(harness.request as never, response as never)
+
+      expect(response.statusCode).toBe(200)
+      expect(parseCartMergeCustomerId).toHaveBeenCalledTimes(1)
+      expect(parseCartMergeBody).toHaveBeenCalledTimes(1)
+      expect(parseCartMergePresentedHeaders).toHaveBeenCalledTimes(1)
+      expect(isAttachNewContractPresent).not.toHaveBeenCalled()
+    } finally {
+      await boot.dispose()
+    }
+  })
+
+  it("retorna 400 para merge sem Idempotency-Key antes de claim", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container)
+      delete harness.request.headers["idempotency-key"]
+
+      const error = await mergeCart(
+        harness.request as never,
+        createResponse() as never
+      ).catch((caught) => caught)
+
+      expect(error).toMatchObject({ type: MedusaError.Types.INVALID_DATA })
+      const normalized = toStoreErrorResponse(error)
+      expect(normalized.statusCode).toBe(400)
+      expect(normalized.body.code).toBe(STORE_ERROR_CODES.VALIDATION_ERROR)
+      expect(harness.idempotency.claim).not.toHaveBeenCalled()
+      expect(harness.capability.status).toBe("active")
+      expect(harness.cartModule.updateCarts).not.toHaveBeenCalled()
+      expect(harness.resourceVersion.increment).not.toHaveBeenCalled()
+      expect(harness.versions.get(harness.guestCart.id)).toBe(1)
+      expect(harness.guestCart.customer_id).toBeNull()
     } finally {
       await boot.dispose()
     }
