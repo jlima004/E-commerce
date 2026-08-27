@@ -1,10 +1,6 @@
 import { CLIENT_MONEY_BODY_FIELDS } from "../../api/store/carts/payment-attempts/validators"
 import { AUTH_HTTP_CONTRACT } from "../../api/auth-surface/contracts"
 import {
-  lookupStoreSurfaceEntry,
-  storeSurfaceOperationKey,
-} from "../../api/store-surface/manifest"
-import {
   CartMergeRejectedItemSchema,
   CartMergeRequestSchema,
   CartMergeResponseSchema,
@@ -18,43 +14,17 @@ import {
 } from "../../api/store/carts/serializers"
 import { verifyCoverage } from "../coverage/verify-coverage"
 import { STORE_DOCUMENTATION_AUTH_OPERATIONS } from "../coverage/verify-coverage"
-import {
-  discoverRoutes,
-  type DiscoveredRoute,
-} from "../coverage/discover-routes"
+import { discoverRoutes } from "../coverage/discover-routes"
 import { ROUTE_EXCLUSIONS } from "../coverage/exclusions"
 import { buildContracts } from "../generation/build-documents"
 import { STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS } from "../operations/store/schemas"
 import { createFoundationRegistry } from "../registry"
 import { assertSafeExamples } from "../safe-examples"
+import { STORE_AUTH_ACCESS_BEARER } from "../components/security-schemes"
 import {
   CART_MERGE_OUTCOMES,
   CART_MERGE_REJECTION_REASONS,
 } from "../../modules/cart-merge/types"
-
-const PHASE16_PENDING_OPENAPI_ROUTES = [
-  {
-    method: "POST" as const,
-    path: "/store/customers/me/cart/merge",
-    discoverPath:
-      "apps/backend/src/api/store/customers/me/cart/merge/route.ts",
-  },
-  {
-    method: "POST" as const,
-    path: "/store/carts/{id}/review/acknowledge",
-    discoverPath:
-      "apps/backend/src/api/store/carts/[id]/review/acknowledge/route.ts",
-  },
-] as const
-
-function discoverRoutesWithoutPendingPhase16OpenApi(): DiscoveredRoute[] {
-  const pending = new Set(
-    PHASE16_PENDING_OPENAPI_ROUTES.map((route) => `${route.method} ${route.path}`)
-  )
-  return discoverRoutes().filter(
-    (route) => !pending.has(`${route.method} ${route.path}`)
-  )
-}
 
 const LEGACY_STORE_DOCUMENTATION_KEYS = [
   "GET /health/live",
@@ -72,6 +42,11 @@ const LEGACY_STORE_DOCUMENTATION_KEYS = [
   "POST /store/tracking/lookup",
 ] as const
 
+const PHASE16_STORE_DOCUMENTATION_KEYS = [
+  "POST /store/customers/me/cart/merge",
+  "POST /store/carts/{id}/review/acknowledge",
+] as const
+
 const PHASE14_STORE_DOCUMENTATION_KEYS = AUTH_HTTP_CONTRACT.map(
   (entry) => `${entry.method} ${entry.path}`
 )
@@ -79,6 +54,7 @@ const PHASE14_STORE_DOCUMENTATION_KEYS = AUTH_HTTP_CONTRACT.map(
 const STORE_DOCUMENTATION_OPERATION_KEYS = [
   ...LEGACY_STORE_DOCUMENTATION_KEYS,
   ...PHASE14_STORE_DOCUMENTATION_KEYS,
+  ...PHASE16_STORE_DOCUMENTATION_KEYS,
 ].sort()
 
 const STORE_DOCUMENT_PATHS = [
@@ -87,6 +63,8 @@ const STORE_DOCUMENT_PATHS = [
   "/store/carts/active",
   "/store/carts/{id}/line-items",
   "/store/carts/{id}/line-items/{line_id}",
+  "/store/carts/{id}/review/acknowledge",
+  "/store/customers/me/cart/merge",
   ...AUTH_HTTP_CONTRACT.map((entry) => entry.path),
 ].sort()
 
@@ -97,33 +75,9 @@ describe("OpenAPI Store contract wave", () => {
   const store = contracts.find((contract) => contract.surface === "store")
 
   it("covers every included Store route and both native catalog extensions", () => {
-    const filteredRoutes = discoverRoutesWithoutPendingPhase16OpenApi()
-    expect(() => verifyCoverage("store", registry, filteredRoutes)).not.toThrow()
+    expect(() => verifyCoverage("store", registry, discoverRoutes())).not.toThrow()
 
-    for (const pending of PHASE16_PENDING_OPENAPI_ROUTES) {
-      const discovered = discoverRoutes().find(
-        (route) => route.method === pending.method && route.path === pending.path
-      )
-      expect(discovered).toBeDefined()
-      expect(discovered?.sourceFile).toContain(pending.discoverPath)
-
-      const manifestEntry = lookupStoreSurfaceEntry(pending.method, pending.path)
-      expect(manifestEntry?.runtime_policy).toBe("M1_ENABLED")
-      expect(manifestEntry?.m1_enablement).toBe("enabled")
-      expect(
-        ROUTE_EXCLUSIONS.some(
-          (exclusion) =>
-            exclusion.method === pending.method && exclusion.path === pending.path
-        )
-      ).toBe(false)
-      expect(
-        storeOperations.map((operation) =>
-          storeSurfaceOperationKey(operation.method, operation.path)
-        )
-      ).not.toContain(storeSurfaceOperationKey(pending.method, pending.path))
-    }
-
-    expect(storeOperations).toHaveLength(25)
+    expect(storeOperations).toHaveLength(27)
     expect(
       storeOperations.map((operation) => `${operation.method} ${operation.path}`).sort()
     ).toEqual(STORE_DOCUMENTATION_OPERATION_KEYS)
@@ -171,6 +125,228 @@ describe("OpenAPI Store contract wave", () => {
       true
     )
     expect(cartM1.every((operation) => operation.nonInteractive === true)).toBe(true)
+  })
+
+  it("registers merge and review operations with exact security and parameters", () => {
+    const merge = storeOperations.find(
+      (operation) =>
+        operation.method === "POST" &&
+        operation.path === "/store/customers/me/cart/merge"
+    )
+    const acknowledge = storeOperations.find(
+      (operation) =>
+        operation.method === "POST" &&
+        operation.path === "/store/carts/{id}/review/acknowledge"
+    )
+
+    expect(merge).toEqual(
+      expect.objectContaining({
+        operationId: "mergeCustomerCart",
+        security: STORE_AUTH_ACCESS_BEARER,
+        interactiveCandidate: false,
+        nonInteractive: true,
+      })
+    )
+    expect(acknowledge).toEqual(
+      expect.objectContaining({
+        operationId: "acknowledgeCartReview",
+        security: STORE_AUTH_ACCESS_BEARER,
+        interactiveCandidate: false,
+        nonInteractive: true,
+      })
+    )
+
+    const parameterIdentity = (parameter: unknown): string => {
+      if (
+        typeof parameter === "object" &&
+        parameter !== null &&
+        "$ref" in parameter
+      ) {
+        return (parameter as { $ref: string }).$ref
+      }
+      const inline = parameter as { in?: string; name?: string }
+      return `${inline.in}:${inline.name}`
+    }
+
+    expect(merge?.parameters.map(parameterIdentity)).toEqual([
+      "header:x-correlation-id",
+      "#/components/parameters/XIndicioGuestCartMergeCapability",
+      "#/components/parameters/IdempotencyKey",
+      "#/components/parameters/IfMatch",
+    ])
+    expect(acknowledge?.parameters.map(parameterIdentity)).toEqual([
+      "header:x-correlation-id",
+      "path:id",
+      "#/components/parameters/IfMatch",
+    ])
+    expect(store?.document.components.parameters).toEqual(
+      expect.objectContaining({
+        XIndicioGuestCartMergeCapability: expect.objectContaining({
+          name: "x-indicio-guest-cart-token",
+          in: "header",
+          required: true,
+          "x-bff-only": true,
+          "x-not-browser-credential": true,
+          "x-sensitive": true,
+        }),
+        XIndicioGuestCartToken: expect.objectContaining({
+          name: "x-indicio-guest-cart-token",
+          in: "header",
+          required: false,
+        }),
+      })
+    )
+    expect(
+      store?.document.components.parameters.XIndicioGuestCartMergeCapability
+    ).not.toEqual(
+      expect.objectContaining({
+        example: expect.anything(),
+        examples: expect.anything(),
+      })
+    )
+
+    expect(merge?.requestBody).toEqual(
+      expect.objectContaining({
+        required: true,
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/CartMergeRequest" },
+          },
+        },
+      })
+    )
+    expect(acknowledge?.requestBody).toEqual(
+      expect.objectContaining({
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/CartReviewAcknowledgeRequest",
+            },
+          },
+        },
+      })
+    )
+  })
+
+  it("documents exact merge/review responses, errors, and provenance", () => {
+    const operations = [
+      storeOperations.find(
+        (operation) =>
+          operation.method === "POST" &&
+          operation.path === "/store/customers/me/cart/merge"
+      ),
+      storeOperations.find(
+        (operation) =>
+          operation.method === "POST" &&
+          operation.path === "/store/carts/{id}/review/acknowledge"
+      ),
+    ]
+    const expectedStatuses = [
+      "200",
+      "400",
+      "401",
+      "404",
+      "409",
+      "412",
+      "500",
+      "503",
+    ]
+
+    expect(operations).toHaveLength(2)
+    for (const operation of operations) {
+      expect(operation).toBeDefined()
+      expect(Object.keys(operation?.responses ?? {}).sort()).toEqual(
+        expectedStatuses
+      )
+      expect(operation).toEqual(
+        expect.objectContaining({
+          summary: expect.any(String),
+          tags: ["Cart"],
+          sourceClassification: "project-custom",
+          sourceFiles: expect.arrayContaining([
+            "apps/backend/src/api/store/carts/merge-review-validators.ts",
+            "apps/backend/src/api/store/carts/serializers.ts",
+            "apps/backend/src/modules/cart-merge/service.ts",
+            "apps/backend/src/api/middlewares.ts",
+          ]),
+          testEvidence: expect.arrayContaining([
+            "apps/backend/integration-tests/http/cart-merge-review.spec.ts",
+          ]),
+          officialReference: expect.stringContaining(
+            "github.com/jlima004/E-commerce/blob/main/"
+          ),
+          inclusionReason: expect.any(String),
+          interactiveCandidate: false,
+          nonInteractive: true,
+        })
+      )
+
+      expect(operation?.responses["200"]).toEqual(
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            ETag: { $ref: "#/components/headers/ETag" },
+            "Cache-Control": expect.objectContaining({
+              schema: { type: "string", const: "no-store" },
+            }),
+          }),
+        })
+      )
+      expect(operation?.responses["409"]).toEqual(
+        expect.objectContaining({
+          description: expect.stringMatching(
+            /authority|state|idempotency|review/i
+          ),
+        })
+      )
+      expect(operation?.responses["409"]?.description).toMatch(
+        /REVIEW_REQUIRED/
+      )
+      expect(operation?.responses["409"]?.description).not.toMatch(
+        /CART_VERSION_MISMATCH/
+      )
+      expect(operation?.responses["412"]).toEqual(
+        expect.objectContaining({
+          description: expect.stringMatching(
+            /CART_VERSION_MISMATCH.*If-Match.*stale/i
+          ),
+          headers: {
+            "x-correlation-id": {
+              $ref: "#/components/headers/XCorrelationId",
+            },
+            ETag: {
+              $ref: "#/components/headers/ETag",
+            },
+          },
+        })
+      )
+      expect(operation?.responses["412"]?.content).toEqual({
+        "application/json": {
+          schema: { $ref: "#/components/schemas/StoreErrorResponse" },
+        },
+      })
+      expect(operation?.responses["412"]?.description).not.toMatch(
+        /REVIEW_REQUIRED|idempotency/i
+      )
+      expect(operation?.responses["412"]).not.toEqual(
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "Cache-Control": expect.anything(),
+          }),
+        })
+      )
+    }
+
+    expect(operations[0]?.responses["200"]?.content).toEqual({
+      "application/json": {
+        schema: { $ref: "#/components/schemas/CartMergeResponse" },
+      },
+    })
+    expect(operations[1]?.responses["200"]?.content).toEqual({
+      "application/json": {
+        schema: { $ref: "#/components/schemas/CartReviewAcknowledgeResponse" },
+      },
+    })
   })
 
   it("requires BFF authority on every Cart M1 security alternative", () => {
@@ -503,7 +679,7 @@ describe("OpenAPI Store contract wave", () => {
   it("registers complete provenance metadata on every Store operation", () => {
     for (const operation of storeOperations) {
       expect(operation.operationId).toMatch(
-        /^(?:store[A-Z].*|getActiveStoreCart|createActiveStoreCart|addCartLineItem|updateCartLineItem|removeCartLineItem|clearCartLineItems)$/
+        /^(?:store[A-Z].*|getActiveStoreCart|createActiveStoreCart|addCartLineItem|updateCartLineItem|removeCartLineItem|clearCartLineItems|mergeCustomerCart|acknowledgeCartReview)$/
       )
       expect(operation.summary.trim().length).toBeGreaterThan(0)
       expect(operation.tags.length).toBeGreaterThan(0)
