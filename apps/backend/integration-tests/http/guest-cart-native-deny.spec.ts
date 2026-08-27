@@ -1,4 +1,4 @@
-import { existsSync } from "fs"
+import { existsSync, readFileSync } from "fs"
 import { resolve } from "path"
 import {
   ROUTE_EXCLUSIONS,
@@ -20,10 +20,17 @@ import {
   summarizeStoreSurfaceManifest,
   validateStoreSurfaceManifest,
 } from "../../src/api/store-surface/manifest"
+import { GUEST_CART_CAPABILITY_HEADER } from "../../src/modules/guest-cart-capability/types"
 import defaultMiddlewares, {
   customerAuthAccessGuardMiddleware,
   customerAuthBffServiceGuardMiddleware,
 } from "../../src/api/middlewares"
+import {
+  createGuestCartLeakageCollector,
+  PHASE16_CUSTOMER_JWT_CANARY,
+  PHASE16_GUEST_CAPABILITY_CANARY,
+  PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+} from "../helpers/guest-cart-leakage"
 
 function response() {
   const json = jest.fn().mockReturnThis()
@@ -78,6 +85,86 @@ function expectSurfaceDenied(method: string, path: string) {
 
 function expectSurfaceAllowedM1(method: string, path: string) {
   expect(decideStoreSurfaceAccess(method, path).action).toBe("allow")
+}
+
+function phase16DeniedRequestHeaders() {
+  return {
+    authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
+    [GUEST_CART_CAPABILITY_HEADER]: PHASE16_GUEST_CAPABILITY_CANARY,
+    "idempotency-key": PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+    "if-match": '"1"',
+  }
+}
+
+function recordNativeDenyLeakageSnapshots(
+  collector: ReturnType<typeof createGuestCartLeakageCollector>,
+  res: ReturnType<typeof response>,
+  options: {
+    method: string
+    path: string
+    next: jest.Mock
+    req: ReturnType<typeof request>
+  }
+) {
+  const attachExclusion = ROUTE_EXCLUSIONS.find(
+    (item) =>
+      item.method === "POST" &&
+      item.path === "/store/customers/me/cart/attach"
+  )
+  const attachEntry = lookupStoreSurfaceEntry(
+    "POST",
+    "/store/customers/me/cart/attach"
+  )
+  const storeOpenApiPath = resolve(
+    process.cwd(),
+    "src/api-docs/generated/store.openapi.json"
+  )
+  collector.record("fixtures_snapshots", {
+    body: res.jsonMock.mock.calls[0]?.[0],
+    statusCode: res.statusCode,
+    path: options.path,
+    method: options.method,
+    attachExclusion,
+    attachManifestEntry: attachEntry,
+  })
+  collector.record("openapi", {
+    storeOpenApiExcerpt: existsSync(storeOpenApiPath)
+      ? readFileSync(storeOpenApiPath, "utf8").slice(0, 4096)
+      : null,
+    manifestMergeEntry: lookupStoreSurfaceEntry(
+      "POST",
+      "/store/customers/me/cart/merge"
+    ),
+    manifestAckEntry: lookupStoreSurfaceEntry(
+      "POST",
+      "/store/carts/{id}/review/acknowledge"
+    ),
+  })
+  collector.record("db_plaintext", {
+    exercised: false,
+    reason: "NATIVE_DENY_HARNESS_HAS_NO_DB_WRITES",
+  })
+  collector.record("logs", {
+    exercised: false,
+    reason: "NATIVE_DENY_GUARD_DOES_NOT_LOG_REQUEST_HEADERS",
+  })
+  collector.record("persisted_provider_payload", {
+    nextCalled: options.next.mock.calls.length,
+    scopeResolveCalled: (options.req.scope.resolve as jest.Mock).mock.calls
+      .length,
+  })
+  collector.record("redis_keys_jobs", {
+    exercised: false,
+    reason: "RUNTIME_PATH_DOES_NOT_USE_REDIS_IN_NATIVE_DENY_HARNESS",
+  })
+  collector.record("sentry", {
+    exercised: false,
+    reason: "SENTRY_NOT_EXERCISED_ON_NATIVE_DENY_PATH",
+  })
+  collector.record("analytics", {
+    exercised: false,
+    reason: "ANALYTICS_NOT_EXERCISED_ON_NATIVE_DENY_PATH",
+  })
 }
 
 describe("Guest cart native bypass denial (D15-08 / Phase 16 exact-set)", () => {
@@ -357,5 +444,68 @@ describe("Guest cart native bypass denial (D15-08 / Phase 16 exact-set)", () => 
     ).map((entry) => storeSurfaceOperationKey(entry.method, entry.pathTemplate))
 
     expect(enabledFromManifest).toEqual([...STORE_SURFACE_M1_ENABLED_OPERATIONS])
+  })
+
+  describe("Phase 16 eight-sink leakage (C7–C8)", () => {
+    it("C7 native denial POST /store/carts/:id/customer keeps Phase 16 canaries out of sinks", () => {
+      const middleware = createStoreSurfaceGuardMiddleware()
+      const next = jest.fn()
+      const path = "/store/carts/cart_native_deny_01/customer"
+      const req = {
+        ...request("POST", path),
+        headers: phase16DeniedRequestHeaders(),
+      }
+      const res = response()
+
+      middleware(req as never, res as never, next)
+
+      expect(next).not.toHaveBeenCalled()
+      expect(req.scope.resolve).not.toHaveBeenCalled()
+      expect(res.statusCode).toBe(404)
+
+      const collector = createGuestCartLeakageCollector()
+      recordNativeDenyLeakageSnapshots(collector, res, {
+        method: "POST",
+        path,
+        next,
+        req,
+      })
+      collector.assertNoCanaries()
+    })
+
+    it.each([
+      ["POST", "/store/cart/link"],
+      ["POST", "/store/carts/cart_native_deny_01/merge"],
+      ["POST", "/store/carts/cart_native_deny_01/attach"],
+      ["POST", "/store/customer/attach"],
+      ["POST", "/store/merge/acknowledge"],
+      ["POST", "/store/review/ack"],
+    ] as const)(
+      "C8 prefix/unknown denial %s %s keeps Phase 16 canaries out of sinks",
+      (method, path) => {
+        const middleware = createStoreSurfaceGuardMiddleware()
+        const next = jest.fn()
+        const req = {
+          ...request(method, path),
+          headers: phase16DeniedRequestHeaders(),
+        }
+        const res = response()
+
+        middleware(req as never, res as never, next)
+
+        expect(next).not.toHaveBeenCalled()
+        expect(req.scope.resolve).not.toHaveBeenCalled()
+        expect(res.statusCode).toBe(404)
+
+        const collector = createGuestCartLeakageCollector()
+        recordNativeDenyLeakageSnapshots(collector, res, {
+          method,
+          path,
+          next,
+          req,
+        })
+        collector.assertNoCanaries()
+      }
+    )
   })
 })

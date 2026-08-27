@@ -20,6 +20,7 @@ import {
 } from "../../src/modules/store-idempotency"
 import {
   buildStoreIdempotencyRequestFingerprint,
+  fingerprintsMatch,
   hashStoreIdempotencyKey,
   hashStoreIdempotencyScope,
 } from "../../src/modules/store-idempotency"
@@ -49,6 +50,13 @@ import {
   parseCartMergeCustomerId,
   parseCartMergePresentedHeaders,
 } from "../../src/api/store/carts/merge-review-validators"
+import {
+  assertPublicIdentifiersDoNotEncodeSecrets,
+  createGuestCartLeakageCollector,
+  PHASE16_CUSTOMER_JWT_CANARY,
+  PHASE16_GUEST_CAPABILITY_CANARY,
+  PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+} from "../helpers/guest-cart-leakage"
 
 jest.mock("@medusajs/core-flows", () => ({
   addToCartWorkflow: jest.fn(),
@@ -77,6 +85,7 @@ type MedusaConfigModule = {
 type BootstrappedCartMerge = {
   container: typeof medusaContainer
   dispose: () => Promise<void>
+  logEntries: unknown[]
 }
 
 function loadTracerConfig(includeCartMerge: boolean): MedusaConfigModule {
@@ -107,12 +116,23 @@ async function bootstrapCartMergeContainer(
     projectConfig: tracerConfig,
     baseDir: process.cwd(),
   })
+  const logEntries: unknown[] = []
   const logger = {
-    debug: () => undefined,
-    info: () => undefined,
-    log: () => undefined,
-    warn: () => undefined,
-    error: () => undefined,
+    debug: (...args: unknown[]) => {
+      logEntries.push({ level: "debug", args })
+    },
+    info: (...args: unknown[]) => {
+      logEntries.push({ level: "info", args })
+    },
+    log: (...args: unknown[]) => {
+      logEntries.push({ level: "log", args })
+    },
+    warn: (...args: unknown[]) => {
+      logEntries.push({ level: "warn", args })
+    },
+    error: (...args: unknown[]) => {
+      logEntries.push({ level: "error", args })
+    },
   }
   container.register({
     [ContainerRegistrationKeys.LOGGER]: asValue(logger),
@@ -129,6 +149,7 @@ async function bootstrapCartMergeContainer(
 
   return {
     container,
+    logEntries,
     dispose: async () => {
       await application.onApplicationShutdown()
       MedusaModule.clearInstances()
@@ -307,18 +328,45 @@ function createTracerHarness(
         const record = [...idempotencyRecords.values()].find(
           (candidate) => candidate.id === committedReceiptRow?.idempotency_record_id
         )
+        const customerIdFromQuery = bindings[0] == null ? null : String(bindings[0])
+        const guestCartIdFromQuery = bindings[1] == null ? null : String(bindings[1])
+        const capabilityHashFromQuery =
+          bindings[2] == null ? null : String(bindings[2])
+        const idempotencyKeyHashFromQuery =
+          bindings[5] == null ? null : String(bindings[5])
+        const receiptMatchesQuery =
+          customerIdFromQuery === String(committedReceiptRow.customer_id) &&
+          guestCartIdFromQuery === String(committedReceiptRow.guest_cart_id) &&
+          idempotencyKeyHashFromQuery != null &&
+          record?.idempotency_key_hash != null &&
+          fingerprintsMatch(record.idempotency_key_hash, idempotencyKeyHashFromQuery)
+        if (!receiptMatchesQuery) {
+          return { rows: [] }
+        }
+        const actorScopeHashFromQuery =
+          bindings[4] == null ? record?.actor_scope_hash : String(bindings[4])
+        const resourceScopeHash = hashStoreIdempotencyScope({
+          resource_type: "cart_merge",
+          guest_cart_id: String(committedReceiptRow.guest_cart_id),
+          customer_cart_id:
+            committedReceiptRow.customer_cart_id == null
+              ? null
+              : String(committedReceiptRow.customer_cart_id),
+          capability_id: String(committedReceiptRow.capability_id),
+        })
         return {
           rows: [
             {
               ...committedReceiptRow,
+              capability_hash: capabilityHashFromQuery,
               capability_status: capability.status,
-              actor_scope_hash: record?.actor_scope_hash,
-              resource_scope_hash: record?.resource_scope_hash,
-              idempotency_key_hash: record?.idempotency_key_hash,
+              actor_scope_hash: actorScopeHashFromQuery,
+              resource_scope_hash: resourceScopeHash,
+              idempotency_key_hash: idempotencyKeyHashFromQuery,
               idempotency_operation: "cart_merge",
-              idempotency_state: record?.state,
+              idempotency_state: "completed",
               idempotency_result_type: "cart_merge",
-              idempotency_result_id: record?.result_id,
+              idempotency_result_id: committedReceiptRow.id,
               idempotency_expires_at: committedReceiptRow.expires_at,
             },
           ],
@@ -619,6 +667,12 @@ function createTracerHarness(
     get cartReview() {
       return reviewRow
     },
+    getCommittedReceiptRow() {
+      return committedReceiptRow
+    },
+    getIdempotencyRecordObjects() {
+      return [...idempotencyRecords.values()]
+    },
     cartModule,
     scope,
     transaction,
@@ -860,6 +914,85 @@ async function createPendingReviewHarness(
     mergeResponse,
     reviewRef: (mergeResponse.body as any).review.reviewRef as string,
   }
+}
+
+function phase16CanaryRequestHeaders(
+  overrides: Record<string, string | undefined> = {}
+) {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
+    "x-indicio-bff-auth": "bff-phase16-leakage-harness",
+    [GUEST_CART_CAPABILITY_HEADER]: PHASE16_GUEST_CAPABILITY_CANARY,
+    "idempotency-key": PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+    "if-match": '"1"',
+  }
+  for (const [name, value] of Object.entries(overrides)) {
+    if (value === undefined) delete headers[name]
+    else headers[name] = value
+  }
+  return headers
+}
+
+const LEAKAGE_REDIS_SENTINEL = {
+  exercised: false,
+  reason: "RUNTIME_PATH_DOES_NOT_USE_REDIS_IN_THIS_HARNESS",
+} as const
+
+const LEAKAGE_SENTRY_SENTINEL = {
+  exercised: false,
+  reason: "SENTRY_NOT_EXERCISED_ON_MERGE_PATH",
+} as const
+
+const LEAKAGE_ANALYTICS_SENTINEL = {
+  exercised: false,
+  reason: "ANALYTICS_NOT_EXERCISED_ON_MERGE_ADAPTER_ACK_DENIAL",
+} as const
+
+function recordMergeLeakageSnapshots(
+  collector: ReturnType<typeof createGuestCartLeakageCollector>,
+  harness: ReturnType<typeof createTracerHarness>,
+  boot: BootstrappedCartMerge,
+  response: ReturnType<typeof createResponse>
+) {
+  collector.record("fixtures_snapshots", {
+    body: response.body,
+    headers: response.headers,
+    reviewRef: (response.body as { review?: { reviewRef?: unknown } })?.review
+      ?.reviewRef,
+  })
+  collector.record("db_plaintext", {
+    committedReceiptRow: harness.getCommittedReceiptRow(),
+    reviewRow: harness.cartReview,
+    idempotencyRecords: harness.getIdempotencyRecordObjects(),
+    capability: harness.capability,
+  })
+  collector.record("logs", boot.logEntries)
+  collector.record("persisted_provider_payload", {
+    addToCartWorkflow: (addToCartWorkflow as unknown as jest.Mock).mock.calls,
+    updateLineItemInCartWorkflow: (
+      updateLineItemInCartWorkflow as unknown as jest.Mock
+    ).mock.calls,
+    deleteLineItemsWorkflow: (deleteLineItemsWorkflow as unknown as jest.Mock)
+      .mock.calls,
+  })
+  collector.record("redis_keys_jobs", LEAKAGE_REDIS_SENTINEL)
+  collector.record("sentry", LEAKAGE_SENTRY_SENTINEL)
+  collector.record("analytics", LEAKAGE_ANALYTICS_SENTINEL)
+}
+
+function assertEncodingSafePublicIdentifiers(
+  harness: ReturnType<typeof createTracerHarness>,
+  response: ReturnType<typeof createResponse>
+) {
+  const receipt = harness.getCommittedReceiptRow()
+  assertPublicIdentifiersDoNotEncodeSecrets(
+    (response.body as { review?: { reviewRef?: string | null } })?.review
+      ?.reviewRef ?? null,
+    response.headers.etag ?? null,
+    receipt && typeof receipt.request_fingerprint === "string"
+      ? receipt.request_fingerprint
+      : null
+  )
 }
 
 describe("Cart merge HTTP tracer", () => {
@@ -2705,6 +2838,240 @@ describe("Cart merge HTTP tracer", () => {
       } finally {
         resolveSpy?.mockRestore()
         executeCartMerge?.mockRestore()
+        await boot.dispose()
+      }
+    })
+  })
+
+  describe("Phase 16 eight-sink leakage (C1–C6)", () => {
+    it("C1 merge success keeps Phase 16 canaries out of exercised sinks", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      try {
+        const harness = createTracerHarness(boot.container)
+        harness.request.headers = {
+          ...harness.request.headers,
+          ...phase16CanaryRequestHeaders(),
+        }
+        const response = createResponse()
+        await mergeCart(harness.request as never, response as never)
+
+        expect(response.statusCode).toBe(200)
+        const collector = createGuestCartLeakageCollector()
+        recordMergeLeakageSnapshots(collector, harness, boot, response)
+        collector.assertNoCanaries()
+        assertEncodingSafePublicIdentifiers(harness, response)
+      } finally {
+        await boot.dispose()
+      }
+    })
+
+    it("C2 attach success keeps Phase 16 canaries out of exercised sinks", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      try {
+        const harness = createTracerHarness(boot.container)
+        const response = createResponse()
+        await attachCart(
+          asAttachRequest(harness, {
+            headers: phase16CanaryRequestHeaders(),
+          }) as never,
+          response as never
+        )
+
+        expect(response.statusCode).toBe(200)
+        const collector = createGuestCartLeakageCollector()
+        recordMergeLeakageSnapshots(collector, harness, boot, response)
+        collector.assertNoCanaries()
+        assertEncodingSafePublicIdentifiers(harness, response)
+      } finally {
+        await boot.dispose()
+      }
+    })
+
+    it("C3 committed replay keeps Phase 16 canaries out of exercised sinks", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      try {
+        const harness = createTracerHarness(boot.container, {
+          customerCart: true,
+          customerItems: [
+            {
+              id: "li_customer_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 80,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+          guestItems: [
+            {
+              id: "li_guest_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 30,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+        })
+        harness.request.headers[GUEST_CART_CAPABILITY_HEADER] =
+          PHASE16_GUEST_CAPABILITY_CANARY
+        harness.request.headers.authorization = `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`
+        harness.request.headers["idempotency-key"] =
+          PHASE16_RAW_IDEMPOTENCY_KEY_CANARY
+        const first = createResponse()
+        await mergeCart(harness.request as never, first as never)
+        expect(first.statusCode).toBe(200)
+        harness.customerCart?.items.push({
+          id: "li_later_mutation",
+          variant_id: "variant_later",
+          quantity: 1,
+          title: "Posterior",
+          variant: sellableVariant("variant_later"),
+        })
+        harness.versions.set(harness.customerCart?.id ?? "", 9)
+        const replay = createResponse()
+        await mergeCart(harness.request as never, replay as never)
+
+        expect(replay.statusCode).toBe(200)
+        const collector = createGuestCartLeakageCollector()
+        recordMergeLeakageSnapshots(collector, harness, boot, replay)
+        collector.assertNoCanaries()
+        assertEncodingSafePublicIdentifiers(harness, replay)
+      } finally {
+        await boot.dispose()
+      }
+    })
+
+    it("C4 idempotency conflict keeps Phase 16 canaries out of exercised sinks", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      try {
+        const harness = createTracerHarness(boot.container)
+        harness.request.headers = {
+          ...harness.request.headers,
+          ...phase16CanaryRequestHeaders(),
+        }
+        await mergeCart(harness.request as never, createResponse() as never)
+        harness.request.headers["if-match"] = '"2"'
+
+        const error = await mergeCart(
+          harness.request as never,
+          createResponse() as never
+        ).catch((caught) => caught)
+        const normalized = toStoreErrorResponse(error)
+
+        expect(normalized.statusCode).toBe(409)
+        const collector = createGuestCartLeakageCollector()
+        collector.record("fixtures_snapshots", {
+          body: normalized.body,
+          statusCode: normalized.statusCode,
+        })
+        collector.record("db_plaintext", {
+          committedReceiptRow: harness.getCommittedReceiptRow(),
+          reviewRow: harness.cartReview,
+          idempotencyRecords: harness.getIdempotencyRecordObjects(),
+          capability: harness.capability,
+        })
+        collector.record("logs", boot.logEntries)
+        collector.record("persisted_provider_payload", {
+          addToCartWorkflow: (addToCartWorkflow as unknown as jest.Mock).mock
+            .calls,
+        })
+        collector.record("redis_keys_jobs", LEAKAGE_REDIS_SENTINEL)
+        collector.record("sentry", LEAKAGE_SENTRY_SENTINEL)
+        collector.record("analytics", LEAKAGE_ANALYTICS_SENTINEL)
+        collector.assertNoCanaries()
+      } finally {
+        await boot.dispose()
+      }
+    })
+
+    it("C5 session-only attach denial keeps Phase 16 canaries out of exercised sinks", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      try {
+        const harness = createTracerHarness(boot.container)
+        const request = {
+          ...sessionOnlyAttachRequest(harness),
+          headers: {
+            ...sessionOnlyAttachRequest(harness).headers,
+            ...phase16CanaryRequestHeaders({
+              [GUEST_CART_CAPABILITY_HEADER]: undefined,
+              "idempotency-key": undefined,
+              "if-match": undefined,
+            }),
+          },
+        }
+
+        const error = await attachCart(
+          request as never,
+          createResponse() as never
+        ).catch((caught) => caught)
+        const normalized = toStoreErrorResponse(error)
+
+        expect(normalized.statusCode).toBe(404)
+        const collector = createGuestCartLeakageCollector()
+        collector.record("fixtures_snapshots", {
+          body: normalized.body,
+          statusCode: normalized.statusCode,
+        })
+        collector.record("db_plaintext", {
+          committedReceiptRow: harness.getCommittedReceiptRow(),
+          reviewRow: harness.cartReview,
+          idempotencyRecords: harness.getIdempotencyRecordObjects(),
+          capability: harness.capability,
+        })
+        collector.record("logs", boot.logEntries)
+        collector.record("persisted_provider_payload", {
+          addToCartWorkflow: (addToCartWorkflow as unknown as jest.Mock).mock
+            .calls,
+        })
+        collector.record("redis_keys_jobs", LEAKAGE_REDIS_SENTINEL)
+        collector.record("sentry", LEAKAGE_SENTRY_SENTINEL)
+        collector.record("analytics", LEAKAGE_ANALYTICS_SENTINEL)
+        collector.assertNoCanaries()
+      } finally {
+        await boot.dispose()
+      }
+    })
+
+    it("C6 missing capability denial keeps Phase 16 canaries out of exercised sinks", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      try {
+        const harness = createTracerHarness(boot.container)
+        const error = await attachCart(
+          asAttachRequest(harness, {
+            headers: {
+              ...phase16CanaryRequestHeaders(),
+              [GUEST_CART_CAPABILITY_HEADER]: undefined,
+            },
+          }) as never,
+          createResponse() as never
+        ).catch((caught) => caught)
+        const normalized = toStoreErrorResponse(error)
+
+        expect(normalized.statusCode).toBe(404)
+        const collector = createGuestCartLeakageCollector()
+        collector.record("fixtures_snapshots", {
+          body: normalized.body,
+          statusCode: normalized.statusCode,
+        })
+        collector.record("db_plaintext", {
+          committedReceiptRow: harness.getCommittedReceiptRow(),
+          reviewRow: harness.cartReview,
+          idempotencyRecords: harness.getIdempotencyRecordObjects(),
+          capability: harness.capability,
+        })
+        collector.record("logs", boot.logEntries)
+        collector.record("persisted_provider_payload", {
+          addToCartWorkflow: (addToCartWorkflow as unknown as jest.Mock).mock
+            .calls,
+        })
+        collector.record("redis_keys_jobs", LEAKAGE_REDIS_SENTINEL)
+        collector.record("sentry", LEAKAGE_SENTRY_SENTINEL)
+        collector.record("analytics", LEAKAGE_ANALYTICS_SENTINEL)
+        collector.assertNoCanaries()
+      } finally {
         await boot.dispose()
       }
     })

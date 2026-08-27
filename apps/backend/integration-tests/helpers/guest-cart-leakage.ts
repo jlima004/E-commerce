@@ -18,6 +18,36 @@ export const GUEST_CART_CANARIES = {
   secret: "canary_guest_cart_secret_p15w0_never_persist",
 } as const
 
+export const PHASE16_GUEST_CAPABILITY_CANARY =
+  "p16w11_cap_canary_not_a_token_zz9q_never_persist"
+export const PHASE16_CUSTOMER_JWT_CANARY =
+  "p16w11_jwt_canary_not_a_bearer_ww7k_never_persist"
+export const PHASE16_RAW_IDEMPOTENCY_KEY_CANARY =
+  "p16w11_idem_canary_not_a_uuid_mm3n_never_persist"
+
+export const PHASE16_LEAKAGE_CANARIES = [
+  PHASE16_GUEST_CAPABILITY_CANARY,
+  PHASE16_CUSTOMER_JWT_CANARY,
+  PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+] as const
+
+export type Phase16SecretClass =
+  | "guest_capability"
+  | "customer_jwt"
+  | "raw_idempotency_key"
+
+const PHASE16_CANARY_SECRET_CLASS: Record<string, Phase16SecretClass> = {
+  [PHASE16_GUEST_CAPABILITY_CANARY]: "guest_capability",
+  [PHASE16_CUSTOMER_JWT_CANARY]: "customer_jwt",
+  [PHASE16_RAW_IDEMPOTENCY_KEY_CANARY]: "raw_idempotency_key",
+}
+
+const LEGACY_CANARY_SECRET_CLASS: Record<string, string> = {
+  [GUEST_CART_CANARIES.token]: "guest_capability",
+  [GUEST_CART_CANARIES.session]: "guest_session",
+  [GUEST_CART_CANARIES.secret]: "bff_secret",
+}
+
 export const GUEST_CART_SAFE_SINK_KEYS = [
   "id",
   "cart_id",
@@ -48,6 +78,11 @@ export type GuestCartLeakageCollector = {
 
 type GuestCartTestHarnessError = Error & { code: string }
 
+type CanaryLeakMatch = {
+  canary: string
+  secretClass: string
+}
+
 function assertGuestCartTestHarnessAllowed(): void {
   if (process.env.NODE_ENV !== "test") {
     const error = new Error(
@@ -72,20 +107,58 @@ function serializeSnapshot(value: unknown): string {
   }
 }
 
-function findCanaries(
-  value: unknown,
-  extraCanaries: string[] = []
-): string[] {
-  const serialized = serializeSnapshot(value)
-  const allCanaries = [
+function secretClassForCanary(canary: string): string {
+  return (
+    PHASE16_CANARY_SECRET_CLASS[canary] ??
+    LEGACY_CANARY_SECRET_CLASS[canary] ??
+    "unknown_secret"
+  )
+}
+
+function defaultCanarySet(extraCanaries: string[] = []): string[] {
+  return [
     ...Object.values(GUEST_CART_CANARIES),
+    ...PHASE16_LEAKAGE_CANARIES,
     ...extraCanaries,
   ]
-  return allCanaries.filter((canary) => serialized.includes(canary))
+}
+
+function findCanaryLeaks(
+  value: unknown,
+  extraCanaries: string[] = []
+): CanaryLeakMatch[] {
+  const serialized = serializeSnapshot(value)
+  const leaks: CanaryLeakMatch[] = []
+  for (const canary of defaultCanarySet(extraCanaries)) {
+    if (serialized.includes(canary)) {
+      leaks.push({ canary, secretClass: secretClassForCanary(canary) })
+    }
+  }
+  return leaks
+}
+
+function encodingVariants(value: string): string[] {
+  const buffer = Buffer.from(value, "utf8")
+  return [
+    value,
+    buffer.toString("base64"),
+    buffer.toString("base64url"),
+    buffer.toString("hex"),
+    encodeURIComponent(value),
+  ]
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function throwCanaryLeakDetected(
+  sink: string,
+  secretClass: string
+): never {
+  throw new Error(
+    `GUEST_CART_LEAKAGE_CANARY_DETECTED:${sink} sink=${sink} secret_class=${secretClass}`
+  )
 }
 
 export function assertGuestCartSinksHaveNoCanaries(
@@ -98,9 +171,48 @@ export function assertGuestCartSinksHaveNoCanaries(
     : [["snapshot", snapshots] as const]
 
   for (const [sink, snapshot] of entries) {
-    const leaked = findCanaries(snapshot, extraCanaries)
+    const leaked = findCanaryLeaks(snapshot, extraCanaries)
     if (leaked.length > 0) {
-      throw new Error(`GUEST_CART_LEAKAGE_CANARY_DETECTED:${sink}`)
+      throwCanaryLeakDetected(sink, leaked[0].secretClass)
+    }
+  }
+}
+
+export function assertNoSecretLeak(
+  snapshots: GuestCartLeakageSinkSnapshots | unknown,
+  extraCanaries: string[] = []
+): void {
+  assertGuestCartSinksHaveNoCanaries(snapshots, extraCanaries)
+}
+
+export function assertPublicIdentifiersDoNotEncodeSecrets(
+  reviewRef: string | null | undefined,
+  etag: string | null | undefined,
+  requestFingerprint: string | null | undefined,
+  extraCanaries: string[] = []
+): void {
+  assertGuestCartTestHarnessAllowed()
+  const identifiers = {
+    reviewRef: reviewRef ?? null,
+    etag: etag ?? null,
+    requestFingerprint: requestFingerprint ?? null,
+  }
+  const canaries = defaultCanarySet(extraCanaries)
+
+  for (const canary of canaries) {
+    const variants = encodingVariants(canary)
+    for (const [name, value] of Object.entries(identifiers)) {
+      if (value == null || value === "") continue
+      for (const variant of variants) {
+        if (variant.length < 4) continue
+        if (String(value).includes(variant)) {
+          throwCanaryLeakDetected(
+            "fixtures_snapshots",
+            secretClassForCanary(canary)
+          )
+        }
+      }
+      void name
     }
   }
 }

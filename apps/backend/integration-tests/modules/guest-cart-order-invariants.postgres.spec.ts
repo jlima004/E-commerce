@@ -23,6 +23,7 @@ import {
 } from "../../src/api/store/carts/[id]/line-items/[line_id]/route"
 import { POST as completeCartOverride } from "../../src/api/store/carts/[id]/complete/route"
 import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route"
+import { POST as attachCart } from "../../src/api/store/customers/me/cart/attach/route"
 import { POST as acknowledgeCartReview } from "../../src/api/store/carts/[id]/review/acknowledge/route"
 import { POST as startCardPaymentAttemptRoute } from "../../src/api/store/carts/[id]/payment-attempts/card/route"
 import { createStripeWebhookPostHandler } from "../../src/api/hooks/stripe/route"
@@ -57,8 +58,17 @@ import {
   createRealPendingCartReviewFixture,
   readCartReviewRaceLedger,
   runCartReviewRace,
+  type CartMergeFixture,
   type CartMergePostgresRawConnection,
 } from "../helpers/cart-merge-postgres"
+import {
+  assertPublicIdentifiersDoNotEncodeSecrets,
+  createGuestCartLeakageCollector,
+  PHASE16_CUSTOMER_JWT_CANARY,
+  PHASE16_GUEST_CAPABILITY_CANARY,
+  PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+} from "../helpers/guest-cart-leakage"
+import { hashGuestCartCapability } from "../../src/modules/guest-cart-capability/hash"
 
 jest.mock("@medusajs/core-flows", () => {
   const actual = jest.requireActual("@medusajs/core-flows")
@@ -1464,6 +1474,374 @@ if (!requestedDatabaseName) {
           expect(competitor.providerCalls).toBe(1)
           expect(afterOrders).toBe(beforeOrders)
           expect(afterOrders - beforeOrders).toBe(0)
+        })
+      })
+
+      describe("Phase 16 C1–C8 Order delta and leakage", () => {
+        const connection =
+          dbConnection as unknown as CartMergePostgresRawConnection
+
+        const restoreRealCartWorkflows = () => {
+          const actual = jest.requireActual(
+            "@medusajs/core-flows"
+          ) as typeof import("@medusajs/core-flows")
+          ;(addToCartWorkflow as unknown as jest.Mock).mockImplementation(
+            (...args: unknown[]) => (actual.addToCartWorkflow as Function)(...args)
+          )
+          ;(updateLineItemInCartWorkflow as unknown as jest.Mock).mockImplementation(
+            (...args: unknown[]) =>
+              (actual.updateLineItemInCartWorkflow as Function)(...args)
+          )
+          ;(deleteLineItemsWorkflow as unknown as jest.Mock).mockImplementation(
+            (...args: unknown[]) =>
+              (actual.deleteLineItemsWorkflow as Function)(...args)
+          )
+        }
+
+        const customerAuthFields = (customerId: string) => ({
+          auth_context: {
+            actor_type: "customer" as const,
+            actor_id: customerId,
+          },
+          customerAuth: { authorized: true, customerId },
+          customerAuthBff: { authorized: true },
+        })
+
+        function phase16CanaryHeaders(fixture: CartMergeFixture) {
+          return {
+            authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
+            "x-indicio-bff-auth": "test-bff-authority",
+            [GUEST_CART_CAPABILITY_HEADER]: PHASE16_GUEST_CAPABILITY_CANARY,
+            "idempotency-key": PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+            "if-match": `"${fixture.guestVersion}"`,
+          }
+        }
+
+        async function applyPhase16CanaryCapability(fixture: CartMergeFixture) {
+          await connection.raw(
+            "update guest_cart_capability set token_hash = ? where id = ?",
+            [
+              hashGuestCartCapability(PHASE16_GUEST_CAPABILITY_CANARY),
+              fixture.capabilityId,
+            ]
+          )
+        }
+
+        function createAttachRequest(
+          fixture: CartMergeFixture,
+          overrides: Record<string, unknown> = {}
+        ) {
+          return {
+            method: "POST",
+            url: "/store/customers/me/cart/attach",
+            originalUrl: "/store/customers/me/cart/attach",
+            body: { guestCartId: fixture.guestCartId },
+            headers: phase16CanaryHeaders(fixture),
+            ...customerAuthFields(fixture.customerId),
+            scope: getContainer(),
+            ...overrides,
+          }
+        }
+
+        async function scanPostgresLeakageTables(fixture?: CartMergeFixture) {
+          const capability = fixture
+            ? await connection.raw(
+                "select * from guest_cart_capability where cart_id = ? and deleted_at is null",
+                [fixture.guestCartId]
+              )
+            : await connection.raw(
+                "select * from guest_cart_capability where deleted_at is null limit 20"
+              )
+          const mergeResult = fixture
+            ? await connection.raw(
+                "select * from cart_merge_result where guest_cart_id = ? and deleted_at is null",
+                [fixture.guestCartId]
+              )
+            : await connection.raw(
+                "select * from cart_merge_result where deleted_at is null order by created_at desc limit 20"
+              )
+          const review = fixture
+            ? await connection.raw(
+                `
+                  select review.*
+                  from cart_review review
+                  join cart_merge_result result
+                    on result.id = review.merge_result_id
+                 where result.guest_cart_id = ?
+                   and review.deleted_at is null
+                `,
+                [fixture.guestCartId]
+              )
+            : { rows: [] as Array<Record<string, unknown>> }
+          const idempotency = await connection.raw(
+            "select * from store_idempotency_record where deleted_at is null order by created_at desc limit 20"
+          )
+          return {
+            guest_cart_capability: capability.rows ?? [],
+            cart_merge_result: mergeResult.rows ?? [],
+            cart_review: review.rows ?? [],
+            store_idempotency_record: idempotency.rows ?? [],
+          }
+        }
+
+        function assertPostgresLeakageScan(
+          fixture: CartMergeFixture | undefined,
+          response?: ReturnType<typeof createCartMergeResponse>
+        ) {
+          return async () => {
+            const tables = await scanPostgresLeakageTables(fixture)
+            const collector = createGuestCartLeakageCollector()
+            collector.record("db_plaintext", tables)
+            if (response) {
+              collector.record("fixtures_snapshots", {
+                body: response.body,
+                headers: response.headers,
+                reviewRef: (response.body as { review?: { reviewRef?: unknown } })
+                  ?.review?.reviewRef,
+              })
+              const receipt = tables.cart_merge_result[0] as
+                | { request_fingerprint?: string }
+                | undefined
+              assertPublicIdentifiersDoNotEncodeSecrets(
+                (response.body as { review?: { reviewRef?: string | null } })
+                  ?.review?.reviewRef ?? null,
+                response.headers.etag ?? null,
+                receipt?.request_fingerprint ?? null
+              )
+            }
+            collector.assertNoCanaries()
+          }
+        }
+
+        beforeEach(() => {
+          restoreRealCartWorkflows()
+        })
+
+        it("C1 merge success keeps Order delta at zero and scans persisted sinks", async () => {
+          const container = getContainer()
+          const fixture = await createRealCartMergeFixture(
+            container,
+            "p16_leak_c1_merge"
+          )
+          await applyPhase16CanaryCapability(fixture)
+          const beforeOrders = await countOrders()
+          const response = createCartMergeResponse()
+
+          await mergeCart(
+            createCartMergeRequest(fixture, container, {
+              headers: phase16CanaryHeaders(fixture),
+            }) as never,
+            response as never
+          )
+
+          const afterOrders = await countOrders()
+          expect(response.statusCode).toBe(200)
+          expect(afterOrders - beforeOrders).toBe(0)
+          await assertPostgresLeakageScan(fixture, response)()
+        })
+
+        it("C2 attach success keeps Order delta at zero and scans persisted sinks", async () => {
+          const container = getContainer()
+          const fixture = await createRealCartMergeFixture(
+            container,
+            "p16_leak_c2_attach"
+          )
+          await applyPhase16CanaryCapability(fixture)
+          const beforeOrders = await countOrders()
+          const response = createCartMergeResponse()
+
+          await attachCart(createAttachRequest(fixture) as never, response as never)
+
+          const afterOrders = await countOrders()
+          expect(response.statusCode).toBe(200)
+          expect(afterOrders - beforeOrders).toBe(0)
+          await assertPostgresLeakageScan(fixture, response)()
+        })
+
+        it("C3 committed replay keeps Order delta at zero and scans persisted sinks", async () => {
+          const container = getContainer()
+          const fixture = await createRealCartMergeFixture(
+            container,
+            "p16_leak_c3_replay"
+          )
+          await createRealCustomerCartFixture(
+            container,
+            fixture,
+            "p16_leak_c3_replay"
+          )
+          await applyPhase16CanaryCapability(fixture)
+          const headers = phase16CanaryHeaders(fixture)
+          const beforeOrders = await countOrders()
+          const first = createCartMergeResponse()
+          await mergeCart(
+            createCartMergeRequest(fixture, container, { headers }) as never,
+            first as never
+          )
+          const replayHeaders = {
+            ...headers,
+            "if-match": `"${fixture.guestVersion}"`,
+          }
+          const replay = createCartMergeResponse()
+          await attachCart(
+            createAttachRequest(fixture, { headers: replayHeaders }) as never,
+            replay as never
+          )
+
+          const afterOrders = await countOrders()
+          expect(replay.statusCode).toBe(200)
+          expect(afterOrders - beforeOrders).toBe(0)
+          await assertPostgresLeakageScan(fixture, replay)()
+        })
+
+        it("C4 idempotency conflict keeps Order delta at zero", async () => {
+          const container = getContainer()
+          const fixture = await createRealCartMergeFixture(
+            container,
+            "p16_leak_c4_conflict"
+          )
+          await applyPhase16CanaryCapability(fixture)
+          const headers = phase16CanaryHeaders(fixture)
+          const beforeOrders = await countOrders()
+          await mergeCart(
+            createCartMergeRequest(fixture, container, { headers }) as never,
+            createCartMergeResponse() as never
+          )
+
+          const error = await attachCart(
+            createAttachRequest(fixture, {
+              headers: { ...headers, "if-match": '"999"' },
+            }) as never,
+            createCartMergeResponse() as never
+          ).catch((caught: unknown) => caught)
+
+          const afterOrders = await countOrders()
+          expect(error).toMatchObject({ statusCode: 409 })
+          expect(afterOrders - beforeOrders).toBe(0)
+          await assertPostgresLeakageScan(fixture)()
+        })
+
+        it("C5 session-only attach denial keeps Order delta at zero", async () => {
+          const container = getContainer()
+          const fixture = await createRealCartMergeFixture(
+            container,
+            "p16_leak_c5_session"
+          )
+          const beforeOrders = await countOrders()
+
+          const error = await attachCart(
+            {
+              method: "POST",
+              url: "/store/customers/me/cart/attach",
+              originalUrl: "/store/customers/me/cart/attach",
+              session: {
+                id: "sess_phase16_leak_c5",
+                active_cart_id: fixture.guestCartId,
+              },
+              body: { cart_id: fixture.guestCartId },
+              headers: {
+                authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
+                "x-indicio-bff-auth": "test-bff-authority",
+              },
+              ...customerAuthFields(fixture.customerId),
+              scope: container,
+            } as never,
+            createCartMergeResponse() as never
+          ).catch((caught: unknown) => caught)
+
+          const afterOrders = await countOrders()
+          expect(error).toMatchObject({ type: "not_found" })
+          expect(afterOrders - beforeOrders).toBe(0)
+          const collector = createGuestCartLeakageCollector()
+          collector.record("db_plaintext", await scanPostgresLeakageTables(fixture))
+          collector.assertNoCanaries()
+        })
+
+        it("C6 missing capability denial keeps Order delta at zero", async () => {
+          const container = getContainer()
+          const fixture = await createRealCartMergeFixture(
+            container,
+            "p16_leak_c6_missing_cap"
+          )
+          const beforeOrders = await countOrders()
+          const {
+            [GUEST_CART_CAPABILITY_HEADER]: _capability,
+            ...headersWithoutCapability
+          } = phase16CanaryHeaders(fixture)
+
+          const error = await mergeCart(
+            createCartMergeRequest(fixture, container, {
+              headers: headersWithoutCapability,
+            }) as never,
+            createCartMergeResponse() as never
+          ).catch((caught: unknown) => caught)
+
+          const afterOrders = await countOrders()
+          expect(error).toMatchObject({ type: "not_found" })
+          expect(afterOrders - beforeOrders).toBe(0)
+          const collector = createGuestCartLeakageCollector()
+          collector.record("db_plaintext", await scanPostgresLeakageTables(fixture))
+          collector.assertNoCanaries()
+        })
+
+        it("C7 native customer attach denial keeps Order delta at zero", async () => {
+          const beforeOrders = await countOrders()
+          const guard = createStoreSurfaceGuardMiddleware()
+          const next = jest.fn()
+          const res = response()
+          guard(
+            {
+              method: "POST",
+              originalUrl: "/store/carts/cart_native_deny_pg/customer",
+              url: "/store/carts/cart_native_deny_pg/customer",
+              headers: {
+                authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
+                [GUEST_CART_CAPABILITY_HEADER]: PHASE16_GUEST_CAPABILITY_CANARY,
+                "idempotency-key": PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+              },
+              scope: { resolve: jest.fn() },
+            } as never,
+            res as never,
+            next
+          )
+
+          const afterOrders = await countOrders()
+          expect(next).not.toHaveBeenCalled()
+          expect(res.statusCode).toBe(404)
+          expect(afterOrders - beforeOrders).toBe(0)
+        })
+
+        it("C8 prefix/unknown native denial keeps Order delta at zero", async () => {
+          const guard = createStoreSurfaceGuardMiddleware()
+          const paths = [
+            "/store/cart/link",
+            "/store/carts/cart_native_deny_pg/merge",
+            "/store/carts/cart_native_deny_pg/attach",
+          ] as const
+
+          for (const path of paths) {
+            const beforeOrders = await countOrders()
+            const next = jest.fn()
+            const res = response()
+            guard(
+              {
+                method: "POST",
+                originalUrl: path,
+                url: path,
+                headers: {
+                  authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
+                  [GUEST_CART_CAPABILITY_HEADER]: PHASE16_GUEST_CAPABILITY_CANARY,
+                  "idempotency-key": PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+                },
+                scope: { resolve: jest.fn() },
+              } as never,
+              res as never,
+              next
+            )
+            const afterOrders = await countOrders()
+            expect(next).not.toHaveBeenCalled()
+            expect(res.statusCode).toBe(404)
+            expect(afterOrders - beforeOrders).toBe(0)
+          }
         })
       })
     },
