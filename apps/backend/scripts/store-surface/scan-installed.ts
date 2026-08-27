@@ -270,9 +270,9 @@ export function scanInstalledStoreSurface(options?: {
       `MANIFEST_MISSING_FROM_INSTALLED: ${missingFromInstalled.join(", ")}`
     )
   }
-  if (operations.length !== 64) {
+  if (operations.length !== 66) {
     errors.push(
-      `INSTALLED_COUNT: expected 64 unique operations, found ${operations.length} (native=${native.length}, local=${local.length})`
+      `INSTALLED_COUNT: expected 66 unique operations, found ${operations.length} (native=${native.length}, local=${local.length})`
     )
   }
 
@@ -288,9 +288,9 @@ export function scanInstalledStoreSurface(options?: {
       `NATIVE_COUNT: expected 51 unique native operations, found ${nativeUnique.size}`
     )
   }
-  if (localOnly.length !== 13) {
+  if (localOnly.length !== 15) {
     errors.push(
-      `LOCAL_NON_OVERLAPPING_COUNT: expected 13, found ${localOnly.length}`
+      `LOCAL_NON_OVERLAPPING_COUNT: expected 15, found ${localOnly.length}`
     )
   }
 

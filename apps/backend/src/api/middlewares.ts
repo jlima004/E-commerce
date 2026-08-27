@@ -753,6 +753,7 @@ export default defineMiddlewares({
       method: ["POST"],
       matcher: "/store/customers/me/cart/attach",
       middlewares: [
+        customerAuthBffServiceGuardMiddleware,
         authenticate("customer", ["session", "bearer"]),
         storeCartPreOrderQueryConfigMiddleware,
         storeCartPreOrderResponseMiddleware,

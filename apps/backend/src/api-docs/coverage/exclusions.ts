@@ -36,7 +36,7 @@ const COMPLETE_LOCKDOWN_EXCLUSION_REASON =
   "Phase 13 fail-closed defense-in-depth override for native cart complete; BLOCKED→DENY; not part of executable Store OpenAPI; owner review when Phase 15+ checkout surface is authorized"
 
 const ATTACH_LOCKDOWN_EXCLUSION_REASON =
-  "Deprecated controlled compatibility adapter retained for domain invariants; outside Frontend M1 executable surface."
+  "Deprecated compatibility facade; preserved temporarily; outside Frontend M1; not a second attach engine; delegates to canonical Phase 16 merge contract; removal requires future explicit HUMAN GATE; no invented removal date."
 
 export const ROUTE_EXCLUSIONS: RouteExclusion[] = [
   {

@@ -81,7 +81,7 @@ function entry(
 }
 
 /**
- * Closed 64-operation inventory. Order follows RESEARCH §5 row numbers,
+ * Closed 66-operation inventory. Order follows RESEARCH §5 row numbers,
  * followed by the Phase 14 verification contracts and password change.
  */
 export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
@@ -700,11 +700,12 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
     method: "POST",
     pathTemplate: "/store/customers/me/cart/attach",
     origin: "local",
-    classification: "BLOCKED",
-    runtime_policy: "DENY",
+    classification: "OUTSIDE_FRONTEND_M1",
+    runtime_policy: "PRESERVE_LEGACY",
     openapi_m1_expectation: "exclude",
     rationale:
-      "Had Store 1.0.0 exposure but merge contract is blocked pending new merge/review; BLOCKED→DENY.",
+      "Deprecated compatibility facade; preserved temporarily; outside Frontend M1; not a second attach engine; delegates to canonical Phase 16 merge contract; removal requires future explicit HUMAN GATE; no invented removal date.",
+    owner_phase: "16",
     owner_domain: "cart",
   }),
   entry({
@@ -1012,16 +1013,16 @@ export function validateStoreSurfaceManifest(
       message: `expected EXTENDED=18, found ${counts.extended}`,
     })
   }
-  if (counts.blocked !== 17) {
+  if (counts.blocked !== 16) {
     violations.push({
       code: "COUNT_BLOCKED",
-      message: `expected BLOCKED=17, found ${counts.blocked}`,
+      message: `expected BLOCKED=16, found ${counts.blocked}`,
     })
   }
-  if (counts.outsideFrontendM1 !== 31) {
+  if (counts.outsideFrontendM1 !== 32) {
     violations.push({
       code: "COUNT_OUTSIDE",
-      message: `expected OUTSIDE_FRONTEND_M1=31, found ${counts.outsideFrontendM1}`,
+      message: `expected OUTSIDE_FRONTEND_M1=32, found ${counts.outsideFrontendM1}`,
     })
   }
   if (counts.m1EnabledPolicy !== 14) {
