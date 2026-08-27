@@ -18,15 +18,16 @@ const PRESERVE_LEGACY_KEYS = [
   "POST /store/carts/{id}/payment-attempts/card",
   "POST /store/carts/{id}/payment-attempts/pix",
   "POST /store/tracking/lookup",
+  "POST /store/customers/me/cart/attach",
 ] as const
 
 describe("Store surface manifest (FND-01)", () => {
   const counts = summarizeStoreSurfaceManifest()
   const violations = validateStoreSurfaceManifest()
 
-  it("locks Medusa 2.16.0 and exact inventory 64 = 51 native identity + 13 local", () => {
+  it("locks Medusa 2.16.0 and exact inventory 66 = 51 native identity + 15 local", () => {
     expect(STORE_SURFACE_MEDUSA_VERSION).toBe("2.16.0")
-    expect(counts.total).toBe(64)
+    expect(counts.total).toBe(66)
     expect(counts.duplicates).toEqual([])
     expect(
       STORE_SURFACE_MANIFEST.every(
@@ -42,26 +43,26 @@ describe("Store surface manifest (FND-01)", () => {
       (entry) => entry.origin === "local"
     )
     expect(nativeLike).toHaveLength(51)
-    expect(localOnly).toHaveLength(13)
+    expect(localOnly).toHaveLength(15)
     expect(counts.nativeLocalExtension).toBe(5)
   })
 
-  it("locks classification distribution 0/16/17/31 with zero UNKNOWN", () => {
+  it("locks classification distribution 0/18/16/32 with zero UNKNOWN", () => {
     expect(counts.authorized).toBe(0)
-    expect(counts.extended).toBe(16)
-    expect(counts.blocked).toBe(17)
-    expect(counts.outsideFrontendM1).toBe(31)
+    expect(counts.extended).toBe(18)
+    expect(counts.blocked).toBe(16)
+    expect(counts.outsideFrontendM1).toBe(32)
     expect(
       counts.authorized +
         counts.extended +
         counts.blocked +
         counts.outsideFrontendM1
-    ).toBe(64)
+    ).toBe(66)
   })
 
-  it("locks M1_ENABLED exact-set to STORE_SURFACE_M1_ENABLED_OPERATIONS (Phase 14 Auth 6 + Phase 15 Cart 6 = 12)", () => {
-    expect(counts.m1EnabledPolicy).toBe(12)
-    expect(counts.m1EnablementEnabled).toBe(12)
+  it("locks M1_ENABLED exact-set to STORE_SURFACE_M1_ENABLED_OPERATIONS (Phase 14 Auth 6 + Phase 15 Cart 6 + Phase 16 2 = 14)", () => {
+    expect(counts.m1EnabledPolicy).toBe(14)
+    expect(counts.m1EnablementEnabled).toBe(14)
     expect(counts.m1EnabledPolicy).toBe(
       STORE_SURFACE_M1_ENABLED_OPERATIONS.length
     )
@@ -75,7 +76,7 @@ describe("Store surface manifest (FND-01)", () => {
       storeSurfaceOperationKey(entry.method, entry.pathTemplate)
     )
 
-    expect(m1EnabledEntries).toHaveLength(12)
+    expect(m1EnabledEntries).toHaveLength(14)
     expect([...m1EnabledKeys].sort()).toEqual(
       [...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()
     )
@@ -111,7 +112,7 @@ describe("Store surface manifest (FND-01)", () => {
       "GET /store/carts/active",
       "POST /store/carts/active",
     ])
-    expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toHaveLength(12)
+    expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toHaveLength(14)
     expect(
       STORE_SURFACE_M1_ENABLED_OPERATIONS.filter((operation) =>
         STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS.includes(operation as never)
@@ -119,14 +120,14 @@ describe("Store surface manifest (FND-01)", () => {
     ).toHaveLength(6)
   })
 
-  it("requires DENY 47 + PRESERVE_LEGACY 5 + M1_ENABLED 12 = 64 with BLOCKED always DENY", () => {
-    expect(counts.deny).toBe(47)
-    expect(counts.preserveLegacy).toBe(5)
+  it("requires DENY 46 + PRESERVE_LEGACY 6 + M1_ENABLED 14 = 66 with BLOCKED always DENY", () => {
+    expect(counts.deny).toBe(46)
+    expect(counts.preserveLegacy).toBe(6)
     expect(counts.preserveLegacy).toBe(PRESERVE_LEGACY_KEYS.length)
-    expect(counts.m1EnabledPolicy).toBe(12)
+    expect(counts.m1EnabledPolicy).toBe(14)
     expect(
       counts.deny + counts.preserveLegacy + counts.m1EnabledPolicy
-    ).toBe(64)
+    ).toBe(66)
 
     for (const entry of STORE_SURFACE_MANIFEST) {
       if (entry.classification === "BLOCKED") {
@@ -159,8 +160,14 @@ describe("Store surface manifest (FND-01)", () => {
       "POST",
       "/store/customers/me/cart/attach"
     )
-    expect(attach?.classification).toBe("BLOCKED")
-    expect(attach?.runtime_policy).toBe("DENY")
+    expect(attach?.classification).toBe("OUTSIDE_FRONTEND_M1")
+    expect(attach?.runtime_policy).toBe("PRESERVE_LEGACY")
+    expect(attach?.m1_enablement).toBe("disabled")
+    expect(attach?.openapi_m1_expectation).toBe("exclude")
+    expect(attach?.owner_phase).toBe("16")
+    expect(attach?.rationale.toLowerCase()).toContain("deprecated compatibility facade")
+    expect(attach?.rationale).toMatch(/HUMAN GATE/i)
+    expect(attach?.rationale).not.toMatch(/\d{4}-\d{2}-\d{2}/)
 
     const scaffold = lookupStoreSurfaceEntry("GET", "/store/custom")
     expect(scaffold?.classification).toBe("BLOCKED")
@@ -230,14 +237,14 @@ describe("Store surface manifest (FND-01)", () => {
     expect(scan.errors).toEqual([])
     expect(scan.ok).toBe(true)
     expect(scan.medusaVersion).toBe("2.16.0")
-    expect(scan.discovered).toHaveLength(64)
+    expect(scan.discovered).toHaveLength(66)
     expect(scan.missingFromManifest).toEqual([])
     expect(scan.missingFromInstalled).toEqual([])
     expect(scan.duplicatesInstalled).toEqual([])
-    expect(scan.counts.extended).toBe(16)
-    expect(scan.counts.blocked).toBe(17)
-    expect(scan.counts.outsideFrontendM1).toBe(31)
-    expect(scan.counts.m1EnabledPolicy).toBe(12)
+    expect(scan.counts.extended).toBe(18)
+    expect(scan.counts.blocked).toBe(16)
+    expect(scan.counts.outsideFrontendM1).toBe(32)
+    expect(scan.counts.m1EnabledPolicy).toBe(14)
 
     const installedKeys = new Set(scan.discoveredKeys)
     for (const entry of STORE_SURFACE_MANIFEST) {

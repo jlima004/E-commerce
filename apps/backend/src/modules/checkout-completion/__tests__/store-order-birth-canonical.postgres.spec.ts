@@ -464,7 +464,6 @@ if (!requestedDatabaseName) {
         const guard = createStoreSurfaceGuardMiddleware()
         const attempts = [
           ["POST", "/store/carts/cart_negative/complete"],
-          ["POST", "/store/customers/me/cart/attach"],
           ["POST", "/store/payment-collections/paycol/sessions"],
           ["GET", "/store/shipping-options"],
           ["POST", "/store/orders/order/transfer/request"],

@@ -728,10 +728,10 @@ describe("cart checkout store contract", () => {
   // Internal handler invariants only — public POST /store/customers/me/cart/attach
   // is BLOCKED→DENY via store-surface guard (see store-surface-lockdown.spec.ts).
   describe("guest cart attach / transfer", () => {
-    it("public attach surface is DENY while handler-level domain proofs remain", () => {
+    it("public attach surface is PRESERVE_LEGACY while handler-level domain proofs remain", () => {
       expect(
         decideStoreSurfaceAccess("POST", "/store/customers/me/cart/attach")
-      ).toMatchObject({ action: "deny" })
+      ).toMatchObject({ action: "allow", mode: "preserve_legacy" })
       expect(
         (defaultMiddlewares.routes ?? []).some(
           (route) => String(route.matcher) === "/store*"

@@ -442,29 +442,32 @@ describe("Phase 15 guest cart final HTTP contract matrix", () => {
   it("preserves the final exact-set, Auth M1, Cart M1 and native DENY policy", () => {
     const counts = summarizeStoreSurfaceManifest()
     expect(counts).toMatchObject({
-      total: 64,
+      total: 66,
       native: 46,
-      local: 13,
-      extended: 16,
-      deny: 47,
-      preserveLegacy: 5,
-      m1EnabledPolicy: 12,
+      local: 15,
+      extended: 18,
+      deny: 46,
+      preserveLegacy: 6,
+      m1EnabledPolicy: 14,
     })
     expect(STORE_SURFACE_MANIFEST.filter((entry) => entry.runtime_policy === "M1_ENABLED"))
-      .toHaveLength(12)
+      .toHaveLength(14)
     expect(STORE_SURFACE_PHASE14_ENABLED_OPERATIONS).toHaveLength(6)
     expect(STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS).toHaveLength(6)
-    expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toHaveLength(12)
+    expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toHaveLength(14)
 
     for (const [method, path] of [
       ["GET", "/store/carts/cart_matrix_01"],
       ["POST", "/store/carts/cart_matrix_01/complete"],
-      ["POST", "/store/customers/me/cart/attach"],
       ["POST", "/store/carts/cart_matrix_01/shipping-methods"],
       ["POST", "/store/carts/cart_matrix_01/line-items/../complete"],
     ] as const) {
       expect(decideStoreSurfaceAccess(method, path).action).toBe("deny")
     }
+
+    expect(
+      decideStoreSurfaceAccess("POST", "/store/customers/me/cart/attach")
+    ).toMatchObject({ action: "allow", mode: "preserve_legacy" })
 
     for (const operation of STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS) {
       const [method, path] = operation.split(" ")

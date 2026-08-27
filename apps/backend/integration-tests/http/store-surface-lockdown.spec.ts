@@ -92,16 +92,16 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     )
   })
 
-  it("denies all 47 DENY operations before scope/handler side effects", () => {
-    expect(counts.total).toBe(64)
-    expect(counts.deny).toBe(47)
-    expect(counts.preserveLegacy).toBe(5)
-    expect(counts.m1EnabledPolicy).toBe(12)
+  it("denies all 46 DENY operations before scope/handler side effects", () => {
+    expect(counts.total).toBe(66)
+    expect(counts.deny).toBe(46)
+    expect(counts.preserveLegacy).toBe(6)
+    expect(counts.m1EnabledPolicy).toBe(14)
 
     const denyEntries = STORE_SURFACE_MANIFEST.filter(
       (entry) => entry.runtime_policy === "DENY"
     )
-    expect(denyEntries).toHaveLength(47)
+    expect(denyEntries).toHaveLength(46)
 
     for (const entry of denyEntries) {
       const next = jest.fn()
@@ -128,7 +128,7 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     const preserve = STORE_SURFACE_MANIFEST.filter(
       (entry) => entry.runtime_policy === "PRESERVE_LEGACY"
     )
-    expect(preserve).toHaveLength(5)
+    expect(preserve).toHaveLength(6)
 
     for (const entry of preserve) {
       expect(entry.m1_enablement).toBe("disabled")
@@ -155,7 +155,7 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     const m1Enabled = STORE_SURFACE_MANIFEST.filter(
       (entry) => entry.runtime_policy === "M1_ENABLED"
     )
-    expect(m1Enabled).toHaveLength(12)
+    expect(m1Enabled).toHaveLength(14)
     expect(
       m1Enabled.map((entry) =>
         storeSurfaceOperationKey(entry.method, entry.pathTemplate)
@@ -208,7 +208,7 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     }
   })
 
-  it("denies method/path bypass variants for complete, custom, and attach", () => {
+  it("denies method/path bypass variants for complete and custom", () => {
     const variants: Array<{ method: string; originalUrl: string }> = [
       { method: "POST", originalUrl: "/store/carts/synth_id_01/complete" },
       { method: "GET", originalUrl: "/store/carts/synth_id_01/complete" },
@@ -218,7 +218,6 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
       { method: "POST", originalUrl: "/store/carts/synth_id_01/complete?x=1" },
       { method: "HEAD", originalUrl: "/store/products" },
       { method: "OPTIONS", originalUrl: "/store/products" },
-      { method: "POST", originalUrl: "/store/customers/me/cart/attach" },
       { method: "GET", originalUrl: "/store/custom" },
       { method: "GET", originalUrl: "/store/carts/active/../complete" },
       { method: "POST", originalUrl: "/store/carts/active/complete" },
@@ -232,6 +231,16 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
       expect(next).not.toHaveBeenCalled()
       expect(res.statusCode).toBe(404)
     }
+
+    const attachNext = jest.fn()
+    const attachRes = createMockResponse()
+    const attachReq = createMockRequest({
+      method: "POST",
+      originalUrl: "/store/customers/me/cart/attach",
+    })
+    middleware(attachReq as never, attachRes as never, attachNext)
+    expect(attachNext).toHaveBeenCalledTimes(1)
+    expect(attachRes.statusMock).not.toHaveBeenCalled()
   })
 
   it("allows only strict known-method/path OPTIONS preflight and denies others", () => {
@@ -249,6 +258,24 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     expect(allowedNext).toHaveBeenCalledTimes(1)
     expect(allowedRes.statusMock).not.toHaveBeenCalled()
 
+    const attachPreflightNext = jest.fn()
+    const attachPreflightRes = createMockResponse()
+    const attachPreflightReq = createMockRequest({
+      method: "OPTIONS",
+      originalUrl: "/store/customers/me/cart/attach",
+      headers: {
+        origin: "https://bff.example.com",
+        "access-control-request-method": "POST",
+      },
+    })
+    middleware(
+      attachPreflightReq as never,
+      attachPreflightRes as never,
+      attachPreflightNext
+    )
+    expect(attachPreflightNext).toHaveBeenCalledTimes(1)
+    expect(attachPreflightRes.statusMock).not.toHaveBeenCalled()
+
     const deniedCases: Array<{
       originalUrl: string
       accessControlRequestMethod: string
@@ -263,10 +290,6 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
       },
       {
         originalUrl: "/store/carts/synth_id_01/complete",
-        accessControlRequestMethod: "POST",
-      },
-      {
-        originalUrl: "/store/customers/me/cart/attach",
         accessControlRequestMethod: "POST",
       },
     ]
@@ -332,12 +355,12 @@ describe("Store surface lockdown HTTP matrix (FND-02)", () => {
     // lockdown proof is the guard short-circuit above (handler call count 0).
   })
 
-  it("keeps classification distribution and Phase 15 M1_ENABLED exact-set at enforcement time", () => {
+  it("keeps classification distribution and Phase 16 M1_ENABLED exact-set at enforcement time", () => {
     expect(counts.authorized).toBe(0)
-    expect(counts.extended).toBe(16)
-    expect(counts.blocked).toBe(17)
-    expect(counts.outsideFrontendM1).toBe(31)
-    expect(counts.m1EnabledPolicy).toBe(12)
-    expect(counts.m1EnablementEnabled).toBe(12)
+    expect(counts.extended).toBe(18)
+    expect(counts.blocked).toBe(16)
+    expect(counts.outsideFrontendM1).toBe(32)
+    expect(counts.m1EnabledPolicy).toBe(14)
+    expect(counts.m1EnablementEnabled).toBe(14)
   })
 })
