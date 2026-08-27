@@ -4,11 +4,10 @@ import {
   ContainerRegistrationKeys,
   MedusaError,
   Modules,
-  remoteQueryObjectFromString,
 } from "@medusajs/framework/utils"
 import { rejectClientMoneyFields } from "../../../payment-attempts/validators"
-import { storeCartPreOrderFields } from "../../../query-config"
 import type { StoreCartPreOrderRecord } from "../../../serializers"
+import type { CatalogVariantInput } from "../../../../../../modules/catalog/types"
 import {
   serializePixPaymentAttemptResponse,
   STRIPE_PIX_INITIATION_LAYER,
@@ -67,12 +66,75 @@ type PaymentAttemptModuleLike = {
     Promise<StripePixInitiationLayer | null>
 }
 
+type CartOwnedRetrieveConfig = {
+  select: string[]
+  relations: string[]
+}
+
+type LockedCartLineItem = {
+  id?: string
+  quantity?: unknown
+  title?: string | null
+  product_title?: string | null
+  variant_id?: string | null
+  variant_title?: string | null
+  unit_price?: unknown
+}
+
+type LockedCartRecord = {
+  id: string
+  email?: string | null
+  currency_code?: string | null
+  locale?: string | null
+  total?: unknown
+  subtotal?: unknown
+  item_total?: unknown
+  shipping_total?: unknown
+  tax_total?: unknown
+  discount_total?: unknown
+  region_id?: string | null
+  customer_id?: string | null
+  created_at?: string | Date
+  updated_at?: string | Date
+  completed_at?: string | Date | null
+  metadata?: Record<string, unknown> | null
+  items?: LockedCartLineItem[] | null
+  shipping_address?: StoreCartPreOrderRecord["shipping_address"]
+}
+
 type CartModuleForPaymentTransaction = {
   baseRepository_?: {
     transaction<T>(
       callback: (transactionManager: TransactionalManagerLike) => Promise<T>
     ): Promise<T>
   }
+  retrieveCart?: (
+    cartId: string,
+    config?: CartOwnedRetrieveConfig,
+    sharedContext?: SharedTransactionContext
+  ) => Promise<LockedCartRecord>
+}
+
+const CART_OWNED_RETRIEVE_CONFIG: CartOwnedRetrieveConfig = {
+  select: [
+    "id",
+    "email",
+    "currency_code",
+    "locale",
+    "total",
+    "subtotal",
+    "item_total",
+    "shipping_total",
+    "tax_total",
+    "discount_total",
+    "region_id",
+    "customer_id",
+    "created_at",
+    "updated_at",
+    "completed_at",
+    "metadata",
+  ],
+  relations: ["items", "shipping_address"],
 }
 
 type PgConnectionForPaymentTransaction = {
@@ -87,6 +149,29 @@ function currentPaymentTransactionContext(
     transactionManager,
     manager: transactionManager,
   }
+}
+
+function requirePaymentKnex(
+  sharedContext: SharedTransactionContext
+): KnexLike {
+  const knex = sharedContext.transactionManager.getTransactionContext?.()
+  if (!knex || typeof knex.raw !== "function") {
+    throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
+  }
+
+  return knex
+}
+
+function paymentKnexRows(
+  result: { rows?: Array<Record<string, unknown>> }
+): Array<Record<string, unknown>> {
+  return result.rows ?? []
+}
+
+function asNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null
 }
 
 async function withCartPaymentTransaction<T>(
@@ -182,26 +267,53 @@ async function resolveStripePixInitiationLayer(
   return layer
 }
 
-async function fetchCartById(
+type CartModuleForLockedRetrieve = CartModuleForPaymentTransaction & {
+  retrieveCart: (
+    cartId: string,
+    config?: CartOwnedRetrieveConfig,
+    sharedContext?: SharedTransactionContext
+  ) => Promise<LockedCartRecord>
+}
+
+function resolveCartModuleForLockedRetrieve(
+  req: SessionCapableRequest
+): CartModuleForLockedRetrieve {
+  let cartModule: CartModuleForPaymentTransaction | undefined
+
+  try {
+    cartModule = req.scope.resolve(
+      Modules.CART
+    ) as CartModuleForPaymentTransaction
+  } catch {
+    cartModule = undefined
+  }
+
+  if (
+    typeof cartModule?.retrieveCart !== "function" ||
+    typeof cartModule.baseRepository_?.transaction !== "function"
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Autoridade transacional do cart indisponivel."
+    )
+  }
+
+  return cartModule as CartModuleForLockedRetrieve
+}
+
+async function retrieveLockedCartInTransaction(
   req: SessionCapableRequest,
-  cartId: string
-): Promise<StoreCartPreOrderRecord & { total?: number | null }> {
-  const remoteQuery = req.scope.resolve(ContainerRegistrationKeys.REMOTE_QUERY)
-  const queryObject = remoteQueryObjectFromString({
-    entryPoint: "cart",
-    variables: {
-      filters: {
-        id: cartId,
-      },
-    },
-    fields: [...storeCartPreOrderFields, "total"],
-  })
+  cartId: string,
+  sharedContext: SharedTransactionContext
+): Promise<LockedCartRecord> {
+  const cartModule = resolveCartModuleForLockedRetrieve(req)
+  const cart = await cartModule.retrieveCart(
+    cartId,
+    CART_OWNED_RETRIEVE_CONFIG,
+    sharedContext
+  )
 
-  const [cart] = (await remoteQuery(queryObject)) as Array<
-    StoreCartPreOrderRecord & { total?: number | null }
-  >
-
-  if (!cart) {
+  if (!cart?.id) {
     throw new MedusaError(
       MedusaError.Types.NOT_FOUND,
       `Cart with id '${cartId}' not found`
@@ -209,6 +321,293 @@ async function fetchCartById(
   }
 
   return cart
+}
+
+function projectLockedCartCustomer(
+  cart: LockedCartRecord
+): StoreCartPreOrderRecord["customer"] {
+  const customerId = asNonEmptyString(cart.customer_id)
+  if (!customerId) {
+    return null
+  }
+
+  return {
+    id: customerId,
+    email: cart.email ?? undefined,
+  }
+}
+
+async function hydrateLockedCartRegion(
+  knex: KnexLike,
+  regionId: string | null
+): Promise<StoreCartPreOrderRecord["region"]> {
+  if (!regionId) {
+    return null
+  }
+
+  const result = await knex.raw(
+    `
+      select iso_2
+      from region_country
+      where region_id = ?
+        and deleted_at is null
+    `,
+    [regionId]
+  )
+
+  return {
+    countries: paymentKnexRows(result).map((row) => ({
+      iso_2: asNonEmptyString(row.iso_2),
+    })),
+  }
+}
+
+function coerceLockedCartPriceAmount(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const amount = Number(value)
+    return Number.isFinite(amount) ? amount : undefined
+  }
+
+  return undefined
+}
+
+function parseLockedCartVariantMetadata(
+  value: unknown
+): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function mapLockedCartVariant(row: unknown): CatalogVariantInput | null {
+  if (!row || typeof row !== "object") {
+    return null
+  }
+
+  const variant = row as {
+    id?: unknown
+    sku?: unknown
+    metadata?: unknown
+    prices?: unknown
+  }
+  const id = asNonEmptyString(variant.id)
+  if (!id) {
+    return null
+  }
+
+  const prices = Array.isArray(variant.prices)
+    ? variant.prices.flatMap((price) => {
+        if (!price || typeof price !== "object") {
+          return []
+        }
+
+        const currencyCode = asNonEmptyString(
+          (price as { currency_code?: unknown }).currency_code
+        )
+        if (!currencyCode) {
+          return []
+        }
+
+        const amount = coerceLockedCartPriceAmount(
+          (price as { amount?: unknown }).amount
+        )
+        if (amount === undefined) {
+          return []
+        }
+
+        return [
+          {
+            currency_code: currencyCode,
+            amount,
+          },
+        ]
+      })
+    : undefined
+
+  return {
+    id,
+    sku: asNonEmptyString(variant.sku) ?? undefined,
+    metadata:
+      variant.metadata && typeof variant.metadata === "object"
+        ? (variant.metadata as Record<string, unknown>)
+        : ((variant.metadata as CatalogVariantInput["metadata"]) ?? null),
+    prices,
+  }
+}
+
+async function hydrateLockedCartVariants(
+  knex: KnexLike,
+  variantIds: string[]
+): Promise<Map<string, CatalogVariantInput>> {
+  const variantsById = new Map<string, CatalogVariantInput>()
+  if (variantIds.length === 0) {
+    return variantsById
+  }
+
+  const placeholders = variantIds.map(() => "?").join(", ")
+  const [variantResult, linkResult] = await Promise.all([
+    knex.raw(
+      `
+        select id, sku, metadata
+        from product_variant
+        where id in (${placeholders})
+          and deleted_at is null
+      `,
+      variantIds
+    ),
+    knex.raw(
+      `
+        select variant_id, price_set_id
+        from product_variant_price_set
+        where variant_id in (${placeholders})
+          and deleted_at is null
+      `,
+      variantIds
+    ),
+  ])
+
+  const variantRows = paymentKnexRows(variantResult)
+  const linkRows = paymentKnexRows(linkResult)
+  const priceSetIds = [
+    ...new Set(
+      linkRows
+        .map((row) => asNonEmptyString(row.price_set_id))
+        .filter((priceSetId): priceSetId is string => Boolean(priceSetId))
+    ),
+  ]
+
+  const pricesByPriceSetId = new Map<
+    string,
+    Array<{ currency_code: string; amount: number }>
+  >()
+  if (priceSetIds.length > 0) {
+    const pricePlaceholders = priceSetIds.map(() => "?").join(", ")
+    const priceResult = await knex.raw(
+      `
+        select price_set_id, currency_code, amount
+        from price
+        where price_set_id in (${pricePlaceholders})
+          and deleted_at is null
+      `,
+      priceSetIds
+    )
+
+    for (const row of paymentKnexRows(priceResult)) {
+      const priceSetId = asNonEmptyString(row.price_set_id)
+      const currencyCode = asNonEmptyString(row.currency_code)
+      const amount = coerceLockedCartPriceAmount(row.amount)
+      if (!priceSetId || !currencyCode || amount === undefined) {
+        continue
+      }
+
+      const prices = pricesByPriceSetId.get(priceSetId) ?? []
+      prices.push({ currency_code: currencyCode, amount })
+      pricesByPriceSetId.set(priceSetId, prices)
+    }
+  }
+
+  const pricesByVariantId = new Map<
+    string,
+    Array<{ currency_code: string; amount: number }>
+  >()
+  for (const row of linkRows) {
+    const variantId = asNonEmptyString(row.variant_id)
+    const priceSetId = asNonEmptyString(row.price_set_id)
+    if (!variantId || !priceSetId) {
+      continue
+    }
+
+    const linkedPrices = pricesByPriceSetId.get(priceSetId) ?? []
+    const prices = pricesByVariantId.get(variantId) ?? []
+    prices.push(...linkedPrices)
+    pricesByVariantId.set(variantId, prices)
+  }
+
+  for (const row of variantRows) {
+    const variantId = asNonEmptyString(row.id)
+    if (!variantId) {
+      continue
+    }
+
+    const variant = mapLockedCartVariant({
+      id: variantId,
+      sku: row.sku,
+      metadata: parseLockedCartVariantMetadata(row.metadata),
+      prices: pricesByVariantId.get(variantId) ?? [],
+    })
+    if (variant?.id) {
+      variantsById.set(variant.id, variant)
+    }
+  }
+
+  for (const variantId of variantIds) {
+    if (!variantsById.has(variantId)) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "Catalogo de variantes indisponivel para iniciar pagamento."
+      )
+    }
+  }
+
+  return variantsById
+}
+
+async function adaptLockedCartForPaymentPipeline(
+  lockedCart: LockedCartRecord,
+  sharedContext: SharedTransactionContext
+): Promise<StoreCartPreOrderRecord & { total?: number | null }> {
+  const knex = requirePaymentKnex(sharedContext)
+  const variantIds = [
+    ...new Set(
+      (lockedCart.items ?? [])
+        .map((item) => asNonEmptyString(item.variant_id))
+        .filter((variantId): variantId is string => Boolean(variantId))
+    ),
+  ]
+  const [region, variantsById] = await Promise.all([
+    hydrateLockedCartRegion(knex, asNonEmptyString(lockedCart.region_id)),
+    hydrateLockedCartVariants(knex, variantIds),
+  ])
+
+  return {
+    ...lockedCart,
+    customer: projectLockedCartCustomer(lockedCart),
+    region,
+    items: (lockedCart.items ?? []).map((item) => {
+      const variantId = asNonEmptyString(item.variant_id)
+
+      return {
+        id: item.id,
+        quantity: item.quantity as number | null,
+        title: item.title ?? null,
+        product_title: item.product_title ?? null,
+        variant_id: variantId,
+        variant_title: item.variant_title ?? null,
+        unit_price: item.unit_price as number | null,
+        variant: variantId ? variantsById.get(variantId) ?? null : null,
+      }
+    }),
+    shipping_address: lockedCart.shipping_address ?? null,
+  }
 }
 
 async function readCartResourceVersion(
@@ -426,7 +825,15 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       transaction as unknown as PaymentAttemptSqlTransaction,
       cartId
     )
-    const cart = await fetchCartById(request, cartId)
+    const lockedCart = await retrieveLockedCartInTransaction(
+      request,
+      cartId,
+      sharedContext
+    )
+    const cart = await adaptLockedCartForPaymentPipeline(
+      lockedCart,
+      sharedContext
+    )
     assertPostLockCartOwnership(
       cart,
       actor,

@@ -2517,6 +2517,151 @@ function assertHr07CardEligibilityRejectedClosed(
   expect(harness.queryGraph.graph).not.toHaveBeenCalled()
 }
 
+function assertHr07PixSameTransactionManager(
+  harness: ReturnType<typeof wireHr08PaymentStartScope>
+) {
+  expect(harness.lockTransactionManager).toBeDefined()
+  expect(harness.retrieveSharedContext?.transactionManager).toBeDefined()
+  expect(harness.retrieveSharedContext?.transactionManager).toBe(
+    harness.lockTransactionManager
+  )
+  expect(harness.retrieveSharedContext?.transactionManager).toBe(
+    harness.transactionManager
+  )
+  expect(harness.lockTransactionManager).toBe(harness.transactionManager)
+
+  const retrieveManager = harness.retrieveSharedContext?.transactionManager as
+    | { getTransactionContext?: () => unknown }
+    | undefined
+  const lockManager = harness.lockTransactionManager as
+    | { getTransactionContext?: () => unknown }
+    | undefined
+  expect(retrieveManager?.getTransactionContext?.()).toBe(harness.knex)
+  expect(lockManager?.getTransactionContext?.()).toBe(harness.knex)
+  expect(harness.transactionManager.getTransactionContext()).toBe(harness.knex)
+  expect(
+    harness.knex.raw.mock.calls.some(
+      ([sql]: [string]) => classifyHr08Sql(sql) === "lock"
+    )
+  ).toBe(true)
+
+  const lockIndex = hr08LedgerIndex(harness.ledger, "lock")
+  const rereadIndex = hr08LedgerIndex(harness.ledger, "cart-reread")
+  expect(rereadIndex).toBeGreaterThan(lockIndex)
+  expect(harness.ledger[rereadIndex]?.transactionManager).toBe(
+    harness.lockTransactionManager
+  )
+  expect(harness.ledger[lockIndex]?.transactionManager).toBe(
+    harness.lockTransactionManager
+  )
+
+  expect(harness.retrieveCartCount).toBe(1)
+  expect(harness.remoteQueryCartCount).toBe(0)
+  expect(harness.resolvedKeys).not.toContain(
+    ContainerRegistrationKeys.REMOTE_QUERY
+  )
+  expect(harness.cartModule.retrieveCart).toHaveBeenCalledTimes(1)
+  expect(harness.cartModule.retrieveCart).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({
+      select: expect.any(Array),
+      relations: expect.arrayContaining(["items", "shipping_address"]),
+    }),
+    expect.objectContaining({
+      __type: "MedusaContext",
+      transactionManager: harness.lockTransactionManager,
+      manager: harness.lockTransactionManager,
+    })
+  )
+
+  expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
+  expect(harness.queryGraph.graph).not.toHaveBeenCalled()
+  expect(harness.resolvedKeys).not.toContain(Modules.REGION)
+  expect(harness.resolvedKeys).not.toContain(ContainerRegistrationKeys.QUERY)
+  expect(harness.resolvedKeys).not.toContain(Modules.PAYMENT)
+  expect(harness.resolvedKeys).not.toContain(Modules.WORKFLOW_ENGINE)
+  expect(harness.paymentCollectionQueryCount).toBe(0)
+
+  const hydrateTypes = [
+    "region-hydrate",
+    "variant-hydrate",
+    "variant-price-link",
+  ] as const
+  const reviewIndex = harness.ledger.findIndex(
+    (event) => event.type === "review-read"
+  )
+  const failureIndex = harness.ledger.findIndex(
+    (event) => event.type === "failure"
+  )
+  const hydrateBeforeIndex =
+    reviewIndex >= 0
+      ? reviewIndex
+      : failureIndex >= 0
+        ? failureIndex
+        : harness.ledger.length
+
+  for (const type of hydrateTypes) {
+    const events = harness.ledger.filter((event) => event.type === type)
+    expect(events.length).toBeGreaterThan(0)
+    for (const event of events) {
+      const index = harness.ledger.indexOf(event)
+      expect(event.transactionManager).toBe(harness.lockTransactionManager)
+      expect(index).toBeGreaterThan(rereadIndex)
+      expect(index).toBeLessThan(hydrateBeforeIndex)
+    }
+  }
+}
+
+function assertHr07PixNoCatalogQueriesAfterReview(
+  harness: ReturnType<typeof wireHr08PaymentStartScope>
+) {
+  assertHr07CardNoCatalogQueriesAfterReview(harness)
+  expect(
+    harness.stripePixInitiationLayer.createPixPaymentIntent
+  ).not.toHaveBeenCalled()
+  expect(harness.resolvedKeys).not.toContain(Modules.PAYMENT)
+  expect(harness.resolvedKeys).not.toContain(Modules.WORKFLOW_ENGINE)
+}
+
+function assertHr07PixEligibilityRejectedClosed(
+  harness: ReturnType<typeof wireHr08PaymentStartScope>,
+  thrown: unknown
+) {
+  expect(thrown).toBeInstanceOf(MedusaError)
+  expect(thrown).toMatchObject({
+    type: MedusaError.Types.INVALID_DATA,
+    message: "Checkout incompleto; pagamento nao pode ser iniciado.",
+  })
+  expect((thrown as { code?: string } | undefined)?.code).not.toBe(
+    "REVIEW_REQUIRED"
+  )
+  expect(
+    harness.stripePixInitiationLayer.createPixPaymentIntent
+  ).not.toHaveBeenCalled()
+  expect(
+    harness.ledger.filter((event) => event.type === "provider-call")
+  ).toHaveLength(0)
+  expect(
+    harness.ledger.filter((event) => event.type === "payment-attempt-persist")
+  ).toHaveLength(0)
+  expect(
+    harness.paymentAttemptModule.createPaymentAttempts
+  ).not.toHaveBeenCalled()
+  expect(
+    harness.ledger.filter((event) => event.type === "order-resolve")
+  ).toHaveLength(0)
+  expect(harness.paymentCollectionQueryCount).toBe(0)
+  expect(harness.remoteQueryCartCount).toBe(0)
+  expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+  expect(harness.workflowEngine.run).not.toHaveBeenCalled()
+  expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
+  expect(harness.queryGraph.graph).not.toHaveBeenCalled()
+  expect(harness.resolvedKeys).not.toContain(Modules.REGION)
+  expect(harness.resolvedKeys).not.toContain(ContainerRegistrationKeys.QUERY)
+  expect(harness.resolvedKeys).not.toContain(Modules.PAYMENT)
+  expect(harness.resolvedKeys).not.toContain(Modules.WORKFLOW_ENGINE)
+}
+
 describe("B16-09-HR-08 Card dynamic HTTP evidence", () => {
   it("B16-09-HR-08 Card pending review returns 409 REVIEW_REQUIRED before provider", async () => {
     const cart = buildHr08CustomerCart("cart_hr08_card_pending", HR08_CUSTOMER_A)
@@ -3078,6 +3223,424 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
       expect.stringMatching(/from\s+product_variant\b/i),
       ["variant_sellable"]
     )
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "review-read",
+      "failure",
+    ])
+    expect(
+      harness.ledger.filter((event) => event.type === "eligibility")
+    ).toHaveLength(0)
+    expect(res.jsonSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
+  it("B16-09-HR-07 Pix lock and cart retrieve share the same transaction manager", async () => {
+    const cart = buildHr08CustomerCart("cart_hr07_pix_identity", HR08_CUSTOMER_A)
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "acknowledged",
+    })
+    const res = createResponse()
+
+    await startPixPaymentAttemptRoute(req, res)
+
+    expect(harness.lockTransactionManager).toBeDefined()
+    expect(harness.retrieveSharedContext?.transactionManager).toBeDefined()
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07PixSameTransactionManager(harness)
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "review-read",
+      "eligibility",
+      "provider-call",
+    ])
+
+    expect(res.statusCode).toBe(201)
+    const body = res.jsonSpy.mock.calls[0][0] as {
+      payment_attempt: {
+        payment_method_type: string
+        status: string
+        copy_paste: string
+        qr_code: string
+        expires_at: string
+      }
+    }
+    expect(body.payment_attempt).toEqual(
+      expect.objectContaining({
+        payment_method_type: "pix",
+        status: "awaiting_pix_payment",
+        copy_paste: expect.any(String),
+        qr_code: expect.any(String),
+        expires_at: expect.any(String),
+      })
+    )
+    expect(
+      harness.stripePixInitiationLayer.createPixPaymentIntent
+    ).toHaveBeenCalledTimes(1)
+    expect(
+      harness.ledger.filter((event) => event.type === "provider-call")
+    ).toHaveLength(1)
+    expect(
+      harness.paymentAttemptModule.createPaymentAttempts
+    ).toHaveBeenCalledTimes(1)
+    const persisted = harness.paymentAttemptModule.createPaymentAttempts.mock
+      .calls[0][0] as PaymentAttemptRecord
+    expect(persisted.order_id).toBeNull()
+    expect(
+      harness.ledger.filter((event) => event.type === "order-resolve")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "failure")
+    ).toHaveLength(0)
+    expect(harness.remoteQueryCartCount).toBe(0)
+    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+    expect(harness.workflowEngine.run).not.toHaveBeenCalled()
+    assertHr08NoPublicLeakage(body)
+  })
+
+  it("B16-09-HR-07 Pix ownership mismatch fails closed before review and provider", async () => {
+    const cart = buildHr08CustomerCart(
+      "cart_hr07_pix_foreign",
+      HR08_CUSTOMER_B
+    )
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "pending",
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await startPixPaymentAttemptRoute(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(MedusaError)
+    expect(thrown).toMatchObject({
+      type: MedusaError.Types.INVALID_DATA,
+    })
+    expect((thrown as { code?: string } | undefined)?.code).not.toBe(
+      "REVIEW_REQUIRED"
+    )
+
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07PixSameTransactionManager(harness)
+
+    expect(
+      harness.stripePixInitiationLayer.createPixPaymentIntent
+    ).not.toHaveBeenCalled()
+    expect(
+      harness.ledger.filter((event) => event.type === "provider-call")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "review-read")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "eligibility")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "payment-attempt-persist")
+    ).toHaveLength(0)
+    expect(
+      harness.paymentAttemptModule.createPaymentAttempts
+    ).not.toHaveBeenCalled()
+    expect(
+      harness.ledger.filter((event) => event.type === "order-resolve")
+    ).toHaveLength(0)
+    expect(harness.paymentCollectionQueryCount).toBe(0)
+    expect(harness.remoteQueryCartCount).toBe(0)
+    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+    expect(harness.workflowEngine.run).not.toHaveBeenCalled()
+    expect(harness.resolvedKeys).not.toContain(Modules.PAYMENT)
+    expect(harness.resolvedKeys).not.toContain(Modules.WORKFLOW_ENGINE)
+
+    const ownershipEvent = harness.ledger.find(
+      (event) => event.type === "ownership-check-input"
+    )
+    expect(ownershipEvent).toEqual(
+      expect.objectContaining({
+        type: "ownership-check-input",
+        cartId: cart.id,
+        customerId: HR08_CUSTOMER_B,
+        transactionManager: harness.lockTransactionManager,
+      })
+    )
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "failure",
+    ])
+    expect(res.jsonSpy).not.toHaveBeenCalled()
+  })
+
+  it("B16-09-HR-07 Pix pending review returns 409 REVIEW_REQUIRED before provider", async () => {
+    const cart = buildHr08CustomerCart("cart_hr07_pix_pending", HR08_CUSTOMER_A)
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "pending",
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await startPixPaymentAttemptRoute(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeDefined()
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07PixSameTransactionManager(harness)
+    assertHr08PendingBeforeProvider({
+      error: thrown,
+      harness,
+      stripeIntent: harness.stripePixInitiationLayer
+        .createPixPaymentIntent as jest.Mock,
+    })
+    expect(
+      harness.ledger.filter((event) => event.type === "provider-call")
+    ).toHaveLength(0)
+    expect(harness.paymentCollectionQueryCount).toBe(0)
+    expect(harness.remoteQueryCartCount).toBe(0)
+    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+    expect(harness.medusaPaymentModule.updatePaymentSessions).not.toHaveBeenCalled()
+    expect(harness.workflowEngine.run).not.toHaveBeenCalled()
+    expect(
+      harness.paymentAttemptModule.createPaymentAttempts
+    ).not.toHaveBeenCalled()
+    expect(
+      harness.ledger.filter((event) => event.type === "payment-attempt-persist")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "order-resolve")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "eligibility")
+    ).toHaveLength(0)
+    expect(harness.resolvedKeys).not.toContain(Modules.PAYMENT)
+    expect(harness.resolvedKeys).not.toContain(Modules.WORKFLOW_ENGINE)
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "review-read",
+      "failure",
+    ])
+    assertHr07PixNoCatalogQueriesAfterReview(harness)
+    expect(res.jsonSpy).not.toHaveBeenCalled()
+  })
+
+  it("B16-09-HR-07 Pix allowed after review persists one attempt with local provider", async () => {
+    const cart = buildHr08CustomerCart("cart_hr07_pix_allowed", HR08_CUSTOMER_A)
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "acknowledged",
+    })
+    const res = createResponse()
+
+    await startPixPaymentAttemptRoute(req, res)
+
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07PixSameTransactionManager(harness)
+
+    expect(res.statusCode).toBe(201)
+    const body = res.jsonSpy.mock.calls[0][0] as {
+      payment_attempt: {
+        payment_method_type: string
+        status: string
+        copy_paste: string
+        qr_code: string
+        expires_at: string
+      }
+    }
+    expect(body.payment_attempt).toEqual(
+      expect.objectContaining({
+        payment_method_type: "pix",
+        status: "awaiting_pix_payment",
+        copy_paste: expect.any(String),
+        qr_code: expect.any(String),
+        expires_at: expect.any(String),
+      })
+    )
+    expect(
+      harness.stripePixInitiationLayer.createPixPaymentIntent
+    ).toHaveBeenCalledTimes(1)
+    expect(
+      harness.ledger.filter((event) => event.type === "provider-call")
+    ).toHaveLength(1)
+    expect(
+      harness.paymentAttemptModule.createPaymentAttempts
+    ).toHaveBeenCalledTimes(1)
+    expect(
+      harness.ledger.filter((event) => event.type === "payment-attempt-persist")
+    ).toHaveLength(1)
+    const persisted = harness.paymentAttemptModule.createPaymentAttempts.mock
+      .calls[0][0] as PaymentAttemptRecord
+    expect(persisted.order_id).toBeNull()
+    expect(
+      harness.ledger.filter((event) => event.type === "order-resolve")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "failure")
+    ).toHaveLength(0)
+    expect(harness.resolvedKeys).not.toContain(Modules.PAYMENT)
+    expect(harness.resolvedKeys).not.toContain(Modules.WORKFLOW_ENGINE)
+    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+    expect(harness.workflowEngine.run).not.toHaveBeenCalled()
+    expect(harness.paymentCollectionQueryCount).toBe(0)
+    expect(harness.remoteQueryCartCount).toBe(0)
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "review-read",
+      "eligibility",
+      "provider-call",
+    ])
+    expect(
+      harness.ledger.find((event) => event.type === "region-hydrate")?.iso2
+    ).toBe("br")
+    expect(
+      harness.ledger.filter((event) => event.type === "price-hydrate").length
+    ).toBeGreaterThan(0)
+    expect(
+      harness.ledger
+        .filter((event) => event.type === "price-hydrate")
+        .every(
+          (event) => event.transactionManager === harness.lockTransactionManager
+        )
+    ).toBe(true)
+    expect(harness.knex.raw).toHaveBeenCalledWith(
+      expect.stringMatching(/from\s+region_country/i),
+      [cart.region_id]
+    )
+    expect(harness.knex.raw).toHaveBeenCalledWith(
+      expect.stringMatching(/from\s+product_variant\b/i),
+      ["variant_sellable"]
+    )
+    expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
+    expect(harness.queryGraph.graph).not.toHaveBeenCalled()
+    assertHr08NoPublicLeakage(body)
+  })
+
+  it("B16-09-HR-07 Pix stale region snapshot rejects while unbound Region would allow", async () => {
+    const cart = buildHr08CustomerCart(
+      "cart_hr07_pix_stale_region",
+      HR08_CUSTOMER_A
+    )
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "acknowledged",
+      knexCatalog: {
+        regionCountries: [{ iso_2: "us" }],
+      },
+      unboundRegionCountries: [{ iso_2: "br" }],
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await startPixPaymentAttemptRoute(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07PixSameTransactionManager(harness)
+    assertHr07PixEligibilityRejectedClosed(harness, thrown)
+    expect(
+      harness.ledger.find((event) => event.type === "region-hydrate")?.iso2
+    ).toBe("us")
+    expect(harness.knex.raw).toHaveBeenCalledWith(
+      expect.stringMatching(/from\s+region_country/i),
+      [cart.region_id]
+    )
+    expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
+    expect(harness.resolvedKeys).not.toContain(Modules.REGION)
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "review-read",
+      "failure",
+    ])
+    expect(
+      harness.ledger.filter((event) => event.type === "eligibility")
+    ).toHaveLength(0)
+    expect(res.jsonSpy).not.toHaveBeenCalled()
+  })
+
+  it("B16-09-HR-07 Pix stale variant snapshot rejects while unbound QUERY would allow", async () => {
+    const cart = buildHr08CustomerCart(
+      "cart_hr07_pix_stale_variant",
+      HR08_CUSTOMER_A
+    )
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "acknowledged",
+      knexCatalog: {
+        variantRows: [
+          {
+            id: "variant_sellable",
+            sku: "TSHIRT-BLACK-M",
+            metadata: {},
+          },
+        ],
+        priceLinkRows: [],
+        priceRows: [],
+      },
+      unboundQueryVariants: [sellableVariant()],
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await startPixPaymentAttemptRoute(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07PixSameTransactionManager(harness)
+    assertHr07PixEligibilityRejectedClosed(harness, thrown)
+    expect(harness.knex.raw).toHaveBeenCalledWith(
+      expect.stringMatching(/from\s+product_variant\b/i),
+      ["variant_sellable"]
+    )
+    expect(harness.queryGraph.graph).not.toHaveBeenCalled()
+    expect(harness.resolvedKeys).not.toContain(ContainerRegistrationKeys.QUERY)
     expectHr08LedgerOrder(harness.ledger, [
       "transaction-start",
       "lock",
