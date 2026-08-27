@@ -12,8 +12,6 @@ import {
   createCartWorkflow,
   createPaymentCollectionForCartWorkflowId,
   deleteLineItemsWorkflow,
-  transferCartCustomerWorkflowId,
-  updateCartWorkflowId,
   updateLineItemInCartWorkflow,
 } from "@medusajs/core-flows"
 import defaultMiddlewares from "../../src/api/middlewares"
@@ -30,7 +28,6 @@ import {
   GET as getActiveCart,
   POST as postActiveCart,
 } from "../../src/api/store/carts/active/route"
-import { POST as attachGuestCart } from "../../src/api/store/customers/me/cart/attach/route"
 import { POST as startCardPaymentAttemptRoute } from "../../src/api/store/carts/[id]/payment-attempts/card/route"
 import { POST as startPixPaymentAttemptRoute } from "../../src/api/store/carts/[id]/payment-attempts/pix/route"
 import {
@@ -54,8 +51,6 @@ jest.mock("@medusajs/core-flows", () => ({
   addToCartWorkflow: jest.fn(),
   deleteLineItemsWorkflow: jest.fn(),
   updateLineItemInCartWorkflow: jest.fn(),
-  transferCartCustomerWorkflowId: "transferCartCustomerWorkflow",
-  updateCartWorkflowId: "updateCartWorkflow",
   createPaymentCollectionForCartWorkflowId: "createPaymentCollectionForCart",
 }))
 
@@ -544,17 +539,6 @@ async function invokeActiveCartRoute(
   return res
 }
 
-async function invokeAttachRoute(req: SessionCapableRequest) {
-  const res = createResponse()
-
-  applyStoreCartPreOrderQueryConfig(req as never)
-  storeCartPreOrderResponseMiddleware(req, res, jest.fn())
-
-  await attachGuestCart(req, res)
-
-  return res
-}
-
 describe("cart checkout store contract", () => {
   const mockedCreateCartWorkflow = createCartWorkflow as unknown as jest.Mock
 
@@ -725,8 +709,8 @@ describe("cart checkout store contract", () => {
     })
   })
 
-  // Internal handler invariants only — public POST /store/customers/me/cart/attach
-  // is BLOCKED→DENY via store-surface guard (see store-surface-lockdown.spec.ts).
+  // Public attach is a PRESERVE_LEGACY deprecated facade; executable attach proofs live in
+  // cart-merge-review.spec.ts (executeCartMerge pipeline, merge body, GUEST_CART_ATTACHED).
   describe("guest cart attach / transfer", () => {
     it("public attach surface is PRESERVE_LEGACY while handler-level domain proofs remain", () => {
       expect(
@@ -737,319 +721,6 @@ describe("cart checkout store contract", () => {
           (route) => String(route.matcher) === "/store*"
         )
       ).toBe(true)
-    })
-
-    it("transfere apenas o guest cart autorizado, nao vazio, da sessao atual", async () => {
-      const guestCart = buildCompleteGuestCart({
-        id: "cart_guest_01",
-        email: "guest@exemplo.com",
-      })
-      const customerCart = buildCompleteGuestCart({
-        id: "cart_customer_old",
-        email: "cliente@exemplo.com",
-        customer: {
-          id: "cus_123",
-          email: "cliente@exemplo.com",
-        },
-      })
-      const attachedCart = {
-        ...guestCart,
-        customer: {
-          id: "cus_123",
-          email: "cliente@exemplo.com",
-        },
-        email: "cliente@exemplo.com",
-      }
-
-      const remoteQuery = createRemoteQueryResolver({
-        carts: {
-          [guestCart.id]: guestCart,
-          [customerCart.id]: customerCart,
-          [attachedCart.id]: attachedCart,
-        },
-        customers: {
-          cus_123: {
-            id: "cus_123",
-            email: "cliente@exemplo.com",
-          },
-        },
-        customerCarts: {
-          cus_123: [customerCart],
-        },
-      })
-      const workflowRun = jest.fn(async () => ({ result: {} }))
-
-      const req = createRequest({
-        auth_context: {
-          actor_id: "cus_123",
-          actor_type: "customer",
-        },
-        session: {
-          id: "sess_01",
-          active_cart_id: guestCart.id,
-        },
-        body: {
-          cart_id: guestCart.id,
-        },
-      })
-      wireScope(req, { remoteQuery, workflowRun })
-
-      const res = await invokeAttachRoute(req)
-
-      expect(res.statusCode).toBe(200)
-      const body = res.jsonSpy.mock.calls[0][0]
-      assertPreOrderHttpBody(body)
-      expect(body.outcome).toBe("attached_guest_cart")
-      expect(body.cart.email).toBe("cliente@exemplo.com")
-      expect(workflowRun).toHaveBeenCalledWith(transferCartCustomerWorkflowId, {
-        input: {
-          id: guestCart.id,
-          customer_id: "cus_123",
-        },
-      })
-      expect(workflowRun).toHaveBeenCalledWith(updateCartWorkflowId, {
-        input: {
-          id: guestCart.id,
-          email: "cliente@exemplo.com",
-        },
-      })
-    })
-
-    it("rejeita cart_id no body quando nao corresponde a sessao atual", async () => {
-      const guestCart = buildCompleteGuestCart({ id: "cart_guest_01" })
-      const remoteQuery = createRemoteQueryResolver({
-        carts: {
-          [guestCart.id]: guestCart,
-        },
-        customers: {
-          cus_123: {
-            id: "cus_123",
-            email: "cliente@exemplo.com",
-          },
-        },
-      })
-
-      const req = createRequest({
-        auth_context: {
-          actor_id: "cus_123",
-          actor_type: "customer",
-        },
-        session: {
-          id: "sess_01",
-          active_cart_id: "cart_guest_01",
-        },
-        body: {
-          cart_id: "cart_guest_999",
-        },
-      })
-      wireScope(req, { remoteQuery })
-
-      await expect(invokeAttachRoute(req)).rejects.toMatchObject({
-        type: MedusaError.Types.FORBIDDEN,
-        message: "Guest cart da sessao atual nao esta autorizado para attach.",
-      })
-    })
-
-    it("rejeita quando a sessao aponta para cart diferente do body", async () => {
-      const guestCart = buildCompleteGuestCart({ id: "cart_guest_other" })
-      const remoteQuery = createRemoteQueryResolver({
-        carts: {
-          [guestCart.id]: guestCart,
-        },
-        customers: {
-          cus_123: {
-            id: "cus_123",
-            email: "cliente@exemplo.com",
-          },
-        },
-      })
-
-      const req = createRequest({
-        auth_context: {
-          actor_id: "cus_123",
-          actor_type: "customer",
-        },
-        session: {
-          id: "sess_01",
-          active_cart_id: "cart_guest_01",
-        },
-        body: {
-          cart_id: "cart_guest_other",
-        },
-      })
-      wireScope(req, { remoteQuery })
-
-      await expect(invokeAttachRoute(req)).rejects.toMatchObject({
-        type: MedusaError.Types.FORBIDDEN,
-      })
-    })
-
-    it("preserva o customer cart util quando o guest cart da sessao esta vazio", async () => {
-      const emptyGuestCart = buildStoreCartRecord({
-        id: "cart_guest_empty",
-      })
-      const customerCart = buildCompleteGuestCart({
-        id: "cart_customer_useful",
-        email: "cliente@exemplo.com",
-        customer: {
-          id: "cus_123",
-          email: "cliente@exemplo.com",
-        },
-      })
-      const remoteQuery = createRemoteQueryResolver({
-        carts: {
-          [emptyGuestCart.id]: emptyGuestCart,
-          [customerCart.id]: customerCart,
-        },
-        customers: {
-          cus_123: {
-            id: "cus_123",
-            email: "cliente@exemplo.com",
-          },
-        },
-        customerCarts: {
-          cus_123: [customerCart],
-        },
-      })
-      const workflowRun = jest.fn(async () => ({ result: {} }))
-
-      const req = createRequest({
-        auth_context: {
-          actor_id: "cus_123",
-          actor_type: "customer",
-        },
-        session: {
-          id: "sess_01",
-          active_cart_id: emptyGuestCart.id,
-        },
-      })
-      wireScope(req, { remoteQuery, workflowRun })
-
-      const res = await invokeAttachRoute(req)
-
-      expect(res.statusCode).toBe(200)
-      const body = res.jsonSpy.mock.calls[0][0]
-      expect(body.outcome).toBe("preserve_customer_cart")
-      expect(body.reason).toBe("guest_cart_empty_or_not_usable")
-      expect(body.cart.id).toBe("cart_customer_useful")
-      expect(workflowRun).not.toHaveBeenCalled()
-    })
-
-    it("faz o guest cart nao vazio vencer no login e marca o cart antigo como superseded", async () => {
-      const guestCart = buildCompleteGuestCart({
-        id: "cart_guest_winning",
-        email: "guest@exemplo.com",
-      })
-      const oldCustomerCart = buildCompleteGuestCart({
-        id: "cart_customer_old",
-        email: "cliente@exemplo.com",
-        customer: {
-          id: "cus_123",
-          email: "cliente@exemplo.com",
-        },
-      })
-      const attachedCart = {
-        ...guestCart,
-        customer: {
-          id: "cus_123",
-          email: "cliente@exemplo.com",
-        },
-        email: "cliente@exemplo.com",
-      }
-
-      const remoteQuery = createRemoteQueryResolver({
-        carts: {
-          [guestCart.id]: guestCart,
-          [oldCustomerCart.id]: oldCustomerCart,
-          [attachedCart.id]: attachedCart,
-        },
-        customers: {
-          cus_123: {
-            id: "cus_123",
-            email: "cliente@exemplo.com",
-          },
-        },
-        customerCarts: {
-          cus_123: [oldCustomerCart],
-        },
-      })
-      const workflowRun = jest.fn(async () => ({ result: {} }))
-
-      const req = createRequest({
-        auth_context: {
-          actor_id: "cus_123",
-          actor_type: "customer",
-        },
-        session: {
-          id: "sess_01",
-          active_cart_id: guestCart.id,
-        },
-      })
-      wireScope(req, { remoteQuery, workflowRun })
-
-      const res = await invokeAttachRoute(req)
-
-      expect(res.statusCode).toBe(200)
-      const body = res.jsonSpy.mock.calls[0][0]
-      expect(body.cart.id).toBe("cart_guest_winning")
-      expect(workflowRun).toHaveBeenCalledWith(
-        updateCartWorkflowId,
-        expect.objectContaining({
-          input: expect.objectContaining({
-            id: "cart_customer_old",
-            metadata: expect.objectContaining({
-              active_for_checkout: false,
-              superseded_by_cart_id: "cart_guest_winning",
-            }),
-          }),
-        })
-      )
-    })
-
-    it("usa customer.email como email final apos attach", async () => {
-      const guestCart = buildCompleteGuestCart({
-        id: "cart_guest_01",
-        email: "guest@exemplo.com",
-      })
-      const attachedCart = {
-        ...guestCart,
-        email: "cliente@exemplo.com",
-        customer: {
-          id: "cus_123",
-          email: "cliente@exemplo.com",
-        },
-      }
-      const remoteQuery = createRemoteQueryResolver({
-        carts: {
-          [guestCart.id]: guestCart,
-          [attachedCart.id]: attachedCart,
-        },
-        customers: {
-          cus_123: {
-            id: "cus_123",
-            email: "cliente@exemplo.com",
-          },
-        },
-      })
-      const workflowRun = jest.fn(async () => ({ result: {} }))
-
-      const req = createRequest({
-        auth_context: {
-          actor_id: "cus_123",
-          actor_type: "customer",
-        },
-        session: {
-          id: "sess_01",
-          active_cart_id: guestCart.id,
-        },
-      })
-      wireScope(req, { remoteQuery, workflowRun })
-
-      const res = await invokeAttachRoute(req)
-      const body = res.jsonSpy.mock.calls[0][0]
-
-      expect(body.cart.email).toBe("cliente@exemplo.com")
-      expect(body.cart.customer.email).toBe("cliente@exemplo.com")
     })
   })
 
@@ -1286,107 +957,6 @@ describe("cart checkout store contract", () => {
 
       const guestRes = await invokeActiveCartRoute("GET", guestReq)
       assertPreOrderHttpBody(guestRes.jsonSpy.mock.calls[0][0])
-
-      const attachReq = createRequest({
-        auth_context: {
-          actor_id: "cus_123",
-          actor_type: "customer",
-        },
-        session: {
-          id: "sess_01",
-          active_cart_id: guestCart.id,
-        },
-      })
-      wireScope(attachReq, {
-        remoteQuery: createRemoteQueryResolver({
-          carts: {
-            [guestCart.id]: guestCart,
-            [`${guestCart.id}-attached`]: {
-              ...guestCart,
-              id: `${guestCart.id}-attached`,
-              customer: {
-                id: "cus_123",
-                email: "cliente@exemplo.com",
-              },
-              email: "cliente@exemplo.com",
-            },
-          },
-          customers: {
-            cus_123: {
-              id: "cus_123",
-              email: "cliente@exemplo.com",
-            },
-          },
-        }),
-        workflowRun: jest.fn(async () => ({ result: {} })),
-      })
-
-      const attachRes = await invokeAttachRoute(attachReq)
-      assertPreOrderHttpBody(attachRes.jsonSpy.mock.calls[0][0])
-    })
-
-    it("nao resolve nem chama workflows/servicos de Order, PaymentSession ou fulfillment", async () => {
-      const guestCart = buildCompleteGuestCart({ id: "cart_guest_01" })
-      const attachedCart = {
-        ...guestCart,
-        customer: {
-          id: "cus_123",
-          email: "cliente@exemplo.com",
-        },
-        email: "cliente@exemplo.com",
-      }
-      const workflowRun = jest.fn(async () => ({ result: {} }))
-      const scopeResolve = jest.fn((key: string) => {
-        if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
-          return createRemoteQueryResolver({
-            carts: {
-              [guestCart.id]: guestCart,
-              [attachedCart.id]: attachedCart,
-            },
-            customers: {
-              cus_123: {
-                id: "cus_123",
-                email: "cliente@exemplo.com",
-              },
-            },
-          })
-        }
-
-        if (key === Modules.WORKFLOW_ENGINE) {
-          return { run: workflowRun }
-        }
-
-        if (
-          key.includes("order") ||
-          key.includes("payment") ||
-          key.includes("gelato") ||
-          key.includes("stripe")
-        ) {
-          throw new Error(`FORBIDDEN_SERVICE_RESOLVED:${key}`)
-        }
-
-        return undefined
-      })
-
-      const req = createRequest({
-        auth_context: {
-          actor_id: "cus_123",
-          actor_type: "customer",
-        },
-        session: {
-          id: "sess_01",
-          active_cart_id: guestCart.id,
-        },
-      })
-      req.scope.resolve = scopeResolve as SessionCapableRequest["scope"]["resolve"]
-
-      await invokeAttachRoute(req)
-
-      const calledWorkflowIds = workflowRun.mock.calls.map((call: unknown[]) => call[0])
-      for (const forbidden of FORBIDDEN_WORKFLOW_IDS) {
-        expect(calledWorkflowIds).not.toContain(forbidden)
-      }
-      expect(calledWorkflowIds.every((id) => typeof id === "string")).toBe(true)
     })
 
     it("nao registra handlers de webhook nas rotas de cart/checkout da Phase 03", () => {
