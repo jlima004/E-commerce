@@ -1,4 +1,5 @@
 import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route"
+import { POST as attachCart } from "../../src/api/store/customers/me/cart/attach/route"
 import { POST as acknowledgeCartReview } from "../../src/api/store/carts/[id]/review/acknowledge/route"
 import {
   addToCartWorkflow,
@@ -13,7 +14,10 @@ import {
   GUEST_CART_CAPABILITY_HEADER,
   GUEST_CART_CAPABILITY_MODULE,
 } from "../../src/modules/guest-cart-capability/types"
-import { STORE_IDEMPOTENCY_MODULE } from "../../src/modules/store-idempotency"
+import {
+  STORE_IDEMPOTENCY_MODULE,
+  STORE_IDEMPOTENCY_CART_MERGE,
+} from "../../src/modules/store-idempotency"
 import {
   buildStoreIdempotencyRequestFingerprint,
   hashStoreIdempotencyKey,
@@ -35,7 +39,10 @@ import {
   Modules,
 } from "@medusajs/framework/utils"
 import { MedusaModule, ModulesDefinition } from "@medusajs/modules-sdk"
-import { toStoreErrorResponse } from "../../src/api/store-surface/errors"
+import {
+  STORE_ERROR_CODES,
+  toStoreErrorResponse,
+} from "../../src/api/store-surface/errors"
 
 jest.mock("@medusajs/core-flows", () => ({
   addToCartWorkflow: jest.fn(),
@@ -612,6 +619,123 @@ function createTracerHarness(
       },
       scope,
     },
+  }
+}
+
+function asAttachRequest(
+  harness: ReturnType<typeof createTracerHarness>,
+  overrides: {
+    body?: Record<string, unknown>
+    headers?: Record<string, string | undefined>
+    session?: { id?: string; active_cart_id?: string }
+  } = {}
+) {
+  const headers = { ...harness.request.headers }
+  for (const [name, value] of Object.entries(overrides.headers ?? {})) {
+    if (value === undefined) delete headers[name]
+    else headers[name] = value
+  }
+  return {
+    ...harness.request,
+    url: "/store/customers/me/cart/attach",
+    originalUrl: "/store/customers/me/cart/attach",
+    body: overrides.body ?? harness.request.body,
+    headers,
+    ...(overrides.session ? { session: overrides.session } : {}),
+  }
+}
+
+function sessionOnlyAttachRequest(
+  harness: ReturnType<typeof createTracerHarness>
+) {
+  return {
+    method: "POST",
+    url: "/store/customers/me/cart/attach",
+    originalUrl: "/store/customers/me/cart/attach",
+    auth_context: { actor_type: "customer", actor_id: "cus_merge_01" },
+    customerAuthBff: { authorized: true },
+    session: {
+      id: "sess_legacy_01",
+      active_cart_id: harness.guestCart.id,
+    },
+    body: { cart_id: harness.guestCart.id },
+    headers: {
+      authorization: "Bearer customer-jwt-is-not-persisted",
+      "x-indicio-bff-auth": "bff-secret-is-not-persisted",
+    },
+    scope: harness.scope,
+  }
+}
+
+function expectAttachDeprecationZeroEffect(
+  harness: ReturnType<typeof createTracerHarness>,
+  executeCartMergeSpy?: jest.SpyInstance,
+  resolveSpy?: jest.SpyInstance
+) {
+  expect(
+    harness.capabilityService.lookupGuestCartCapabilityByPresentedToken.mock
+      .calls.length
+  ).toBe(0)
+  expect(
+    harness.capabilityService.authorizeGuestCartCapabilityForMutation.mock
+      .calls.length
+  ).toBe(0)
+  expect(
+    harness.capabilityService.consumeGuestCartCapability.mock.calls.length
+  ).toBe(0)
+  expect(harness.capability.status).toBe("active")
+  expect(harness.idempotency.claim.mock.calls.length).toBe(0)
+  expect(harness.idempotency.markCompleted.mock.calls.length).toBe(0)
+  if (executeCartMergeSpy) {
+    expect(executeCartMergeSpy).toHaveBeenCalledTimes(0)
+  }
+  expect(harness.cartModule.updateCarts.mock.calls.length).toBe(0)
+  expect(harness.guestCart.customer_id).toBeNull()
+  expect(harness.resourceVersion.increment.mock.calls.length).toBe(0)
+  expect(harness.versions.get(harness.guestCart.id)).toBe(1)
+  if (harness.customerCart) {
+    expect(harness.versions.get(harness.customerCart.id)).toBe(1)
+  }
+  expect(harness.cartReview).toBeNull()
+  expect(
+    harness.transaction.raw.mock.calls
+      .map(([sql]) => String(sql).toLowerCase())
+      .join(" ")
+  ).not.toMatch(/insert into cart_review|update cart_review/i)
+  expect((addToCartWorkflow as unknown as jest.Mock).mock.calls.length).toBe(0)
+  expect(
+    (updateLineItemInCartWorkflow as unknown as jest.Mock).mock.calls.length
+  ).toBe(0)
+  expect((deleteLineItemsWorkflow as unknown as jest.Mock).mock.calls.length).toBe(
+    0
+  )
+  if (resolveSpy) {
+    expect(
+      resolveSpy.mock.calls.some(([key]) => key === Modules.WORKFLOW_ENGINE)
+    ).toBe(false)
+    expect(resolveSpy.mock.calls.some(([key]) => key === Modules.ORDER)).toBe(
+      false
+    )
+  }
+  expect(
+    harness.transaction.raw.mock.calls.map(([sql]) => String(sql)).join(" ")
+  ).not.toMatch(/(?:from|into|update)\s+"?order"?(?:\s|\(|$)/i)
+}
+
+function expectCartMergeOnlyClaims(idempotency: {
+  claim: { mock: { calls: Array<[Record<string, any>]> } }
+}) {
+  expect(idempotency.claim.mock.calls.length).toBeGreaterThan(0)
+  for (const call of idempotency.claim.mock.calls) {
+    const input = call[0]
+    expect(input.operation).toBe(STORE_IDEMPOTENCY_CART_MERGE)
+    expect(input.canonicalSemanticObject.operation).toBe("CART_MERGE")
+    expect(input.rawIdempotencyKey).toBe("merge-key-01")
+    expect(input.resourceScope.resource_type).toBe("cart_merge")
+    expect(input.operation).not.toMatch(/cart_attach/i)
+    expect(String(input.canonicalSemanticObject.operation)).not.toMatch(
+      /CART_ATTACH|cart_attach/
+    )
   }
 }
 
@@ -1758,5 +1882,763 @@ describe("Cart merge HTTP tracer", () => {
     } finally {
       await boot.dispose()
     }
+  })
+
+  describe("Adaptador attach depreciado", () => {
+    it("delega attach elegível ao mesmo pipeline, body e efeitos do merge", async () => {
+      const mergeBoot = await bootstrapCartMergeContainer()
+      const attachBoot = await bootstrapCartMergeContainer()
+      try {
+        const mergeHarness = createTracerHarness(mergeBoot.container)
+        const attachHarness = createTracerHarness(attachBoot.container)
+        const mergeResponse = createResponse()
+        const attachResponse = createResponse()
+
+        await mergeCart(mergeHarness.request as never, mergeResponse as never)
+        await attachCart(
+          asAttachRequest(attachHarness) as never,
+          attachResponse as never
+        )
+
+        expect(mergeResponse.statusCode).toBe(200)
+        expect(attachResponse.statusCode).toBe(200)
+        expect(JSON.stringify(attachResponse.body)).toBe(
+          JSON.stringify(mergeResponse.body)
+        )
+        expect(attachResponse.headers.etag).toBe(mergeResponse.headers.etag)
+        expect(attachResponse.headers["cache-control"]).toBe("no-store")
+        expect(mergeResponse.headers["cache-control"]).toBe("no-store")
+        expectPublicMergeBody(mergeResponse.body)
+        expectPublicMergeBody(attachResponse.body)
+        expect(attachHarness.capability.status).toBe("consumed")
+        expect(attachHarness.versions.get(attachHarness.guestCart.id)).toBe(2)
+        expect(attachHarness.cartModule.updateCarts).toHaveBeenCalledTimes(1)
+        expect(attachHarness.idempotency.claim).toHaveBeenCalledTimes(1)
+        expect(attachHarness.idempotency.markCompleted).toHaveBeenCalledTimes(1)
+      } finally {
+        await mergeBoot.dispose()
+        await attachBoot.dispose()
+      }
+    })
+
+    it("executa MERGED integral no attach com a mesma semântica do merge", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      try {
+        const harness = createTracerHarness(boot.container, {
+          customerCart: true,
+          customerItems: [
+            {
+              id: "li_customer_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 1,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+          guestItems: [
+            {
+              id: "li_guest_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 2,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+        })
+        const response = createResponse()
+
+        await attachCart(asAttachRequest(harness) as never, response as never)
+
+        expect(response.statusCode).toBe(200)
+        expect(response.headers.etag).toBe('"2"')
+        expect(response.headers["cache-control"]).toBe("no-store")
+        expect((response.body as any).outcome).toBe("MERGED")
+        expect((response.body as any).cart.id).toBe(harness.customerCart?.id)
+        expect((response.body as any).cart.items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              variant_id: "variant_tshirt_black_m",
+              quantity: 3,
+            }),
+          ])
+        )
+        expect((response.body as any).review).toEqual({
+          requiresReview: false,
+          reviewRef: null,
+          rejectedItems: [],
+        })
+        expect(harness.customerCart?.items[0].quantity).toBe(3)
+        expect(harness.capability.status).toBe("consumed")
+        expectPublicMergeBody(response.body)
+      } finally {
+        await boot.dispose()
+      }
+    })
+
+    it("executa MERGED_PARTIAL e review no attach como 99/19/11", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      try {
+        const harness = createTracerHarness(boot.container, {
+          customerCart: true,
+          customerItems: [
+            {
+              id: "li_customer_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 80,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+          guestItems: [
+            {
+              id: "li_guest_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 30,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+        })
+        const response = createResponse()
+
+        await attachCart(asAttachRequest(harness) as never, response as never)
+
+        expect(response.statusCode).toBe(200)
+        expect(response.headers.etag).toBe('"2"')
+        expect(response.headers["cache-control"]).toBe("no-store")
+        expect((response.body as any).outcome).toBe("MERGED_PARTIAL")
+        expect((response.body as any).cart.id).toBe(harness.customerCart?.id)
+        expect((response.body as any).cart.items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              variant_id: "variant_tshirt_black_m",
+              quantity: 99,
+            }),
+          ])
+        )
+        expect((response.body as any).review).toEqual({
+          requiresReview: true,
+          reviewRef: expect.stringMatching(/^review_/),
+          rejectedItems: [
+            {
+              variantId: "variant_tshirt_black_m",
+              requestedQuantity: 30,
+              acceptedQuantity: 19,
+              rejectedQuantity: 11,
+              reason: "QUANTITY_LIMIT_EXCEEDED",
+            },
+          ],
+        })
+        expect(harness.customerCart?.items[0].quantity).toBe(99)
+        expect(harness.capability.status).toBe("consumed")
+        expectPublicMergeBody(response.body)
+      } finally {
+        await boot.dispose()
+      }
+    })
+
+    it("promove GUEST_CART_ATTACHED no attach quando não existe Customer cart", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      try {
+        const harness = createTracerHarness(boot.container)
+        const response = createResponse()
+
+        await attachCart(asAttachRequest(harness) as never, response as never)
+
+        expect(response.statusCode).toBe(200)
+        expect(response.headers.etag).toBe('"2"')
+        expect(response.headers["cache-control"]).toBe("no-store")
+        expect((response.body as any).outcome).toBe("GUEST_CART_ATTACHED")
+        expect((response.body as any).review).toEqual({
+          requiresReview: false,
+          reviewRef: null,
+          rejectedItems: [],
+        })
+        expect((response.body as any).cart.id).toBe(harness.guestCart.id)
+        expect((response.body as any).cart.customer.id).toBe("cus_merge_01")
+        expect(harness.versions.get(harness.guestCart.id)).toBe(2)
+        expect(harness.capability.status).toBe("consumed")
+        expect(
+          harness.capabilityService.authorizeGuestCartCapabilityForMutation
+        ).toHaveBeenCalledTimes(1)
+        expect(harness.idempotency.claim).toHaveBeenCalledTimes(1)
+        expect(harness.idempotency.markCompleted).toHaveBeenCalledTimes(1)
+        expect(harness.cartModule.updateCarts).toHaveBeenCalledTimes(1)
+        expect(JSON.stringify(response.body)).not.toContain(
+          "guest-capability-is-not-persisted"
+        )
+        expect(JSON.stringify(response.body)).not.toContain(
+          "customer-jwt-is-not-persisted"
+        )
+        expectPublicMergeBody(response.body)
+      } finally {
+        await boot.dispose()
+      }
+    })
+
+    it("retorna NO_ITEMS no attach e preserva o estado como o merge", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      try {
+        const harness = createTracerHarness(boot.container, {
+          customerCart: true,
+          guestItems: [
+            {
+              id: "li_guest_invalid_01",
+              variant_id: "variant_invalid",
+              quantity: 3,
+              title: "Camiseta inválida",
+              variant: null,
+            },
+          ],
+        })
+        const response = createResponse()
+
+        await attachCart(asAttachRequest(harness) as never, response as never)
+
+        expect(response.statusCode).toBe(200)
+        expect(response.headers.etag).toBe('"1"')
+        expect((response.body as any).outcome).toBe("NO_ITEMS")
+        expect((response.body as any).review).toEqual({
+          requiresReview: false,
+          reviewRef: null,
+          rejectedItems: [
+            {
+              variantId: "variant_invalid",
+              requestedQuantity: 3,
+              acceptedQuantity: 0,
+              rejectedQuantity: 3,
+              reason: "VARIANT_INVALID",
+            },
+          ],
+        })
+        expect(harness.customerCart?.items[0].quantity).toBe(1)
+        expect(harness.capability.status).toBe("active")
+        expect(harness.versions.get(harness.customerCart?.id ?? "")).toBe(1)
+        expectPublicMergeBody(response.body)
+      } finally {
+        await boot.dispose()
+      }
+    })
+
+    it("emite o mesmo ETag do merge para o mesmo snapshot", async () => {
+      const partialMergeBoot = await bootstrapCartMergeContainer()
+      let partialMergeEtag = ""
+      try {
+        const partialMergeHarness = createTracerHarness(partialMergeBoot.container, {
+          customerCart: true,
+          customerItems: [
+            {
+              id: "li_customer_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 80,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+          guestItems: [
+            {
+              id: "li_guest_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 30,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+        })
+        const partialMergeResponse = createResponse()
+        await mergeCart(
+          partialMergeHarness.request as never,
+          partialMergeResponse as never
+        )
+        partialMergeEtag = partialMergeResponse.headers.etag
+        expect(partialMergeEtag).toBe('"2"')
+      } finally {
+        await partialMergeBoot.dispose()
+      }
+
+      const partialAttachBoot = await bootstrapCartMergeContainer()
+      try {
+        const partialAttachHarness = createTracerHarness(
+          partialAttachBoot.container,
+          {
+            customerCart: true,
+            customerItems: [
+              {
+                id: "li_customer_merge_01",
+                variant_id: "variant_tshirt_black_m",
+                quantity: 80,
+                title: "Camiseta preta M",
+                variant_title: "Preta / M",
+                unit_price: 9900,
+                variant: sellableVariant("variant_tshirt_black_m"),
+              },
+            ],
+            guestItems: [
+              {
+                id: "li_guest_merge_01",
+                variant_id: "variant_tshirt_black_m",
+                quantity: 30,
+                title: "Camiseta preta M",
+                variant_title: "Preta / M",
+                unit_price: 9900,
+                variant: sellableVariant("variant_tshirt_black_m"),
+              },
+            ],
+          }
+        )
+        const partialAttachResponse = createResponse()
+        await attachCart(
+          asAttachRequest(partialAttachHarness) as never,
+          partialAttachResponse as never
+        )
+        expect(partialAttachResponse.headers.etag).toBe('"2"')
+        expect(partialAttachResponse.headers.etag).toBe(partialMergeEtag)
+        expect(partialAttachResponse.headers["cache-control"]).toBe("no-store")
+      } finally {
+        await partialAttachBoot.dispose()
+      }
+
+      const noItemsMergeBoot = await bootstrapCartMergeContainer()
+      const noItemsAttachBoot = await bootstrapCartMergeContainer()
+      try {
+        const noItemsMergeHarness = createTracerHarness(noItemsMergeBoot.container, {
+          customerCart: true,
+          guestItems: [
+            {
+              id: "li_guest_invalid_01",
+              variant_id: "variant_invalid",
+              quantity: 3,
+              title: "Camiseta inválida",
+              variant: null,
+            },
+          ],
+        })
+        const noItemsAttachHarness = createTracerHarness(
+          noItemsAttachBoot.container,
+          {
+            customerCart: true,
+            guestItems: [
+              {
+                id: "li_guest_invalid_01",
+                variant_id: "variant_invalid",
+                quantity: 3,
+                title: "Camiseta inválida",
+                variant: null,
+              },
+            ],
+          }
+        )
+        const noItemsMergeResponse = createResponse()
+        const noItemsAttachResponse = createResponse()
+        await mergeCart(
+          noItemsMergeHarness.request as never,
+          noItemsMergeResponse as never
+        )
+        await attachCart(
+          asAttachRequest(noItemsAttachHarness) as never,
+          noItemsAttachResponse as never
+        )
+        expect(noItemsMergeResponse.headers.etag).toBe('"1"')
+        expect(noItemsAttachResponse.headers.etag).toBe('"1"')
+        expect(noItemsAttachResponse.headers.etag).toBe(
+          noItemsMergeResponse.headers.etag
+        )
+      } finally {
+        await noItemsMergeBoot.dispose()
+        await noItemsAttachBoot.dispose()
+      }
+    })
+
+    it("replay committed compartilha a operação cart_merge entre merge e attach", async () => {
+      const mergeThenAttachBoot = await bootstrapCartMergeContainer()
+      const attachThenMergeBoot = await bootstrapCartMergeContainer()
+      try {
+        const mergeHarness = createTracerHarness(mergeThenAttachBoot.container, {
+          customerCart: true,
+          customerItems: [
+            {
+              id: "li_customer_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 80,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+          guestItems: [
+            {
+              id: "li_guest_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 30,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+        })
+        const first = createResponse()
+        await mergeCart(mergeHarness.request as never, first as never)
+        const originalBody = JSON.parse(JSON.stringify(first.body))
+        const originalEtag = first.headers.etag
+        const claimCountBeforeReplay =
+          mergeHarness.idempotency.claim.mock.calls.length
+        const markCompletedBeforeReplay =
+          mergeHarness.idempotency.markCompleted.mock.calls.length
+        expect(claimCountBeforeReplay).toBe(1)
+        expectCartMergeOnlyClaims(mergeHarness.idempotency)
+
+        mergeHarness.customerCart?.items.push({
+          id: "li_later_mutation",
+          variant_id: "variant_later",
+          quantity: 1,
+          title: "Posterior",
+          variant: sellableVariant("variant_later"),
+        })
+        mergeHarness.versions.set(mergeHarness.customerCart?.id ?? "", 9)
+        mergeHarness.customerCart!.updated_at = "2026-08-23T14:00:00.000Z"
+
+        const replay = createResponse()
+        await attachCart(
+          asAttachRequest(mergeHarness) as never,
+          replay as never
+        )
+
+        expect(replay.statusCode).toBe(200)
+        expect(replay.headers.etag).toBe(originalEtag)
+        expect(replay.headers["cache-control"]).toBe("no-store")
+        expect(replay.body).toEqual(originalBody)
+        expectPublicMergeBody(replay.body)
+        expect(
+          mergeHarness.capabilityService.lookupConsumedGuestCartCapabilityForReplay
+        ).toHaveBeenCalled()
+        expect(mergeHarness.customerCart?.items).toHaveLength(2)
+        expect(mergeHarness.capability.status).toBe("consumed")
+        expect(mergeHarness.idempotency.claim.mock.calls.length).toBe(
+          claimCountBeforeReplay
+        )
+        expect(mergeHarness.idempotency.markCompleted.mock.calls.length).toBe(
+          markCompletedBeforeReplay
+        )
+        expectCartMergeOnlyClaims(mergeHarness.idempotency)
+
+        const attachHarness = createTracerHarness(attachThenMergeBoot.container, {
+          customerCart: true,
+          customerItems: [
+            {
+              id: "li_customer_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 80,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+          guestItems: [
+            {
+              id: "li_guest_merge_01",
+              variant_id: "variant_tshirt_black_m",
+              quantity: 30,
+              title: "Camiseta preta M",
+              variant_title: "Preta / M",
+              unit_price: 9900,
+              variant: sellableVariant("variant_tshirt_black_m"),
+            },
+          ],
+        })
+        const attachFirst = createResponse()
+        await attachCart(
+          asAttachRequest(attachHarness) as never,
+          attachFirst as never
+        )
+        const attachOriginalBody = JSON.parse(JSON.stringify(attachFirst.body))
+        const attachOriginalEtag = attachFirst.headers.etag
+        const attachClaimCountBeforeReplay =
+          attachHarness.idempotency.claim.mock.calls.length
+        const attachMarkCompletedBeforeReplay =
+          attachHarness.idempotency.markCompleted.mock.calls.length
+        expect(attachClaimCountBeforeReplay).toBe(1)
+        expectCartMergeOnlyClaims(attachHarness.idempotency)
+
+        attachHarness.customerCart?.items.push({
+          id: "li_later_mutation",
+          variant_id: "variant_later",
+          quantity: 1,
+          title: "Posterior",
+          variant: sellableVariant("variant_later"),
+        })
+        attachHarness.versions.set(attachHarness.customerCart?.id ?? "", 9)
+        attachHarness.customerCart!.updated_at = "2026-08-23T14:00:00.000Z"
+
+        const mergeReplay = createResponse()
+        await mergeCart(attachHarness.request as never, mergeReplay as never)
+
+        expect(mergeReplay.statusCode).toBe(200)
+        expect(mergeReplay.headers.etag).toBe(attachOriginalEtag)
+        expect(mergeReplay.headers["cache-control"]).toBe("no-store")
+        expect(mergeReplay.body).toEqual(attachOriginalBody)
+        expectPublicMergeBody(mergeReplay.body)
+        expect(
+          attachHarness.capabilityService.lookupConsumedGuestCartCapabilityForReplay
+        ).toHaveBeenCalled()
+        expect(attachHarness.customerCart?.items).toHaveLength(2)
+        expect(attachHarness.capability.status).toBe("consumed")
+        expect(attachHarness.idempotency.claim.mock.calls.length).toBe(
+          attachClaimCountBeforeReplay
+        )
+        expect(attachHarness.idempotency.markCompleted.mock.calls.length).toBe(
+          attachMarkCompletedBeforeReplay
+        )
+        expectCartMergeOnlyClaims(attachHarness.idempotency)
+      } finally {
+        await mergeThenAttachBoot.dispose()
+        await attachThenMergeBoot.dispose()
+      }
+    })
+
+    it("nega attach sem Idempotency-Key com 404 Not Found e zero efeito", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      let executeCartMerge: jest.SpyInstance | undefined
+      let resolveSpy: jest.SpyInstance | undefined
+      try {
+        const harness = createTracerHarness(boot.container)
+        const service = harness.scope.resolve<any>(CART_MERGE_MODULE)
+        executeCartMerge = jest.spyOn(service, "executeCartMerge")
+        resolveSpy = jest.spyOn(harness.scope, "resolve")
+
+        const error = await attachCart(
+          asAttachRequest(harness, {
+            headers: { "idempotency-key": undefined },
+          }) as never,
+          createResponse() as never
+        ).catch((caught) => caught)
+
+        expect(error).toMatchObject({
+          type: MedusaError.Types.NOT_FOUND,
+          message: "Not Found",
+        })
+        const normalized = toStoreErrorResponse(error)
+        expect(normalized.statusCode).toBe(404)
+        expect(normalized.body.code).toBe(STORE_ERROR_CODES.NOT_FOUND)
+        expect(normalized.body.message).toBe("Not Found")
+        expectAttachDeprecationZeroEffect(harness, executeCartMerge, resolveSpy)
+      } finally {
+        resolveSpy?.mockRestore()
+        executeCartMerge?.mockRestore()
+        await boot.dispose()
+      }
+    })
+
+    it("nega attach sem If-Match com 404 Not Found e zero efeito", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      let executeCartMerge: jest.SpyInstance | undefined
+      let resolveSpy: jest.SpyInstance | undefined
+      try {
+        const harness = createTracerHarness(boot.container)
+        const service = harness.scope.resolve<any>(CART_MERGE_MODULE)
+        executeCartMerge = jest.spyOn(service, "executeCartMerge")
+        resolveSpy = jest.spyOn(harness.scope, "resolve")
+
+        const error = await attachCart(
+          asAttachRequest(harness, {
+            headers: { "if-match": undefined },
+          }) as never,
+          createResponse() as never
+        ).catch((caught) => caught)
+
+        expect(error).toMatchObject({
+          type: MedusaError.Types.NOT_FOUND,
+          message: "Not Found",
+        })
+        const normalized = toStoreErrorResponse(error)
+        expect(normalized.statusCode).toBe(404)
+        expect(normalized.body.code).toBe(STORE_ERROR_CODES.NOT_FOUND)
+        expect(normalized.body.message).toBe("Not Found")
+        expectAttachDeprecationZeroEffect(harness, executeCartMerge, resolveSpy)
+      } finally {
+        resolveSpy?.mockRestore()
+        executeCartMerge?.mockRestore()
+        await boot.dispose()
+      }
+    })
+
+    it("nega attach sem capability e sem replay elegível", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      let executeCartMerge: jest.SpyInstance | undefined
+      let resolveSpy: jest.SpyInstance | undefined
+      try {
+        const harness = createTracerHarness(boot.container)
+        const service = harness.scope.resolve<any>(CART_MERGE_MODULE)
+        executeCartMerge = jest.spyOn(service, "executeCartMerge")
+        resolveSpy = jest.spyOn(harness.scope, "resolve")
+
+        const error = await attachCart(
+          asAttachRequest(harness, {
+            headers: { [GUEST_CART_CAPABILITY_HEADER]: undefined },
+          }) as never,
+          createResponse() as never
+        ).catch((caught) => caught)
+
+        expect(error).toMatchObject({
+          type: MedusaError.Types.NOT_FOUND,
+          message: "Not Found",
+        })
+        const normalized = toStoreErrorResponse(error)
+        expect(normalized.statusCode).toBe(404)
+        expect(normalized.body.code).toBe(STORE_ERROR_CODES.NOT_FOUND)
+        expect(normalized.body.message).toBe("Not Found")
+        expectAttachDeprecationZeroEffect(harness, executeCartMerge, resolveSpy)
+      } finally {
+        resolveSpy?.mockRestore()
+        executeCartMerge?.mockRestore()
+        await boot.dispose()
+      }
+    })
+
+    it("nega attach session-only com 404 Not Found e zero efeito", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      let executeCartMerge: jest.SpyInstance | undefined
+      let resolveSpy: jest.SpyInstance | undefined
+      try {
+        const harness = createTracerHarness(boot.container)
+        const service = harness.scope.resolve<any>(CART_MERGE_MODULE)
+        executeCartMerge = jest.spyOn(service, "executeCartMerge")
+        resolveSpy = jest.spyOn(harness.scope, "resolve")
+        const request = sessionOnlyAttachRequest(harness)
+
+        const error = await attachCart(
+          request as never,
+          createResponse() as never
+        ).catch((caught) => caught)
+
+        expect(error).toMatchObject({
+          type: MedusaError.Types.NOT_FOUND,
+          message: "Not Found",
+        })
+        const normalized = toStoreErrorResponse(error)
+        expect(normalized.statusCode).toBe(404)
+        expect(normalized.body.code).toBe(STORE_ERROR_CODES.NOT_FOUND)
+        expect(normalized.body.message).toBe("Not Found")
+        expectAttachDeprecationZeroEffect(harness, executeCartMerge, resolveSpy)
+        expect(harness.guestCart.customer_id).toBeNull()
+        expect(request.session?.active_cart_id).toBe(harness.guestCart.id)
+      } finally {
+        resolveSpy?.mockRestore()
+        executeCartMerge?.mockRestore()
+        await boot.dispose()
+      }
+    })
+
+    it("ignora session.active_cart_id como autoridade de attach", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      try {
+        const harness = createTracerHarness(boot.container)
+        const response = createResponse()
+        const foreignCartId = "cart_guest_foreign"
+        const request = asAttachRequest(harness, {
+          session: {
+            id: "sess_legacy_01",
+            active_cart_id: foreignCartId,
+          },
+        })
+
+        await attachCart(request as never, response as never)
+
+        expect(response.statusCode).toBe(200)
+        expect((response.body as any).outcome).toBe("GUEST_CART_ATTACHED")
+        expect((response.body as any).cart.id).toBe(harness.guestCart.id)
+        expect(request.session?.active_cart_id).toBe(foreignCartId)
+        expect(harness.capability.status).toBe("consumed")
+      } finally {
+        await boot.dispose()
+      }
+    })
+
+    it("não executa motor legado de transfer, update ou supersede", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      let resolveSpy: jest.SpyInstance | undefined
+      let executeCartMerge: jest.SpyInstance | undefined
+      try {
+        const harness = createTracerHarness(boot.container)
+        const service = harness.scope.resolve<any>(CART_MERGE_MODULE)
+        executeCartMerge = jest.spyOn(service, "executeCartMerge")
+        resolveSpy = jest.spyOn(harness.scope, "resolve")
+
+        const request = asAttachRequest(harness, {
+          session: {
+            id: "sess_legacy_01",
+            active_cart_id: harness.guestCart.id,
+          },
+        })
+        const response = createResponse()
+        await attachCart(request as never, response as never)
+
+        expect(executeCartMerge).toHaveBeenCalledTimes(1)
+        expect(resolveSpy.mock.calls.some(([key]) => key === CART_MERGE_MODULE)).toBe(
+          true
+        )
+        expect(
+          resolveSpy.mock.calls.some(([key]) => key === Modules.WORKFLOW_ENGINE)
+        ).toBe(false)
+        expect((addToCartWorkflow as unknown as jest.Mock).mock.calls.length).toBe(0)
+        expect((response.body as any).outcome).toBe("GUEST_CART_ATTACHED")
+        expect((response.body as any).outcome).not.toBe("attached_guest_cart")
+        expect((response.body as any).outcome).not.toBe("preserve_customer_cart")
+        expect((response.body as any).outcome).not.toBe(
+          "reject_unauthorized_guest_cart"
+        )
+        expect(request.session?.active_cart_id).toBe(harness.guestCart.id)
+        expect(harness.cartModule.updateCarts).toHaveBeenCalledTimes(1)
+      } finally {
+        resolveSpy?.mockRestore()
+        executeCartMerge?.mockRestore()
+        await boot.dispose()
+      }
+    })
+
+    it("não causa efeito colateral na denial de depreciação", async () => {
+      const boot = await bootstrapCartMergeContainer()
+      let executeCartMerge: jest.SpyInstance | undefined
+      let resolveSpy: jest.SpyInstance | undefined
+      try {
+        const harness = createTracerHarness(boot.container)
+        const service = harness.scope.resolve<any>(CART_MERGE_MODULE)
+        executeCartMerge = jest.spyOn(service, "executeCartMerge")
+        resolveSpy = jest.spyOn(harness.scope, "resolve")
+        const request = sessionOnlyAttachRequest(harness)
+
+        const error = await attachCart(
+          request as never,
+          createResponse() as never
+        ).catch((caught) => caught)
+
+        expectAttachDeprecationZeroEffect(harness, executeCartMerge, resolveSpy)
+        expect(harness.guestCart.customer_id).toBeNull()
+        expect(harness.capability.consumed_at).toBeNull()
+        expect(request.session?.active_cart_id).toBe(harness.guestCart.id)
+        const normalized = toStoreErrorResponse(error)
+        expect(JSON.stringify(normalized.body)).not.toMatch(
+          /guest-capability-is-not-persisted|customer-jwt-is-not-persisted|bff-secret-is-not-persisted|review_|order/i
+        )
+      } finally {
+        resolveSpy?.mockRestore()
+        executeCartMerge?.mockRestore()
+        await boot.dispose()
+      }
+    })
   })
 })

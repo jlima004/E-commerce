@@ -1,3 +1,7 @@
+/**
+ * Legacy attach decision helpers — retained for unit coverage only.
+ * Production attach delegates to canonical CART_MERGE via attach/route.ts.
+ */
 import { isCartUsableForCheckout, type CheckoutCartLike } from "./active-cart"
 
 type RequestSessionLike = {
