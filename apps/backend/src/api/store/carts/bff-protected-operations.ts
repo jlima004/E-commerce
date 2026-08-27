@@ -10,6 +10,8 @@ export const STORE_CART_BFF_PROTECTED_OPERATIONS = [
   "POST /store/carts/:id/line-items/:line_id",
   "DELETE /store/carts/:id/line-items/:line_id",
   "DELETE /store/carts/:id/line-items",
+  "POST /store/customers/me/cart/merge",
+  "POST /store/carts/:id/review/acknowledge",
 ] as const
 
 export type StoreCartBffProtectedOperation =

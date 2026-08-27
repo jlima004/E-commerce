@@ -36,7 +36,7 @@ const COMPLETE_LOCKDOWN_EXCLUSION_REASON =
   "Phase 13 fail-closed defense-in-depth override for native cart complete; BLOCKED→DENY; not part of executable Store OpenAPI; owner review when Phase 15+ checkout surface is authorized"
 
 const ATTACH_LOCKDOWN_EXCLUSION_REASON =
-  "Phase 13 fail-closed lockdown; BLOCKED→DENY; handler retained only as internal/domain invariant boundary until Phase 16 merge owner flow."
+  "Deprecated controlled compatibility adapter retained for domain invariants; outside Frontend M1 executable surface."
 
 export const ROUTE_EXCLUSIONS: RouteExclusion[] = [
   {
@@ -69,13 +69,13 @@ export const ROUTE_EXCLUSIONS: RouteExclusion[] = [
     method: "POST",
     path: "/store/customers/me/cart/attach",
     reason: ATTACH_LOCKDOWN_EXCLUSION_REASON,
-    owner: "FND-02 / Phase 13-02",
+    owner: "FND-02 / Phase 13-02 / Phase 16",
     reviewTrigger:
-      "route reclassified/enabled, Phase 16 merge contract materialized, or public attach deprecation/removal decision",
+      "Future explicit human gate: consumer migration complete, attach deprecation/removal authorized in a later PLAN (HUMAN GATE REQUIRED).",
   },
 ]
 
-const EXPECTED_EXCLUSION_KEYS = new Set([
+export const EXPECTED_EXCLUSION_KEYS = new Set([
   "GET /store/custom",
   "GET /admin/custom",
   "POST /store/carts/{id}/complete",

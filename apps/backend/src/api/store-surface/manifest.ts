@@ -817,6 +817,32 @@ export const STORE_SURFACE_MANIFEST: readonly StoreSurfaceEntry[] = [
     owner_phase: "14",
     owner_domain: "auth",
   }),
+  entry({
+    method: "POST",
+    pathTemplate: "/store/customers/me/cart/merge",
+    origin: "local",
+    classification: "EXTENDED",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
+    openapi_m1_expectation: "include_executable_m1",
+    rationale:
+      "Phase 16 authenticated cart merge behind BFF service guard, Customer bearer, capability and idempotency contracts.",
+    owner_phase: "16",
+    owner_domain: "cart",
+  }),
+  entry({
+    method: "POST",
+    pathTemplate: "/store/carts/{id}/review/acknowledge",
+    origin: "local",
+    classification: "EXTENDED",
+    runtime_policy: "M1_ENABLED",
+    m1_enablement: "enabled",
+    openapi_m1_expectation: "include_executable_m1",
+    rationale:
+      "Phase 16 review acknowledgement behind BFF service guard and Customer bearer; handler owns capability rejection.",
+    owner_phase: "16",
+    owner_domain: "cart",
+  }),
 ] as const satisfies readonly StoreSurfaceEntry[]
 
 export const STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS = [
@@ -841,6 +867,11 @@ export const STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS = [
   "POST /store/carts/active",
 ] as const
 
+export const STORE_SURFACE_PHASE16_CART_ENABLED_OPERATIONS = [
+  "POST /store/customers/me/cart/merge",
+  "POST /store/carts/{id}/review/acknowledge",
+] as const
+
 export const STORE_SURFACE_M1_ENABLED_OPERATIONS = [
   "POST /store/carts/{id}/line-items",
   "POST /store/carts/{id}/line-items/{line_id}",
@@ -851,6 +882,7 @@ export const STORE_SURFACE_M1_ENABLED_OPERATIONS = [
   "POST /store/carts/active",
   ...STORE_SURFACE_PHASE14_VERIFICATION_OPERATIONS,
   "POST /store/customers/me/password",
+  ...STORE_SURFACE_PHASE16_CART_ENABLED_OPERATIONS,
 ] as const
 
 export function storeSurfaceOperationKey(
@@ -962,10 +994,10 @@ export function validateStoreSurfaceManifest(
   const violations: StoreSurfaceManifestViolation[] = []
   const counts = summarizeStoreSurfaceManifest(entries)
 
-  if (counts.total !== 64) {
+  if (counts.total !== 66) {
     violations.push({
       code: "COUNT_TOTAL",
-      message: `expected 64 entries, found ${counts.total}`,
+      message: `expected 66 entries, found ${counts.total}`,
     })
   }
   if (counts.authorized !== 0) {
@@ -974,10 +1006,10 @@ export function validateStoreSurfaceManifest(
       message: `expected AUTHORIZED=0, found ${counts.authorized}`,
     })
   }
-  if (counts.extended !== 16) {
+  if (counts.extended !== 18) {
     violations.push({
       code: "COUNT_EXTENDED",
-      message: `expected EXTENDED=16, found ${counts.extended}`,
+      message: `expected EXTENDED=18, found ${counts.extended}`,
     })
   }
   if (counts.blocked !== 17) {
@@ -992,16 +1024,16 @@ export function validateStoreSurfaceManifest(
       message: `expected OUTSIDE_FRONTEND_M1=31, found ${counts.outsideFrontendM1}`,
     })
   }
-  if (counts.m1EnabledPolicy !== 12) {
+  if (counts.m1EnabledPolicy !== 14) {
     violations.push({
       code: "M1_ENABLED_POLICY",
-      message: `Phase 15 requires exactly twelve M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
+      message: `Phase 14–16 requires exactly fourteen M1_ENABLED entries; found ${counts.m1EnabledPolicy}`,
     })
   }
-  if (counts.m1EnablementEnabled !== 12) {
+  if (counts.m1EnablementEnabled !== 14) {
     violations.push({
       code: "M1_ENABLEMENT_ENABLED",
-      message: `Phase 15 requires exactly twelve enablements; found ${counts.m1EnablementEnabled}`,
+      message: `Phase 14–16 requires exactly fourteen enablements; found ${counts.m1EnablementEnabled}`,
     })
   }
   if (counts.deny + counts.preserveLegacy + counts.m1EnabledPolicy !== counts.total) {
@@ -1119,9 +1151,9 @@ export function validateStoreSurfaceManifest(
     )
   ) {
     violations.push({
-      code: "PHASE15_EXACT_SURFACE",
+      code: "PHASE_EXACT_SURFACE",
       message:
-        "M1_ENABLED must contain exactly Phase 14 six operations plus Phase 15 cart active and line-item operations",
+        "M1_ENABLED must contain exactly Phase 14 six operations plus Phase 15 cart active and line-item operations plus Phase 16 merge and review acknowledge operations",
     })
   }
 
