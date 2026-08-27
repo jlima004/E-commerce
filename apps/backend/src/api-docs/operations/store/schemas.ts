@@ -39,8 +39,10 @@ function jsonSchemaRef(name: string) {
 }
 
 /**
- * Attach schema support knowledge retained for Phase 16 merge-owner flow.
- * Not registered into public Store OpenAPI while attach remains BLOCKED→DENY.
+ * Legacy attach support shapes retained for the Phase 16 merge-owner adapter.
+ * Attach is OUTSIDE_FRONTEND_M1 with PRESERVE_LEGACY runtime policy and is not
+ * registered in the executable Store M1 contract. It delegates to canonical
+ * merge; session-only state never authorizes mutation.
  */
 export const STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS = {
   StoreCustomerCartAttachRequest: {
@@ -49,7 +51,7 @@ export const STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS = {
       cart_id: {
         type: "string",
         description:
-          "Optional guest cart id. When supplied, it must match the guest cart owned by the current session.",
+          "Optional legacy adapter guest cart id. When supplied, it must match the guest cart authorized by the canonical merge contract; session-only state never authorizes mutation.",
       },
     },
   },

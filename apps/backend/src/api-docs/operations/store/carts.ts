@@ -111,7 +111,7 @@ function cartReviewAcknowledgeErrorResponses() {
       "Cart or review is not available for the current customer."
     ),
     "409": storeErrorResponse(
-      "Cart authority or review conflict, including CART_REVIEW_REQUIRED, CART_REVIEW_CONFLICT, or CART_REVIEW_VERSION_CONFLICT."
+      "Cart authority, state, or review conflict; a pending review uses REVIEW_REQUIRED."
     ),
     "412": {
       ...storeErrorResponse(

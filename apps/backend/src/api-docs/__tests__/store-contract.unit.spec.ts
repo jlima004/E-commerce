@@ -25,6 +25,11 @@ import {
   CART_MERGE_OUTCOMES,
   CART_MERGE_REJECTION_REASONS,
 } from "../../modules/cart-merge/types"
+import {
+  lookupStoreSurfaceEntry,
+  STORE_SURFACE_M1_ENABLED_OPERATIONS,
+  STORE_SURFACE_MANIFEST,
+} from "../../api/store-surface/manifest"
 
 const LEGACY_STORE_DOCUMENTATION_KEYS = [
   "GET /health/live",
@@ -67,6 +72,62 @@ const STORE_DOCUMENT_PATHS = [
   "/store/customers/me/cart/merge",
   ...AUTH_HTTP_CONTRACT.map((entry) => entry.path),
 ].sort()
+
+const PHASE16_SCHEMA_NAMES = [
+  "CartMergeRequest",
+  "CartMergeOutcome",
+  "CartMergeRejectedItem",
+  "CartReviewState",
+  "CartMergeResponse",
+  "CartReviewAcknowledgeRequest",
+  "CartReviewAcknowledgeResponse",
+] as const
+
+const SENSITIVE_EXAMPLE_CANARIES = [
+  "guest_capability_canary",
+  "customer_jwt_canary",
+  "raw_idempotency_key_canary",
+  "bff_service_secret_canary",
+  "provider_id_canary",
+  "customer@example.test",
+  "pix_payload_canary",
+  "tracking_token_canary",
+  "internal_review_id_canary",
+  "credential_derived_hash_canary",
+  "raw_provider_payload_canary",
+] as const
+
+const SENSITIVE_EXAMPLE_PATTERNS = [
+  /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/,
+  /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]+/,
+  /\bwhsec_[A-Za-z0-9]+/,
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/i,
+  /\b(?:guest[_-]?cart[_-]?(?:token|capability)|(?:raw[_-]?)?idempotency[_-]?key|bff[_-]?service[_-]?(?:secret|credential)|provider[_-]?(?:id|payload)|pix[_-]?payload|tracking[_-]?token|internal[_-]?review[_-]?id|credential[_-]?derived[_-]?hash)\b/i,
+] as const
+
+function collectValuesForKeys(
+  value: unknown,
+  keys: ReadonlySet<string>,
+  path = "document"
+): Array<{ path: string; value: unknown }> {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry, index) =>
+      collectValuesForKeys(entry, keys, `${path}[${index}]`)
+    )
+  }
+  if (typeof value !== "object" || value === null) {
+    return []
+  }
+
+  return Object.entries(value as Record<string, unknown>).flatMap(
+    ([key, child]) => [
+      ...(keys.has(key)
+        ? [{ path: `${path}.${key}`, value: child }]
+        : []),
+      ...collectValuesForKeys(child, keys, `${path}.${key}`),
+    ]
+  )
+}
 
 describe("OpenAPI Store contract wave", () => {
   const registry = createFoundationRegistry()
@@ -300,7 +361,10 @@ describe("OpenAPI Store contract wave", () => {
         })
       )
       expect(operation?.responses["409"]?.description).toMatch(
-        /REVIEW_REQUIRED/
+        /(?:^|[^A-Z0-9_])REVIEW_REQUIRED(?:$|[^A-Z0-9_])/
+      )
+      expect(operation?.responses["409"]?.description).not.toMatch(
+        /CART_REVIEW_REQUIRED|CART_REVIEW_CONFLICT|CART_REVIEW_VERSION_CONFLICT/
       )
       expect(operation?.responses["409"]?.description).not.toMatch(
         /CART_VERSION_MISMATCH/
@@ -929,6 +993,217 @@ describe("OpenAPI Store contract wave", () => {
       (attachSchema as { required?: string[] }).required
     ).toBeUndefined()
     expect(attachSchema.properties.cart_id.type).toBe("string")
+  })
+
+  it("keeps deprecated attach outside M1 and native attach fail-closed", () => {
+    const attachExclusion = ROUTE_EXCLUSIONS.find(
+      (entry) =>
+        entry.method === "POST" &&
+        entry.path === "/store/customers/me/cart/attach"
+    )
+    expect(attachExclusion).toEqual(
+      expect.objectContaining({
+        owner: expect.stringContaining("Phase 16"),
+        reason: expect.stringMatching(
+          /deprecated compatibility facade.*outside Frontend M1.*not a second attach engine.*delegates to canonical Phase 16 merge.*HUMAN GATE/i
+        ),
+        reviewTrigger: expect.stringMatching(
+          /consumer migration.*HUMAN GATE REQUIRED/i
+        ),
+      })
+    )
+    expect(attachExclusion?.reason).not.toMatch(/\b20\d{2}[-/]\d{1,2}/)
+    expect(attachExclusion?.reviewTrigger).not.toMatch(/\b20\d{2}[-/]\d{1,2}/)
+
+    const attachManifest = STORE_SURFACE_MANIFEST.find(
+      (entry) =>
+        entry.method === "POST" &&
+        entry.pathTemplate === "/store/customers/me/cart/attach"
+    )
+    expect(attachManifest).toEqual(
+      expect.objectContaining({
+        classification: "OUTSIDE_FRONTEND_M1",
+        runtime_policy: "PRESERVE_LEGACY",
+        m1_enablement: "disabled",
+        openapi_m1_expectation: "exclude",
+        owner_phase: "16",
+      })
+    )
+    expect(
+      storeOperations.some(
+        (operation) =>
+          operation.method === "POST" &&
+          operation.path === "/store/customers/me/cart/attach"
+      )
+    ).toBe(false)
+
+    const nativeAttach = lookupStoreSurfaceEntry(
+      "POST",
+      "/store/carts/{id}/customer"
+    )
+    expect(nativeAttach).toEqual(
+      expect.objectContaining({
+        classification: "BLOCKED",
+        runtime_policy: "DENY",
+        openapi_m1_expectation: "exclude",
+      })
+    )
+    expect(
+      storeOperations.some(
+        (operation) =>
+          operation.method === "POST" &&
+          operation.path === "/store/carts/{id}/customer"
+      )
+    ).toBe(false)
+
+    for (const neighbor of [
+      "/store/customers/me/cart/attach/legacy",
+      "/store/customers/me/cart/merge/attach",
+      "/store/carts/{id}/customer/attach",
+    ]) {
+      expect(lookupStoreSurfaceEntry("POST", neighbor)).toBeUndefined()
+      expect(store?.document.paths?.[neighbor]).toBeUndefined()
+    }
+  })
+
+  it("keeps the exact fourteen-operation M1 set with only Phase 16 cart additions", () => {
+    const expectedM1Keys = [
+      "POST /store/carts/{id}/line-items",
+      "POST /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items/{line_id}",
+      "DELETE /store/carts/{id}/line-items",
+      "GET /store/customers/me",
+      "GET /store/carts/active",
+      "POST /store/carts/active",
+      "POST /store/customers/me/verify",
+      "POST /store/customers/verify/resend",
+      "POST /store/customers/verify",
+      "GET /store/customers/me/verify/status",
+      "POST /store/customers/me/password",
+      "POST /store/customers/me/cart/merge",
+      "POST /store/carts/{id}/review/acknowledge",
+    ].sort()
+
+    expect([...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()).toEqual(
+      expectedM1Keys
+    )
+    expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toHaveLength(14)
+
+    const documentedM1Keys = storeOperations
+      .map((operation) => `${operation.method} ${operation.path}`)
+      .filter((key) => expectedM1Keys.includes(key))
+      .sort()
+    expect(documentedM1Keys).toEqual(expectedM1Keys)
+    expect(documentedM1Keys).not.toContain(
+      "POST /store/customers/me/cart/attach"
+    )
+  })
+
+  it("keeps Phase 16 security, schemas, examples, and public fields secret-free", () => {
+    const document = store?.document
+    const components = document?.components
+    const schemas = components?.schemas ?? {}
+    const parameters = components?.parameters ?? {}
+    const securitySchemes = components?.securitySchemes ?? {}
+    const noCredentialDefaults = new Set(["example", "examples", "default"])
+
+    const merge = storeOperations.find(
+      (operation) =>
+        operation.method === "POST" &&
+        operation.path === "/store/customers/me/cart/merge"
+    )
+    const acknowledge = storeOperations.find(
+      (operation) =>
+        operation.method === "POST" &&
+        operation.path === "/store/carts/{id}/review/acknowledge"
+    )
+    expect(merge?.security).toEqual(STORE_AUTH_ACCESS_BEARER)
+    expect(acknowledge?.security).toEqual(STORE_AUTH_ACCESS_BEARER)
+
+    for (const name of [
+      "XIndicioGuestCartToken",
+      "XIndicioGuestCartMergeCapability",
+      "IdempotencyKey",
+    ]) {
+      expect(
+        collectValuesForKeys(parameters[name], noCredentialDefaults)
+      ).toEqual([])
+    }
+
+    expect(securitySchemes.customerBearer).toEqual(
+      expect.objectContaining({
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
+      })
+    )
+    for (const name of [
+      "bffServiceCredential",
+      "publishableApiKey",
+      "customerBearer",
+    ]) {
+      expect(
+        collectValuesForKeys(securitySchemes[name], noCredentialDefaults)
+      ).toEqual([])
+    }
+
+    for (const name of PHASE16_SCHEMA_NAMES) {
+      expect(
+        collectValuesForKeys(schemas[name], noCredentialDefaults)
+      ).toEqual([])
+    }
+
+    const configuredExampleValues = collectValuesForKeys(
+      document,
+      new Set(["example", "examples"])
+    )
+    const configuredExampleText = configuredExampleValues
+      .map(({ value }) => JSON.stringify(value) ?? "")
+      .join("\n")
+    for (const canary of SENSITIVE_EXAMPLE_CANARIES) {
+      expect(configuredExampleText).not.toContain(canary)
+    }
+    for (const pattern of SENSITIVE_EXAMPLE_PATTERNS) {
+      expect(configuredExampleText).not.toMatch(pattern)
+    }
+    expect(configuredExampleText).not.toContain("CUSTOMER_CART_PRESERVED")
+
+    const forbiddenPublicFields = [
+      "mergeReceipt",
+      "currentState",
+      "actorId",
+      "customerId",
+      "cartId",
+      "createdAt",
+      "acknowledgedAt",
+      "workflowId",
+      "audit",
+      "metadata",
+      "providerId",
+      "providerOrderId",
+      "fingerprint",
+      "tokenHash",
+      "jwt",
+      "secret",
+    ]
+    for (const name of [
+      "CartMergeRejectedItem",
+      "CartReviewState",
+      "CartMergeResponse",
+      "CartReviewAcknowledgeResponse",
+    ]) {
+      const propertyNames = Object.keys(
+        (schemas[name] as { properties?: Record<string, unknown> }).properties ??
+          {}
+      )
+      expect(propertyNames).not.toEqual(
+        expect.arrayContaining(forbiddenPublicFields)
+      )
+    }
+
+    expect(schemas.CartMergeOutcome).not.toHaveProperty("example")
+    expect(schemas.CartMergeOutcome).not.toHaveProperty("examples")
+    expect(schemas.CartMergeOutcome).not.toHaveProperty("default")
   })
 
   it("documents synchronous PaymentAttempt status consts for card and pix", () => {
