@@ -37,14 +37,13 @@ import { scanInstalledStoreSurface } from "../../../scripts/store-surface/scan-i
 import {
   STORE_SURFACE_MANIFEST,
   STORE_SURFACE_M1_ENABLED_OPERATIONS,
-  lookupStoreSurfaceEntry,
   storeSurfaceOperationKey,
   summarizeStoreSurfaceManifest,
   validateStoreSurfaceManifest,
   type StoreSurfaceEntry,
 } from "../../api/store-surface/manifest"
 
-const PHASE16_PENDING_OPENAPI_ROUTES = [
+const PHASE16_REGISTERED_OPENAPI_ROUTES = [
   {
     method: "POST" as const,
     path: "/store/customers/me/cart/merge",
@@ -58,15 +57,6 @@ const PHASE16_PENDING_OPENAPI_ROUTES = [
       "apps/backend/src/api/store/carts/[id]/review/acknowledge/route.ts",
   },
 ] as const
-
-function discoverRoutesWithoutPendingPhase16OpenApi(): DiscoveredRoute[] {
-  const pending = new Set(
-    PHASE16_PENDING_OPENAPI_ROUTES.map((route) => `${route.method} ${route.path}`)
-  )
-  return discoverRoutes().filter(
-    (route) => !pending.has(`${route.method} ${route.path}`)
-  )
-}
 
 function fixtureRoot(): { repositoryRoot: string; apiRoot: string } {
   const repositoryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "api-docs-routes-"))
@@ -368,38 +358,48 @@ describe("OpenAPI route coverage foundation", () => {
     expect(() => verifyCoverage("webhooks", registry)).not.toThrow()
   })
 
-  it("passes store and global coverage while Phase 16 merge/ACK await OpenAPI registration", () => {
+  it("passes store and global coverage with registered Phase 16 merge/ACK routes", () => {
     const registry = createFoundationRegistry()
-    const filteredRoutes = discoverRoutesWithoutPendingPhase16OpenApi()
+    const discoveredRoutes = discoverRoutes()
 
-    expect(() => verifyCoverage("store", registry, filteredRoutes)).not.toThrow()
-    expect(() => verifyCoverage("global", registry, filteredRoutes)).not.toThrow()
+    expect(() => verifyCoverage("store", registry, discoveredRoutes)).not.toThrow()
+    expect(() => verifyCoverage("global", registry, discoveredRoutes)).not.toThrow()
 
-    for (const pending of PHASE16_PENDING_OPENAPI_ROUTES) {
-      const discovered = discoverRoutes().find(
-        (route) => route.method === pending.method && route.path === pending.path
+    for (const registered of PHASE16_REGISTERED_OPENAPI_ROUTES) {
+      const discovered = discoveredRoutes.find(
+        (route) =>
+          route.method === registered.method && route.path === registered.path
       )
       expect(discovered).toBeDefined()
-      expect(discovered?.sourceFile).toContain(pending.discoverPath)
+      expect(discovered?.sourceFile).toContain(registered.discoverPath)
 
-      const manifestEntry = lookupStoreSurfaceEntry(pending.method, pending.path)
+      const manifestEntry = STORE_SURFACE_MANIFEST.find(
+        (entry) =>
+          entry.method === registered.method &&
+          entry.pathTemplate === registered.path
+      )
+      expect(manifestEntry).toBeDefined()
       expect(manifestEntry?.runtime_policy).toBe("M1_ENABLED")
       expect(manifestEntry?.m1_enablement).toBe("enabled")
       expect(
         ROUTE_EXCLUSIONS.some(
           (exclusion) =>
-            exclusion.method === pending.method && exclusion.path === pending.path
+            exclusion.method === registered.method &&
+            exclusion.path === registered.path
         )
       ).toBe(false)
 
-      const registryKey = storeSurfaceOperationKey(pending.method, pending.path)
+      const registryKey = storeSurfaceOperationKey(
+        registered.method,
+        registered.path
+      )
       expect(
         registry
           .getOperations("store")
           .map((operation) =>
             storeSurfaceOperationKey(operation.method, operation.path)
           )
-      ).not.toContain(registryKey)
+      ).toContain(registryKey)
     }
   })
 
@@ -478,13 +478,17 @@ describe("OpenAPI route coverage foundation", () => {
       .filter((operation) => operation.path.startsWith("/store/"))
       .map((operation) => storeSurfaceOperationKey(operation.method, operation.path))
 
-    for (const forbidden of [
-      "POST /store/customers/me/cart/attach",
-      "POST /store/customers/me/cart/merge",
-      "POST /store/carts/{id}/review/acknowledge",
-    ]) {
-      expect(documentStoreKeys).not.toContain(forbidden)
-      expect(registryStoreKeys).not.toContain(forbidden)
+    const attachKey = "POST /store/customers/me/cart/attach"
+    expect(documentStoreKeys).not.toContain(attachKey)
+    expect(registryStoreKeys).not.toContain(attachKey)
+
+    for (const registered of PHASE16_REGISTERED_OPENAPI_ROUTES) {
+      const registeredKey = storeSurfaceOperationKey(
+        registered.method,
+        registered.path
+      )
+      expect(documentStoreKeys).toContain(registeredKey)
+      expect(registryStoreKeys).toContain(registeredKey)
     }
 
     expect(

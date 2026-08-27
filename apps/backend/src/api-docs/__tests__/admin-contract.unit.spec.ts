@@ -1,3 +1,4 @@
+import { createHash } from "crypto"
 import fs from "fs"
 import path from "path"
 import { buildContracts } from "../generation/build-documents"
@@ -54,6 +55,12 @@ const FORBIDDEN_OPERATIONAL_METADATA_FIELDS = [
   "gelato_payload",
   "webhook_payload",
 ] as const
+const GENERATED_STORE_SHA256 =
+  "d984abe7d4ffa3291742a57c780c7e5f0f282ca81fdb9bd4678a7b9a377b3c98"
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex")
+}
 
 type DocumentOperation = {
   security: Array<Record<string, string[]>>
@@ -527,16 +534,58 @@ describe("OpenAPI Admin contract", () => {
     expect(admin.components.schemas).not.toHaveProperty("WebhookEventLog")
   })
 
-  it("is deterministic and preserves committed Store/Webhooks bytes", () => {
+  it("is deterministic, preserves Admin/Webhooks bytes, and records the Store generation boundary", () => {
     const second = buildContracts(createFoundationRegistry())
     expect(
       second.find((contract) => contract.surface === "admin")?.bytes
     ).toBe(adminContract.bytes)
 
     const generatedDir = path.resolve(__dirname, "..", "generated")
-    expect(storeContract.bytes).toBe(
-      fs.readFileSync(path.join(generatedDir, "store.openapi.json"), "utf8")
+    const committedStore = fs.readFileSync(
+      path.join(generatedDir, "store.openapi.json"),
+      "utf8"
     )
+    const committedStoreDocument = JSON.parse(committedStore) as {
+      paths: Record<string, unknown>
+    }
+    expect(
+      registry
+        .getOperations("store")
+        .map((operation) => `${operation.method} ${operation.path}`)
+    ).toEqual(
+      expect.arrayContaining([
+        "POST /store/customers/me/cart/merge",
+        "POST /store/carts/{id}/review/acknowledge",
+      ])
+    )
+    expect(
+      storeContract.document.paths["/store/customers/me/cart/merge"]?.post
+    ).toBeDefined()
+    expect(
+      storeContract.document.paths["/store/carts/{id}/review/acknowledge"]?.post
+    ).toBeDefined()
+    for (const schemaName of [
+      "CartMergeRequest",
+      "CartMergeOutcome",
+      "CartMergeRejectedItem",
+      "CartReviewState",
+      "CartMergeResponse",
+      "CartReviewAcknowledgeRequest",
+      "CartReviewAcknowledgeResponse",
+    ]) {
+      expect(storeContract.document.components.schemas[schemaName]).toBeDefined()
+    }
+    expect(
+      committedStoreDocument.paths["/store/customers/me/cart/merge"]
+    ).toBeUndefined()
+    expect(
+      committedStoreDocument.paths["/store/carts/{id}/review/acknowledge"]
+    ).toBeUndefined()
+    expect(sha256(committedStore)).toBe(GENERATED_STORE_SHA256)
+    expect(storeContract.bytes).not.toBe(committedStore)
+    expect(
+      fs.readFileSync(path.join(generatedDir, "admin.openapi.json"), "utf8")
+    ).toBe(adminContract.bytes)
     expect(webhooksContract.bytes).toBe(
       fs.readFileSync(path.join(generatedDir, "webhooks.openapi.json"), "utf8")
     )

@@ -1,3 +1,4 @@
+import { createHash } from "crypto"
 import fs from "fs"
 import path from "path"
 import { z, type ZodType } from "zod"
@@ -19,6 +20,13 @@ import {
   CORRELATION_ID_HEADER,
   STORE_CORRELATION_ID_HEADER,
 } from "../components"
+
+const GENERATED_STORE_SHA256 =
+  "d984abe7d4ffa3291742a57c780c7e5f0f282ca81fdb9bd4678a7b9a377b3c98"
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex")
+}
 
 function syntheticOperation(
   overrides: Partial<OperationMetadata> = {}
@@ -57,8 +65,9 @@ function schemaComponent(
 
 describe("OpenAPI foundation generation", () => {
   it("builds three deterministic populated OpenAPI 3.1.2 documents", () => {
-    const first = buildContracts()
-    const second = buildContracts()
+    const registry = createFoundationRegistry()
+    const first = buildContracts(registry)
+    const second = buildContracts(createFoundationRegistry())
 
     expect(first.map((contract) => contract.surface)).toEqual([
       "store",
@@ -101,7 +110,9 @@ describe("OpenAPI foundation generation", () => {
       "/store/carts/active",
       "/store/carts/{id}/line-items",
       "/store/carts/{id}/line-items/{line_id}",
+      "/store/carts/{id}/review/acknowledge",
       "/store/customers/me",
+      "/store/customers/me/cart/merge",
       "/store/customers/me/password",
       "/store/customers/me/verify",
       "/store/customers/me/verify/status",
@@ -116,13 +127,36 @@ describe("OpenAPI foundation generation", () => {
       "/store/carts/active",
       "/store/carts/{id}/line-items",
       "/store/carts/{id}/line-items/{line_id}",
+      "/store/carts/{id}/review/acknowledge",
       "/store/customers/me",
+      "/store/customers/me/cart/merge",
       "/store/customers/me/password",
       "/store/customers/me/verify",
       "/store/customers/me/verify/status",
       "/store/customers/verify",
       "/store/customers/verify/resend",
     ])
+    expect(
+      registry
+        .getOperations("store")
+        .map((operation) => `${operation.method} ${operation.path}`)
+    ).toEqual(
+      expect.arrayContaining([
+        "POST /store/customers/me/cart/merge",
+        "POST /store/carts/{id}/review/acknowledge",
+      ])
+    )
+    for (const schemaName of [
+      "CartMergeRequest",
+      "CartMergeOutcome",
+      "CartMergeRejectedItem",
+      "CartReviewState",
+      "CartMergeResponse",
+      "CartReviewAcknowledgeRequest",
+      "CartReviewAcknowledgeResponse",
+    ]) {
+      expect(store?.document.components.schemas[schemaName]).toBeDefined()
+    }
     expect(Object.keys(admin?.document.paths ?? {}).sort()).toEqual([
       "/admin/exchanges",
       "/admin/exchanges/{id}",
@@ -211,7 +245,8 @@ describe("OpenAPI foundation generation", () => {
   })
 
   it("keeps Store correlation semantics isolated from stable Admin and generated artifacts", () => {
-    const contracts = buildContracts()
+    const registry = createFoundationRegistry()
+    const contracts = buildContracts(registry)
     const bySurface = Object.fromEntries(
       contracts.map((contract) => [contract.surface, contract.document])
     ) as Record<"store" | "admin" | "webhooks", OpenApiDocument>
@@ -245,10 +280,49 @@ describe("OpenAPI foundation generation", () => {
       "utf8"
     )
     const builtStore = contracts.find((contract) => contract.surface === "store")
+    const committedStoreDocument = JSON.parse(committedStore) as OpenApiDocument
+    expect(
+      registry
+        .getOperations("store")
+        .map((operation) => `${operation.method} ${operation.path}`)
+    ).toEqual(
+      expect.arrayContaining([
+        "POST /store/customers/me/cart/merge",
+        "POST /store/carts/{id}/review/acknowledge",
+      ])
+    )
+    expect(
+      builtStore?.document.paths["/store/customers/me/cart/merge"]?.post
+    ).toBeDefined()
+    expect(
+      builtStore?.document.paths["/store/carts/{id}/review/acknowledge"]?.post
+    ).toBeDefined()
+    for (const schemaName of [
+      "CartMergeRequest",
+      "CartMergeOutcome",
+      "CartMergeRejectedItem",
+      "CartReviewState",
+      "CartMergeResponse",
+      "CartReviewAcknowledgeRequest",
+      "CartReviewAcknowledgeResponse",
+    ]) {
+      expect(builtStore?.document.components.schemas[schemaName]).toBeDefined()
+    }
     expect(committedStore).toContain("/health/live")
-    expect(JSON.parse(committedStore).paths["/auth/session"]).toBeUndefined()
+    expect(committedStoreDocument.paths["/auth/session"]).toBeUndefined()
+    expect(
+      committedStoreDocument.paths["/store/customers/me/cart/merge"]
+    ).toBeUndefined()
+    expect(
+      committedStoreDocument.paths["/store/carts/{id}/review/acknowledge"]
+    ).toBeUndefined()
+    expect(sha256(committedStore)).toBe(GENERATED_STORE_SHA256)
     expect(builtStore?.bytes).toBeDefined()
-    expect(builtStore?.bytes).toBe(committedStore)
+    expect(builtStore?.bytes).not.toBe(committedStore)
+    expect(builtStore?.bytes).toBe(
+      buildContracts(registry).find((contract) => contract.surface === "store")
+        ?.bytes
+    )
   })
 
   it("uses an explicit operation description and otherwise falls back to summary", () => {
