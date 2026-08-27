@@ -22,6 +22,12 @@ import type {
   CartReviewState,
   RejectedItem,
 } from "../../../modules/cart-merge/types"
+import {
+  CartMergeRejectedItemSchema,
+  CartMergeResponseSchema,
+  CartReviewAcknowledgeResponseSchema,
+  CartReviewStateSchema,
+} from "./merge-review-validators"
 
 type StoreCartShippingAddress = {
   first_name?: string | null
@@ -339,32 +345,38 @@ function serializeRejectedItems(
 export function serializeCartMergeRejectedItem(
   item: RejectedItem
 ): RejectedItem {
-  return {
+  const serialized = {
     variantId: item.variantId,
     requestedQuantity: item.requestedQuantity,
     acceptedQuantity: item.acceptedQuantity,
     rejectedQuantity: item.rejectedQuantity,
     reason: item.reason,
   }
+
+  return CartMergeRejectedItemSchema.parse(serialized)
 }
 
 export function serializeCartReviewState(
   review: CartReviewState | CartReviewRecordInput
 ): CartReviewState {
   if ("requiresReview" in review) {
-    return {
+    const serialized = {
       requiresReview: review.requiresReview,
       reviewRef: review.requiresReview ? review.reviewRef : null,
       rejectedItems: serializeRejectedItems(review.rejectedItems),
     }
+
+    return CartReviewStateSchema.parse(serialized)
   }
 
   const pending = review.status === "pending"
-  return {
+  const serialized = {
     requiresReview: pending,
     reviewRef: pending ? review.review_ref : null,
     rejectedItems: pending ? serializeRejectedItems(review.rejected_items) : [],
   }
+
+  return CartReviewStateSchema.parse(serialized)
 }
 
 function serializePublicCartSnapshot(
@@ -441,18 +453,22 @@ function serializeCartMergeCart(
 export function serializeCartMergeResponse(
   response: CartMergeResponseInput
 ): CartMergeResponse {
-  return {
+  const serialized = {
     outcome: response.outcome,
     cart: serializeCartMergeCart(response.cart),
     review: serializeCartReviewState(response.review),
   }
+
+  return CartMergeResponseSchema.parse(serialized)
 }
 
 export function serializeCartReviewAcknowledgeResponse(
   response: Omit<CartMergeResponseInput, "outcome">
 ): CartReviewAcknowledgeResponse {
-  return {
+  const serialized = {
     cart: serializeCartMergeCart(response.cart),
     review: serializeCartReviewState(response.review),
   }
+
+  return CartReviewAcknowledgeResponseSchema.parse(serialized)
 }

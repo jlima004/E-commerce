@@ -4,6 +4,18 @@ import {
   lookupStoreSurfaceEntry,
   storeSurfaceOperationKey,
 } from "../../api/store-surface/manifest"
+import {
+  CartMergeRejectedItemSchema,
+  CartMergeRequestSchema,
+  CartMergeResponseSchema,
+  CartReviewAcknowledgeBodySchema,
+  CartReviewAcknowledgeResponseSchema,
+  CartReviewStateSchema,
+} from "../../api/store/carts/merge-review-validators"
+import {
+  serializeCartMergeResponse,
+  serializeCartReviewAcknowledgeResponse,
+} from "../../api/store/carts/serializers"
 import { verifyCoverage } from "../coverage/verify-coverage"
 import { STORE_DOCUMENTATION_AUTH_OPERATIONS } from "../coverage/verify-coverage"
 import {
@@ -15,6 +27,10 @@ import { buildContracts } from "../generation/build-documents"
 import { STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS } from "../operations/store/schemas"
 import { createFoundationRegistry } from "../registry"
 import { assertSafeExamples } from "../safe-examples"
+import {
+  CART_MERGE_OUTCOMES,
+  CART_MERGE_REJECTION_REASONS,
+} from "../../modules/cart-merge/types"
 
 const PHASE16_PENDING_OPENAPI_ROUTES = [
   {
@@ -800,5 +816,281 @@ describe("OpenAPI Store contract wave", () => {
 
     expect(price?.properties?.amount?.type).toBe("integer")
     expect(price?.properties?.amount?.["x-money-unit"]).toBe("brl-major")
+  })
+
+  it("keeps merge and review runtime bodies strict and exact", () => {
+    expect(Object.keys(CartMergeRequestSchema.shape)).toEqual(["guestCartId"])
+    expect(
+      CartMergeRequestSchema.safeParse({ guestCartId: "cart_guest_01" }).success
+    ).toBe(true)
+    expect(
+      CartMergeRequestSchema.safeParse({
+        guestCartId: "cart_guest_01",
+        customerCartId: "cart_customer_01",
+      }).success
+    ).toBe(false)
+    expect(
+      CartMergeRequestSchema.safeParse({ guest_cart_id: "cart_guest_01" }).success
+    ).toBe(false)
+
+    expect(Object.keys(CartReviewAcknowledgeBodySchema.shape)).toEqual([
+      "reviewRef",
+    ])
+    expect(CartReviewAcknowledgeBodySchema.safeParse({ reviewRef: null }).success).toBe(
+      true
+    )
+    expect(
+      CartReviewAcknowledgeBodySchema.safeParse({ reviewRef: "review_01" }).success
+    ).toBe(true)
+    expect(
+      CartReviewAcknowledgeBodySchema.safeParse({
+        reviewRef: null,
+        idempotencyKey: "retry-key",
+      }).success
+    ).toBe(false)
+    expect(
+      CartReviewAcknowledgeBodySchema.safeParse({}).success
+    ).toBe(false)
+  })
+
+  it("proves closed merge/review registry schemas and exact public sets", () => {
+    type Schema = {
+      additionalProperties?: unknown
+      description?: string
+      enum?: unknown
+      example?: unknown
+      examples?: unknown
+      minimum?: unknown
+      minLength?: unknown
+      properties?: Record<string, Schema>
+      required?: unknown
+      type?: unknown
+      oneOf?: unknown
+    }
+
+    const schemas = store?.document.components.schemas ?? {}
+    const schema = (name: string): Schema => schemas[name] as Schema
+    const propertyNames = (name: string): string[] =>
+      Object.keys(schema(name).properties ?? {})
+    const requiredNames = (name: string): string[] =>
+      (schema(name).required ?? []) as string[]
+
+    expect(propertyNames("CartMergeRequest")).toEqual(["guestCartId"])
+    expect(requiredNames("CartMergeRequest")).toEqual(["guestCartId"])
+    expect(schema("CartMergeRequest").additionalProperties).toBe(false)
+    expect(schema("CartMergeRequest").properties?.guestCartId).toEqual(
+      expect.objectContaining({ type: "string", minLength: 1 })
+    )
+
+    expect(schema("CartMergeOutcome").enum).toEqual([...CART_MERGE_OUTCOMES])
+    expect(schema("CartMergeOutcome")).not.toHaveProperty("example")
+    expect(schema("CartMergeOutcome")).not.toHaveProperty("examples")
+    expect(schema("CartMergeOutcome").description).toMatch(/reserved/i)
+
+    expect(propertyNames("CartMergeRejectedItem")).toEqual([
+      "variantId",
+      "requestedQuantity",
+      "acceptedQuantity",
+      "rejectedQuantity",
+      "reason",
+    ])
+    expect(requiredNames("CartMergeRejectedItem")).toEqual([
+      "variantId",
+      "requestedQuantity",
+      "acceptedQuantity",
+      "rejectedQuantity",
+      "reason",
+    ])
+    expect(schema("CartMergeRejectedItem").additionalProperties).toBe(false)
+    expect(schema("CartMergeRejectedItem").properties?.variantId).toEqual(
+      expect.objectContaining({ type: "string", minLength: 1 })
+    )
+    expect(schema("CartMergeRejectedItem").properties?.requestedQuantity).toEqual(
+      expect.objectContaining({ type: "integer", minimum: 1 })
+    )
+    expect(schema("CartMergeRejectedItem").properties?.acceptedQuantity).toEqual(
+      expect.objectContaining({ type: "integer", minimum: 0, maximum: 99 })
+    )
+    expect(schema("CartMergeRejectedItem").properties?.rejectedQuantity).toEqual(
+      expect.objectContaining({ type: "integer", minimum: 0 })
+    )
+    expect(schema("CartMergeRejectedItem").properties?.reason).toEqual(
+      expect.objectContaining({
+        type: "string",
+        enum: [...CART_MERGE_REJECTION_REASONS],
+      })
+    )
+
+    expect(propertyNames("CartReviewState")).toEqual([
+      "requiresReview",
+      "reviewRef",
+      "rejectedItems",
+    ])
+    expect(requiredNames("CartReviewState")).toEqual([
+      "requiresReview",
+      "reviewRef",
+      "rejectedItems",
+    ])
+    expect(schema("CartReviewState").additionalProperties).toBe(false)
+    expect(schema("CartReviewState").properties?.reviewRef).toEqual(
+      expect.objectContaining({ type: ["string", "null"], minLength: 1 })
+    )
+    expect(schema("CartReviewState").description).toMatch(
+      /requiresReview.*MERGED_PARTIAL/i
+    )
+
+    expect(propertyNames("CartMergeResponse")).toEqual([
+      "outcome",
+      "cart",
+      "review",
+    ])
+    expect(requiredNames("CartMergeResponse")).toEqual([
+      "outcome",
+      "cart",
+      "review",
+    ])
+    expect(schema("CartMergeResponse").additionalProperties).toBe(false)
+    expect(schema("CartMergeResponse").properties?.cart).toEqual({
+      oneOf: [
+        { $ref: "#/components/schemas/PublicStoreCartPreOrder" },
+        { type: "null" },
+      ],
+    })
+
+    expect(propertyNames("CartReviewAcknowledgeRequest")).toEqual(["reviewRef"])
+    expect(requiredNames("CartReviewAcknowledgeRequest")).toEqual(["reviewRef"])
+    expect(schema("CartReviewAcknowledgeRequest").additionalProperties).toBe(false)
+    expect(schema("CartReviewAcknowledgeRequest").properties?.reviewRef).toEqual(
+      expect.objectContaining({ type: ["string", "null"], minLength: 1 })
+    )
+
+    expect(propertyNames("CartReviewAcknowledgeResponse")).toEqual([
+      "cart",
+      "review",
+    ])
+    expect(requiredNames("CartReviewAcknowledgeResponse")).toEqual([
+      "cart",
+      "review",
+    ])
+    expect(schema("CartReviewAcknowledgeResponse").additionalProperties).toBe(false)
+    expect(schema("CartReviewAcknowledgeResponse").properties?.cart).toEqual({
+      oneOf: [
+        { $ref: "#/components/schemas/PublicStoreCartPreOrder" },
+        { type: "null" },
+      ],
+    })
+
+    expect(
+      CartMergeRejectedItemSchema.safeParse({
+        variantId: "variant_public",
+        requestedQuantity: 30,
+        acceptedQuantity: 19,
+        rejectedQuantity: 11,
+        reason: "QUANTITY_LIMIT_EXCEEDED",
+      }).success
+    ).toBe(true)
+    expect(
+      CartMergeRejectedItemSchema.safeParse({
+        variantId: "variant_public",
+        requestedQuantity: 30,
+        acceptedQuantity: 20,
+        rejectedQuantity: 11,
+        reason: "QUANTITY_LIMIT_EXCEEDED",
+      }).success
+    ).toBe(false)
+    expect(() =>
+      serializeCartMergeResponse({
+        outcome: "MERGED_PARTIAL",
+        cart: null,
+        review: {
+          requiresReview: true,
+          reviewRef: "review_opaque_01",
+          rejectedItems: [
+            {
+              variantId: "variant_public",
+              requestedQuantity: 30,
+              acceptedQuantity: 20,
+              rejectedQuantity: 11,
+              reason: "QUANTITY_LIMIT_EXCEEDED",
+            },
+          ],
+        },
+      })
+    ).toThrow()
+  })
+
+  it("keeps review relation, response sets, forbidden fields, and replay shape closed", () => {
+    const partialReview = {
+      requiresReview: true,
+      reviewRef: "review_opaque_01",
+      rejectedItems: [
+        {
+          variantId: "variant_public",
+          requestedQuantity: 3,
+          acceptedQuantity: 2,
+          rejectedQuantity: 1,
+          reason: "VARIANT_UNAVAILABLE" as const,
+        },
+      ],
+    }
+    const cleanReview = {
+      requiresReview: false,
+      reviewRef: null,
+      rejectedItems: [],
+    }
+
+    expect(
+      CartReviewStateSchema.safeParse(partialReview).success
+    ).toBe(true)
+    expect(
+      CartMergeResponseSchema.safeParse({
+        outcome: "MERGED_PARTIAL",
+        cart: null,
+        review: partialReview,
+      }).success
+    ).toBe(true)
+    expect(
+      CartMergeResponseSchema.safeParse({
+        outcome: "MERGED",
+        cart: null,
+        review: partialReview,
+      }).success
+    ).toBe(false)
+    expect(
+      CartReviewAcknowledgeResponseSchema.safeParse({
+        cart: null,
+        review: cleanReview,
+      }).success
+    ).toBe(true)
+
+    const mergeResponse = serializeCartMergeResponse({
+      outcome: "MERGED_PARTIAL",
+      cart: null,
+      review: partialReview,
+      mergeReceipt: "internal-receipt",
+      currentState: "internal-state",
+      actorId: "internal-actor",
+    } as never)
+    const acknowledgeResponse = serializeCartReviewAcknowledgeResponse({
+      cart: null,
+      review: cleanReview,
+      mergeReceipt: "internal-receipt",
+      currentState: "internal-state",
+    } as never)
+
+    expect(Object.keys(mergeResponse)).toEqual(["outcome", "cart", "review"])
+    expect(Object.keys(acknowledgeResponse)).toEqual(["cart", "review"])
+    expect(JSON.stringify(mergeResponse)).not.toMatch(
+      /mergeReceipt|currentState|actorId|internal-receipt|internal-state|internal-actor/
+    )
+    expect(JSON.stringify(acknowledgeResponse)).not.toMatch(
+      /mergeReceipt|currentState|internal-receipt|internal-state/
+    )
+    expect(
+      CartMergeResponseSchema.safeParse(mergeResponse).success
+    ).toBe(true)
+    expect(
+      CartReviewAcknowledgeResponseSchema.safeParse(acknowledgeResponse).success
+    ).toBe(true)
   })
 })

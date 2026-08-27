@@ -2,6 +2,12 @@ import { MedusaError } from "@medusajs/framework/utils"
 import { z } from "zod"
 import { GUEST_CART_CAPABILITY_HEADER } from "../../../modules/guest-cart-capability/types"
 import { assertValidRawIdempotencyKey } from "../../../modules/store-idempotency"
+import {
+  CART_MERGE_OUTCOMES,
+  CART_MERGE_REJECTION_REASONS,
+  type RejectedItem,
+} from "../../../modules/cart-merge/types"
+import type { PublicStoreCartPreOrder } from "./serializers"
 
 export const CartReviewAcknowledgeParamsSchema = z
   .object({
@@ -9,12 +15,99 @@ export const CartReviewAcknowledgeParamsSchema = z
   })
   .strict()
 
+export const CartMergeRequestSchema = z
+  .object({
+    guestCartId: z
+      .string()
+      .min(1)
+      .refine((value) => value.trim().length > 0),
+  })
+  .strict()
+
+const cartMergeRejectedItemShape = {
+  variantId: z.string().min(1),
+  requestedQuantity: z.number().int().min(1),
+  acceptedQuantity: z.number().int().min(0).max(99),
+  rejectedQuantity: z.number().int().min(0),
+  reason: z.enum(CART_MERGE_REJECTION_REASONS),
+}
+
+export const CartMergeRejectedItemSchema = z
+  .object(cartMergeRejectedItemShape)
+  .strict()
+  .superRefine((item, context) => {
+    if (item.acceptedQuantity > item.requestedQuantity) {
+      context.addIssue({
+        code: "custom",
+        path: ["acceptedQuantity"],
+        message: "acceptedQuantity cannot exceed requestedQuantity",
+      })
+    }
+
+    if (
+      item.acceptedQuantity + item.rejectedQuantity !==
+      item.requestedQuantity
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["rejectedQuantity"],
+        message:
+          "acceptedQuantity plus rejectedQuantity must equal requestedQuantity",
+      })
+    }
+  })
+
+export const CartReviewStateSchema = z
+  .object({
+    requiresReview: z.boolean(),
+    reviewRef: z.string().min(1).nullable(),
+    rejectedItems: z.array(CartMergeRejectedItemSchema),
+  })
+  .strict()
+  .superRefine((review, context) => {
+    if (!review.requiresReview && review.reviewRef !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["reviewRef"],
+        message: "A review reference requires a pending review",
+      })
+    }
+  })
+
+const publicStoreCartSchema = z.custom<PublicStoreCartPreOrder>()
+
+export const CartMergeResponseSchema = z
+  .object({
+    outcome: z.enum(CART_MERGE_OUTCOMES),
+    cart: publicStoreCartSchema.nullable(),
+    review: CartReviewStateSchema,
+  })
+  .strict()
+  .superRefine((response, context) => {
+    const requiresReview = response.outcome === "MERGED_PARTIAL"
+    if (response.review.requiresReview !== requiresReview) {
+      context.addIssue({
+        code: "custom",
+        path: ["review", "requiresReview"],
+        message: "requiresReview must match the MERGED_PARTIAL outcome",
+      })
+    }
+  })
+
 export const CartReviewAcknowledgeBodySchema = z
   .object({
     reviewRef: z.string().min(1).nullable(),
   })
   .strict()
 
+export const CartReviewAcknowledgeResponseSchema = z
+  .object({
+    cart: publicStoreCartSchema.nullable(),
+    review: CartReviewStateSchema,
+  })
+  .strict()
+
+export type CartMergeRequest = z.infer<typeof CartMergeRequestSchema>
 export type CartReviewAcknowledgeParams = z.infer<
   typeof CartReviewAcknowledgeParamsSchema
 >
@@ -51,9 +144,7 @@ function headerValue(req: CartMergeRequestLike, name: string): string | undefine
 }
 
 export function isAttachNewContractPresent(req: CartMergeRequestLike): boolean {
-  const body = req.body ?? {}
-  const guestCartId = nonEmptyString(body.guestCartId ?? body.guest_cart_id)
-  if (!guestCartId) {
+  if (!CartMergeRequestSchema.safeParse(req.body).success) {
     return false
   }
 
@@ -100,29 +191,14 @@ export function parseCartMergeBody(req: CartMergeRequestLike): string {
 }
 
 export function requireGuestCartId(req: CartMergeRequestLike): string {
-  const body = req.body ?? {}
-  for (const forbidden of [
-    "customerCartId",
-    "customer_cart_id",
-    "customerCartVersion",
-    "customer_cart_version",
-    "etag",
-  ]) {
-    if (Object.prototype.hasOwnProperty.call(body, forbidden)) {
-      throw new MedusaError(
-        MedusaError.Types.INVALID_DATA,
-        "Customer destination is server-authoritative"
-      )
-    }
-  }
-  const guestCartId = nonEmptyString(body.guestCartId ?? body.guest_cart_id)
-  if (!guestCartId) {
+  const parsed = CartMergeRequestSchema.safeParse(req.body)
+  if (!parsed.success) {
     throw new MedusaError(
       MedusaError.Types.INVALID_DATA,
-      "guestCartId is required"
+      "Invalid cart merge request"
     )
   }
-  return guestCartId
+  return parsed.data.guestCartId.trim()
 }
 
 export function parseCartMergePresentedHeaders(req: CartMergeRequestLike): {

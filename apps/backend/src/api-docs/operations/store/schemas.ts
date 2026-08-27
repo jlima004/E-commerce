@@ -9,6 +9,10 @@ import type {
   ComponentTypeOf,
   ContractRegistryBundle,
 } from "../../registry"
+import {
+  CART_MERGE_OUTCOMES,
+  CART_MERGE_REJECTION_REASONS,
+} from "../../../modules/cart-merge/types"
 
 const nullableString = {
   type: ["string", "null"],
@@ -816,6 +820,147 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
       },
     },
   })
+
+  registry.registerComponent("store", "schemas", "CartMergeRequest", {
+    type: "object",
+    additionalProperties: false,
+    required: ["guestCartId"],
+    description:
+      "Guest cart source identifier. The Customer destination is resolved server-side.",
+    properties: {
+      guestCartId: {
+        type: "string",
+        minLength: 1,
+      },
+    },
+  })
+
+  registry.registerComponent("store", "schemas", "CartMergeOutcome", {
+    type: "string",
+    enum: [...CART_MERGE_OUTCOMES],
+    description:
+      "Closed merge outcome. CUSTOMER_CART_PRESERVED is reserved and has no positive branch until a future deterministic rule is approved.",
+  })
+
+  registry.registerComponent("store", "schemas", "CartMergeRejectedItem", {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "variantId",
+      "requestedQuantity",
+      "acceptedQuantity",
+      "rejectedQuantity",
+      "reason",
+    ],
+    description:
+      "Rejected guest intent grouped by public variant. requestedQuantity equals acceptedQuantity plus rejectedQuantity.",
+    properties: {
+      variantId: {
+        type: "string",
+        minLength: 1,
+      },
+      requestedQuantity: {
+        type: "integer",
+        minimum: 1,
+        description: "Original normalized guest quantity for the variant.",
+      },
+      acceptedQuantity: {
+        type: "integer",
+        minimum: 0,
+        maximum: 99,
+        description: "Quantity incorporated into the canonical cart.",
+      },
+      rejectedQuantity: {
+        type: "integer",
+        minimum: 0,
+        description:
+          "Quantity not incorporated; acceptedQuantity plus rejectedQuantity equals requestedQuantity.",
+      },
+      reason: {
+        type: "string",
+        enum: [...CART_MERGE_REJECTION_REASONS],
+      },
+    },
+  })
+
+  registry.registerComponent("store", "schemas", "CartReviewState", {
+    type: "object",
+    additionalProperties: false,
+    required: ["requiresReview", "reviewRef", "rejectedItems"],
+    description:
+      "Public review state. requiresReview is true if and only if outcome is MERGED_PARTIAL.",
+    properties: {
+      requiresReview: {
+        type: "boolean",
+      },
+      reviewRef: {
+        type: ["string", "null"],
+        minLength: 1,
+      },
+      rejectedItems: {
+        type: "array",
+        items: {
+          $ref: "#/components/schemas/CartMergeRejectedItem",
+        },
+      },
+    },
+  })
+
+  const nullablePublicStoreCart = {
+    oneOf: [
+      { $ref: "#/components/schemas/PublicStoreCartPreOrder" },
+      { type: "null" },
+    ],
+  } as const
+
+  registry.registerComponent("store", "schemas", "CartMergeResponse", {
+    type: "object",
+    additionalProperties: false,
+    required: ["outcome", "cart", "review"],
+    properties: {
+      outcome: {
+        $ref: "#/components/schemas/CartMergeOutcome",
+      },
+      cart: nullablePublicStoreCart,
+      review: {
+        $ref: "#/components/schemas/CartReviewState",
+      },
+    },
+  })
+
+  registry.registerComponent(
+    "store",
+    "schemas",
+    "CartReviewAcknowledgeRequest",
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["reviewRef"],
+      properties: {
+        reviewRef: {
+          type: ["string", "null"],
+          minLength: 1,
+        },
+      },
+    }
+  )
+
+  registry.registerComponent(
+    "store",
+    "schemas",
+    "CartReviewAcknowledgeResponse",
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["cart", "review"],
+      properties: {
+        cart: nullablePublicStoreCart,
+        review: {
+          $ref: "#/components/schemas/CartReviewState",
+        },
+      },
+    }
+  )
 
   // Attach schemas: see STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS (not public).
 
