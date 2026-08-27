@@ -50,12 +50,17 @@ import {
   parseCartMergeCustomerId,
   parseCartMergePresentedHeaders,
 } from "../../src/api/store/carts/merge-review-validators"
+import * as Sentry from "@sentry/node"
+import { ANALYTICS_EVENT_LOG_MODULE } from "../../src/modules/analytics-event-log"
 import {
   assertPublicIdentifiersDoNotEncodeSecrets,
+  assertPublicSurfaceDoesNotEncodeSecrets,
   createGuestCartLeakageCollector,
   PHASE16_CUSTOMER_JWT_CANARY,
   PHASE16_GUEST_CAPABILITY_CANARY,
   PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+  readStoreOpenApiDocumentForLeakageScan,
+  unusedSinkEvidence,
 } from "../helpers/guest-cart-leakage"
 
 jest.mock("@medusajs/core-flows", () => ({
@@ -933,51 +938,173 @@ function phase16CanaryRequestHeaders(
   return headers
 }
 
-const LEAKAGE_REDIS_SENTINEL = {
-  exercised: false,
-  reason: "RUNTIME_PATH_DOES_NOT_USE_REDIS_IN_THIS_HARNESS",
-} as const
+const PHASE16_LEAKAGE_RESOLVE_KEYS = [
+  Modules.CACHE,
+  Modules.EVENT_BUS,
+  Modules.WORKFLOW_ENGINE,
+  "locking",
+  ANALYTICS_EVENT_LOG_MODULE,
+  "analytics_event_log",
+] as const
 
-const LEAKAGE_SENTRY_SENTINEL = {
-  exercised: false,
-  reason: "SENTRY_NOT_EXERCISED_ON_MERGE_PATH",
-} as const
+type Phase16LeakageSpyBundle = {
+  resolveSpy: jest.SpyInstance
+  sentryCaptureExceptionSpy: jest.SpyInstance
+  sentryCaptureMessageSpy: jest.SpyInstance
+  restore: () => void
+}
 
-const LEAKAGE_ANALYTICS_SENTINEL = {
-  exercised: false,
-  reason: "ANALYTICS_NOT_EXERCISED_ON_MERGE_ADAPTER_ACK_DENIAL",
-} as const
+function installPhase16LeakageSpies(
+  scope: { resolve: (...args: unknown[]) => unknown }
+): Phase16LeakageSpyBundle {
+  const resolveSpy = jest.spyOn(scope, "resolve")
+  const sentryCaptureExceptionSpy = jest.spyOn(Sentry, "captureException")
+  const sentryCaptureMessageSpy = jest.spyOn(Sentry, "captureMessage")
+
+  return {
+    resolveSpy,
+    sentryCaptureExceptionSpy,
+    sentryCaptureMessageSpy,
+    restore() {
+      resolveSpy.mockRestore()
+      sentryCaptureExceptionSpy.mockRestore()
+      sentryCaptureMessageSpy.mockRestore()
+    },
+  }
+}
+
+function countResolveCalls(
+  resolveSpy: jest.SpyInstance,
+  keys: readonly unknown[]
+): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const key of keys) {
+    const label = String(key)
+    counts[label] = resolveSpy.mock.calls.filter(
+      ([resolved]) => resolved === key
+    ).length
+  }
+  return counts
+}
+
+function extractSafeWorkflowCallArgs(calls: unknown[][]): Array<Record<string, unknown>> {
+  return calls.map((call) => {
+    const first = call[0]
+    if (!first || typeof first !== "object") return {}
+    const record = first as Record<string, unknown>
+    const input =
+      record.input && typeof record.input === "object"
+        ? (record.input as Record<string, unknown>)
+        : record
+    return {
+      cart_id: input.cart_id,
+      items: input.items,
+    }
+  })
+}
+
+function buildPersistedProviderPayloadEvidence() {
+  const addMock = addToCartWorkflow as unknown as jest.Mock
+  const updateMock = updateLineItemInCartWorkflow as unknown as jest.Mock
+  const deleteMock = deleteLineItemsWorkflow as unknown as jest.Mock
+  return {
+    callCounts: {
+      addToCartWorkflow: addMock.mock.calls.length,
+      updateLineItemInCartWorkflow: updateMock.mock.calls.length,
+      deleteLineItemsWorkflow: deleteMock.mock.calls.length,
+    },
+    safeWorkflowArgs: {
+      addToCartWorkflow: extractSafeWorkflowCallArgs(addMock.mock.calls),
+      updateLineItemInCartWorkflow: extractSafeWorkflowCallArgs(updateMock.mock.calls),
+      deleteLineItemsWorkflow: extractSafeWorkflowCallArgs(deleteMock.mock.calls),
+    },
+  }
+}
+
+function buildLeakageErrorSurface(
+  error: unknown,
+  normalized?: ReturnType<typeof toStoreErrorResponse>
+) {
+  const norm = normalized ?? toStoreErrorResponse(error)
+  const record = (error ?? {}) as Record<string, unknown>
+  return {
+    name: record.name,
+    message:
+      (norm.body as { message?: unknown }).message ?? record.message,
+    code: (norm.body as { code?: unknown }).code ?? record.code,
+    status: record.status,
+    statusCode: norm.statusCode,
+    envelope: norm.body,
+    headers: {},
+  }
+}
 
 function recordMergeLeakageSnapshots(
   collector: ReturnType<typeof createGuestCartLeakageCollector>,
   harness: ReturnType<typeof createTracerHarness>,
   boot: BootstrappedCartMerge,
-  response: ReturnType<typeof createResponse>
+  response: ReturnType<typeof createResponse>,
+  options: {
+    spies?: Phase16LeakageSpyBundle
+    errorSurface?: ReturnType<typeof buildLeakageErrorSurface>
+  } = {}
 ) {
-  collector.record("fixtures_snapshots", {
+  const fixturesSnapshot: Record<string, unknown> = {
     body: response.body,
     headers: response.headers,
     reviewRef: (response.body as { review?: { reviewRef?: unknown } })?.review
       ?.reviewRef,
-  })
+  }
+  if (options.errorSurface) {
+    fixturesSnapshot.errorSurface = options.errorSurface
+  }
+
+  collector.record("fixtures_snapshots", fixturesSnapshot)
   collector.record("db_plaintext", {
-    committedReceiptRow: harness.getCommittedReceiptRow(),
-    reviewRow: harness.cartReview,
-    idempotencyRecords: harness.getIdempotencyRecordObjects(),
+    receipt: harness.getCommittedReceiptRow(),
+    review: harness.cartReview,
+    idempotency: harness.getIdempotencyRecordObjects(),
     capability: harness.capability,
   })
   collector.record("logs", boot.logEntries)
-  collector.record("persisted_provider_payload", {
-    addToCartWorkflow: (addToCartWorkflow as unknown as jest.Mock).mock.calls,
-    updateLineItemInCartWorkflow: (
-      updateLineItemInCartWorkflow as unknown as jest.Mock
-    ).mock.calls,
-    deleteLineItemsWorkflow: (deleteLineItemsWorkflow as unknown as jest.Mock)
-      .mock.calls,
-  })
-  collector.record("redis_keys_jobs", LEAKAGE_REDIS_SENTINEL)
-  collector.record("sentry", LEAKAGE_SENTRY_SENTINEL)
-  collector.record("analytics", LEAKAGE_ANALYTICS_SENTINEL)
+  collector.record("openapi", readStoreOpenApiDocumentForLeakageScan())
+  collector.record(
+    "persisted_provider_payload",
+    buildPersistedProviderPayloadEvidence()
+  )
+
+  const resolveCounts = options.spies
+    ? countResolveCalls(options.spies.resolveSpy, PHASE16_LEAKAGE_RESOLVE_KEYS)
+    : Object.fromEntries(
+        PHASE16_LEAKAGE_RESOLVE_KEYS.map((key) => [String(key), 0])
+      )
+
+  collector.record(
+    "redis_keys_jobs",
+    unusedSinkEvidence({
+      cache: resolveCounts[String(Modules.CACHE)] ?? 0,
+      event_bus: resolveCounts[String(Modules.EVENT_BUS)] ?? 0,
+      workflow_engine: resolveCounts[String(Modules.WORKFLOW_ENGINE)] ?? 0,
+      locking: resolveCounts.locking ?? 0,
+    })
+  )
+  collector.record(
+    "sentry",
+    unusedSinkEvidence({
+      captureException: options.spies?.sentryCaptureExceptionSpy.mock.calls
+        .length ?? 0,
+      captureMessage: options.spies?.sentryCaptureMessageSpy.mock.calls
+        .length ?? 0,
+    })
+  )
+  collector.record(
+    "analytics",
+    unusedSinkEvidence({
+      analytics_event_log_module:
+        resolveCounts[String(ANALYTICS_EVENT_LOG_MODULE)] ?? 0,
+      analytics_event_log: resolveCounts.analytics_event_log ?? 0,
+    })
+  )
 }
 
 function assertEncodingSafePublicIdentifiers(
@@ -2846,8 +2973,10 @@ describe("Cart merge HTTP tracer", () => {
   describe("Phase 16 eight-sink leakage (C1–C6)", () => {
     it("C1 merge success keeps Phase 16 canaries out of exercised sinks", async () => {
       const boot = await bootstrapCartMergeContainer()
+      let spies: Phase16LeakageSpyBundle | undefined
       try {
         const harness = createTracerHarness(boot.container)
+        spies = installPhase16LeakageSpies(harness.scope)
         harness.request.headers = {
           ...harness.request.headers,
           ...phase16CanaryRequestHeaders(),
@@ -2857,18 +2986,23 @@ describe("Cart merge HTTP tracer", () => {
 
         expect(response.statusCode).toBe(200)
         const collector = createGuestCartLeakageCollector()
-        recordMergeLeakageSnapshots(collector, harness, boot, response)
-        collector.assertNoCanaries()
+        recordMergeLeakageSnapshots(collector, harness, boot, response, {
+          spies,
+        })
+        collector.assertExactEightSinksNoCanaries()
         assertEncodingSafePublicIdentifiers(harness, response)
       } finally {
+        spies?.restore()
         await boot.dispose()
       }
     })
 
     it("C2 attach success keeps Phase 16 canaries out of exercised sinks", async () => {
       const boot = await bootstrapCartMergeContainer()
+      let spies: Phase16LeakageSpyBundle | undefined
       try {
         const harness = createTracerHarness(boot.container)
+        spies = installPhase16LeakageSpies(harness.scope)
         const response = createResponse()
         await attachCart(
           asAttachRequest(harness, {
@@ -2879,16 +3013,20 @@ describe("Cart merge HTTP tracer", () => {
 
         expect(response.statusCode).toBe(200)
         const collector = createGuestCartLeakageCollector()
-        recordMergeLeakageSnapshots(collector, harness, boot, response)
-        collector.assertNoCanaries()
+        recordMergeLeakageSnapshots(collector, harness, boot, response, {
+          spies,
+        })
+        collector.assertExactEightSinksNoCanaries()
         assertEncodingSafePublicIdentifiers(harness, response)
       } finally {
+        spies?.restore()
         await boot.dispose()
       }
     })
 
     it("C3 committed replay keeps Phase 16 canaries out of exercised sinks", async () => {
       const boot = await bootstrapCartMergeContainer()
+      let spies: Phase16LeakageSpyBundle | undefined
       try {
         const harness = createTracerHarness(boot.container, {
           customerCart: true,
@@ -2915,6 +3053,7 @@ describe("Cart merge HTTP tracer", () => {
             },
           ],
         })
+        spies = installPhase16LeakageSpies(harness.scope)
         harness.request.headers[GUEST_CART_CAPABILITY_HEADER] =
           PHASE16_GUEST_CAPABILITY_CANARY
         harness.request.headers.authorization = `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`
@@ -2936,18 +3075,23 @@ describe("Cart merge HTTP tracer", () => {
 
         expect(replay.statusCode).toBe(200)
         const collector = createGuestCartLeakageCollector()
-        recordMergeLeakageSnapshots(collector, harness, boot, replay)
-        collector.assertNoCanaries()
+        recordMergeLeakageSnapshots(collector, harness, boot, replay, {
+          spies,
+        })
+        collector.assertExactEightSinksNoCanaries()
         assertEncodingSafePublicIdentifiers(harness, replay)
       } finally {
+        spies?.restore()
         await boot.dispose()
       }
     })
 
     it("C4 idempotency conflict keeps Phase 16 canaries out of exercised sinks", async () => {
       const boot = await bootstrapCartMergeContainer()
+      let spies: Phase16LeakageSpyBundle | undefined
       try {
         const harness = createTracerHarness(boot.container)
+        spies = installPhase16LeakageSpies(harness.scope)
         harness.request.headers = {
           ...harness.request.headers,
           ...phase16CanaryRequestHeaders(),
@@ -2960,37 +3104,39 @@ describe("Cart merge HTTP tracer", () => {
           createResponse() as never
         ).catch((caught) => caught)
         const normalized = toStoreErrorResponse(error)
+        const errorSurface = buildLeakageErrorSurface(error, normalized)
 
         expect(normalized.statusCode).toBe(409)
         const collector = createGuestCartLeakageCollector()
-        collector.record("fixtures_snapshots", {
-          body: normalized.body,
-          statusCode: normalized.statusCode,
+        recordMergeLeakageSnapshots(
+          collector,
+          harness,
+          boot,
+          {
+            body: normalized.body,
+            headers: {},
+            statusCode: normalized.statusCode,
+          } as ReturnType<typeof createResponse>,
+          { spies, errorSurface }
+        )
+        collector.assertExactEightSinksNoCanaries()
+        assertPublicSurfaceDoesNotEncodeSecrets({
+          message: errorSurface.message,
+          code: errorSurface.code,
+          envelope: errorSurface.envelope,
         })
-        collector.record("db_plaintext", {
-          committedReceiptRow: harness.getCommittedReceiptRow(),
-          reviewRow: harness.cartReview,
-          idempotencyRecords: harness.getIdempotencyRecordObjects(),
-          capability: harness.capability,
-        })
-        collector.record("logs", boot.logEntries)
-        collector.record("persisted_provider_payload", {
-          addToCartWorkflow: (addToCartWorkflow as unknown as jest.Mock).mock
-            .calls,
-        })
-        collector.record("redis_keys_jobs", LEAKAGE_REDIS_SENTINEL)
-        collector.record("sentry", LEAKAGE_SENTRY_SENTINEL)
-        collector.record("analytics", LEAKAGE_ANALYTICS_SENTINEL)
-        collector.assertNoCanaries()
       } finally {
+        spies?.restore()
         await boot.dispose()
       }
     })
 
     it("C5 session-only attach denial keeps Phase 16 canaries out of exercised sinks", async () => {
       const boot = await bootstrapCartMergeContainer()
+      let spies: Phase16LeakageSpyBundle | undefined
       try {
         const harness = createTracerHarness(boot.container)
+        spies = installPhase16LeakageSpies(harness.scope)
         const request = {
           ...sessionOnlyAttachRequest(harness),
           headers: {
@@ -3008,37 +3154,39 @@ describe("Cart merge HTTP tracer", () => {
           createResponse() as never
         ).catch((caught) => caught)
         const normalized = toStoreErrorResponse(error)
+        const errorSurface = buildLeakageErrorSurface(error, normalized)
 
         expect(normalized.statusCode).toBe(404)
         const collector = createGuestCartLeakageCollector()
-        collector.record("fixtures_snapshots", {
-          body: normalized.body,
-          statusCode: normalized.statusCode,
+        recordMergeLeakageSnapshots(
+          collector,
+          harness,
+          boot,
+          {
+            body: normalized.body,
+            headers: {},
+            statusCode: normalized.statusCode,
+          } as ReturnType<typeof createResponse>,
+          { spies, errorSurface }
+        )
+        collector.assertExactEightSinksNoCanaries()
+        assertPublicSurfaceDoesNotEncodeSecrets({
+          message: errorSurface.message,
+          code: errorSurface.code,
+          envelope: errorSurface.envelope,
         })
-        collector.record("db_plaintext", {
-          committedReceiptRow: harness.getCommittedReceiptRow(),
-          reviewRow: harness.cartReview,
-          idempotencyRecords: harness.getIdempotencyRecordObjects(),
-          capability: harness.capability,
-        })
-        collector.record("logs", boot.logEntries)
-        collector.record("persisted_provider_payload", {
-          addToCartWorkflow: (addToCartWorkflow as unknown as jest.Mock).mock
-            .calls,
-        })
-        collector.record("redis_keys_jobs", LEAKAGE_REDIS_SENTINEL)
-        collector.record("sentry", LEAKAGE_SENTRY_SENTINEL)
-        collector.record("analytics", LEAKAGE_ANALYTICS_SENTINEL)
-        collector.assertNoCanaries()
       } finally {
+        spies?.restore()
         await boot.dispose()
       }
     })
 
     it("C6 missing capability denial keeps Phase 16 canaries out of exercised sinks", async () => {
       const boot = await bootstrapCartMergeContainer()
+      let spies: Phase16LeakageSpyBundle | undefined
       try {
         const harness = createTracerHarness(boot.container)
+        spies = installPhase16LeakageSpies(harness.scope)
         const error = await attachCart(
           asAttachRequest(harness, {
             headers: {
@@ -3049,29 +3197,29 @@ describe("Cart merge HTTP tracer", () => {
           createResponse() as never
         ).catch((caught) => caught)
         const normalized = toStoreErrorResponse(error)
+        const errorSurface = buildLeakageErrorSurface(error, normalized)
 
         expect(normalized.statusCode).toBe(404)
         const collector = createGuestCartLeakageCollector()
-        collector.record("fixtures_snapshots", {
-          body: normalized.body,
-          statusCode: normalized.statusCode,
+        recordMergeLeakageSnapshots(
+          collector,
+          harness,
+          boot,
+          {
+            body: normalized.body,
+            headers: {},
+            statusCode: normalized.statusCode,
+          } as ReturnType<typeof createResponse>,
+          { spies, errorSurface }
+        )
+        collector.assertExactEightSinksNoCanaries()
+        assertPublicSurfaceDoesNotEncodeSecrets({
+          message: errorSurface.message,
+          code: errorSurface.code,
+          envelope: errorSurface.envelope,
         })
-        collector.record("db_plaintext", {
-          committedReceiptRow: harness.getCommittedReceiptRow(),
-          reviewRow: harness.cartReview,
-          idempotencyRecords: harness.getIdempotencyRecordObjects(),
-          capability: harness.capability,
-        })
-        collector.record("logs", boot.logEntries)
-        collector.record("persisted_provider_payload", {
-          addToCartWorkflow: (addToCartWorkflow as unknown as jest.Mock).mock
-            .calls,
-        })
-        collector.record("redis_keys_jobs", LEAKAGE_REDIS_SENTINEL)
-        collector.record("sentry", LEAKAGE_SENTRY_SENTINEL)
-        collector.record("analytics", LEAKAGE_ANALYTICS_SENTINEL)
-        collector.assertNoCanaries()
       } finally {
+        spies?.restore()
         await boot.dispose()
       }
     })

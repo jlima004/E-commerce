@@ -1,5 +1,6 @@
 import type { MedusaContainer } from "@medusajs/framework/types"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import * as Sentry from "@sentry/node"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import {
   addToCartWorkflow,
@@ -27,7 +28,10 @@ import { POST as attachCart } from "../../src/api/store/customers/me/cart/attach
 import { POST as acknowledgeCartReview } from "../../src/api/store/carts/[id]/review/acknowledge/route"
 import { POST as startCardPaymentAttemptRoute } from "../../src/api/store/carts/[id]/payment-attempts/card/route"
 import { createStripeWebhookPostHandler } from "../../src/api/hooks/stripe/route"
-import { createStoreSurfaceGuardMiddleware } from "../../src/api/store-surface/guard"
+import {
+  toStoreErrorResponse,
+  type StoreErrorNormalizationResult,
+} from "../../src/api/store-surface/errors"
 import {
   GUEST_CART_CAPABILITY_HEADER,
   GUEST_CART_CAPABILITY_MODULE,
@@ -61,14 +65,18 @@ import {
   type CartMergeFixture,
   type CartMergePostgresRawConnection,
 } from "../helpers/cart-merge-postgres"
+import { hashGuestCartCapability } from "../../src/modules/guest-cart-capability/hash"
+import { createStoreSurfaceGuardMiddleware } from "../../src/api/store-surface/guard"
 import {
   assertPublicIdentifiersDoNotEncodeSecrets,
+  assertPublicSurfaceDoesNotEncodeSecrets,
   createGuestCartLeakageCollector,
   PHASE16_CUSTOMER_JWT_CANARY,
   PHASE16_GUEST_CAPABILITY_CANARY,
   PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+  readStoreOpenApiDocumentForLeakageScan,
+  unusedSinkEvidence,
 } from "../helpers/guest-cart-leakage"
-import { hashGuestCartCapability } from "../../src/modules/guest-cart-capability/hash"
 
 jest.mock("@medusajs/core-flows", () => {
   const actual = jest.requireActual("@medusajs/core-flows")
@@ -742,7 +750,6 @@ if (!requestedDatabaseName) {
         const guard = createStoreSurfaceGuardMiddleware()
         for (const originalUrl of [
           "/store/carts/cart_pg_cart_m1_01/complete",
-          "/store/customers/me/cart/attach",
           "/store/carts/cart_pg_cart_m1_01/shipping-methods",
         ]) {
           const next = jest.fn()
@@ -1543,6 +1550,250 @@ if (!requestedDatabaseName) {
           }
         }
 
+        const POSTGRES_LEAKAGE_RESOLVE_KEYS = [
+          Modules.CACHE,
+          Modules.EVENT_BUS,
+          Modules.WORKFLOW_ENGINE,
+          ContainerRegistrationKeys.LOGGER,
+          "locking",
+          ANALYTICS_EVENT_LOG_MODULE,
+          "analytics_event_log",
+        ] as const
+
+        type PostgresLeakageSpyBundle = {
+          resolveSpy: jest.SpyInstance
+          sentryCaptureExceptionSpy: jest.SpyInstance
+          sentryCaptureMessageSpy: jest.SpyInstance
+          consoleLogSpy: jest.SpyInstance
+          consoleInfoSpy: jest.SpyInstance
+          consoleWarnSpy: jest.SpyInstance
+          consoleErrorSpy: jest.SpyInstance
+          consoleBaselines: {
+            log: number
+            info: number
+            warn: number
+            error: number
+          }
+          restore: () => void
+        }
+
+        function installPostgresLeakageSpies(
+          container: MedusaContainer
+        ): PostgresLeakageSpyBundle {
+          const resolveSpy = jest.spyOn(container, "resolve")
+          const sentryCaptureExceptionSpy = jest.spyOn(
+            Sentry,
+            "captureException"
+          )
+          const sentryCaptureMessageSpy = jest.spyOn(Sentry, "captureMessage")
+          const consoleLogSpy = jest.spyOn(console, "log")
+          const consoleInfoSpy = jest.spyOn(console, "info")
+          const consoleWarnSpy = jest.spyOn(console, "warn")
+          const consoleErrorSpy = jest.spyOn(console, "error")
+          const consoleBaselines = {
+            log: consoleLogSpy.mock.calls.length,
+            info: consoleInfoSpy.mock.calls.length,
+            warn: consoleWarnSpy.mock.calls.length,
+            error: consoleErrorSpy.mock.calls.length,
+          }
+          return {
+            resolveSpy,
+            sentryCaptureExceptionSpy,
+            sentryCaptureMessageSpy,
+            consoleLogSpy,
+            consoleInfoSpy,
+            consoleWarnSpy,
+            consoleErrorSpy,
+            consoleBaselines,
+            restore() {
+              resolveSpy.mockRestore()
+              sentryCaptureExceptionSpy.mockRestore()
+              sentryCaptureMessageSpy.mockRestore()
+              consoleLogSpy.mockRestore()
+              consoleInfoSpy.mockRestore()
+              consoleWarnSpy.mockRestore()
+              consoleErrorSpy.mockRestore()
+            },
+          }
+        }
+
+        function countResolveCalls(
+          resolveSpy: jest.SpyInstance,
+          keys: readonly unknown[]
+        ): Record<string, number> {
+          const counts: Record<string, number> = {}
+          for (const key of keys) {
+            const label = String(key)
+            counts[label] = resolveSpy.mock.calls.filter(
+              ([resolved]) => resolved === key
+            ).length
+          }
+          return counts
+        }
+
+        function buildPostgresLogsLeakageEvidence(
+          resolveCounts: Record<string, number>,
+          spies?: PostgresLeakageSpyBundle
+        ) {
+          const loggerResolve =
+            resolveCounts[String(ContainerRegistrationKeys.LOGGER)] ?? 0
+          if (loggerResolve > 0) {
+            throw new Error(
+              `GUEST_CART_LEAKAGE_LOGGER_UNEXPECTEDLY_RESOLVED count=${loggerResolve}`
+            )
+          }
+
+          const consoleDeltas = spies
+            ? {
+                console_log:
+                  spies.consoleLogSpy.mock.calls.length -
+                  spies.consoleBaselines.log,
+                console_info:
+                  spies.consoleInfoSpy.mock.calls.length -
+                  spies.consoleBaselines.info,
+                console_warn:
+                  spies.consoleWarnSpy.mock.calls.length -
+                  spies.consoleBaselines.warn,
+                console_error:
+                  spies.consoleErrorSpy.mock.calls.length -
+                  spies.consoleBaselines.error,
+              }
+            : {
+                console_log: 0,
+                console_info: 0,
+                console_warn: 0,
+                console_error: 0,
+              }
+
+          return unusedSinkEvidence({
+            logger_resolve: loggerResolve,
+            ...consoleDeltas,
+          })
+        }
+
+        function buildNativeDenyConsoleSpyBundle() {
+          const consoleLogSpy = jest.spyOn(console, "log")
+          const consoleInfoSpy = jest.spyOn(console, "info")
+          const consoleWarnSpy = jest.spyOn(console, "warn")
+          const consoleErrorSpy = jest.spyOn(console, "error")
+          return {
+            consoleLogSpy,
+            consoleInfoSpy,
+            consoleWarnSpy,
+            consoleErrorSpy,
+            captureBaselines() {
+              return {
+                log: consoleLogSpy.mock.calls.length,
+                info: consoleInfoSpy.mock.calls.length,
+                warn: consoleWarnSpy.mock.calls.length,
+                error: consoleErrorSpy.mock.calls.length,
+              }
+            },
+            consoleDeltas(baselines: {
+              log: number
+              info: number
+              warn: number
+              error: number
+            }) {
+              return {
+                console_log: consoleLogSpy.mock.calls.length - baselines.log,
+                console_info: consoleInfoSpy.mock.calls.length - baselines.info,
+                console_warn: consoleWarnSpy.mock.calls.length - baselines.warn,
+                console_error:
+                  consoleErrorSpy.mock.calls.length - baselines.error,
+              }
+            },
+            restore() {
+              consoleLogSpy.mockRestore()
+              consoleInfoSpy.mockRestore()
+              consoleWarnSpy.mockRestore()
+              consoleErrorSpy.mockRestore()
+            },
+          }
+        }
+
+        function buildNativeDenyPostgresLogsEvidence(
+          resolveCounts: Record<string, number>,
+          consoleSpies: ReturnType<typeof buildNativeDenyConsoleSpyBundle>,
+          logsBefore: {
+            log: number
+            info: number
+            warn: number
+            error: number
+          }
+        ) {
+          const loggerResolve =
+            resolveCounts[String(ContainerRegistrationKeys.LOGGER)] ?? 0
+          if (loggerResolve > 0) {
+            throw new Error(
+              `GUEST_CART_LEAKAGE_LOGGER_UNEXPECTEDLY_RESOLVED count=${loggerResolve}`
+            )
+          }
+
+          return unusedSinkEvidence({
+            logger_resolve: loggerResolve,
+            ...consoleSpies.consoleDeltas(logsBefore),
+          })
+        }
+
+        function extractSafeWorkflowCallArgs(
+          calls: unknown[][]
+        ): Array<Record<string, unknown>> {
+          return calls.map((call) => {
+            const first = call[0]
+            if (!first || typeof first !== "object") return {}
+            const record = first as Record<string, unknown>
+            const input =
+              record.input && typeof record.input === "object"
+                ? (record.input as Record<string, unknown>)
+                : record
+            return {
+              cart_id: input.cart_id,
+              items: input.items,
+            }
+          })
+        }
+
+        function buildPersistedProviderPayloadEvidence() {
+          const addMock = addToCartWorkflow as unknown as jest.Mock
+          const updateMock = updateLineItemInCartWorkflow as unknown as jest.Mock
+          const deleteMock = deleteLineItemsWorkflow as unknown as jest.Mock
+          return {
+            callCounts: {
+              addToCartWorkflow: addMock.mock.calls.length,
+              updateLineItemInCartWorkflow: updateMock.mock.calls.length,
+              deleteLineItemsWorkflow: deleteMock.mock.calls.length,
+            },
+            safeWorkflowArgs: {
+              addToCartWorkflow: extractSafeWorkflowCallArgs(addMock.mock.calls),
+              updateLineItemInCartWorkflow: extractSafeWorkflowCallArgs(
+                updateMock.mock.calls
+              ),
+              deleteLineItemsWorkflow: extractSafeWorkflowCallArgs(
+                deleteMock.mock.calls
+              ),
+            },
+          }
+        }
+
+        function buildPostgresLeakageErrorSurface(
+          error: unknown,
+          normalized?: StoreErrorNormalizationResult
+        ) {
+          const norm = normalized ?? toStoreErrorResponse(error)
+          const record = (error ?? {}) as Record<string, unknown>
+          return {
+            name: record.name,
+            message:
+              (norm.body as { message?: unknown }).message ?? record.message,
+            code: (norm.body as { code?: unknown }).code ?? record.code,
+            status: record.status,
+            statusCode: norm.statusCode,
+            envelope: norm.body,
+            headers: {},
+          }
+        }
+
         async function scanPostgresLeakageTables(fixture?: CartMergeFixture) {
           const capability = fixture
             ? await connection.raw(
@@ -1584,32 +1835,97 @@ if (!requestedDatabaseName) {
           }
         }
 
-        function assertPostgresLeakageScan(
+        async function recordPostgresLeakageSnapshots(
           fixture: CartMergeFixture | undefined,
-          response?: ReturnType<typeof createCartMergeResponse>
+          options: {
+            response?: ReturnType<typeof createCartMergeResponse>
+            spies?: PostgresLeakageSpyBundle
+            errorSurface?: ReturnType<typeof buildPostgresLeakageErrorSurface>
+          } = {}
         ) {
-          return async () => {
-            const tables = await scanPostgresLeakageTables(fixture)
-            const collector = createGuestCartLeakageCollector()
-            collector.record("db_plaintext", tables)
-            if (response) {
-              collector.record("fixtures_snapshots", {
-                body: response.body,
-                headers: response.headers,
-                reviewRef: (response.body as { review?: { reviewRef?: unknown } })
-                  ?.review?.reviewRef,
-              })
-              const receipt = tables.cart_merge_result[0] as
-                | { request_fingerprint?: string }
-                | undefined
-              assertPublicIdentifiersDoNotEncodeSecrets(
-                (response.body as { review?: { reviewRef?: string | null } })
-                  ?.review?.reviewRef ?? null,
-                response.headers.etag ?? null,
-                receipt?.request_fingerprint ?? null
+          const tables = await scanPostgresLeakageTables(fixture)
+          const collector = createGuestCartLeakageCollector()
+          const resolveCounts = options.spies
+            ? countResolveCalls(
+                options.spies.resolveSpy,
+                POSTGRES_LEAKAGE_RESOLVE_KEYS
               )
-            }
-            collector.assertNoCanaries()
+            : Object.fromEntries(
+                POSTGRES_LEAKAGE_RESOLVE_KEYS.map((key) => [String(key), 0])
+              )
+
+          const fixturesSnapshot: Record<string, unknown> = {}
+          if (options.response) {
+            fixturesSnapshot.body = options.response.body
+            fixturesSnapshot.headers = options.response.headers
+            fixturesSnapshot.reviewRef = (
+              options.response.body as { review?: { reviewRef?: unknown } }
+            )?.review?.reviewRef
+          }
+          if (options.errorSurface) {
+            fixturesSnapshot.errorSurface = options.errorSurface
+          }
+
+          collector.record("fixtures_snapshots", fixturesSnapshot)
+          collector.record("db_plaintext", tables)
+          collector.record(
+            "logs",
+            buildPostgresLogsLeakageEvidence(resolveCounts, options.spies)
+          )
+          collector.record("openapi", readStoreOpenApiDocumentForLeakageScan())
+          collector.record(
+            "persisted_provider_payload",
+            buildPersistedProviderPayloadEvidence()
+          )
+          collector.record(
+            "redis_keys_jobs",
+            unusedSinkEvidence({
+              cache: resolveCounts[String(Modules.CACHE)] ?? 0,
+              event_bus: resolveCounts[String(Modules.EVENT_BUS)] ?? 0,
+              workflow_engine:
+                resolveCounts[String(Modules.WORKFLOW_ENGINE)] ?? 0,
+              locking: resolveCounts.locking ?? 0,
+            })
+          )
+          collector.record(
+            "sentry",
+            unusedSinkEvidence({
+              captureException:
+                options.spies?.sentryCaptureExceptionSpy.mock.calls.length ??
+                0,
+              captureMessage:
+                options.spies?.sentryCaptureMessageSpy.mock.calls.length ?? 0,
+            })
+          )
+          collector.record(
+            "analytics",
+            unusedSinkEvidence({
+              analytics_event_log_module:
+                resolveCounts[String(ANALYTICS_EVENT_LOG_MODULE)] ?? 0,
+              analytics_event_log: resolveCounts.analytics_event_log ?? 0,
+            })
+          )
+
+          collector.assertExactEightSinksNoCanaries()
+
+          if (options.response) {
+            const receipt = tables.cart_merge_result[0] as
+              | { request_fingerprint?: string }
+              | undefined
+            assertPublicIdentifiersDoNotEncodeSecrets(
+              (options.response.body as { review?: { reviewRef?: string | null } })
+                ?.review?.reviewRef ?? null,
+              options.response.headers.etag ?? null,
+              receipt?.request_fingerprint ?? null
+            )
+          }
+
+          if (options.errorSurface) {
+            assertPublicSurfaceDoesNotEncodeSecrets({
+              message: options.errorSurface.message,
+              code: options.errorSurface.code,
+              envelope: options.errorSurface.envelope,
+            })
           }
         }
 
@@ -1626,18 +1942,26 @@ if (!requestedDatabaseName) {
           await applyPhase16CanaryCapability(fixture)
           const beforeOrders = await countOrders()
           const response = createCartMergeResponse()
+          const spies = installPostgresLeakageSpies(container)
 
-          await mergeCart(
-            createCartMergeRequest(fixture, container, {
-              headers: phase16CanaryHeaders(fixture),
-            }) as never,
-            response as never
-          )
+          try {
+            await mergeCart(
+              createCartMergeRequest(fixture, container, {
+                headers: phase16CanaryHeaders(fixture),
+              }) as never,
+              response as never
+            )
 
-          const afterOrders = await countOrders()
-          expect(response.statusCode).toBe(200)
-          expect(afterOrders - beforeOrders).toBe(0)
-          await assertPostgresLeakageScan(fixture, response)()
+            const afterOrders = await countOrders()
+            expect(response.statusCode).toBe(200)
+            expect(afterOrders - beforeOrders).toBe(0)
+            await recordPostgresLeakageSnapshots(fixture, {
+              response,
+              spies,
+            })
+          } finally {
+            spies.restore()
+          }
         })
 
         it("C2 attach success keeps Order delta at zero and scans persisted sinks", async () => {
@@ -1649,13 +1973,21 @@ if (!requestedDatabaseName) {
           await applyPhase16CanaryCapability(fixture)
           const beforeOrders = await countOrders()
           const response = createCartMergeResponse()
+          const spies = installPostgresLeakageSpies(container)
 
-          await attachCart(createAttachRequest(fixture) as never, response as never)
+          try {
+            await attachCart(createAttachRequest(fixture) as never, response as never)
 
-          const afterOrders = await countOrders()
-          expect(response.statusCode).toBe(200)
-          expect(afterOrders - beforeOrders).toBe(0)
-          await assertPostgresLeakageScan(fixture, response)()
+            const afterOrders = await countOrders()
+            expect(response.statusCode).toBe(200)
+            expect(afterOrders - beforeOrders).toBe(0)
+            await recordPostgresLeakageSnapshots(fixture, {
+              response,
+              spies,
+            })
+          } finally {
+            spies.restore()
+          }
         })
 
         it("C3 committed replay keeps Order delta at zero and scans persisted sinks", async () => {
@@ -1672,25 +2004,34 @@ if (!requestedDatabaseName) {
           await applyPhase16CanaryCapability(fixture)
           const headers = phase16CanaryHeaders(fixture)
           const beforeOrders = await countOrders()
-          const first = createCartMergeResponse()
-          await mergeCart(
-            createCartMergeRequest(fixture, container, { headers }) as never,
-            first as never
-          )
-          const replayHeaders = {
-            ...headers,
-            "if-match": `"${fixture.guestVersion}"`,
-          }
-          const replay = createCartMergeResponse()
-          await attachCart(
-            createAttachRequest(fixture, { headers: replayHeaders }) as never,
-            replay as never
-          )
+          const spies = installPostgresLeakageSpies(container)
 
-          const afterOrders = await countOrders()
-          expect(replay.statusCode).toBe(200)
-          expect(afterOrders - beforeOrders).toBe(0)
-          await assertPostgresLeakageScan(fixture, replay)()
+          try {
+            const first = createCartMergeResponse()
+            await mergeCart(
+              createCartMergeRequest(fixture, container, { headers }) as never,
+              first as never
+            )
+            const replayHeaders = {
+              ...headers,
+              "if-match": `"${fixture.guestVersion}"`,
+            }
+            const replay = createCartMergeResponse()
+            await attachCart(
+              createAttachRequest(fixture, { headers: replayHeaders }) as never,
+              replay as never
+            )
+
+            const afterOrders = await countOrders()
+            expect(replay.statusCode).toBe(200)
+            expect(afterOrders - beforeOrders).toBe(0)
+            await recordPostgresLeakageSnapshots(fixture, {
+              response: replay,
+              spies,
+            })
+          } finally {
+            spies.restore()
+          }
         })
 
         it("C4 idempotency conflict keeps Order delta at zero", async () => {
@@ -1702,22 +2043,36 @@ if (!requestedDatabaseName) {
           await applyPhase16CanaryCapability(fixture)
           const headers = phase16CanaryHeaders(fixture)
           const beforeOrders = await countOrders()
-          await mergeCart(
-            createCartMergeRequest(fixture, container, { headers }) as never,
-            createCartMergeResponse() as never
-          )
+          const spies = installPostgresLeakageSpies(container)
 
-          const error = await attachCart(
-            createAttachRequest(fixture, {
-              headers: { ...headers, "if-match": '"999"' },
-            }) as never,
-            createCartMergeResponse() as never
-          ).catch((caught: unknown) => caught)
+          try {
+            await mergeCart(
+              createCartMergeRequest(fixture, container, { headers }) as never,
+              createCartMergeResponse() as never
+            )
 
-          const afterOrders = await countOrders()
-          expect(error).toMatchObject({ statusCode: 409 })
-          expect(afterOrders - beforeOrders).toBe(0)
-          await assertPostgresLeakageScan(fixture)()
+            const error = await attachCart(
+              createAttachRequest(fixture, {
+                headers: { ...headers, "if-match": '"999"' },
+              }) as never,
+              createCartMergeResponse() as never
+            ).catch((caught: unknown) => caught)
+            const normalized = toStoreErrorResponse(error)
+            const errorSurface = buildPostgresLeakageErrorSurface(
+              error,
+              normalized
+            )
+
+            const afterOrders = await countOrders()
+            expect(normalized.statusCode).toBe(409)
+            expect(afterOrders - beforeOrders).toBe(0)
+            await recordPostgresLeakageSnapshots(fixture, {
+              spies,
+              errorSurface,
+            })
+          } finally {
+            spies.restore()
+          }
         })
 
         it("C5 session-only attach denial keeps Order delta at zero", async () => {
@@ -1727,33 +2082,44 @@ if (!requestedDatabaseName) {
             "p16_leak_c5_session"
           )
           const beforeOrders = await countOrders()
+          const spies = installPostgresLeakageSpies(container)
 
-          const error = await attachCart(
-            {
-              method: "POST",
-              url: "/store/customers/me/cart/attach",
-              originalUrl: "/store/customers/me/cart/attach",
-              session: {
-                id: "sess_phase16_leak_c5",
-                active_cart_id: fixture.guestCartId,
-              },
-              body: { cart_id: fixture.guestCartId },
-              headers: {
-                authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
-                "x-indicio-bff-auth": "test-bff-authority",
-              },
-              ...customerAuthFields(fixture.customerId),
-              scope: container,
-            } as never,
-            createCartMergeResponse() as never
-          ).catch((caught: unknown) => caught)
+          try {
+            const error = await attachCart(
+              {
+                method: "POST",
+                url: "/store/customers/me/cart/attach",
+                originalUrl: "/store/customers/me/cart/attach",
+                session: {
+                  id: "sess_phase16_leak_c5",
+                  active_cart_id: fixture.guestCartId,
+                },
+                body: { cart_id: fixture.guestCartId },
+                headers: {
+                  authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
+                  "x-indicio-bff-auth": "test-bff-authority",
+                },
+                ...customerAuthFields(fixture.customerId),
+                scope: container,
+              } as never,
+              createCartMergeResponse() as never
+            ).catch((caught: unknown) => caught)
+            const normalized = toStoreErrorResponse(error)
+            const errorSurface = buildPostgresLeakageErrorSurface(
+              error,
+              normalized
+            )
 
-          const afterOrders = await countOrders()
-          expect(error).toMatchObject({ type: "not_found" })
-          expect(afterOrders - beforeOrders).toBe(0)
-          const collector = createGuestCartLeakageCollector()
-          collector.record("db_plaintext", await scanPostgresLeakageTables(fixture))
-          collector.assertNoCanaries()
+            const afterOrders = await countOrders()
+            expect(error).toMatchObject({ type: "not_found" })
+            expect(afterOrders - beforeOrders).toBe(0)
+            await recordPostgresLeakageSnapshots(fixture, {
+              spies,
+              errorSurface,
+            })
+          } finally {
+            spies.restore()
+          }
         })
 
         it("C6 missing capability denial keeps Order delta at zero", async () => {
@@ -1767,47 +2133,129 @@ if (!requestedDatabaseName) {
             [GUEST_CART_CAPABILITY_HEADER]: _capability,
             ...headersWithoutCapability
           } = phase16CanaryHeaders(fixture)
+          const spies = installPostgresLeakageSpies(container)
 
-          const error = await mergeCart(
-            createCartMergeRequest(fixture, container, {
-              headers: headersWithoutCapability,
-            }) as never,
-            createCartMergeResponse() as never
-          ).catch((caught: unknown) => caught)
+          try {
+            const error = await mergeCart(
+              createCartMergeRequest(fixture, container, {
+                headers: headersWithoutCapability,
+              }) as never,
+              createCartMergeResponse() as never
+            ).catch((caught: unknown) => caught)
+            const normalized = toStoreErrorResponse(error)
+            const errorSurface = buildPostgresLeakageErrorSurface(
+              error,
+              normalized
+            )
 
-          const afterOrders = await countOrders()
-          expect(error).toMatchObject({ type: "not_found" })
-          expect(afterOrders - beforeOrders).toBe(0)
-          const collector = createGuestCartLeakageCollector()
-          collector.record("db_plaintext", await scanPostgresLeakageTables(fixture))
-          collector.assertNoCanaries()
+            const afterOrders = await countOrders()
+            expect(error).toMatchObject({ type: "not_found" })
+            expect(afterOrders - beforeOrders).toBe(0)
+            await recordPostgresLeakageSnapshots(fixture, {
+              spies,
+              errorSurface,
+            })
+          } finally {
+            spies.restore()
+          }
         })
 
         it("C7 native customer attach denial keeps Order delta at zero", async () => {
           const beforeOrders = await countOrders()
           const guard = createStoreSurfaceGuardMiddleware()
-          const next = jest.fn()
-          const res = response()
-          guard(
-            {
-              method: "POST",
-              originalUrl: "/store/carts/cart_native_deny_pg/customer",
-              url: "/store/carts/cart_native_deny_pg/customer",
-              headers: {
-                authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
-                [GUEST_CART_CAPABILITY_HEADER]: PHASE16_GUEST_CAPABILITY_CANARY,
-                "idempotency-key": PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
-              },
-              scope: { resolve: jest.fn() },
-            } as never,
-            res as never,
-            next
+          const scope = { resolve: jest.fn() }
+          const resolveSpy = jest.spyOn(scope, "resolve")
+          const sentryCaptureExceptionSpy = jest.spyOn(
+            Sentry,
+            "captureException"
           )
+          const sentryCaptureMessageSpy = jest.spyOn(Sentry, "captureMessage")
+          const consoleSpies = buildNativeDenyConsoleSpyBundle()
 
-          const afterOrders = await countOrders()
-          expect(next).not.toHaveBeenCalled()
-          expect(res.statusCode).toBe(404)
-          expect(afterOrders - beforeOrders).toBe(0)
+          try {
+            const next = jest.fn()
+            const res = response()
+            const logsBefore = consoleSpies.captureBaselines()
+            guard(
+              {
+                method: "POST",
+                originalUrl: "/store/carts/cart_native_deny_pg/customer",
+                url: "/store/carts/cart_native_deny_pg/customer",
+                headers: {
+                  authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
+                  [GUEST_CART_CAPABILITY_HEADER]: PHASE16_GUEST_CAPABILITY_CANARY,
+                  "idempotency-key": PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+                },
+                scope,
+              } as never,
+              res as never,
+              next
+            )
+
+            const afterOrders = await countOrders()
+            expect(next).not.toHaveBeenCalled()
+            expect(res.statusCode).toBe(404)
+            expect(afterOrders - beforeOrders).toBe(0)
+
+            const resolveCounts = countResolveCalls(
+              resolveSpy,
+              POSTGRES_LEAKAGE_RESOLVE_KEYS
+            )
+            const collector = createGuestCartLeakageCollector()
+            collector.record("fixtures_snapshots", {
+              body: res.body,
+              statusCode: res.statusCode,
+            })
+            collector.record("db_plaintext", await scanPostgresLeakageTables())
+            collector.record(
+              "logs",
+              buildNativeDenyPostgresLogsEvidence(
+                resolveCounts,
+                consoleSpies,
+                logsBefore
+              )
+            )
+            collector.record("openapi", readStoreOpenApiDocumentForLeakageScan())
+            collector.record(
+              "persisted_provider_payload",
+              buildPersistedProviderPayloadEvidence()
+            )
+            collector.record(
+              "redis_keys_jobs",
+              unusedSinkEvidence({
+                cache: resolveCounts[String(Modules.CACHE)] ?? 0,
+                event_bus: resolveCounts[String(Modules.EVENT_BUS)] ?? 0,
+                workflow_engine:
+                  resolveCounts[String(Modules.WORKFLOW_ENGINE)] ?? 0,
+                locking: resolveCounts.locking ?? 0,
+              })
+            )
+            collector.record(
+              "sentry",
+              unusedSinkEvidence({
+                captureException: sentryCaptureExceptionSpy.mock.calls.length,
+                captureMessage: sentryCaptureMessageSpy.mock.calls.length,
+              })
+            )
+            collector.record(
+              "analytics",
+              unusedSinkEvidence({
+                analytics_event_log_module:
+                  resolveCounts[String(ANALYTICS_EVENT_LOG_MODULE)] ?? 0,
+                analytics_event_log: resolveCounts.analytics_event_log ?? 0,
+              })
+            )
+            collector.assertExactEightSinksNoCanaries()
+            assertPublicSurfaceDoesNotEncodeSecrets({
+              body: res.body,
+              statusCode: res.statusCode,
+            })
+          } finally {
+            resolveSpy.mockRestore()
+            sentryCaptureExceptionSpy.mockRestore()
+            sentryCaptureMessageSpy.mockRestore()
+            consoleSpies.restore()
+          }
         })
 
         it("C8 prefix/unknown native denial keeps Order delta at zero", async () => {
@@ -1820,27 +2268,100 @@ if (!requestedDatabaseName) {
 
           for (const path of paths) {
             const beforeOrders = await countOrders()
-            const next = jest.fn()
-            const res = response()
-            guard(
-              {
-                method: "POST",
-                originalUrl: path,
-                url: path,
-                headers: {
-                  authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
-                  [GUEST_CART_CAPABILITY_HEADER]: PHASE16_GUEST_CAPABILITY_CANARY,
-                  "idempotency-key": PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
-                },
-                scope: { resolve: jest.fn() },
-              } as never,
-              res as never,
-              next
+            const scope = { resolve: jest.fn() }
+            const resolveSpy = jest.spyOn(scope, "resolve")
+            const sentryCaptureExceptionSpy = jest.spyOn(
+              Sentry,
+              "captureException"
             )
-            const afterOrders = await countOrders()
-            expect(next).not.toHaveBeenCalled()
-            expect(res.statusCode).toBe(404)
-            expect(afterOrders - beforeOrders).toBe(0)
+            const sentryCaptureMessageSpy = jest.spyOn(Sentry, "captureMessage")
+            const consoleSpies = buildNativeDenyConsoleSpyBundle()
+
+            try {
+              const next = jest.fn()
+              const res = response()
+              const logsBefore = consoleSpies.captureBaselines()
+              guard(
+                {
+                  method: "POST",
+                  originalUrl: path,
+                  url: path,
+                  headers: {
+                    authorization: `Bearer ${PHASE16_CUSTOMER_JWT_CANARY}`,
+                    [GUEST_CART_CAPABILITY_HEADER]:
+                      PHASE16_GUEST_CAPABILITY_CANARY,
+                    "idempotency-key": PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+                  },
+                  scope,
+                } as never,
+                res as never,
+                next
+              )
+              const afterOrders = await countOrders()
+              expect(next).not.toHaveBeenCalled()
+              expect(res.statusCode).toBe(404)
+              expect(afterOrders - beforeOrders).toBe(0)
+
+              const resolveCounts = countResolveCalls(
+                resolveSpy,
+                POSTGRES_LEAKAGE_RESOLVE_KEYS
+              )
+              const collector = createGuestCartLeakageCollector()
+              collector.record("fixtures_snapshots", {
+                body: res.body,
+                statusCode: res.statusCode,
+                path,
+              })
+              collector.record("db_plaintext", await scanPostgresLeakageTables())
+              collector.record(
+                "logs",
+                buildNativeDenyPostgresLogsEvidence(
+                  resolveCounts,
+                  consoleSpies,
+                  logsBefore
+                )
+              )
+              collector.record("openapi", readStoreOpenApiDocumentForLeakageScan())
+              collector.record(
+                "persisted_provider_payload",
+                buildPersistedProviderPayloadEvidence()
+              )
+              collector.record(
+                "redis_keys_jobs",
+                unusedSinkEvidence({
+                  cache: resolveCounts[String(Modules.CACHE)] ?? 0,
+                  event_bus: resolveCounts[String(Modules.EVENT_BUS)] ?? 0,
+                  workflow_engine:
+                    resolveCounts[String(Modules.WORKFLOW_ENGINE)] ?? 0,
+                  locking: resolveCounts.locking ?? 0,
+                })
+              )
+              collector.record(
+                "sentry",
+                unusedSinkEvidence({
+                  captureException: sentryCaptureExceptionSpy.mock.calls.length,
+                  captureMessage: sentryCaptureMessageSpy.mock.calls.length,
+                })
+              )
+              collector.record(
+                "analytics",
+                unusedSinkEvidence({
+                  analytics_event_log_module:
+                    resolveCounts[String(ANALYTICS_EVENT_LOG_MODULE)] ?? 0,
+                  analytics_event_log: resolveCounts.analytics_event_log ?? 0,
+                })
+              )
+              collector.assertExactEightSinksNoCanaries()
+              assertPublicSurfaceDoesNotEncodeSecrets({
+                body: res.body,
+                statusCode: res.statusCode,
+              })
+            } finally {
+              resolveSpy.mockRestore()
+              sentryCaptureExceptionSpy.mockRestore()
+              sentryCaptureMessageSpy.mockRestore()
+              consoleSpies.restore()
+            }
           }
         })
       })

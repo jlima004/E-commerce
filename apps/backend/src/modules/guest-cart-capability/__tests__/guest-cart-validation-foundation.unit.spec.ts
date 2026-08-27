@@ -20,9 +20,11 @@ import {
   GUEST_CART_CANARIES,
   GUEST_CART_LEAKAGE_SINKS,
   GUEST_CART_SAFE_SINK_KEYS,
+  assertGuestCartExactSinkSetHasNoCanaries,
   assertGuestCartSinksHaveNoCanaries,
   assertSafeGuestCartSink,
   createGuestCartLeakageCollector,
+  unusedSinkEvidence,
 } from "../../../../integration-tests/helpers/guest-cart-leakage"
 import {
   GUEST_CART_DENIED_NATIVE_OPERATIONS,
@@ -36,6 +38,7 @@ import {
   STORE_SURFACE_MANIFEST,
   STORE_SURFACE_PHASE14_ENABLED_OPERATIONS,
   STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS,
+  STORE_SURFACE_M1_ENABLED_OPERATIONS,
   type StoreSurfaceEntry,
 } from "../../../api/store-surface/manifest"
 
@@ -248,6 +251,109 @@ describe("Guest Cart Validation Foundation (Wave 0 - Plan 15-01)", () => {
       )
     })
 
+    it("legacy Partial map with 3 sinks passes assertNoCanaries()", () => {
+      const collector = createGuestCartLeakageCollector()
+      collector.record("db_plaintext", { token_hash: "safe_hash" })
+      collector.record("logs", { level: "info" })
+      collector.record("openapi", { paths: {} })
+      expect(() => collector.assertNoCanaries()).not.toThrow()
+    })
+
+    it("strict exact-set rejects 7 sinks with SINK_SET_MISMATCH", () => {
+      const partial = Object.fromEntries(
+        GUEST_CART_LEAKAGE_SINKS.slice(0, 7).map((sink) => [sink, {}])
+      ) as Record<string, unknown>
+      expect(() =>
+        assertGuestCartSinksHaveNoCanaries(partial, {
+          requireExactSinkSet: true,
+        })
+      ).toThrow("GUEST_CART_LEAKAGE_SINK_SET_MISMATCH")
+    })
+
+    it("strict exact-set rejects unexpected extra sink key", () => {
+      const snapshots = Object.fromEntries(
+        GUEST_CART_LEAKAGE_SINKS.map((sink) => [sink, {}])
+      ) as Record<string, unknown>
+      snapshots.extra_sink = {}
+      expect(() =>
+        assertGuestCartSinksHaveNoCanaries(snapshots, {
+          requireExactSinkSet: true,
+        })
+      ).toThrow("GUEST_CART_LEAKAGE_SINK_SET_MISMATCH")
+    })
+
+    it("strict exact-set passes with all 8 sinks and no canaries", () => {
+      const snapshots = Object.fromEntries(
+        GUEST_CART_LEAKAGE_SINKS.map((sink) => [sink, { safe: true }])
+      ) as Record<string, unknown>
+      expect(() =>
+        assertGuestCartExactSinkSetHasNoCanaries(
+          snapshots as Record<
+            (typeof GUEST_CART_LEAKAGE_SINKS)[number],
+            unknown
+          >
+        )
+      ).not.toThrow()
+    })
+
+    it("strict openapi scan detects canary without echoing canary in message", () => {
+      const canary = GUEST_CART_CANARIES.token
+      const openapiDoc = JSON.stringify({
+        info: { description: `${"x".repeat(5000)}${canary}` },
+      })
+      const snapshots = Object.fromEntries(
+        GUEST_CART_LEAKAGE_SINKS.map((sink) =>
+          sink === "openapi" ? [sink, openapiDoc] : [sink, {}]
+        )
+      ) as Record<string, unknown>
+
+      let message = ""
+      try {
+        assertGuestCartExactSinkSetHasNoCanaries(
+          snapshots as Record<
+            (typeof GUEST_CART_LEAKAGE_SINKS)[number],
+            unknown
+          >
+        )
+      } catch (error) {
+        message = (error as Error).message
+      }
+
+      expect(message).toContain("GUEST_CART_LEAKAGE_CANARY_DETECTED:openapi")
+      expect(message).not.toContain(canary)
+    })
+
+    it("unused evidence with nonzero call count throws UNEXPECTEDLY_USED", () => {
+      expect(() =>
+        unusedSinkEvidence({ redis: 1 })
+      ).toThrow("GUEST_CART_LEAKAGE_SINK_UNEXPECTEDLY_USED")
+    })
+
+    it("full-document openapi scan would miss canary beyond 4096-byte slice", () => {
+      const canary = GUEST_CART_CANARIES.token
+      const document = JSON.stringify({
+        info: { description: `${"y".repeat(5000)}${canary}` },
+      })
+      const truncated = document.slice(0, 4096)
+      expect(truncated.includes(canary)).toBe(false)
+      expect(document.includes(canary)).toBe(true)
+
+      const snapshots = Object.fromEntries(
+        GUEST_CART_LEAKAGE_SINKS.map((sink) =>
+          sink === "openapi" ? [sink, document] : [sink, {}]
+        )
+      ) as Record<string, unknown>
+
+      expect(() =>
+        assertGuestCartExactSinkSetHasNoCanaries(
+          snapshots as Record<
+            (typeof GUEST_CART_LEAKAGE_SINKS)[number],
+            unknown
+          >
+        )
+      ).toThrow("GUEST_CART_LEAKAGE_CANARY_DETECTED:openapi")
+    })
+
     it("assertSafeGuestCartSink enforces safe property keys and absence of canaries", () => {
       const safeSnapshot = {
         id: "gccap_01",
@@ -298,7 +404,7 @@ describe("Guest Cart Validation Foundation (Wave 0 - Plan 15-01)", () => {
       expect(() =>
         assertGuestCartPromotionsExplicit(
           STORE_SURFACE_MANIFEST,
-          STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS
+          STORE_SURFACE_M1_ENABLED_OPERATIONS
         )
       ).not.toThrow()
 
@@ -321,7 +427,7 @@ describe("Guest Cart Validation Foundation (Wave 0 - Plan 15-01)", () => {
       expect(() =>
         assertGuestCartPromotionsExplicit(
           mockMutatedManifest,
-          STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS
+          STORE_SURFACE_M1_ENABLED_OPERATIONS
         )
       ).toThrow("GUEST_CART_UNAPPROVED_PROMOTION_DETECTED")
     })
@@ -329,11 +435,11 @@ describe("Guest Cart Validation Foundation (Wave 0 - Plan 15-01)", () => {
     it("executes validateGuestCartSurfaceExactSet successfully", () => {
       const result = validateGuestCartSurfaceExactSet(
         STORE_SURFACE_MANIFEST,
-        STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS
+        STORE_SURFACE_M1_ENABLED_OPERATIONS
       )
       expect(result.authM1Count).toBe(6)
       expect(result.nativeIdentityCount).toBeGreaterThanOrEqual(51)
-      expect(result.deniedCount).toBe(7)
+      expect(result.deniedCount).toBe(6)
     })
   })
 })

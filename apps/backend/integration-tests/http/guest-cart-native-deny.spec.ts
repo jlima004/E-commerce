@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "fs"
+import { existsSync } from "fs"
 import { resolve } from "path"
 import {
   ROUTE_EXCLUSIONS,
@@ -25,11 +25,17 @@ import defaultMiddlewares, {
   customerAuthAccessGuardMiddleware,
   customerAuthBffServiceGuardMiddleware,
 } from "../../src/api/middlewares"
+import * as Sentry from "@sentry/node"
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
+import { ANALYTICS_EVENT_LOG_MODULE } from "../../src/modules/analytics-event-log"
 import {
+  assertPublicSurfaceDoesNotEncodeSecrets,
   createGuestCartLeakageCollector,
   PHASE16_CUSTOMER_JWT_CANARY,
   PHASE16_GUEST_CAPABILITY_CANARY,
   PHASE16_RAW_IDEMPOTENCY_KEY_CANARY,
+  readStoreOpenApiDocumentForLeakageScan,
+  unusedSinkEvidence,
 } from "../helpers/guest-cart-leakage"
 
 function response() {
@@ -96,6 +102,31 @@ function phase16DeniedRequestHeaders() {
   }
 }
 
+const NATIVE_DENY_LEAKAGE_RESOLVE_KEYS = [
+  Modules.CACHE,
+  Modules.EVENT_BUS,
+  Modules.WORKFLOW_ENGINE,
+  Modules.ORDER,
+  ContainerRegistrationKeys.LOGGER,
+  "locking",
+  ANALYTICS_EVENT_LOG_MODULE,
+  "analytics_event_log",
+] as const
+
+function countResolveCalls(
+  resolveSpy: jest.SpyInstance,
+  keys: readonly unknown[]
+): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const key of keys) {
+    const label = String(key)
+    counts[label] = resolveSpy.mock.calls.filter(
+      ([resolved]) => resolved === key
+    ).length
+  }
+  return counts
+}
+
 function recordNativeDenyLeakageSnapshots(
   collector: ReturnType<typeof createGuestCartLeakageCollector>,
   res: ReturnType<typeof response>,
@@ -104,6 +135,15 @@ function recordNativeDenyLeakageSnapshots(
     path: string
     next: jest.Mock
     req: ReturnType<typeof request>
+    resolveSpy: jest.SpyInstance
+    sentryCaptureExceptionSpy: jest.SpyInstance
+    sentryCaptureMessageSpy: jest.SpyInstance
+    consoleDeltas: {
+      console_log: number
+      console_info: number
+      console_warn: number
+      console_error: number
+    }
   }
 ) {
   const attachExclusion = ROUTE_EXCLUSIONS.find(
@@ -115,10 +155,11 @@ function recordNativeDenyLeakageSnapshots(
     "POST",
     "/store/customers/me/cart/attach"
   )
-  const storeOpenApiPath = resolve(
-    process.cwd(),
-    "src/api-docs/generated/store.openapi.json"
+  const resolveCounts = countResolveCalls(
+    options.resolveSpy,
+    NATIVE_DENY_LEAKAGE_RESOLVE_KEYS
   )
+
   collector.record("fixtures_snapshots", {
     body: res.jsonMock.mock.calls[0]?.[0],
     statusCode: res.statusCode,
@@ -126,11 +167,6 @@ function recordNativeDenyLeakageSnapshots(
     method: options.method,
     attachExclusion,
     attachManifestEntry: attachEntry,
-  })
-  collector.record("openapi", {
-    storeOpenApiExcerpt: existsSync(storeOpenApiPath)
-      ? readFileSync(storeOpenApiPath, "utf8").slice(0, 4096)
-      : null,
     manifestMergeEntry: lookupStoreSurfaceEntry(
       "POST",
       "/store/customers/me/cart/merge"
@@ -140,31 +176,54 @@ function recordNativeDenyLeakageSnapshots(
       "/store/carts/{id}/review/acknowledge"
     ),
   })
-  collector.record("db_plaintext", {
-    exercised: false,
-    reason: "NATIVE_DENY_HARNESS_HAS_NO_DB_WRITES",
-  })
-  collector.record("logs", {
-    exercised: false,
-    reason: "NATIVE_DENY_GUARD_DOES_NOT_LOG_REQUEST_HEADERS",
-  })
+  collector.record("openapi", readStoreOpenApiDocumentForLeakageScan())
+  collector.record(
+    "db_plaintext",
+    unusedSinkEvidence({
+      next: options.next.mock.calls.length,
+      scope_resolve: options.resolveSpy.mock.calls.length,
+      order: resolveCounts[String(Modules.ORDER)] ?? 0,
+    })
+  )
+  collector.record(
+    "logs",
+    unusedSinkEvidence({
+      logger_resolve:
+        resolveCounts[String(ContainerRegistrationKeys.LOGGER)] ?? 0,
+      console_log: options.consoleDeltas.console_log,
+      console_info: options.consoleDeltas.console_info,
+      console_warn: options.consoleDeltas.console_warn,
+      console_error: options.consoleDeltas.console_error,
+    })
+  )
   collector.record("persisted_provider_payload", {
     nextCalled: options.next.mock.calls.length,
-    scopeResolveCalled: (options.req.scope.resolve as jest.Mock).mock.calls
-      .length,
+    scopeResolveCalled: options.resolveSpy.mock.calls.length,
   })
-  collector.record("redis_keys_jobs", {
-    exercised: false,
-    reason: "RUNTIME_PATH_DOES_NOT_USE_REDIS_IN_NATIVE_DENY_HARNESS",
-  })
-  collector.record("sentry", {
-    exercised: false,
-    reason: "SENTRY_NOT_EXERCISED_ON_NATIVE_DENY_PATH",
-  })
-  collector.record("analytics", {
-    exercised: false,
-    reason: "ANALYTICS_NOT_EXERCISED_ON_NATIVE_DENY_PATH",
-  })
+  collector.record(
+    "redis_keys_jobs",
+    unusedSinkEvidence({
+      cache: resolveCounts[String(Modules.CACHE)] ?? 0,
+      event_bus: resolveCounts[String(Modules.EVENT_BUS)] ?? 0,
+      workflow_engine: resolveCounts[String(Modules.WORKFLOW_ENGINE)] ?? 0,
+      locking: resolveCounts.locking ?? 0,
+    })
+  )
+  collector.record(
+    "sentry",
+    unusedSinkEvidence({
+      captureException: options.sentryCaptureExceptionSpy.mock.calls.length,
+      captureMessage: options.sentryCaptureMessageSpy.mock.calls.length,
+    })
+  )
+  collector.record(
+    "analytics",
+    unusedSinkEvidence({
+      analytics_event_log_module:
+        resolveCounts[String(ANALYTICS_EVENT_LOG_MODULE)] ?? 0,
+      analytics_event_log: resolveCounts.analytics_event_log ?? 0,
+    })
+  )
 }
 
 describe("Guest cart native bypass denial (D15-08 / Phase 16 exact-set)", () => {
@@ -172,7 +231,6 @@ describe("Guest cart native bypass denial (D15-08 / Phase 16 exact-set)", () => 
     ["POST", "/store/carts"],
     ["GET", "/store/carts/cart_native_deny_01"],
     ["POST", "/store/carts/cart_native_deny_01/complete"],
-    ["POST", "/store/customers/me/cart/attach"],
     ["POST", "/store/carts/cart_native_deny_01/shipping-methods"],
     ["POST", "/store/carts/cart_native_deny_01/customer"],
   ] as const
@@ -254,14 +312,18 @@ describe("Guest cart native bypass denial (D15-08 / Phase 16 exact-set)", () => 
     expectSurfaceDenied(method, path)
   })
 
-  it("mantém attach fora do M1 e em DENY", () => {
+  it("mantém attach fora do M1 como facade PRESERVE_LEGACY", () => {
     const entry = lookupStoreSurfaceEntry(
       "POST",
       "/store/customers/me/cart/attach"
     )
-    expect(entry?.runtime_policy).toBe("DENY")
+    expect(entry?.classification).toBe("OUTSIDE_FRONTEND_M1")
+    expect(entry?.runtime_policy).toBe("PRESERVE_LEGACY")
     expect(entry?.m1_enablement).not.toBe("enabled")
-    expectSurfaceDenied("POST", "/store/customers/me/cart/attach")
+    expect(entry?.openapi_m1_expectation).toBe("exclude")
+    expect(
+      decideStoreSurfaceAccess("POST", "/store/customers/me/cart/attach")
+    ).toMatchObject({ action: "allow", mode: "preserve_legacy" })
   })
 
   it("attach permanece rota controlada deprecada com exclusão Phase 16", () => {
@@ -275,7 +337,8 @@ describe("Guest cart native bypass denial (D15-08 / Phase 16 exact-set)", () => 
       "POST",
       "/store/customers/me/cart/attach"
     )
-    expect(attachEntry?.runtime_policy).toBe("DENY")
+    expect(attachEntry?.runtime_policy).toBe("PRESERVE_LEGACY")
+    expect(attachEntry?.classification).toBe("OUTSIDE_FRONTEND_M1")
 
     const attachExclusion = ROUTE_EXCLUSIONS.find(
       (item) =>
@@ -456,21 +519,57 @@ describe("Guest cart native bypass denial (D15-08 / Phase 16 exact-set)", () => 
         headers: phase16DeniedRequestHeaders(),
       }
       const res = response()
+      const resolveSpy = jest.spyOn(req.scope, "resolve")
+      const sentryCaptureExceptionSpy = jest.spyOn(Sentry, "captureException")
+      const sentryCaptureMessageSpy = jest.spyOn(Sentry, "captureMessage")
+      const consoleLogSpy = jest.spyOn(console, "log")
+      const consoleInfoSpy = jest.spyOn(console, "info")
+      const consoleWarnSpy = jest.spyOn(console, "warn")
+      const consoleErrorSpy = jest.spyOn(console, "error")
+      const logsBefore = {
+        log: consoleLogSpy.mock.calls.length,
+        info: consoleInfoSpy.mock.calls.length,
+        warn: consoleWarnSpy.mock.calls.length,
+        error: consoleErrorSpy.mock.calls.length,
+      }
 
-      middleware(req as never, res as never, next)
+      try {
+        middleware(req as never, res as never, next)
 
-      expect(next).not.toHaveBeenCalled()
-      expect(req.scope.resolve).not.toHaveBeenCalled()
-      expect(res.statusCode).toBe(404)
+        expect(next).not.toHaveBeenCalled()
+        expect(req.scope.resolve).not.toHaveBeenCalled()
+        expect(res.statusCode).toBe(404)
 
-      const collector = createGuestCartLeakageCollector()
-      recordNativeDenyLeakageSnapshots(collector, res, {
-        method: "POST",
-        path,
-        next,
-        req,
-      })
-      collector.assertNoCanaries()
+        const collector = createGuestCartLeakageCollector()
+        recordNativeDenyLeakageSnapshots(collector, res, {
+          method: "POST",
+          path,
+          next,
+          req,
+          resolveSpy,
+          sentryCaptureExceptionSpy,
+          sentryCaptureMessageSpy,
+          consoleDeltas: {
+            console_log: consoleLogSpy.mock.calls.length - logsBefore.log,
+            console_info: consoleInfoSpy.mock.calls.length - logsBefore.info,
+            console_warn: consoleWarnSpy.mock.calls.length - logsBefore.warn,
+            console_error: consoleErrorSpy.mock.calls.length - logsBefore.error,
+          },
+        })
+        collector.assertExactEightSinksNoCanaries()
+        assertPublicSurfaceDoesNotEncodeSecrets({
+          body: res.jsonMock.mock.calls[0]?.[0],
+          statusCode: res.statusCode,
+        })
+      } finally {
+        resolveSpy.mockRestore()
+        sentryCaptureExceptionSpy.mockRestore()
+        sentryCaptureMessageSpy.mockRestore()
+        consoleLogSpy.mockRestore()
+        consoleInfoSpy.mockRestore()
+        consoleWarnSpy.mockRestore()
+        consoleErrorSpy.mockRestore()
+      }
     })
 
     it.each([
@@ -490,21 +589,58 @@ describe("Guest cart native bypass denial (D15-08 / Phase 16 exact-set)", () => 
           headers: phase16DeniedRequestHeaders(),
         }
         const res = response()
+        const resolveSpy = jest.spyOn(req.scope, "resolve")
+        const sentryCaptureExceptionSpy = jest.spyOn(Sentry, "captureException")
+        const sentryCaptureMessageSpy = jest.spyOn(Sentry, "captureMessage")
+        const consoleLogSpy = jest.spyOn(console, "log")
+        const consoleInfoSpy = jest.spyOn(console, "info")
+        const consoleWarnSpy = jest.spyOn(console, "warn")
+        const consoleErrorSpy = jest.spyOn(console, "error")
+        const logsBefore = {
+          log: consoleLogSpy.mock.calls.length,
+          info: consoleInfoSpy.mock.calls.length,
+          warn: consoleWarnSpy.mock.calls.length,
+          error: consoleErrorSpy.mock.calls.length,
+        }
 
-        middleware(req as never, res as never, next)
+        try {
+          middleware(req as never, res as never, next)
 
-        expect(next).not.toHaveBeenCalled()
-        expect(req.scope.resolve).not.toHaveBeenCalled()
-        expect(res.statusCode).toBe(404)
+          expect(next).not.toHaveBeenCalled()
+          expect(req.scope.resolve).not.toHaveBeenCalled()
+          expect(res.statusCode).toBe(404)
 
-        const collector = createGuestCartLeakageCollector()
-        recordNativeDenyLeakageSnapshots(collector, res, {
-          method,
-          path,
-          next,
-          req,
-        })
-        collector.assertNoCanaries()
+          const collector = createGuestCartLeakageCollector()
+          recordNativeDenyLeakageSnapshots(collector, res, {
+            method,
+            path,
+            next,
+            req,
+            resolveSpy,
+            sentryCaptureExceptionSpy,
+            sentryCaptureMessageSpy,
+            consoleDeltas: {
+              console_log: consoleLogSpy.mock.calls.length - logsBefore.log,
+              console_info: consoleInfoSpy.mock.calls.length - logsBefore.info,
+              console_warn: consoleWarnSpy.mock.calls.length - logsBefore.warn,
+              console_error:
+                consoleErrorSpy.mock.calls.length - logsBefore.error,
+            },
+          })
+          collector.assertExactEightSinksNoCanaries()
+          assertPublicSurfaceDoesNotEncodeSecrets({
+            body: res.jsonMock.mock.calls[0]?.[0],
+            statusCode: res.statusCode,
+          })
+        } finally {
+          resolveSpy.mockRestore()
+          sentryCaptureExceptionSpy.mockRestore()
+          sentryCaptureMessageSpy.mockRestore()
+          consoleLogSpy.mockRestore()
+          consoleInfoSpy.mockRestore()
+          consoleWarnSpy.mockRestore()
+          consoleErrorSpy.mockRestore()
+        }
       }
     )
   })
