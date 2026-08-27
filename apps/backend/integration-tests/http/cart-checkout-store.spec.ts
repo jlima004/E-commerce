@@ -1532,6 +1532,19 @@ type Hr08LedgerEvent = {
   type: string
   cartId?: string
   customerId?: string | null
+  transactionManager?: unknown
+  iso2?: string | null
+}
+
+type Hr08KnexCatalog = {
+  regionCountries: Array<{ iso_2: string | null }>
+  variantRows: Array<{ id: string; sku?: string | null; metadata?: unknown }>
+  priceLinkRows: Array<{ variant_id: string; price_set_id: string }>
+  priceRows: Array<{
+    price_set_id: string
+    currency_code: string
+    amount: number
+  }>
 }
 
 type Hr08Cart = StoreCartPreOrderRecord & { total?: number | null }
@@ -1564,7 +1577,91 @@ function classifyHr08Sql(sql: string): string {
     return "review-read"
   }
 
+  if (normalized.includes("from region_country")) {
+    return "region-hydrate"
+  }
+
+  if (normalized.includes("from product_variant_price_set")) {
+    return "variant-price-link"
+  }
+
+  if (normalized.includes("from product_variant")) {
+    return "variant-hydrate"
+  }
+
+  if (/\bfrom price\b/.test(normalized)) {
+    return "price-hydrate"
+  }
+
   return "raw-other"
+}
+
+function buildHr08KnexCatalogFromCart(cart: Hr08Cart): Hr08KnexCatalog {
+  const regionCountries =
+    cart.region?.countries?.map((country) => ({
+      iso_2: country.iso_2 ?? null,
+    })) ?? [{ iso_2: "br" }]
+  const variantRows: Hr08KnexCatalog["variantRows"] = []
+  const priceLinkRows: Hr08KnexCatalog["priceLinkRows"] = []
+  const priceRows: Hr08KnexCatalog["priceRows"] = []
+
+  for (const item of cart.items ?? []) {
+    const variant = item.variant
+    const variantId = variant?.id ?? item.variant_id
+    if (!variantId) {
+      continue
+    }
+
+    variantRows.push({
+      id: variantId,
+      sku: variant?.sku ?? null,
+      metadata: variant?.metadata ?? null,
+    })
+
+    const priceSetId = `pset_${variantId}`
+    priceLinkRows.push({
+      variant_id: variantId,
+      price_set_id: priceSetId,
+    })
+
+    for (const price of variant?.prices ?? []) {
+      if (!price.currency_code || price.amount === undefined) {
+        continue
+      }
+
+      priceRows.push({
+        price_set_id: priceSetId,
+        currency_code: price.currency_code,
+        amount: price.amount,
+      })
+    }
+  }
+
+  return { regionCountries, variantRows, priceLinkRows, priceRows }
+}
+
+function toCartOwnedLockedCart(cart: Hr08Cart): Hr08Cart & {
+  customer_id: string | null
+} {
+  const { region: _ignoredRegion, ...cartWithoutRegion } = cart
+
+  return {
+    ...cartWithoutRegion,
+    customer_id: cart.customer?.id ?? null,
+    items: (cart.items ?? []).map((item) => {
+      const { variant: _ignoredVariant, ...itemWithoutVariant } = item
+      return itemWithoutVariant
+    }),
+  }
+}
+
+function unsellableQueryVariant(id: string) {
+  return {
+    id,
+    sku: "UNBOUND-STALE",
+    metadata: {},
+    prices: [],
+  }
 }
 
 function hr08LedgerIndex(ledger: Hr08LedgerEvent[], type: string): number {
@@ -1825,7 +1922,8 @@ function createHr08StripePixInitiationLayerMock(
 
 function wrapHr08PostLockCart(
   cart: Hr08Cart,
-  ledger: Hr08LedgerEvent[]
+  ledger: Hr08LedgerEvent[],
+  transactionManager?: unknown
 ): Hr08Cart {
   let ownershipRecorded = false
 
@@ -1837,6 +1935,7 @@ function wrapHr08PostLockCart(
           type: "ownership-check-input",
           cartId: target.id,
           customerId: target.customer?.id ?? null,
+          transactionManager,
         })
       }
 
@@ -1890,6 +1989,14 @@ function wireHr08PaymentStartScope(
   options: {
     cart: Hr08Cart
     review: "pending" | "acknowledged"
+    knexCatalog?: Partial<Hr08KnexCatalog>
+    unboundRegionCountries?: Array<{ iso_2: string }>
+    unboundQueryVariants?: Array<{
+      id: string
+      sku?: string
+      metadata?: Record<string, unknown>
+      prices?: Array<{ currency_code: string; amount: number }>
+    }>
   }
 ) {
   const ledger: Hr08LedgerEvent[] = []
@@ -1935,13 +2042,46 @@ function wireHr08PaymentStartScope(
       ? [createHr08PendingReviewRow(options.cart.id)]
       : [createHr08AcknowledgedReviewRow(options.cart.id)]
 
+  const knexCatalog: Hr08KnexCatalog = {
+    ...buildHr08KnexCatalogFromCart(options.cart),
+    ...options.knexCatalog,
+  }
+
   const knex = {
     raw: jest.fn(async (sql: string) => {
       const type = classifyHr08Sql(sql)
-      ledger.push({ type })
+      if (type === "lock") {
+        lockTransactionManager = transactionManager
+      }
+
+      const hydrateIso2 =
+        type === "region-hydrate"
+          ? knexCatalog.regionCountries[0]?.iso_2 ?? null
+          : undefined
+      ledger.push({
+        type,
+        transactionManager,
+        ...(hydrateIso2 !== undefined ? { iso2: hydrateIso2 } : {}),
+      })
 
       if (type === "review-read") {
         return { rows: reviewRows }
+      }
+
+      if (type === "region-hydrate") {
+        return { rows: knexCatalog.regionCountries }
+      }
+
+      if (type === "variant-hydrate") {
+        return { rows: knexCatalog.variantRows }
+      }
+
+      if (type === "variant-price-link") {
+        return { rows: knexCatalog.priceLinkRows }
+      }
+
+      if (type === "price-hydrate") {
+        return { rows: knexCatalog.priceRows }
       }
 
       return { rows: [] }
@@ -1951,24 +2091,78 @@ function wireHr08PaymentStartScope(
   const transactionManager = {
     getTransactionContext: () => knex,
   }
+  let lockTransactionManager: typeof transactionManager | undefined
+  let retrieveSharedContext:
+    | { transactionManager?: typeof transactionManager }
+    | undefined
+  let retrievedLockedCart: ReturnType<typeof toCartOwnedLockedCart> | undefined
+
+  const originalListPaymentAttempts = paymentAttemptModule.listPaymentAttempts
+  paymentAttemptModule.listPaymentAttempts = jest.fn(
+    async (
+      filters?: { cart_id?: string },
+      configOrContext?: unknown,
+      sharedContext?: { transactionManager?: typeof transactionManager }
+    ) => {
+      ledger.push({
+        type: "eligibility",
+        transactionManager:
+          sharedContext?.transactionManager ??
+          retrieveSharedContext?.transactionManager,
+      })
+      return originalListPaymentAttempts(filters, configOrContext, sharedContext)
+    }
+  )
 
   const cartModule = {
     baseRepository_: {
       transaction: jest.fn(
         async (callback: (manager: typeof transactionManager) => Promise<unknown>) => {
-          ledger.push({ type: "transaction-start" })
+          ledger.push({ type: "transaction-start", transactionManager })
           try {
             return await callback(transactionManager)
           } catch (error) {
-            ledger.push({ type: "failure" })
+            ledger.push({ type: "failure", transactionManager })
             throw error
           }
         }
       ),
     },
+    retrieveCart: jest.fn(
+      async (
+        cartId: string,
+        _config?: unknown,
+        sharedContext?: { transactionManager?: typeof transactionManager }
+      ) => {
+        cartQueryCount += 1
+        retrieveCartCount += 1
+        retrieveSharedContext = sharedContext
+        ledger.push({
+          type: "post-lock-query",
+          cartId,
+          customerId: options.cart.customer?.id ?? null,
+          transactionManager: sharedContext?.transactionManager,
+        })
+        ledger.push({
+          type: "cart-reread",
+          cartId,
+          customerId: options.cart.customer?.id ?? null,
+          transactionManager: sharedContext?.transactionManager,
+        })
+
+        retrievedLockedCart = toCartOwnedLockedCart(options.cart)
+        return wrapHr08PostLockCart(
+          retrievedLockedCart,
+          ledger,
+          sharedContext?.transactionManager
+        )
+      }
+    ),
   }
 
   let cartQueryCount = 0
+  let retrieveCartCount = 0
+  let remoteQueryCartCount = 0
   let paymentCollectionQueryCount = 0
   const wrappedCart = wrapHr08PostLockCart(options.cart, ledger)
 
@@ -1977,6 +2171,7 @@ function wireHr08PaymentStartScope(
 
     if (entryPoint === "cart") {
       cartQueryCount += 1
+      remoteQueryCartCount += 1
       ledger.push({ type: "post-lock-query" })
       const cartId = String(filters.id ?? "")
       return cartId === options.cart.id ? [wrappedCart] : []
@@ -1994,6 +2189,40 @@ function wireHr08PaymentStartScope(
 
     return []
   })
+
+  const unboundRegionCountries = options.unboundRegionCountries ?? [
+    { iso_2: "us" },
+  ]
+  const regionModule = {
+    retrieveRegion: jest.fn(async () => ({
+      countries: unboundRegionCountries,
+    })),
+  }
+
+  const queryGraph = {
+    graph: jest.fn(async (query: { filters?: { id?: string | string[] } }) => {
+      const requested = query.filters?.id
+      const ids = Array.isArray(requested)
+        ? requested
+        : requested
+          ? [requested]
+          : []
+      const unboundVariants = options.unboundQueryVariants
+      const variantsById = new Map(
+        (unboundVariants ??
+          ids.map((id) => unsellableQueryVariant(id))).map((variant) => [
+          variant.id,
+          variant,
+        ])
+      )
+
+      return {
+        data: ids.map(
+          (id) => variantsById.get(id) ?? unsellableQueryVariant(id)
+        ),
+      }
+    }),
+  }
 
   const storeResourceVersionService = {
     initialize: jest.fn(async (resourceType: string, resourceId: string) => ({
@@ -2017,6 +2246,14 @@ function wireHr08PaymentStartScope(
 
     if (key === Modules.CART) {
       return cartModule
+    }
+
+    if (key === Modules.REGION) {
+      return regionModule
+    }
+
+    if (key === ContainerRegistrationKeys.QUERY) {
+      return queryGraph
     }
 
     if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
@@ -2058,8 +2295,28 @@ function wireHr08PaymentStartScope(
     workflowEngine,
     stripeCardInitiationLayer,
     stripePixInitiationLayer,
+    cartModule,
+    knex,
+    regionModule,
+    queryGraph,
+    transactionManager,
+    get lockTransactionManager() {
+      return lockTransactionManager
+    },
+    get retrieveSharedContext() {
+      return retrieveSharedContext
+    },
+    get retrievedLockedCart() {
+      return retrievedLockedCart
+    },
     get cartQueryCount() {
       return cartQueryCount
+    },
+    get retrieveCartCount() {
+      return retrieveCartCount
+    },
+    get remoteQueryCartCount() {
+      return remoteQueryCartCount
     },
     get paymentCollectionQueryCount() {
       return paymentCollectionQueryCount
@@ -2104,6 +2361,160 @@ function assertHr08PendingBeforeProvider(input: {
     "review-read",
     "failure",
   ])
+}
+
+function assertHr07CardSameTransactionManager(
+  harness: ReturnType<typeof wireHr08PaymentStartScope>
+) {
+  expect(harness.lockTransactionManager).toBeDefined()
+  expect(harness.retrieveSharedContext?.transactionManager).toBeDefined()
+  expect(harness.retrieveSharedContext?.transactionManager).toBe(
+    harness.lockTransactionManager
+  )
+  expect(harness.retrieveSharedContext?.transactionManager).toBe(
+    harness.transactionManager
+  )
+
+  const lockIndex = hr08LedgerIndex(harness.ledger, "lock")
+  const rereadIndex = hr08LedgerIndex(harness.ledger, "cart-reread")
+  expect(rereadIndex).toBeGreaterThan(lockIndex)
+  expect(harness.ledger[rereadIndex]?.transactionManager).toBe(
+    harness.lockTransactionManager
+  )
+
+  expect(harness.retrieveCartCount).toBe(1)
+  expect(harness.remoteQueryCartCount).toBe(0)
+  expect(harness.cartModule.retrieveCart).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({
+      select: expect.any(Array),
+      relations: expect.arrayContaining(["items", "shipping_address"]),
+    }),
+    expect.objectContaining({
+      __type: "MedusaContext",
+      transactionManager: harness.lockTransactionManager,
+    })
+  )
+
+  assertHr07CardEligibilitySnapshotFromLockTransaction(harness)
+}
+
+function assertHr07CardEligibilitySnapshotFromLockTransaction(
+  harness: ReturnType<typeof wireHr08PaymentStartScope>
+) {
+  expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
+  expect(harness.queryGraph.graph).not.toHaveBeenCalled()
+  expect(harness.resolvedKeys).not.toContain(Modules.REGION)
+  expect(harness.resolvedKeys).not.toContain(ContainerRegistrationKeys.QUERY)
+
+  expect(harness.retrievedLockedCart).toEqual(
+    expect.objectContaining({
+      id: expect.any(String),
+      region_id: expect.any(String),
+      customer_id: expect.any(String),
+      shipping_address: expect.anything(),
+    })
+  )
+  expect(harness.retrievedLockedCart?.region).toBeUndefined()
+  expect(
+    (harness.retrievedLockedCart?.items ?? []).every(
+      (item) => item.variant === undefined
+    )
+  ).toBe(true)
+
+  const rereadIndex = hr08LedgerIndex(harness.ledger, "cart-reread")
+  const reviewIndex = harness.ledger.findIndex(
+    (event) => event.type === "review-read"
+  )
+  const failureIndex = harness.ledger.findIndex(
+    (event) => event.type === "failure"
+  )
+  const hydrateBeforeIndex =
+    reviewIndex >= 0
+      ? reviewIndex
+      : failureIndex >= 0
+        ? failureIndex
+        : harness.ledger.length
+  const hydrateTypes = [
+    "region-hydrate",
+    "variant-hydrate",
+    "variant-price-link",
+  ] as const
+
+  for (const type of hydrateTypes) {
+    const events = harness.ledger.filter((event) => event.type === type)
+    expect(events.length).toBeGreaterThan(0)
+    for (const event of events) {
+      const index = harness.ledger.indexOf(event)
+      expect(event.transactionManager).toBe(harness.lockTransactionManager)
+      expect(index).toBeGreaterThan(rereadIndex)
+      expect(index).toBeLessThan(hydrateBeforeIndex)
+    }
+  }
+
+  expect(
+    harness.knex.raw.mock.calls.some(
+      ([sql]: [string]) => classifyHr08Sql(sql) === "region-hydrate"
+    )
+  ).toBe(true)
+  expect(
+    harness.knex.raw.mock.calls.some(
+      ([sql]: [string]) => classifyHr08Sql(sql) === "variant-hydrate"
+    )
+  ).toBe(true)
+}
+
+function assertHr07CardNoCatalogQueriesAfterReview(
+  harness: ReturnType<typeof wireHr08PaymentStartScope>
+) {
+  const reviewIndex = hr08LedgerIndex(harness.ledger, "review-read")
+  const hydrateTypes = new Set([
+    "region-hydrate",
+    "variant-hydrate",
+    "variant-price-link",
+    "price-hydrate",
+  ])
+
+  expect(
+    harness.ledger.filter(
+      (event, index) => index > reviewIndex && hydrateTypes.has(event.type)
+    )
+  ).toHaveLength(0)
+  expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
+  expect(harness.queryGraph.graph).not.toHaveBeenCalled()
+}
+
+function assertHr07CardEligibilityRejectedClosed(
+  harness: ReturnType<typeof wireHr08PaymentStartScope>,
+  thrown: unknown
+) {
+  expect(thrown).toBeInstanceOf(MedusaError)
+  expect(thrown).toMatchObject({
+    type: MedusaError.Types.INVALID_DATA,
+    message: "Checkout incompleto; pagamento nao pode ser iniciado.",
+  })
+  expect((thrown as { code?: string } | undefined)?.code).not.toBe(
+    "REVIEW_REQUIRED"
+  )
+  expect(
+    harness.stripeCardInitiationLayer.createCardPaymentIntent
+  ).not.toHaveBeenCalled()
+  expect(
+    harness.ledger.filter((event) => event.type === "provider-call")
+  ).toHaveLength(0)
+  expect(
+    harness.ledger.filter((event) => event.type === "payment-attempt-persist")
+  ).toHaveLength(0)
+  expect(
+    harness.paymentAttemptModule.createPaymentAttempts
+  ).not.toHaveBeenCalled()
+  expect(
+    harness.ledger.filter((event) => event.type === "order-resolve")
+  ).toHaveLength(0)
+  expect(harness.paymentCollectionQueryCount).toBe(0)
+  expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+  expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
+  expect(harness.queryGraph.graph).not.toHaveBeenCalled()
 }
 
 describe("B16-09-HR-08 Card dynamic HTTP evidence", () => {
@@ -2322,6 +2733,363 @@ describe("B16-09-HR-08 Pix dynamic HTTP evidence", () => {
       "review-read",
       "provider-call",
     ])
+  })
+})
+
+describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
+  it("B16-09-HR-07 Card lock and cart retrieve share the same transaction manager", async () => {
+    const cart = buildHr08CustomerCart("cart_hr07_card_identity", HR08_CUSTOMER_A)
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "acknowledged",
+    })
+    const res = createResponse()
+
+    await startCardPaymentAttemptRoute(req, res)
+
+    expect(harness.lockTransactionManager).toBeDefined()
+    expect(harness.retrieveSharedContext?.transactionManager).toBeDefined()
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07CardSameTransactionManager(harness)
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "review-read",
+      "eligibility",
+      "provider-call",
+    ])
+    expect(res.statusCode).toBe(201)
+  })
+
+  it("B16-09-HR-07 Card ownership mismatch fails closed before review and provider", async () => {
+    const cart = buildHr08CustomerCart(
+      "cart_hr07_card_foreign",
+      HR08_CUSTOMER_B
+    )
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "pending",
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await startCardPaymentAttemptRoute(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(MedusaError)
+    expect(thrown).toMatchObject({
+      type: MedusaError.Types.INVALID_DATA,
+    })
+    expect((thrown as { code?: string } | undefined)?.code).not.toBe(
+      "REVIEW_REQUIRED"
+    )
+
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07CardSameTransactionManager(harness)
+
+    expect(
+      harness.stripeCardInitiationLayer.createCardPaymentIntent
+    ).not.toHaveBeenCalled()
+    expect(
+      harness.ledger.filter((event) => event.type === "provider-call")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "review-read")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "eligibility")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "payment-attempt-persist")
+    ).toHaveLength(0)
+    expect(
+      harness.paymentAttemptModule.createPaymentAttempts
+    ).not.toHaveBeenCalled()
+    expect(
+      harness.ledger.filter((event) => event.type === "order-resolve")
+    ).toHaveLength(0)
+    expect(harness.paymentCollectionQueryCount).toBe(0)
+    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+
+    const ownershipEvent = harness.ledger.find(
+      (event) => event.type === "ownership-check-input"
+    )
+    expect(ownershipEvent).toEqual(
+      expect.objectContaining({
+        type: "ownership-check-input",
+        cartId: cart.id,
+        customerId: HR08_CUSTOMER_B,
+        transactionManager: harness.lockTransactionManager,
+      })
+    )
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "failure",
+    ])
+    expect(res.jsonSpy).not.toHaveBeenCalled()
+  })
+
+  it("B16-09-HR-07 Card pending review returns 409 REVIEW_REQUIRED before provider", async () => {
+    const cart = buildHr08CustomerCart("cart_hr07_card_pending", HR08_CUSTOMER_A)
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "pending",
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await startCardPaymentAttemptRoute(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeDefined()
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07CardSameTransactionManager(harness)
+    assertHr08PendingBeforeProvider({
+      error: thrown,
+      harness,
+      stripeIntent: harness.stripeCardInitiationLayer
+        .createCardPaymentIntent as jest.Mock,
+    })
+    expect(
+      harness.ledger.filter((event) => event.type === "provider-call")
+    ).toHaveLength(0)
+    expect(harness.paymentCollectionQueryCount).toBe(0)
+    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+    expect(harness.medusaPaymentModule.updatePaymentSessions).not.toHaveBeenCalled()
+    expect(
+      harness.paymentAttemptModule.createPaymentAttempts
+    ).not.toHaveBeenCalled()
+    expect(
+      harness.ledger.filter((event) => event.type === "payment-attempt-persist")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "order-resolve")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "eligibility")
+    ).toHaveLength(0)
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "review-read",
+      "failure",
+    ])
+    assertHr07CardNoCatalogQueriesAfterReview(harness)
+    expect(res.jsonSpy).not.toHaveBeenCalled()
+  })
+
+  it("B16-09-HR-07 Card allowed after review persists one attempt with local provider", async () => {
+    const cart = buildHr08CustomerCart("cart_hr07_card_allowed", HR08_CUSTOMER_A)
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "acknowledged",
+    })
+    const res = createResponse()
+
+    await startCardPaymentAttemptRoute(req, res)
+
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07CardSameTransactionManager(harness)
+
+    expect(res.statusCode).toBe(201)
+    const body = res.jsonSpy.mock.calls[0][0] as {
+      payment_attempt: {
+        payment_method_type: string
+        status: string
+        amount: number
+        currency_code: string
+        client_secret: string
+      }
+    }
+    expect(body.payment_attempt).toEqual(
+      expect.objectContaining({
+        payment_method_type: "card",
+        status: "card_client_secret_created",
+        amount: 9900,
+        currency_code: "BRL",
+        client_secret: expect.stringMatching(/_secret_/),
+      })
+    )
+    expect(
+      harness.stripeCardInitiationLayer.createCardPaymentIntent
+    ).toHaveBeenCalledTimes(1)
+    expect(
+      harness.ledger.filter((event) => event.type === "provider-call")
+    ).toHaveLength(1)
+    expect(
+      harness.paymentAttemptModule.createPaymentAttempts
+    ).toHaveBeenCalledTimes(1)
+    expect(
+      harness.ledger.filter((event) => event.type === "payment-attempt-persist")
+    ).toHaveLength(1)
+    const persisted = harness.paymentAttemptModule.createPaymentAttempts.mock
+      .calls[0][0] as PaymentAttemptRecord
+    expect(persisted.order_id).toBeNull()
+    expect(
+      harness.ledger.filter((event) => event.type === "order-resolve")
+    ).toHaveLength(0)
+    expect(
+      harness.ledger.filter((event) => event.type === "failure")
+    ).toHaveLength(0)
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "review-read",
+      "eligibility",
+      "provider-call",
+    ])
+    expect(
+      harness.ledger.find((event) => event.type === "region-hydrate")?.iso2
+    ).toBe("br")
+    expect(
+      harness.ledger.filter((event) => event.type === "price-hydrate").length
+    ).toBeGreaterThan(0)
+    expect(
+      harness.ledger
+        .filter((event) => event.type === "price-hydrate")
+        .every(
+          (event) => event.transactionManager === harness.lockTransactionManager
+        )
+    ).toBe(true)
+    expect(harness.knex.raw).toHaveBeenCalledWith(
+      expect.stringMatching(/from\s+region_country/i),
+      [cart.region_id]
+    )
+    expect(harness.knex.raw).toHaveBeenCalledWith(
+      expect.stringMatching(/from\s+product_variant\b/i),
+      ["variant_sellable"]
+    )
+    assertHr08NoPublicLeakage(body)
+  })
+
+  it("B16-09-HR-07 Card stale region snapshot rejects while unbound Region would allow", async () => {
+    const cart = buildHr08CustomerCart(
+      "cart_hr07_card_stale_region",
+      HR08_CUSTOMER_A
+    )
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "acknowledged",
+      knexCatalog: {
+        regionCountries: [{ iso_2: "us" }],
+      },
+      unboundRegionCountries: [{ iso_2: "br" }],
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await startCardPaymentAttemptRoute(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07CardSameTransactionManager(harness)
+    assertHr07CardEligibilityRejectedClosed(harness, thrown)
+    expect(
+      harness.ledger.find((event) => event.type === "region-hydrate")?.iso2
+    ).toBe("us")
+    expect(harness.knex.raw).toHaveBeenCalledWith(
+      expect.stringMatching(/from\s+region_country/i),
+      [cart.region_id]
+    )
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "review-read",
+      "failure",
+    ])
+    expect(
+      harness.ledger.filter((event) => event.type === "eligibility")
+    ).toHaveLength(0)
+    expect(res.jsonSpy).not.toHaveBeenCalled()
+  })
+
+  it("B16-09-HR-07 Card stale variant snapshot rejects while unbound QUERY would allow", async () => {
+    const cart = buildHr08CustomerCart(
+      "cart_hr07_card_stale_variant",
+      HR08_CUSTOMER_A
+    )
+    const req = createHr08PaymentStartRequest(cart.id)
+    const harness = wireHr08PaymentStartScope(req, {
+      cart,
+      review: "acknowledged",
+      knexCatalog: {
+        variantRows: [
+          {
+            id: "variant_sellable",
+            sku: "TSHIRT-BLACK-M",
+            metadata: {},
+          },
+        ],
+        priceLinkRows: [],
+        priceRows: [],
+      },
+      unboundQueryVariants: [sellableVariant()],
+    })
+    const res = createResponse()
+
+    let thrown: unknown
+    try {
+      await startCardPaymentAttemptRoute(req, res)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(harness.retrieveSharedContext?.transactionManager).toBe(
+      harness.lockTransactionManager
+    )
+    assertHr07CardSameTransactionManager(harness)
+    assertHr07CardEligibilityRejectedClosed(harness, thrown)
+    expect(harness.knex.raw).toHaveBeenCalledWith(
+      expect.stringMatching(/from\s+product_variant\b/i),
+      ["variant_sellable"]
+    )
+    expectHr08LedgerOrder(harness.ledger, [
+      "transaction-start",
+      "lock",
+      "cart-reread",
+      "ownership-check-input",
+      "review-read",
+      "failure",
+    ])
+    expect(
+      harness.ledger.filter((event) => event.type === "eligibility")
+    ).toHaveLength(0)
+    expect(res.jsonSpy).not.toHaveBeenCalled()
   })
 })
 
