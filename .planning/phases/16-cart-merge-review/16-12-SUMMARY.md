@@ -80,7 +80,7 @@ coverage:
     description: "Checkpoint final do Plan 16-12."
     verification: []
     human_judgment: true
-    rationale: "A revisão humana do Plan 16-12 ainda é o próximo gate; o validador independente L permanece PENDING."
+  rationale: "A revisão humana do Plan 16-12 ainda é o próximo gate; o validador independente L executou e passou, sem substituir a decisão humana."
 
 status: halted
 ---
@@ -127,9 +127,10 @@ Todos os agentes abaixo usaram **GPT-5.6 Luna**:
 | J | Initial security/diff review |
 | J2 | Final security/diff reconciliation — **OVERALL PASS** |
 | K | Este summary writer |
-| L | Independent final validator — **PENDING** |
+| L | Independent final validator — **EXECUTED — PASS** |
 
-O agente L não foi declarado executado nem aprovado.
+O agente L executou após este SUMMARY existir e retornou **PASS**. Isso não
+substitui a revisão humana do Plan 16-12.
 
 ## Baseline, histórico e artefatos gerados
 
@@ -260,11 +261,14 @@ O secret/example scan passou sem capability guest, Customer JWT, raw key, PII, p
 
 - Worktree antes deste arquivo: limpo após `75f4e640`.
 - Commit técnico: histórico acima preservado.
-- Commit deste arquivo: `docs(cart-merge): record plan 16-12 contract evidence`.
+- Commits documentais deste arquivo:
+  - `2bac1be` — `docs(cart-merge): record plan 16-12 contract evidence`
+  - `bc58b1f` — `docs(cart-merge): correct plan 16-12 file ledger`
+  - commit desta atualização — `docs(cart-merge): record independent final validation`
 - Worktree final: deve permanecer limpo após este commit.
 - Push: **NOT PERFORMED**.
 - Deploy: **NOT PERFORMED**.
-- Independent final validator L: **PENDING** — não executado, não aprovado.
+- Independent final validator L: **EXECUTED — PASS**.
 
 ---
 *Phase: 16-cart-merge-review*
