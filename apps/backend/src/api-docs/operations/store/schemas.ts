@@ -833,6 +833,7 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
       guestCartId: {
         type: "string",
         minLength: 1,
+        pattern: ".*\\S.*",
       },
     },
   })

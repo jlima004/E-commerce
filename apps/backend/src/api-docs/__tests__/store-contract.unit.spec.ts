@@ -832,7 +832,11 @@ describe("OpenAPI Store contract wave", () => {
       (contract) => contract.surface === "store"
     )
     expect(store?.bytes).toBe(again?.bytes)
-    expect(store?.bytes).not.toMatch(/\/home\/|\/Users\/|\\/)
+    const storeBytesWithoutSchemaPattern = store?.bytes.replace(
+      /"pattern": "\.\*\\\\S\.\*"/g,
+      ""
+    )
+    expect(storeBytesWithoutSchemaPattern).not.toMatch(/\/home\/|\/Users\/|\\/)
     expect(store?.bytes).not.toMatch(/sk_(?:live|test)_|whsec_|Bearer\s+\w{8,}/)
     expect(store?.document.components.schemas.PublicStoreCatalogProduct).toBeDefined()
     expect(store?.document.components.schemas.PublicStoreCartPreOrder).toBeDefined()
@@ -1366,6 +1370,12 @@ describe("OpenAPI Store contract wave", () => {
     expect(
       CartMergeRequestSchema.safeParse({ guest_cart_id: "cart_guest_01" }).success
     ).toBe(false)
+    expect(
+      CartMergeRequestSchema.safeParse({ guestCartId: " \t\n " }).success
+    ).toBe(false)
+    expect(
+      CartMergeRequestSchema.safeParse({ guestCartId: "   " }).success
+    ).toBe(false)
 
     expect(Object.keys(CartReviewAcknowledgeBodySchema.shape)).toEqual([
       "reviewRef",
@@ -1396,6 +1406,7 @@ describe("OpenAPI Store contract wave", () => {
       examples?: unknown
       minimum?: unknown
       minLength?: unknown
+      pattern?: unknown
       properties?: Record<string, Schema>
       required?: unknown
       type?: unknown
@@ -1413,7 +1424,11 @@ describe("OpenAPI Store contract wave", () => {
     expect(requiredNames("CartMergeRequest")).toEqual(["guestCartId"])
     expect(schema("CartMergeRequest").additionalProperties).toBe(false)
     expect(schema("CartMergeRequest").properties?.guestCartId).toEqual(
-      expect.objectContaining({ type: "string", minLength: 1 })
+      expect.objectContaining({
+        type: "string",
+        minLength: 1,
+        pattern: ".*\\S.*",
+      })
     )
 
     expect(schema("CartMergeOutcome").enum).toEqual([...CART_MERGE_OUTCOMES])
