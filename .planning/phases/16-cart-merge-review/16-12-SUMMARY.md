@@ -33,11 +33,16 @@ key-files:
     - "apps/backend/src/api/store/carts/serializers.ts"
     - "apps/backend/src/api-docs/operations/store/schemas.ts"
     - "apps/backend/src/api-docs/components/parameters.ts"
+    - "apps/backend/src/api-docs/operations/store/carts.ts"
+    - "apps/backend/src/api-docs/__tests__/store-contract.unit.spec.ts"
+    - "apps/backend/src/api-docs/__tests__/security.unit.spec.ts"
+    - "apps/backend/src/api-docs/__tests__/coverage.unit.spec.ts"
+    - "apps/backend/src/api-docs/__tests__/generation.unit.spec.ts"
+    - "apps/backend/src/api-docs/__tests__/admin-contract.unit.spec.ts"
+  verified_without_changes:
     - "apps/backend/src/api-docs/components/errors.ts"
     - "apps/backend/src/api-docs/components/security-schemes.ts"
-    - "apps/backend/src/api-docs/operations/store/carts.ts"
     - "apps/backend/src/api-docs/coverage/exclusions.ts"
-    - "apps/backend/src/api-docs/__tests__/store-contract.unit.spec.ts"
 
 key-decisions:
   - "CUSTOMER_CART_PRESERVED permanece reservado, sem branch ou exemplo positivo."
