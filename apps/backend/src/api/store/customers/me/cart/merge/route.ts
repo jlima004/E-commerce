@@ -1,7 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError } from "@medusajs/framework/utils"
 import {
-  serializeStoreCartPreOrder,
+  serializeCartMergeResponse,
 } from "../../../../carts/serializers"
 import { formatCartEtag, requireIfMatch } from "../../../../carts/concurrency"
 import {
@@ -46,13 +46,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   res.setHeader("Cache-Control", "no-store")
   res.setHeader("ETag", formatCartEtag(result.version))
-  res.status(200).json({
-    outcome: result.outcome,
-    cart: serializeStoreCartPreOrder(result.cart),
-    review: {
-      requiresReview: result.review.requiresReview,
-      reviewRef: result.review.reviewRef,
-      rejectedItems: result.review.rejectedItems,
-    },
-  })
+  res.status(200).json(
+    serializeCartMergeResponse({
+      outcome: result.outcome,
+      cart: result.cart,
+      review: result.review,
+    })
+  )
 }

@@ -232,10 +232,14 @@ function serializeShippingAddress(
 }
 
 export function serializeStoreCartPreOrder(
-  cart: StoreCartPreOrderRecord | null
+  cart: StoreCartPreOrderRecord | PublicStoreCartPreOrder | null
 ): PublicStoreCartPreOrder | null {
   if (!cart) {
     return null
+  }
+
+  if (isPublicStoreCartPreOrder(cart)) {
+    return serializePublicCartSnapshot(cart)
   }
 
   return {
@@ -430,10 +434,15 @@ function serializePublicCartSnapshot(
   }
 }
 
-function isPublicStoreCartPreOrder(
-  cart: StoreCartPreOrderRecord | PublicStoreCartPreOrder
+export function isPublicStoreCartPreOrder(
+  cart: unknown
 ): cart is PublicStoreCartPreOrder {
-  return "checkout_data_complete" in cart
+  return (
+    typeof cart === "object" &&
+    cart !== null &&
+    !Array.isArray(cart) &&
+    "checkout_data_complete" in cart
+  )
 }
 
 function serializeCartMergeCart(

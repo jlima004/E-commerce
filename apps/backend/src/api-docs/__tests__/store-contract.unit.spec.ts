@@ -1481,11 +1481,31 @@ describe("OpenAPI Store contract wave", () => {
       "rejectedItems",
     ])
     expect(schema("CartReviewState").additionalProperties).toBe(false)
-    expect(schema("CartReviewState").properties?.reviewRef).toEqual(
-      expect.objectContaining({ type: ["string", "null"], minLength: 1 })
+    expect(schema("CartReviewState").oneOf).toEqual([
+      { $ref: "#/components/schemas/CartReviewPendingState" },
+      { $ref: "#/components/schemas/CartReviewClearState" },
+    ])
+    expect(schema("CartReviewPendingState")).toEqual(
+      expect.objectContaining({
+        type: "object",
+        additionalProperties: false,
+        required: ["requiresReview", "reviewRef", "rejectedItems"],
+        properties: expect.objectContaining({
+          requiresReview: { type: "boolean", const: true },
+          reviewRef: { type: "string", minLength: 1 },
+        }),
+      })
     )
-    expect(schema("CartReviewState").description).toMatch(
-      /requiresReview.*MERGED_PARTIAL/i
+    expect(schema("CartReviewClearState")).toEqual(
+      expect.objectContaining({
+        type: "object",
+        additionalProperties: false,
+        required: ["requiresReview", "reviewRef", "rejectedItems"],
+        properties: expect.objectContaining({
+          requiresReview: { type: "boolean", const: false },
+          reviewRef: { type: "null" },
+        }),
+      })
     )
 
     expect(propertyNames("CartMergeResponse")).toEqual([
@@ -1499,12 +1519,40 @@ describe("OpenAPI Store contract wave", () => {
       "review",
     ])
     expect(schema("CartMergeResponse").additionalProperties).toBe(false)
-    expect(schema("CartMergeResponse").properties?.cart).toEqual({
-      oneOf: [
-        { $ref: "#/components/schemas/PublicStoreCartPreOrder" },
-        { type: "null" },
-      ],
-    })
+    expect(schema("CartMergeResponse").oneOf).toEqual([
+      { $ref: "#/components/schemas/CartMergePartialResponse" },
+      { $ref: "#/components/schemas/CartMergeClearResponse" },
+    ])
+    expect(schema("CartMergePartialResponse")).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        properties: expect.objectContaining({
+          outcome: { type: "string", const: "MERGED_PARTIAL" },
+          review: {
+            $ref: "#/components/schemas/CartReviewPendingState",
+          },
+        }),
+      })
+    )
+    expect(schema("CartMergeClearResponse")).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        properties: expect.objectContaining({
+          outcome: {
+            type: "string",
+            enum: [
+              "MERGED",
+              "GUEST_CART_ATTACHED",
+              "CUSTOMER_CART_PRESERVED",
+              "NO_ITEMS",
+            ],
+          },
+          review: {
+            $ref: "#/components/schemas/CartReviewClearState",
+          },
+        }),
+      })
+    )
 
     expect(propertyNames("CartReviewAcknowledgeRequest")).toEqual(["reviewRef"])
     expect(requiredNames("CartReviewAcknowledgeRequest")).toEqual(["reviewRef"])
@@ -1545,6 +1593,34 @@ describe("OpenAPI Store contract wave", () => {
         acceptedQuantity: 20,
         rejectedQuantity: 11,
         reason: "QUANTITY_LIMIT_EXCEEDED",
+      }).success
+    ).toBe(false)
+    expect(
+      CartReviewStateSchema.safeParse({
+        requiresReview: true,
+        reviewRef: "review_pending",
+        rejectedItems: [],
+      }).success
+    ).toBe(true)
+    expect(
+      CartReviewStateSchema.safeParse({
+        requiresReview: true,
+        reviewRef: null,
+        rejectedItems: [],
+      }).success
+    ).toBe(false)
+    expect(
+      CartReviewStateSchema.safeParse({
+        requiresReview: false,
+        reviewRef: null,
+        rejectedItems: [],
+      }).success
+    ).toBe(true)
+    expect(
+      CartReviewStateSchema.safeParse({
+        requiresReview: false,
+        reviewRef: "review_clear",
+        rejectedItems: [],
       }).success
     ).toBe(false)
     expect(() =>

@@ -16,6 +16,7 @@ import {
 import {
   GUEST_CART_CAPABILITY_HEADER,
   GUEST_CART_CAPABILITY_MODULE,
+  GUEST_CART_CAPABILITY_LOOKUP_INVALID,
 } from "../../src/modules/guest-cart-capability/types"
 import {
   STORE_IDEMPOTENCY_MODULE,
@@ -1531,6 +1532,110 @@ describe("Cart merge HTTP tracer", () => {
     }
   })
 
+  it("preserva a projeção pública persistida no replay sem reserializar o snapshot", async () => {
+    const boot = await bootstrapCartMergeContainer()
+    try {
+      const harness = createTracerHarness(boot.container, {
+        customerCart: true,
+        customerItems: [
+          {
+            id: "li_customer_replay_projection",
+            variant_id: "variant_tshirt_black_m",
+            quantity: 80,
+            title: "Camiseta preta M",
+            variant_title: "Preta / M",
+            unit_price: 9900,
+            variant: sellableVariant("variant_tshirt_black_m"),
+          },
+        ],
+        guestItems: [
+          {
+            id: "li_guest_replay_projection",
+            variant_id: "variant_tshirt_black_m",
+            quantity: 30,
+            title: "Camiseta preta M",
+            variant_title: "Preta / M",
+            unit_price: 9900,
+            variant: sellableVariant("variant_tshirt_black_m"),
+          },
+        ],
+      })
+      harness.customerCart!.shipping_address = {
+        first_name: "Maria",
+        last_name: "Silva",
+        address_1: "Rua A",
+        city: "Sao Paulo",
+        province: "SP",
+        postal_code: "01311000",
+        country_code: "BR",
+        phone: "11987654321",
+        metadata: { federal_tax_id: "52998224725" },
+      }
+
+      const first = createResponse()
+      await mergeCart(harness.request as never, first as never)
+      const receipt = harness.getCommittedReceiptRow()
+      expect(receipt).not.toBeNull()
+      const rawPersistedSnapshot = receipt?.original_public_cart_snapshot
+      const persistedCart =
+        typeof rawPersistedSnapshot === "string"
+          ? (JSON.parse(rawPersistedSnapshot) as Record<string, unknown>)
+          : (rawPersistedSnapshot as Record<string, unknown>)
+      const persistedSnapshot = {
+        ...persistedCart,
+        checkout_data_complete: true,
+        shipping_address: {
+          ...(persistedCart.shipping_address as Record<string, unknown>),
+          masked_federal_tax_id: "***.***.***-25",
+        },
+      }
+      receipt!.original_public_cart_snapshot = persistedSnapshot
+      receipt!.original_review_snapshot = {
+        ...first.body.review,
+        rejectedItems: first.body.review.rejectedItems.map(
+          (item: Record<string, unknown>) => ({
+            ...item,
+            internal_only: "must-not-leak",
+          })
+        ),
+      }
+      const retrieveCountAfterFirst = harness.cartModule.retrieveCart.mock.calls.length
+
+      expect(first.body).toEqual(
+        expect.objectContaining({
+          outcome: "MERGED_PARTIAL",
+        })
+      )
+      expect(persistedSnapshot.checkout_data_complete).toBe(true)
+      expect(persistedSnapshot.shipping_address.masked_federal_tax_id).toBe(
+        "***.***.***-25"
+      )
+
+      harness.customerCart!.items.push({
+        id: "li_replay_projection_later",
+        variant_id: "variant_later",
+        quantity: 1,
+        title: "Posterior",
+        variant: sellableVariant("variant_later"),
+      })
+      const replay = createResponse()
+      await mergeCart(harness.request as never, replay as never)
+
+      expect(replay.body).toEqual({
+        outcome: "MERGED_PARTIAL",
+        cart: persistedSnapshot,
+        review: first.body.review,
+      })
+      expect(replay.headers.etag).toBe(first.headers.etag)
+      expect(JSON.stringify(replay.body)).not.toContain("internal_only")
+      expect(harness.cartModule.retrieveCart.mock.calls.length).toBe(
+        retrieveCountAfterFirst
+      )
+    } finally {
+      await boot.dispose()
+    }
+  })
+
   it("rejeita reuso da mesma idempotency key com If-Match incompatível como 409", async () => {
     const boot = await bootstrapCartMergeContainer()
     try {
@@ -1593,14 +1698,24 @@ describe("Cart merge HTTP tracer", () => {
     try {
       const harness = createTracerHarness(invalidBoot.container)
       harness.capabilityService.lookupGuestCartCapabilityByPresentedToken.mockRejectedValueOnce(
-        new MedusaError(MedusaError.Types.NOT_FOUND, "Not Found")
+        new Error(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
       )
       const error = await mergeCart(
         harness.request as never,
         createResponse() as never
       ).catch((caught) => caught)
       expect(error).toMatchObject({ type: MedusaError.Types.NOT_FOUND })
-      expect(toStoreErrorResponse(error).statusCode).toBe(404)
+      const normalized = toStoreErrorResponse(error)
+      expect(normalized.statusCode).toBe(404)
+      expect(normalized.body.code).toBe("NOT_FOUND")
+      expect(JSON.stringify(normalized.body)).not.toContain(
+        GUEST_CART_CAPABILITY_LOOKUP_INVALID
+      )
+      expect(harness.capability.status).toBe("active")
+      expect(harness.guestCart.customer_id).toBeNull()
+      expect(harness.versions.get(harness.guestCart.id)).toBe(1)
+      expect(updateLineItemInCartWorkflow).not.toHaveBeenCalled()
+      expect(addToCartWorkflow).not.toHaveBeenCalled()
     } finally {
       await invalidBoot.dispose()
     }

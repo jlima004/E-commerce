@@ -20,7 +20,9 @@ import {
   CartVersionMismatchError,
 } from "../../api/store/carts/concurrency"
 import {
+  isPublicStoreCartPreOrder,
   type StoreCartPreOrderRecord,
+  type PublicStoreCartPreOrder,
   serializeStoreCartPreOrder,
 } from "../../api/store/carts/serializers"
 import { formatCartEtag } from "../../api/store/carts/concurrency"
@@ -161,7 +163,7 @@ export type CartMergeExecutionInput = {
 
 export type CartMergeExecutionResult = {
   outcome: CartMergeOutcome
-  cart: StoreCartPreOrderRecord
+  cart: StoreCartPreOrderRecord | PublicStoreCartPreOrder
   version: number
   review: CartReviewState
 }
@@ -811,26 +813,23 @@ function receiptReview(row: CartMergeReceiptRow): CartReviewState {
   return value as CartReviewState
 }
 
-function receiptCart(row: CartMergeReceiptRow): StoreCartPreOrderRecord {
+function receiptCart(row: CartMergeReceiptRow): PublicStoreCartPreOrder {
   const value = parseJsonValue(row.original_public_cart_snapshot)
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!isPublicStoreCartPreOrder(value)) {
     throw new Error("CART_MERGE_RECEIPT_CART_INVALID")
   }
-  // The receipt stores the already allowlisted public projection. It is cast at
-  // this internal boundary so the unchanged HTTP serializer can consume it;
-  // replay never refetches or rebuilds this projection from the current Cart.
-  return value as StoreCartPreOrderRecord
+  return value
 }
 
 function stableReceiptCart(
   cart: StoreCartPreOrderRecord
-): StoreCartPreOrderRecord {
+): PublicStoreCartPreOrder {
   const publicCart = serializeStoreCartPreOrder(cart)
   if (!publicCart) {
     throwConflict("CART_MERGE_SNAPSHOT_UNAVAILABLE")
   }
 
-  return JSON.parse(JSON.stringify(publicCart)) as StoreCartPreOrderRecord
+  return publicCart
 }
 
 function replayResultFromReceipt(
@@ -1397,6 +1396,8 @@ class CartMergeModuleService extends MedusaService({
           if (!currentGuestCart || !isActiveGuestCart(currentGuestCart)) {
             throwConflict("CART_MERGE_GUEST_CART_UNSUPPORTED")
           }
+
+          throwNotFound()
         }
         throw error
       }

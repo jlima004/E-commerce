@@ -57,22 +57,26 @@ export const CartMergeRejectedItemSchema = z
     }
   })
 
-export const CartReviewStateSchema = z
+const cartReviewPendingStateSchema = z
   .object({
-    requiresReview: z.boolean(),
-    reviewRef: z.string().min(1).nullable(),
+    requiresReview: z.literal(true),
+    reviewRef: z.string().min(1),
     rejectedItems: z.array(CartMergeRejectedItemSchema),
   })
   .strict()
-  .superRefine((review, context) => {
-    if (!review.requiresReview && review.reviewRef !== null) {
-      context.addIssue({
-        code: "custom",
-        path: ["reviewRef"],
-        message: "A review reference requires a pending review",
-      })
-    }
+
+const cartReviewClearStateSchema = z
+  .object({
+    requiresReview: z.literal(false),
+    reviewRef: z.null(),
+    rejectedItems: z.array(CartMergeRejectedItemSchema),
   })
+  .strict()
+
+export const CartReviewStateSchema = z.discriminatedUnion("requiresReview", [
+  cartReviewPendingStateSchema,
+  cartReviewClearStateSchema,
+])
 
 const publicStoreCartCustomerSchema = z
   .object({
@@ -130,23 +134,33 @@ const publicStoreCartSchema: z.ZodType<PublicStoreCartPreOrder> = z
   })
   .strict()
 
-export const CartMergeResponseSchema = z
+const cartMergePartialResponseSchema = z
   .object({
-    outcome: z.enum(CART_MERGE_OUTCOMES),
+    outcome: z.literal("MERGED_PARTIAL"),
     cart: publicStoreCartSchema.nullable(),
-    review: CartReviewStateSchema,
+    review: cartReviewPendingStateSchema,
   })
   .strict()
-  .superRefine((response, context) => {
-    const requiresReview = response.outcome === "MERGED_PARTIAL"
-    if (response.review.requiresReview !== requiresReview) {
-      context.addIssue({
-        code: "custom",
-        path: ["review", "requiresReview"],
-        message: "requiresReview must match the MERGED_PARTIAL outcome",
-      })
-    }
+
+const CART_MERGE_CLEAR_OUTCOMES = [
+  "MERGED",
+  "GUEST_CART_ATTACHED",
+  "CUSTOMER_CART_PRESERVED",
+  "NO_ITEMS",
+] as const
+
+const cartMergeClearResponseSchema = z
+  .object({
+    outcome: z.enum(CART_MERGE_CLEAR_OUTCOMES),
+    cart: publicStoreCartSchema.nullable(),
+    review: cartReviewClearStateSchema,
   })
+  .strict()
+
+export const CartMergeResponseSchema = z.union([
+  cartMergePartialResponseSchema,
+  cartMergeClearResponseSchema,
+])
 
 export const CartReviewAcknowledgeBodySchema = z
   .object({
@@ -157,7 +171,7 @@ export const CartReviewAcknowledgeBodySchema = z
 export const CartReviewAcknowledgeResponseSchema = z
   .object({
     cart: publicStoreCartSchema.nullable(),
-    review: CartReviewStateSchema,
+    review: cartReviewClearStateSchema,
   })
   .strict()
 

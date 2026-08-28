@@ -886,12 +886,55 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
     },
   })
 
+  registry.registerComponent("store", "schemas", "CartReviewPendingState", {
+    type: "object",
+    additionalProperties: false,
+    required: ["requiresReview", "reviewRef", "rejectedItems"],
+    properties: {
+      requiresReview: {
+        type: "boolean",
+        const: true,
+      },
+      reviewRef: {
+        type: "string",
+        minLength: 1,
+      },
+      rejectedItems: {
+        type: "array",
+        items: {
+          $ref: "#/components/schemas/CartMergeRejectedItem",
+        },
+      },
+    },
+  })
+
+  registry.registerComponent("store", "schemas", "CartReviewClearState", {
+    type: "object",
+    additionalProperties: false,
+    required: ["requiresReview", "reviewRef", "rejectedItems"],
+    properties: {
+      requiresReview: {
+        type: "boolean",
+        const: false,
+      },
+      reviewRef: {
+        type: "null",
+      },
+      rejectedItems: {
+        type: "array",
+        items: {
+          $ref: "#/components/schemas/CartMergeRejectedItem",
+        },
+      },
+    },
+  })
+
   registry.registerComponent("store", "schemas", "CartReviewState", {
     type: "object",
     additionalProperties: false,
     required: ["requiresReview", "reviewRef", "rejectedItems"],
     description:
-      "Public review state. requiresReview is true if and only if outcome is MERGED_PARTIAL.",
+      "Closed public review state: pending requires a non-empty reviewRef; clear requires reviewRef null.",
     properties: {
       requiresReview: {
         type: "boolean",
@@ -907,6 +950,10 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
         },
       },
     },
+    oneOf: [
+      { $ref: "#/components/schemas/CartReviewPendingState" },
+      { $ref: "#/components/schemas/CartReviewClearState" },
+    ],
   })
 
   const nullablePublicStoreCart = {
@@ -915,6 +962,48 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
       { type: "null" },
     ],
   } as const
+
+  registry.registerComponent(
+    "store",
+    "schemas",
+    "CartMergePartialResponse",
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["outcome", "cart", "review"],
+      properties: {
+        outcome: {
+          type: "string",
+          const: "MERGED_PARTIAL",
+        },
+        cart: nullablePublicStoreCart,
+        review: {
+          $ref: "#/components/schemas/CartReviewPendingState",
+        },
+      },
+    }
+  )
+
+  registry.registerComponent("store", "schemas", "CartMergeClearResponse", {
+    type: "object",
+    additionalProperties: false,
+    required: ["outcome", "cart", "review"],
+    properties: {
+      outcome: {
+        type: "string",
+        enum: [
+          "MERGED",
+          "GUEST_CART_ATTACHED",
+          "CUSTOMER_CART_PRESERVED",
+          "NO_ITEMS",
+        ],
+      },
+      cart: nullablePublicStoreCart,
+      review: {
+        $ref: "#/components/schemas/CartReviewClearState",
+      },
+    },
+  })
 
   registry.registerComponent("store", "schemas", "CartMergeResponse", {
     type: "object",
@@ -929,6 +1018,10 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
         $ref: "#/components/schemas/CartReviewState",
       },
     },
+    oneOf: [
+      { $ref: "#/components/schemas/CartMergePartialResponse" },
+      { $ref: "#/components/schemas/CartMergeClearResponse" },
+    ],
   })
 
   registry.registerComponent(
@@ -959,7 +1052,7 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
       properties: {
         cart: nullablePublicStoreCart,
         review: {
-          $ref: "#/components/schemas/CartReviewState",
+          $ref: "#/components/schemas/CartReviewClearState",
         },
       },
     }
