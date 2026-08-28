@@ -129,7 +129,7 @@ A única suíte que falhou foi
 testes e no mesmo fingerprint histórico: `GET /store/products` em
 `apps/backend/src/api/middlewares.ts`. Portanto: **R1-caused regressions = 0**.
 
-O `npm run build` também foi executado; terminou exit 1 por 18 diagnósticos
+O `npm run build` também foi executado; terminou exit 1 por diagnósticos
 TypeScript fora dos sete arquivos R1, sem erro nos arquivos alterados. A fase
 de lint do build não reportou erros, apenas warnings já existentes. Esse
 problema de saúde preexistente do repositório não foi ampliado nem corrigido
