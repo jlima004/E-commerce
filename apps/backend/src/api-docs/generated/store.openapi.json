@@ -56,7 +56,7 @@
         }
       },
       "IfMatch": {
-        "description": "Opaque server-issued resource version precondition. Cart enforcement and stale 412 behavior belong to Phase 15.",
+        "description": "Opaque server-issued resource version precondition. Each cart operation defines the authoritative resource; stale values return 412 CART_VERSION_MISMATCH.",
         "in": "header",
         "name": "If-Match",
         "required": true,
@@ -75,6 +75,21 @@
           "pattern": "^[A-Za-z0-9._-]{1,128}$",
           "type": "string"
         }
+      },
+      "XIndicioGuestCartMergeCapability": {
+        "description": "Required guest cart capability for the authenticated cart merge operation. It is presented only on the same-origin BFF to Medusa, is never a browser credential, never appears in examples, and is not a security scheme. Swagger remains non-interactive.",
+        "in": "header",
+        "name": "x-indicio-guest-cart-token",
+        "required": true,
+        "schema": {
+          "maxLength": 512,
+          "minLength": 43,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "type": "string"
+        },
+        "x-bff-only": true,
+        "x-not-browser-credential": true,
+        "x-sensitive": true
       },
       "XIndicioGuestCartToken": {
         "description": "Optional opaque guest cart capability presented only on the same-origin Next.js BFF to Medusa. It is not a user/browser credential, never appears in examples, and is omitted for Customer access. Swagger remains non-interactive.",
@@ -106,6 +121,294 @@
     },
     "responses": {},
     "schemas": {
+      "CartMergeClearResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cart": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PublicStoreCartPreOrder"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "enum": [
+              "MERGED",
+              "GUEST_CART_ATTACHED",
+              "CUSTOMER_CART_PRESERVED",
+              "NO_ITEMS"
+            ],
+            "type": "string"
+          },
+          "review": {
+            "$ref": "#/components/schemas/CartReviewClearState"
+          }
+        },
+        "required": [
+          "outcome",
+          "cart",
+          "review"
+        ],
+        "type": "object"
+      },
+      "CartMergeOutcome": {
+        "description": "Closed merge outcome. CUSTOMER_CART_PRESERVED is reserved and has no positive branch until a future deterministic rule is approved.",
+        "enum": [
+          "MERGED",
+          "MERGED_PARTIAL",
+          "GUEST_CART_ATTACHED",
+          "CUSTOMER_CART_PRESERVED",
+          "NO_ITEMS"
+        ],
+        "type": "string"
+      },
+      "CartMergePartialResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cart": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PublicStoreCartPreOrder"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "const": "MERGED_PARTIAL",
+            "type": "string"
+          },
+          "review": {
+            "$ref": "#/components/schemas/CartReviewPendingState"
+          }
+        },
+        "required": [
+          "outcome",
+          "cart",
+          "review"
+        ],
+        "type": "object"
+      },
+      "CartMergeRejectedItem": {
+        "additionalProperties": false,
+        "description": "Rejected guest intent grouped by public variant. requestedQuantity equals acceptedQuantity plus rejectedQuantity.",
+        "properties": {
+          "acceptedQuantity": {
+            "description": "Quantity incorporated into the canonical cart.",
+            "maximum": 99,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reason": {
+            "enum": [
+              "VARIANT_INVALID",
+              "VARIANT_UNAVAILABLE",
+              "QUANTITY_LIMIT_EXCEEDED"
+            ],
+            "type": "string"
+          },
+          "rejectedQuantity": {
+            "description": "Quantity not incorporated; acceptedQuantity plus rejectedQuantity equals requestedQuantity.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "requestedQuantity": {
+            "description": "Original normalized guest quantity for the variant.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "variantId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "variantId",
+          "requestedQuantity",
+          "acceptedQuantity",
+          "rejectedQuantity",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "CartMergeRequest": {
+        "additionalProperties": false,
+        "description": "Guest cart source identifier. The Customer destination is resolved server-side.",
+        "properties": {
+          "guestCartId": {
+            "minLength": 1,
+            "pattern": ".*\\S.*",
+            "type": "string"
+          }
+        },
+        "required": [
+          "guestCartId"
+        ],
+        "type": "object"
+      },
+      "CartMergeResponse": {
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CartMergePartialResponse"
+          },
+          {
+            "$ref": "#/components/schemas/CartMergeClearResponse"
+          }
+        ],
+        "properties": {
+          "cart": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PublicStoreCartPreOrder"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/CartMergeOutcome"
+          },
+          "review": {
+            "$ref": "#/components/schemas/CartReviewState"
+          }
+        },
+        "required": [
+          "outcome",
+          "cart",
+          "review"
+        ],
+        "type": "object"
+      },
+      "CartReviewAcknowledgeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reviewRef": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "reviewRef"
+        ],
+        "type": "object"
+      },
+      "CartReviewAcknowledgeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cart": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PublicStoreCartPreOrder"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "review": {
+            "$ref": "#/components/schemas/CartReviewClearState"
+          }
+        },
+        "required": [
+          "cart",
+          "review"
+        ],
+        "type": "object"
+      },
+      "CartReviewClearState": {
+        "additionalProperties": false,
+        "properties": {
+          "rejectedItems": {
+            "items": {
+              "$ref": "#/components/schemas/CartMergeRejectedItem"
+            },
+            "type": "array"
+          },
+          "requiresReview": {
+            "const": false,
+            "type": "boolean"
+          },
+          "reviewRef": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "requiresReview",
+          "reviewRef",
+          "rejectedItems"
+        ],
+        "type": "object"
+      },
+      "CartReviewPendingState": {
+        "additionalProperties": false,
+        "properties": {
+          "rejectedItems": {
+            "items": {
+              "$ref": "#/components/schemas/CartMergeRejectedItem"
+            },
+            "type": "array"
+          },
+          "requiresReview": {
+            "const": true,
+            "type": "boolean"
+          },
+          "reviewRef": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "requiresReview",
+          "reviewRef",
+          "rejectedItems"
+        ],
+        "type": "object"
+      },
+      "CartReviewState": {
+        "additionalProperties": false,
+        "description": "Closed public review state: pending requires a non-empty reviewRef; clear requires reviewRef null.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CartReviewPendingState"
+          },
+          {
+            "$ref": "#/components/schemas/CartReviewClearState"
+          }
+        ],
+        "properties": {
+          "rejectedItems": {
+            "items": {
+              "$ref": "#/components/schemas/CartMergeRejectedItem"
+            },
+            "type": "array"
+          },
+          "requiresReview": {
+            "type": "boolean"
+          },
+          "reviewRef": {
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "requiresReview",
+          "reviewRef",
+          "rejectedItems"
+        ],
+        "type": "object"
+      },
       "PublicStoreCartItem": {
         "additionalProperties": false,
         "properties": {
@@ -3046,6 +3349,191 @@
         ]
       }
     },
+    "/store/carts/{id}/review/acknowledge": {
+      "post": {
+        "description": "Acknowledge a Store cart review",
+        "operationId": "acknowledgeCartReview",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cart identifier.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CartReviewAcknowledgeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartReviewAcknowledgeResponse"
+                }
+              }
+            },
+            "description": "Cart review acknowledged or replayed without a structural version bump.",
+            "headers": {
+              "Cache-Control": {
+                "description": "The cart merge or review response must not be cached.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid cart review acknowledge body or required header.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Customer authentication is required.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart or review is not available for the current customer.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart authority, state, or review conflict; a pending review uses REVIEW_REQUIRED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "CART_VERSION_MISMATCH: the If-Match precondition for the cart review is stale; the response includes the current safe cart snapshot and ETag when available.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected cart review acknowledge failure; changes are rolled back.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart authority or persistence service is temporarily unavailable.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "customerBearer": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Acknowledge a Store cart review",
+        "tags": [
+          "Cart"
+        ]
+      }
+    },
     "/store/carts/active": {
       "get": {
         "description": "Get the active Store cart",
@@ -3410,6 +3898,188 @@
         "summary": "Get the current authenticated customer",
         "tags": [
           "Customer"
+        ]
+      }
+    },
+    "/store/customers/me/cart/merge": {
+      "post": {
+        "description": "Merge a guest cart into the customer cart",
+        "operationId": "mergeCustomerCart",
+        "parameters": [
+          {
+            "description": "Optional correlation identifier. When absent, the server may generate one and return it as x-correlation-id.",
+            "in": "header",
+            "name": "x-correlation-id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/XIndicioGuestCartMergeCapability"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CartMergeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartMergeResponse"
+                }
+              }
+            },
+            "description": "Cart merge completed with a canonical cart and review state.",
+            "headers": {
+              "Cache-Control": {
+                "description": "The cart merge or review response must not be cached.",
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid cart merge body or required header.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Customer authentication is required.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Guest capability or cart is not available for the current customer.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart authority, state, or idempotency conflict; a pending review also returns REVIEW_REQUIRED.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "CART_VERSION_MISMATCH: the guest-source If-Match precondition is stale; the response includes the current safe cart snapshot and ETag when available.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected cart merge failure; changes are rolled back.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreErrorResponse"
+                }
+              }
+            },
+            "description": "Cart authority or persistence service is temporarily unavailable.",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/XCorrelationId"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bffServiceCredential": [],
+            "customerBearer": [],
+            "publishableApiKey": []
+          }
+        ],
+        "summary": "Merge a guest cart into the customer cart",
+        "tags": [
+          "Cart"
         ]
       }
     },
