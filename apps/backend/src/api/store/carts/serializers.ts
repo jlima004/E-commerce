@@ -61,8 +61,8 @@ export type StoreCartPreOrderRecord = CheckoutCartLike & {
   shipping_total?: number | null
   tax_total?: number | null
   discount_total?: number | null
-  created_at?: string
-  updated_at?: string
+  created_at?: string | Date | null
+  updated_at?: string | Date | null
   region_id?: string | null
   locale?: string | null
   customer?: {
@@ -136,6 +136,24 @@ function asTrimmedString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined
+}
+
+function serializeStoreCartTimestamp(
+  value: string | Date | null | undefined
+): string | null {
+  if (value == null) {
+    return null
+  }
+
+  if (typeof value === "string") {
+    return value
+  }
+
+  if (Number.isNaN(value.getTime())) {
+    throw new Error("STORE_CART_TIMESTAMP_INVALID")
+  }
+
+  return value.toISOString()
 }
 
 function readFederalTaxId(metadata: Record<string, unknown> | null | undefined): string | undefined {
@@ -254,8 +272,8 @@ export function serializeStoreCartPreOrder(
     tax_total: cart.tax_total ?? null,
     discount_total: cart.discount_total ?? null,
     region_id: cart.region_id ?? null,
-    created_at: cart.created_at ?? null,
-    updated_at: cart.updated_at ?? null,
+    created_at: serializeStoreCartTimestamp(cart.created_at),
+    updated_at: serializeStoreCartTimestamp(cart.updated_at),
     checkout_data_complete: withCheckoutDataComplete(cart),
     customer: cart.customer
       ? {

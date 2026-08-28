@@ -11,6 +11,7 @@ import {
 import {
   serializeCartMergeResponse,
   serializeCartReviewAcknowledgeResponse,
+  serializeStoreCartPreOrder,
 } from "../../api/store/carts/serializers"
 import { verifyCoverage } from "../coverage/verify-coverage"
 import { STORE_DOCUMENTATION_AUTH_OPERATIONS } from "../coverage/verify-coverage"
@@ -1354,6 +1355,116 @@ describe("OpenAPI Store contract wave", () => {
         review,
       }).success
     ).toBe(false)
+  })
+
+  it("normalizes raw cart Date timestamps without weakening the public contract", () => {
+    const rawCart = {
+      id: "cart_raw_01",
+      created_at: new Date("2026-08-25T10:00:00.000Z"),
+      updated_at: new Date("2026-08-25T10:00:01.000Z"),
+    }
+    const serialized = serializeStoreCartPreOrder(rawCart)
+
+    expect(serialized).toEqual(
+      expect.objectContaining({
+        created_at: "2026-08-25T10:00:00.000Z",
+        updated_at: "2026-08-25T10:00:01.000Z",
+      })
+    )
+
+    const mergeResponse = serializeCartMergeResponse({
+      outcome: "MERGED",
+      cart: rawCart,
+      review: {
+        requiresReview: false,
+        reviewRef: null,
+        rejectedItems: [],
+      },
+    })
+
+    expect(mergeResponse.cart).toEqual(
+      expect.objectContaining({
+        created_at: "2026-08-25T10:00:00.000Z",
+        updated_at: "2026-08-25T10:00:01.000Z",
+      })
+    )
+    expect(CartMergeResponseSchema.safeParse(mergeResponse).success).toBe(true)
+
+    expect(
+      serializeStoreCartPreOrder({ id: "cart_null_01", created_at: null, updated_at: null })
+    ).toEqual(expect.objectContaining({ created_at: null, updated_at: null }))
+    expect(
+      serializeStoreCartPreOrder({ id: "cart_undefined_01" })
+    ).toEqual(expect.objectContaining({ created_at: null, updated_at: null }))
+  })
+
+  it("fails closed for invalid raw cart Date timestamps", () => {
+    expect(() =>
+      serializeStoreCartPreOrder({
+        id: "cart_invalid_timestamp",
+        created_at: new Date(Number.NaN),
+        updated_at: new Date("2026-08-25T10:00:01.000Z"),
+      })
+    ).toThrow("STORE_CART_TIMESTAMP_INVALID")
+  })
+
+  it("preserves already-public replay timestamps and fields byte-for-byte", () => {
+    const publicSnapshot = {
+      id: "cart_public_replay_01",
+      email: "buyer@example.test",
+      currency_code: "brl",
+      locale: "pt-BR",
+      total: 79.9,
+      subtotal: 79.9,
+      item_total: 79.9,
+      shipping_total: 0,
+      tax_total: 0,
+      discount_total: 0,
+      region_id: "region_br",
+      created_at: "2026-08-25T10:00:00+00:00",
+      updated_at: "2026-08-25T10:00:01+00:00",
+      checkout_data_complete: true,
+      customer: {
+        id: "customer_public_replay_01",
+        email: "buyer@example.test",
+      },
+      items: [
+        {
+          id: "item_public_replay_01",
+          quantity: 1,
+          title: "Camiseta básica",
+          variant_id: "variant_public_replay_01",
+          variant_title: "M",
+          unit_price: 79.9,
+        },
+      ],
+      shipping_address: {
+        first_name: "Ana",
+        last_name: "Silva",
+        company: null,
+        address_1: "Rua A, 1",
+        address_2: null,
+        city: "São Paulo",
+        postal_code: "01000-000",
+        country_code: "br",
+        province: "SP",
+        phone: null,
+        masked_federal_tax_id: "masked-original",
+      },
+    }
+
+    const response = serializeCartMergeResponse({
+      outcome: "MERGED",
+      cart: publicSnapshot,
+      review: {
+        requiresReview: false,
+        reviewRef: null,
+        rejectedItems: [],
+      },
+    })
+
+    expect(response.cart).toEqual(publicSnapshot)
+    expect(JSON.stringify(response.cart)).toBe(JSON.stringify(publicSnapshot))
   })
 
   it("keeps merge and review runtime bodies strict and exact", () => {

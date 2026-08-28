@@ -9,6 +9,7 @@ import {
   buildDisposableMedusaEnvironment,
   requireDisposableDatabaseName,
 } from "../postgres/disposable-postgres-harness";
+import { resetMikroOrmGlobalMetadataForTestRealm } from "../helpers/mikro-orm-test-metadata";
 import {
   assertCustomerCartBackfillFailClosed,
   auditCustomerCartBackfill,
@@ -118,6 +119,8 @@ if (!requestedDatabaseName) {
   }
 
   const databaseName = requireDisposableDatabaseName(requestedDatabaseName);
+
+  resetMikroOrmGlobalMetadataForTestRealm();
 
   medusaIntegrationTestRunner({
     dbName: databaseName,

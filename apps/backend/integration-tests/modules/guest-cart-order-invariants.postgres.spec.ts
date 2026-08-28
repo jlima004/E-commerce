@@ -53,6 +53,7 @@ import {
   buildDisposableMedusaEnvironment,
   requireDisposableDatabaseName,
 } from "../postgres/disposable-postgres-harness"
+import { resetMikroOrmGlobalMetadataForTestRealm } from "../helpers/mikro-orm-test-metadata"
 import {
   countPersistedOrders,
   createCartMergeRequest,
@@ -189,6 +190,8 @@ if (!requestedDatabaseName) {
     "@medusajs/test-utils"
   ) as typeof import("@medusajs/test-utils")
   const databaseName = requireDisposableDatabaseName(requestedDatabaseName)
+
+  resetMikroOrmGlobalMetadataForTestRealm()
 
   type Cart = {
     id: string

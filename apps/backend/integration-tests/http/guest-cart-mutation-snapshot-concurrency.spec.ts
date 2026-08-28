@@ -1,5 +1,6 @@
 import { POST as addLineItem } from "../../src/api/store/carts/[id]/line-items/route"
 import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route"
+import { CartVersionMismatchError } from "../../src/api/store/carts/concurrency"
 import { addToCartWorkflow } from "@medusajs/core-flows"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { CART_MERGE_MODULE } from "../../src/modules/cart-merge"
@@ -317,12 +318,18 @@ describe("HR-03 Cart mutation snapshot/ETag concurrency", () => {
     await harness.aSnapshotCaptured.promise
 
     let bCompleted = false
+    let bError: unknown
     const promiseB = addLineItem(
       harness.request("snapshot-b", "variant_b") as never,
       responseB as never
-    ).then(() => {
-      bCompleted = true
-    })
+    ).then(
+      () => {
+        bCompleted = true
+      },
+      (error) => {
+        bError = error
+      }
+    )
     await harness.bWaitingForLock.promise
     expect(bCompleted).toBe(false)
 
@@ -333,14 +340,22 @@ describe("HR-03 Cart mutation snapshot/ETag concurrency", () => {
     expect((responseA.body as any).cart.items.map((item: any) => item.variant_id)).toEqual([
       "variant_a",
     ])
-    expect(responseB.headers.etag).toBe('"3"')
-    expect((responseB.body as any).cart.items.map((item: any) => item.variant_id)).toEqual([
-      "variant_a",
-      "variant_b",
-    ])
-    expect(harness.snapshotCount).toBe(2)
-    expect(harness.snapshotTransactions).toHaveLength(2)
-    expect(harness.snapshotTransactions).toEqual(harness.casTransactions)
+    expect(bError).toBeInstanceOf(CartVersionMismatchError)
+    expect(bError).toMatchObject({
+      currentVersion: 2,
+      currentEtag: '"2"',
+      cart: expect.objectContaining({
+        items: expect.arrayContaining([
+          expect.objectContaining({ variant_id: "variant_a" }),
+        ]),
+      }),
+    })
+    expect(harness.snapshotCount).toBe(4)
+    expect(harness.snapshotTransactions).toHaveLength(4)
+    expect(harness.snapshotTransactions[0]).toBe(harness.casTransactions[0])
+    expect(harness.snapshotTransactions[1]).toBe(harness.casTransactions[0])
+    expect(harness.snapshotTransactions[2]).toBe(harness.casTransactions[1])
+    expect(harness.snapshotTransactions[3]).toBe(harness.casTransactions[1])
   })
 
   it("projeta o snapshot do CartMergeExecutionResult sem refetch remoto", async () => {
