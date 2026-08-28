@@ -9,11 +9,13 @@ requires:
 provides:
   - "Registro da decisão humana revise-contract"
   - "Blockers de contrato para remediação direcionada antes de qualquer writer"
+  - "Registro da decisão humana approve-contract"
+  - "Fechamento documental do Plan 16-13 sem autorizar o Plan 16-14"
 affects: [Phase 16, future storefront contract, API Docs]
 actuals:
   tokens: 3000
   tasks: 1
-  commits: 1
+  commits: 2
 tech-stack:
   added: []
   patterns:
@@ -27,6 +29,10 @@ key-decisions:
   - "A camada de contrato do Plano 16-12 REQUER REMEDIAÇÃO DIRECIONADA"
   - "O OpenAPI writer permanece BLOQUEADO; o Plano 16-14 não está autorizado"
   - "Este resumo não implementa correção em runtime, registry ou artefatos gerados"
+  - "HUMAN DECISION — APPROVE-CONTRACT (2026-08-28); a decisão histórica REVISE-CONTRACT permanece preservada"
+  - "Plan 16-13: APPROVE-CONTRACT — CLOSED — PASS"
+  - "Plan 16-14, OpenAPI writer/generation/check, push e deploy permanecem não autorizados"
+  - "MRG-01..MRG-08 permanecem OPEN / GLOBAL RECONCILIATION PENDING"
 patterns-established:
   - "Não materializar JSON gerado antes do checkpoint humano do contrato"
 requirements-completed: []
@@ -47,14 +53,19 @@ coverage:
         status: pass
     human_judgment: true
     rationale: "A decisão revise-contract mantém o writer bloqueado e não autoriza materialização gerada."
+  - id: D3
+    description: "Decisão humana explícita approve-contract e fechamento documental do Plan 16-13."
+    verification: []
+    human_judgment: true
+    rationale: "A decisão humana fecha somente o checkpoint do Plan 16-13; não autoriza o Plan 16-14, writer, push, deploy ou reconciliação global."
 duration: not measured (human-gated checkpoint)
 completed: 2026-08-28
-status: halted
+status: human-approved-pass
 ---
 
 # Plan 16-13 — Contract checkpoint
 
-## Status do checkpoint
+## Status histórico do checkpoint
 
 ```text
 Plan 16-13: HUMAN DECISION — REVISE-CONTRACT
@@ -174,8 +185,8 @@ revisão humana do contrato. A próxima revisão deve demonstrar, no mínimo:
 4. capability desconhecida/estrangeira normalizada sem enumeração e sem 500;
 5. nova execução Stage A sem writer, seguida de decisão humana explícita.
 
-Até lá, o OpenAPI writer, o Plano 16-14 e a reconciliação global de MRG-01 a
-MRG-08 permanecem bloqueados.
+Até a decisão humana posterior registrada abaixo, o OpenAPI writer, o Plano
+16-14 e a reconciliação global de MRG-01 a MRG-08 permaneciam bloqueados.
 
 ## Ações não executadas por escopo
 
@@ -184,3 +195,76 @@ MRG-08 permanecem bloqueados.
 - Nenhum JSON OpenAPI foi gerado ou escrito.
 - Nenhum gate global foi usado para substituir a aprovação humana.
 - Nenhuma atualização de `STATE.md` ou `ROADMAP.md` foi feita.
+
+## HUMAN DECISION — PLAN 16-13 — 2026-08-28
+
+```text
+╔══════════════════════════════════════════════════════════════╗
+║ HUMAN DECISION: PLAN 16-13                                 ║
+╚══════════════════════════════════════════════════════════════╝
+
+Decision:
+APPROVE-CONTRACT
+
+Historical decision:
+REVISE-CONTRACT — PRESERVED AS HISTORY
+
+P16-16-13-R1:
+HUMAN APPROVED — PASS
+
+B16-13-A-001:
+CLOSED
+
+B16-13-A-002:
+CLOSED
+
+B16-13-A-003:
+CLOSED
+
+B16-13-B-001:
+CLOSED
+
+Current Plan 16-13 contract:
+HUMAN APPROVED
+
+Plan 16-13:
+APPROVE-CONTRACT — CLOSED — PASS
+
+Generated OpenAPI:
+UNCHANGED
+
+OpenAPI writer:
+NOT EXECUTED
+
+openapi:generate:
+NOT EXECUTED
+
+openapi:check:
+NOT EXECUTED
+
+Plan 16-14:
+NOT STARTED / NOT AUTHORIZED
+
+Push:
+NOT AUTHORIZED
+
+Deploy:
+NOT AUTHORIZED
+
+Phase 16:
+IN PROGRESS
+
+MRG-01..MRG-08:
+OPEN / GLOBAL RECONCILIATION PENDING
+```
+
+Esta decisão humana explícita atualiza somente o gate do Plan 16-13. A decisão
+histórica `HUMAN DECISION — REVISE-CONTRACT` permanece preservada acima, e o
+artefato `16-13-R1-SUMMARY.md` permanece inalterado como evidência da
+remediação aprovada.
+
+Nenhum gate técnico foi reexecutado nesta Etapa B documental. Não houve
+alteração de runtime, validators, serializers, registry, testes, JSON gerado,
+`STATE.md` ou `ROADMAP.md`. O Plan 16-14 continua separado e não autorizado;
+writer, geração/check OpenAPI, push, deploy e reconciliação global de MRG-01 a
+MRG-08 continuam fora do escopo.
