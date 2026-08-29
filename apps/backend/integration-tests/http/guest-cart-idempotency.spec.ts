@@ -298,11 +298,59 @@ function createIdempotencyHarness() {
     return []
   })
 
+  const authorities = new Map<
+    string,
+    { id: string; customer_id: string; cart_id: string }
+  >()
+
   const mockPgConnection = {
     async transaction(cb: any) {
       return cb(this)
     },
-    async raw() {
+    async raw(sql: string, bindings: any[] = []) {
+      if (sql.includes("pg_advisory_xact_lock")) {
+        return { rows: [] }
+      }
+      if (sql.includes("customer_cart_authority")) {
+        if (sql.trimStart().startsWith("insert into")) {
+          const [id, customerId, cartId] = bindings
+          authorities.set(String(customerId), {
+            id: String(id),
+            customer_id: String(customerId),
+            cart_id: String(cartId),
+          })
+          return { rows: [] }
+        }
+        const customerId = String(bindings[0])
+        const authority = authorities.get(customerId)
+        return {
+          rows: authority
+            ? [{ ...authority, state: "active" }]
+            : [],
+        }
+      }
+      if (sql.includes("from cart") && sql.includes("customer_id")) {
+        const customerId = String(bindings[0])
+        return {
+          rows: Array.from(db.carts.values())
+            .filter((cart) => {
+              const cartCustomerId = cart.customer_id ?? cart.customer?.id
+              return (
+                cartCustomerId === customerId &&
+                !cart.completed_at &&
+                cart.deleted_at == null &&
+                cart.metadata?.active_for_checkout !== false
+              )
+            })
+            .map((cart) => ({
+              id: cart.id,
+              customer_id: cart.customer_id ?? cart.customer?.id,
+              completed_at: cart.completed_at ?? null,
+              deleted_at: cart.deleted_at ?? null,
+              metadata: cart.metadata ?? null,
+            })),
+        }
+      }
       return { rows: [] }
     },
   }

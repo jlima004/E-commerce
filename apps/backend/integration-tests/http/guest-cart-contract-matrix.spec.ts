@@ -142,6 +142,10 @@ function createHarness() {
   let mintedToken = capabilityToken
   let sequence = 1
   let requestedCartId = guestCart.id
+  const authorities = new Map<
+    string,
+    { id: string; customer_id: string; cart_id: string }
+  >()
 
   const guestCapability = {
     async mintGuestCartCapability(input: { cart_id: string }) {
@@ -282,7 +286,50 @@ function createHarness() {
     async transaction(callback: (trx: unknown) => Promise<unknown>) {
       return callback({ raw: this.raw.bind(this) })
     },
-    async raw(sql: string) {
+    async raw(sql: string, bindings: unknown[] = []) {
+      if (sql.includes("pg_advisory_xact_lock")) {
+        return { rows: [] }
+      }
+      if (sql.includes("customer_cart_authority")) {
+        if (sql.trimStart().startsWith("insert into")) {
+          const [id, customerId, cartId] = bindings
+          authorities.set(String(customerId), {
+            id: String(id),
+            customer_id: String(customerId),
+            cart_id: String(cartId),
+          })
+          return { rows: [] }
+        }
+        const customerId = String(bindings[0])
+        const authority = authorities.get(customerId)
+        return {
+          rows: authority
+            ? [{ ...authority, state: "active" }]
+            : [],
+        }
+      }
+      if (sql.includes("from cart") && sql.includes("customer_id")) {
+        const customerId = String(bindings[0])
+        return {
+          rows: [...carts.values()]
+            .filter((cart) => {
+              const cartCustomerId = cart.customer_id ?? cart.customer?.id
+              return (
+                cartCustomerId === customerId &&
+                !cart.completed_at &&
+                (cart as { deleted_at?: unknown }).deleted_at == null &&
+                cart.metadata?.active_for_checkout !== false
+              )
+            })
+            .map((cart) => ({
+              id: cart.id,
+              customer_id: cart.customer_id ?? cart.customer?.id,
+              completed_at: cart.completed_at ?? null,
+              deleted_at: (cart as { deleted_at?: unknown }).deleted_at ?? null,
+              metadata: cart.metadata ?? null,
+            })),
+        }
+      }
       if (sql.includes("from payment_attempt")) {
         return {
           rows: (attempts.get(requestedCartId) ?? []).map((attempt) => ({
@@ -409,19 +456,36 @@ function createHarness() {
             absoluteExpiresAt: new Date("2026-09-20T12:00:00.000Z"),
           }
         : undefined,
-      scope: {
-        resolve(key: unknown) {
-          if (key === GUEST_CART_CAPABILITY_MODULE) return guestCapability
-          if (key === STORE_IDEMPOTENCY_MODULE) return idempotency
-          if (key === STORE_RESOURCE_VERSION_MODULE) return resourceVersion
-          if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
-          if (key === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
-          if (key === ContainerRegistrationKeys.PG_CONNECTION) return pgConnection
-          if (key === ContainerRegistrationKeys.LINK) return { create: async () => undefined }
-          if (key === Modules.CART) return cartModule
-          throw new Error(`unrecognized scope key ${String(key)}`)
-        },
-      },
+      scope: (() => {
+        const parentResolve = (keyToResolve: unknown) => {
+          if (keyToResolve === GUEST_CART_CAPABILITY_MODULE) return guestCapability
+          if (keyToResolve === STORE_IDEMPOTENCY_MODULE) return idempotency
+          if (keyToResolve === STORE_RESOURCE_VERSION_MODULE) return resourceVersion
+          if (keyToResolve === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
+          if (keyToResolve === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
+          if (keyToResolve === ContainerRegistrationKeys.PG_CONNECTION) return pgConnection
+          if (keyToResolve === ContainerRegistrationKeys.LINK) return { create: async () => undefined }
+          if (keyToResolve === Modules.CART) return cartModule
+          throw new Error(`unrecognized scope key ${String(keyToResolve)}`)
+        }
+        return {
+          createScope() {
+            const overrides = new Map<unknown, { resolve(): unknown }>()
+            const child = {
+              register(keyToRegister: unknown, override: { resolve(): unknown }) {
+                overrides.set(keyToRegister, override)
+                return child
+              },
+              resolve(keyToResolve: unknown) {
+                const override = overrides.get(keyToResolve)
+                return override ? override.resolve() : parentResolve(keyToResolve)
+              },
+            }
+            return child
+          },
+          resolve: parentResolve,
+        }
+      })(),
     }
   }
 

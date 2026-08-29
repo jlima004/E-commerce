@@ -290,9 +290,186 @@ function createRemoteQueryResolver(input: {
 
   ;(resolver as typeof resolver & {
     medusaPaymentState: ReturnType<typeof createMedusaPaymentState>
+    carts: Record<string, StoreCartPreOrderRecord & { total?: number | null }>
   }).medusaPaymentState = medusaPaymentState
+  ;(resolver as typeof resolver & {
+    carts: Record<string, StoreCartPreOrderRecord & { total?: number | null }>
+  }).carts = carts
 
   return resolver
+}
+
+type PaymentKnexCatalog = {
+  regionCountries: Array<{ iso_2: string | null }>
+  variantRows: Array<{
+    id: string
+    sku: string | null
+    metadata: Record<string, unknown> | null
+  }>
+  priceLinkRows: Array<{ variant_id: string; price_set_id: string }>
+  priceRows: Array<{
+    price_set_id: string
+    currency_code: string
+    amount: number
+  }>
+}
+
+function classifyPaymentSql(sql: string): string {
+  const normalized = String(sql).replace(/\s+/g, " ").trim().toLowerCase()
+
+  if (normalized.includes("pg_advisory_xact_lock")) {
+    return "lock"
+  }
+
+  if (normalized.includes("from cart_review") && normalized.includes("for update")) {
+    return "review-read"
+  }
+
+  if (normalized.includes("from region_country")) {
+    return "region-hydrate"
+  }
+
+  if (normalized.includes("from product_variant_price_set")) {
+    return "variant-price-link"
+  }
+
+  if (normalized.includes("from product_variant")) {
+    return "variant-hydrate"
+  }
+
+  if (/\bfrom price\b/.test(normalized)) {
+    return "price-hydrate"
+  }
+
+  return "raw-other"
+}
+
+function buildKnexCatalogFromCart(
+  cart: StoreCartPreOrderRecord & { total?: number | null }
+): PaymentKnexCatalog {
+  const regionCountries =
+    cart.region?.countries?.map((country) => ({
+      iso_2: country.iso_2 ?? null,
+    })) ?? [{ iso_2: "br" }]
+  const variantRows: PaymentKnexCatalog["variantRows"] = []
+  const priceLinkRows: PaymentKnexCatalog["priceLinkRows"] = []
+  const priceRows: PaymentKnexCatalog["priceRows"] = []
+
+  for (const item of cart.items ?? []) {
+    const variant = item.variant
+    const variantId = variant?.id ?? item.variant_id
+    if (!variantId) {
+      continue
+    }
+
+    variantRows.push({
+      id: variantId,
+      sku: variant?.sku ?? null,
+      metadata: variant?.metadata ?? null,
+    })
+
+    const priceSetId = `pset_${variantId}`
+    priceLinkRows.push({
+      variant_id: variantId,
+      price_set_id: priceSetId,
+    })
+
+    for (const price of variant?.prices ?? []) {
+      if (!price.currency_code || price.amount === undefined) {
+        continue
+      }
+
+      priceRows.push({
+        price_set_id: priceSetId,
+        currency_code: price.currency_code,
+        amount: price.amount,
+      })
+    }
+  }
+
+  return { regionCountries, variantRows, priceLinkRows, priceRows }
+}
+
+function toCartOwnedLockedCart(
+  cart: StoreCartPreOrderRecord & { total?: number | null }
+): StoreCartPreOrderRecord & { total?: number | null; customer_id: string | null } {
+  const { region: _ignoredRegion, ...cartWithoutRegion } = cart
+
+  return {
+    ...cartWithoutRegion,
+    customer_id: cart.customer?.id ?? null,
+    items: (cart.items ?? []).map((item) => {
+      const { variant: _ignoredVariant, ...itemWithoutVariant } = item
+      return itemWithoutVariant
+    }),
+  }
+}
+
+function createDefaultCartModuleForPayment(
+  carts: Record<string, StoreCartPreOrderRecord & { total?: number | null }>
+) {
+  let knexCatalog: PaymentKnexCatalog = {
+    regionCountries: [{ iso_2: "br" }],
+    variantRows: [],
+    priceLinkRows: [],
+    priceRows: [],
+  }
+
+  const knex = {
+    raw: jest.fn(async (sql: string) => {
+      const type = classifyPaymentSql(sql)
+
+      if (type === "review-read") {
+        return { rows: [] }
+      }
+
+      if (type === "region-hydrate") {
+        return { rows: knexCatalog.regionCountries }
+      }
+
+      if (type === "variant-hydrate") {
+        return { rows: knexCatalog.variantRows }
+      }
+
+      if (type === "variant-price-link") {
+        return { rows: knexCatalog.priceLinkRows }
+      }
+
+      if (type === "price-hydrate") {
+        return { rows: knexCatalog.priceRows }
+      }
+
+      return { rows: [] }
+    }),
+  }
+
+  const transactionManager = {
+    getTransactionContext: () => knex,
+  }
+
+  return {
+    baseRepository_: {
+      transaction: jest.fn(
+        async (callback: (manager: typeof transactionManager) => Promise<unknown>) =>
+          callback(transactionManager)
+      ),
+    },
+    retrieveCart: jest.fn(
+      async (
+        cartId: string,
+        _config?: unknown,
+        _sharedContext?: { transactionManager?: typeof transactionManager }
+      ) => {
+        const cart = carts[cartId]
+        if (!cart) {
+          return undefined
+        }
+
+        knexCatalog = buildKnexCatalogFromCart(cart)
+        return toCartOwnedLockedCart(cart)
+      }
+    ),
+  }
 }
 
 function createWorkflowEngineMock(
@@ -480,6 +657,7 @@ function wireScope(
     paymentAttemptModule?: unknown
     medusaPaymentModule?: unknown
     workflowEngine?: unknown
+    cartModule?: ReturnType<typeof createDefaultCartModuleForPayment>
     paymentAttemptModuleResolveError?: Error
     stripeCardInitiationLayerResolveError?: Error
     stripePixInitiationLayerResolveError?: Error
@@ -514,6 +692,14 @@ function wireScope(
     options.stripePixInitiationLayer === undefined
       ? createStripePixInitiationLayerMock()
       : options.stripePixInitiationLayer
+  const carts =
+    (
+      remoteQuery as typeof remoteQuery & {
+        carts?: Record<string, StoreCartPreOrderRecord & { total?: number | null }>
+      }
+    ).carts ?? {}
+  const cartModule =
+    options.cartModule ?? createDefaultCartModuleForPayment(carts)
 
   req.scope.resolve = jest.fn((key: string) => {
     if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
@@ -552,6 +738,10 @@ function wireScope(
       return stripePixInitiationLayer
     }
 
+    if (key === Modules.CART) {
+      return cartModule
+    }
+
     return undefined
   }) as SessionCapableRequest["scope"]["resolve"]
 
@@ -562,6 +752,7 @@ function wireScope(
     workflowEngine,
     stripeCardInitiationLayer,
     stripePixInitiationLayer,
+    cartModule,
   }
 }
 

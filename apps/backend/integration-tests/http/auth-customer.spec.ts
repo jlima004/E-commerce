@@ -34,6 +34,8 @@ import {
   validateStoreSurfaceManifest,
 } from "../../src/api/store-surface/manifest"
 import { STORE_CART_BFF_PROTECTED_OPERATIONS } from "../../src/api/store/carts/bff-protected-operations"
+import { storeCartPreOrderQueryConfigMiddleware } from "../../src/api/store/carts/query-config"
+import { storeCartPreOrderResponseMiddleware } from "../../src/api/store/carts/serializers"
 import { decideStoreSurfaceAccess } from "../../src/api/store-surface/guard"
 import defaultMiddlewares, {
   createCustomerAuthAccessGuardMiddleware,
@@ -1268,11 +1270,15 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       "allow"
     )
     expect(validateStoreSurfaceManifest()).toEqual([])
+    expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toHaveLength(14)
     expect(
       STORE_SURFACE_MANIFEST.filter(
         (entry) => entry.runtime_policy === "M1_ENABLED"
       ).map((entry) => storeSurfaceOperationKey(entry.method, entry.pathTemplate))
     ).toEqual([...STORE_SURFACE_M1_ENABLED_OPERATIONS])
+    expect([...STORE_SURFACE_M1_ENABLED_OPERATIONS]).not.toContain(
+      "POST /store/customers/me/cart/attach"
+    )
   })
 
   it("binds GET /store/customers/me to the BFF service guard then the access guard", () => {
@@ -1649,7 +1655,7 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
     assertNoBffSecretLeak(rejectedBearer.state.body)
   })
 
-  it("mounts the BFF service guard on the exact Auth + Cart set after surface guards and before access guards", () => {
+  it("mounts the BFF service guard on the exact Auth + Cart set plus dedicated deprecated attach", () => {
     const routes = defaultMiddlewares.routes ?? []
     const authSurface = routes.find((route) => String(route.matcher) === "/auth*")
     const storeSurface = routes.find(
@@ -1663,7 +1669,23 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       customerAuthBffServiceGuardMiddleware
     )
 
-    const protectedMatchers = [
+    expect(CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS).toHaveLength(12)
+    expect([...CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS]).toEqual([
+      "POST /auth/customer/emailpass/register",
+      "POST /auth/customer/emailpass",
+      "POST /auth/token/refresh",
+      "POST /auth/customer/emailpass/revoke-current-lineage",
+      "GET /store/customers/me",
+      "POST /store/customers/me/verify",
+      "POST /store/customers/verify/resend",
+      "POST /store/customers/verify",
+      "GET /store/customers/me/verify/status",
+      "POST /auth/customer/emailpass/reset-password",
+      "POST /auth/customer/emailpass/update",
+      "POST /store/customers/me/password",
+    ])
+
+    const closedMatchers = [
       ...CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS,
       ...STORE_CART_BFF_PROTECTED_OPERATIONS,
     ].map((operation) => operation.split(" ")[1])
@@ -1691,12 +1713,87 @@ describe("Phase 14 auth-customer deny matrix and commerce negatives", () => {
       }
     }
 
-    const extraBffRoutes = routes.filter(
-      (route) =>
-        route.middlewares?.includes(customerAuthBffServiceGuardMiddleware) &&
-        !(protectedMatchers as readonly string[]).includes(String(route.matcher))
+    expect(STORE_CART_BFF_PROTECTED_OPERATIONS).toHaveLength(8)
+    expect([...STORE_CART_BFF_PROTECTED_OPERATIONS]).toEqual([
+      "GET /store/carts/active",
+      "POST /store/carts/active",
+      "POST /store/carts/:id/line-items",
+      "POST /store/carts/:id/line-items/:line_id",
+      "DELETE /store/carts/:id/line-items/:line_id",
+      "DELETE /store/carts/:id/line-items",
+      "POST /store/customers/me/cart/merge",
+      "POST /store/carts/:id/review/acknowledge",
+    ])
+    expect([...STORE_CART_BFF_PROTECTED_OPERATIONS]).not.toContain(
+      "POST /store/customers/me/cart/attach"
     )
-    expect(extraBffRoutes).toEqual([])
+
+    expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toHaveLength(14)
+    expect([...STORE_SURFACE_M1_ENABLED_OPERATIONS]).not.toContain(
+      "POST /store/customers/me/cart/attach"
+    )
+
+    for (const operation of STORE_CART_BFF_PROTECTED_OPERATIONS) {
+      const [method, path] = operation.split(" ")
+      const route = routes.find((candidate) => {
+        const matchesPath = String(candidate.matcher) === path
+        const matchesMethod =
+          candidate.method === undefined ||
+          (Array.isArray(candidate.method) &&
+            candidate.method.includes(method as "GET" | "POST" | "DELETE")) ||
+          candidate.method === method
+        return (
+          matchesPath &&
+          matchesMethod &&
+          candidate.middlewares?.includes(customerAuthBffServiceGuardMiddleware)
+        )
+      })
+      expect(route).toBeDefined()
+      expect(route?.middlewares?.[0]).toBe(customerAuthBffServiceGuardMiddleware)
+    }
+
+    const attachRoute = routes.find(
+      (route) =>
+        String(route.matcher) === "/store/customers/me/cart/attach" &&
+        route.middlewares?.includes(customerAuthBffServiceGuardMiddleware)
+    )
+    expect(attachRoute).toBeDefined()
+    expect(attachRoute?.middlewares).toHaveLength(4)
+    expect(attachRoute?.middlewares?.[0]).toBe(
+      customerAuthBffServiceGuardMiddleware
+    )
+    expect(typeof attachRoute?.middlewares?.[1]).toBe("function")
+    expect(attachRoute?.middlewares?.[2]).toBe(
+      storeCartPreOrderQueryConfigMiddleware
+    )
+    expect(attachRoute?.middlewares?.[3]).toBe(
+      storeCartPreOrderResponseMiddleware
+    )
+    expect(attachRoute?.middlewares).not.toContain(
+      customerAuthAccessGuardMiddleware
+    )
+
+    const bffGuardedRoutes = routes.filter((route) =>
+      route.middlewares?.includes(customerAuthBffServiceGuardMiddleware)
+    )
+    expect(bffGuardedRoutes).toHaveLength(21)
+
+    const extraBffMatchers = bffGuardedRoutes
+      .map((route) => String(route.matcher))
+      .filter(
+        (matcher) =>
+          !(closedMatchers as readonly string[]).includes(matcher)
+      )
+    expect(extraBffMatchers).toEqual(["/store/customers/me/cart/attach"])
+
+    const uniqueBffMatchers = [
+      ...new Set(bffGuardedRoutes.map((route) => String(route.matcher))),
+    ].sort()
+    const uniqueClosedMatchers = [...new Set(closedMatchers)].sort()
+    expect(uniqueBffMatchers).toEqual(
+      [...uniqueClosedMatchers, "/store/customers/me/cart/attach"].sort()
+    )
+    expect(uniqueBffMatchers).toHaveLength(uniqueClosedMatchers.length + 1)
   })
 
   it("keeps Medusa RoutesSorter placing surface guards before exact BFF matchers", () => {
