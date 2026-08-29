@@ -1,7 +1,8 @@
 import { Module } from "@medusajs/framework/utils"
 import CartMergeModuleService from "./service"
+import { CART_MERGE_MODULE } from "./module-id"
 
-export const CART_MERGE_MODULE = "cart_merge"
+export { CART_MERGE_MODULE } from "./module-id"
 
 export { CartMergeModuleService } from "./service"
 

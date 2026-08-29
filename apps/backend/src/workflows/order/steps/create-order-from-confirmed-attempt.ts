@@ -25,6 +25,7 @@ type CartLineItemRecord = {
 
 export type ConfirmedAttemptCartRecord = {
   id: string
+  customer_id?: string | null
   total?: unknown
   currency_code: string
   completed_at?: string | Date | null

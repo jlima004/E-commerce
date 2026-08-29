@@ -62,6 +62,7 @@ import type {
   OrderConfirmationEmailItemInput,
 } from "../../modules/email-delivery-log/types"
 import { GELATO_FULFILLMENT_MODULE } from "../../modules/gelato-fulfillment"
+import { reconcileTerminalCustomerCartAuthority } from "../cart/customer-cart-authority"
 import {
   buildCreateGelatoFulfillmentData,
   buildGelatoDispatchIdempotencyKey,
@@ -263,6 +264,7 @@ type WorkflowRuntimeOverrides = {
 
 const ORDER_CART_FIELDS = [
   "id",
+  "customer_id",
   "currency_code",
   "completed_at",
   "items.id",
@@ -1877,6 +1879,13 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
       cart.id
     )
     completedOrderId = completedOrder.id
+
+    if (cart.customer_id) {
+      await reconcileTerminalCustomerCartAuthority(
+        container,
+        cart.customer_id,
+      )
+    }
 
     await completeRecoveredOrderCorrelation({
       container,

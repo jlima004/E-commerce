@@ -51,8 +51,8 @@ import {
   type StoreResourceVersionMutationContext,
 } from "../store-resource-version"
 import { lockCartOrderAuthority } from "../payment-attempt/transactional-authority"
+import { lockCustomerCartAuthority } from "./authority-lock"
 import {
-  lockCustomerCartAuthority,
   resolveCanonicalCustomerCartAuthority,
 } from "../../api/store/carts/customer-active-cart"
 import type { CustomerCartAuthoritySharedContext } from "../../api/store/carts/customer-active-cart"
@@ -1140,6 +1140,54 @@ class CartMergeModuleService extends MedusaService({
   CartMergeResult,
   CartReview,
 }) {
+  async supersedeCustomerCartAuthority(input: {
+    authority_id: string
+    customer_id: string
+    cart_id: string
+  }): Promise<{ type: "superseded" | "already_superseded" }> {
+    const authorityId = input.authority_id?.trim()
+    const customerId = input.customer_id?.trim()
+    const cartId = input.cart_id?.trim()
+    if (!authorityId || !customerId || !cartId) {
+      throw new Error("CUSTOMER_CART_AUTHORITY_CONFLICT")
+    }
+
+    const service = this as unknown as {
+      listCustomerCartAuthorities: (
+        filters?: Record<string, unknown>,
+        config?: Record<string, unknown>
+      ) => Promise<Array<Record<string, unknown>>>
+      updateCustomerCartAuthorities: (
+        data: Record<string, unknown>
+      ) => Promise<unknown>
+    }
+    const authorities = await service.listCustomerCartAuthorities(
+      { id: authorityId },
+      { take: 2 }
+    )
+    if (authorities.length !== 1) {
+      throw new Error("CUSTOMER_CART_AUTHORITY_CONFLICT")
+    }
+
+    const authority = authorities[0] as Record<string, unknown>
+    if (
+      authority.customer_id !== customerId ||
+      authority.cart_id !== cartId ||
+      (authority.state !== "active" && authority.state !== "superseded")
+    ) {
+      throw new Error("CUSTOMER_CART_AUTHORITY_CONFLICT")
+    }
+    if (authority.state === "superseded") {
+      return { type: "already_superseded" }
+    }
+
+    await service.updateCustomerCartAuthorities({
+      id: authorityId,
+      state: "superseded",
+    })
+    return { type: "superseded" }
+  }
+
   async acknowledgeCartReview(
     input: CartReviewAcknowledgeExecutionInput
   ): Promise<CartReviewAcknowledgeExecutionResult> {

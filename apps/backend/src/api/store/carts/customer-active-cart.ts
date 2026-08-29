@@ -8,15 +8,16 @@ import {
 import { storeCartPreOrderFields } from "./query-config"
 import type { StoreCartPreOrderRecord } from "./serializers"
 import type { CanonicalCustomerCartAuthorityResult } from "../../../modules/cart-merge/types"
+import {
+  lockCustomerCartAuthority,
+} from "../../../modules/cart-merge/authority-lock"
+import {
+  reconcileTerminalCustomerCartAuthority,
+} from "../../../workflows/cart/customer-cart-authority"
 
 const CUSTOMER_ACTIVE_CART_QUERY_FIELDS = storeCartPreOrderFields
 
-export type CustomerCartAuthoritySqlTransaction = {
-  raw(
-    sql: string,
-    bindings?: unknown[]
-  ): Promise<{ rows?: Array<Record<string, unknown>> }>
-}
+export type CustomerCartAuthoritySqlTransaction = import("../../../modules/cart-merge/authority-lock").CustomerCartAuthorityTransaction
 
 export type CustomerCartAuthoritySharedContext = {
   __type?: "MedusaContext"
@@ -106,16 +107,7 @@ function transactionFromSharedContext(
   return transaction
 }
 
-/** Shared Customer-scope PostgreSQL transaction lock for Phase 16. */
-export async function lockCustomerCartAuthority(
-  transaction: CustomerCartAuthoritySqlTransaction,
-  customerId: string
-): Promise<void> {
-  await transaction.raw(
-    "select pg_advisory_xact_lock(hashtextextended(?, 1616))",
-    [customerId]
-  )
-}
+export { lockCustomerCartAuthority }
 
 /** The existing /store/carts/active Customer eligibility rule. */
 export function isActiveCartForCheckout(
@@ -250,6 +242,12 @@ export async function withCustomerCartAuthorityTransaction<T>(
   customerId: string,
   callback: (input: CustomerCartAuthorityTransactionInput) => Promise<T>
 ): Promise<T> {
+  // A native cart-completion workflow commits Cart.completed_at before the
+  // authority row can be retired. Reconcile that narrow crash window before
+  // resolving the next canonical cart. The helper only mutates an exact,
+  // owned, terminal pointer and otherwise leaves fail-closed resolution intact.
+  await reconcileTerminalCustomerCartAuthority(req.scope, customerId)
+
   let cartModule: CustomerCartModule | null = null
   try {
     cartModule = req.scope.resolve(Modules.CART) as CustomerCartModule
