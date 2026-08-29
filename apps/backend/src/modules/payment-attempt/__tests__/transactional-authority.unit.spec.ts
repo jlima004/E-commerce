@@ -121,22 +121,39 @@ function createProbe(state: ProbeState, blockFirstLock = false) {
       return { rows: [toRow(state.attempt)] }
     }
 
-    if (sql.trimStart().startsWith("update payment_attempt")) {
-      owner.writes += 1
-      if (sql.includes("invalidated_by_cart_change")) {
+      if (sql.trimStart().startsWith("update payment_attempt")) {
+        owner.writes += 1
+        if (sql.includes("invalidated_by_cart_change")) {
         state.attempt = {
           ...state.attempt,
           status: "invalidated_by_cart_change",
           invalidated_at: String(bindings[0]),
           updated_at: String(bindings[1]),
         }
-      } else {
-        state.attempt = {
-          ...state.attempt,
-          status: String(bindings[0]) as PaymentAttemptRecord["status"],
-          updated_at: String(bindings[1]),
+        } else {
+          const usesDurableBinding = sql.includes(
+            "set provider_payment_intent_id"
+          )
+          const statusIndex = usesDurableBinding ? 2 : 0
+          const updatedAtIndex = usesDurableBinding
+            ? sql.includes("failed_at") || sql.includes("canceled_at")
+              ? 4
+              : 3
+            : 1
+          state.attempt = {
+            ...state.attempt,
+            provider_payment_intent_id: usesDurableBinding
+              ? String(bindings[0])
+              : state.attempt.provider_payment_intent_id,
+            provider_payment_session_id: usesDurableBinding
+              ? bindings[1] === null || bindings[1] === undefined
+                ? state.attempt.provider_payment_session_id
+                : String(bindings[1])
+              : state.attempt.provider_payment_session_id,
+            status: String(bindings[statusIndex]) as PaymentAttemptRecord["status"],
+            updated_at: String(bindings[updatedAtIndex]),
+          }
         }
-      }
       return { rows: [toRow(state.attempt)] }
     }
 
@@ -275,5 +292,85 @@ describe("PaymentAttempt/cart/webhook Order authority HR-01", () => {
       webhookDisposition: "ignored",
     })
     expect(state.attempt.status).toBe("invalidated_by_cart_change")
+  })
+
+  it("correlaciona webhook com tentativa provisional antes do finalize local", async () => {
+    const state: ProbeState = {
+      cartItems: [],
+      resourceVersion: 1,
+      attempt: buildAttempt({
+        id: "payatt_provisional",
+        provider_payment_intent_id: null,
+        provider_payment_session_id: null,
+        status: "created",
+        payment_method_type: "card",
+        payment_session_id: "payses_provisional",
+        metadata: {
+          payment_attempt_id: "payatt_provisional",
+          cart_id: "cart_hr01_01",
+        },
+      }),
+    }
+    const probe = createProbe(state)
+    const intent = {
+      ...paymentIntent(),
+      id: "pi_bound_before_finalize",
+      metadata: {
+        cart_id: state.attempt.cart_id,
+        payment_attempt_id: state.attempt.id,
+        session_id: state.attempt.payment_session_id,
+      },
+    }
+
+    const updated = await probe.connection.transaction((transaction) =>
+      applyStripePaymentIntentWebhookInTransaction(
+        transaction,
+        intent,
+        "payment_intent.succeeded",
+        new Date("2026-08-22T11:00:01.000Z")
+      )
+    )
+
+    expect(updated.status).toBe("payment_confirmed_by_webhook")
+    expect(updated.provider_payment_intent_id).toBe("pi_bound_before_finalize")
+    expect(state.attempt.provider_payment_intent_id).toBe(
+      "pi_bound_before_finalize"
+    )
+    expect(state.attempt.status).toBe("payment_confirmed_by_webhook")
+  })
+
+  it("rejeita identidade de tentativa divergente sem vincular o PaymentIntent", async () => {
+    const state: ProbeState = {
+      cartItems: [],
+      resourceVersion: 1,
+      attempt: buildAttempt({
+        provider_payment_intent_id: null,
+        status: "created",
+        metadata: { payment_attempt_id: "payatt_hr01_01" },
+      }),
+    }
+    const probe = createProbe(state)
+
+    await expect(
+      probe.connection.transaction((transaction) =>
+        applyStripePaymentIntentWebhookInTransaction(
+          transaction,
+          {
+            ...paymentIntent(),
+            id: "pi_mismatched",
+            metadata: {
+              cart_id: state.attempt.cart_id,
+              payment_attempt_id: "payatt_other",
+            },
+          },
+          "payment_intent.succeeded",
+          new Date("2026-08-22T11:00:01.000Z")
+        )
+      )
+    ).rejects.toMatchObject({
+      code: "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+    })
+    expect(state.attempt.provider_payment_intent_id).toBeNull()
+    expect(state.attempt.status).toBe("created")
   })
 })

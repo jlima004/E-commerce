@@ -66,11 +66,17 @@ function buildMetadata(
   const paymentSessionId =
     "payment_session_id" in request ? request.payment_session_id : undefined
 
-  return {
+  const metadata: Stripe.MetadataParam = {
     cart_id: request.cart_id,
     session_id: paymentSessionId ?? `payses_${method}_${digest}`,
     correlation_id: digest,
   }
+
+  if (request.payment_attempt_id) {
+    metadata.payment_attempt_id = request.payment_attempt_id
+  }
+
+  return metadata
 }
 
 function buildRequestOptions(
@@ -78,7 +84,7 @@ function buildRequestOptions(
   method: "card" | "pix"
 ): Stripe.RequestOptions {
   return {
-    idempotencyKey: `payment-attempt:${method}:${request.idempotency_key}`,
+    idempotencyKey: request.idempotency_key,
   }
 }
 

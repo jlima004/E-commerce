@@ -8,6 +8,7 @@ import {
   ACTIVE_PAYMENT_ATTEMPT_STATUSES,
 } from "./state-machine"
 import type { PaymentAttemptRecord } from "./types"
+import { readDurablePaymentAttemptIdentity } from "./durable-initiation"
 
 export type PaymentAttemptSqlTransaction = {
   raw(
@@ -271,29 +272,87 @@ export async function applyStripePaymentIntentWebhookInTransaction(
   eventType: SupportedStripePaymentIntentEventType,
   at: Date
 ): Promise<PaymentAttemptRecord> {
-  const unlocked = await queryRows(
+  const providerRows = await queryRows(
     transaction,
-    `select cart_id from payment_attempt where provider_payment_intent_id = ? and deleted_at is null`,
+    `select ${selectColumns()} from payment_attempt where provider_payment_intent_id = ? and deleted_at is null`,
     [paymentIntent.id]
   )
+  if (providerRows.length > 1) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_CONFLICT",
+      "Mais de uma tentativa corresponde ao PaymentIntent."
+    )
+  }
 
-  if (unlocked.length === 0) {
+  const durableAttemptId = readDurablePaymentAttemptIdentity(
+    paymentIntent.metadata
+  )
+  const durableRows = durableAttemptId
+    ? await queryRows(
+        transaction,
+        `select ${selectColumns()} from payment_attempt where id = ? and deleted_at is null`,
+        [durableAttemptId]
+      )
+    : []
+
+  if (durableRows.length > 1) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_CONFLICT",
+      "Mais de uma tentativa corresponde à identidade duravel."
+    )
+  }
+
+  const providerAttempt = providerRows[0]
+    ? mapPaymentAttemptRow(providerRows[0])
+    : null
+  const durableAttempt = durableRows[0]
+    ? mapPaymentAttemptRow(durableRows[0])
+    : null
+
+  if (durableAttemptId && !durableAttempt) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+      "Identidade da tentativa nao encontrada."
+    )
+  }
+
+  if (
+    providerAttempt &&
+    durableAttempt &&
+    providerAttempt.id !== durableAttempt.id
+  ) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+      "As identidades do PaymentIntent nao correspondem à mesma tentativa."
+    )
+  }
+
+  const unlocked = durableAttempt ?? providerAttempt
+
+  if (!unlocked) {
     throw new PaymentAttemptWebhookError(
       "PAYMENT_ATTEMPT_NOT_FOUND",
       "Tentativa nao encontrada para o PaymentIntent."
     )
   }
 
-  const cartId = String(unlocked[0].cart_id)
+  const cartId = unlocked.cart_id
   await lockCartOrderAuthority(transaction, cartId)
   const attempt = await readPaymentAttemptForUpdate(transaction, {
-    provider_payment_intent_id: paymentIntent.id as string,
+    id: unlocked.id,
   })
 
   if (!attempt) {
     throw new PaymentAttemptWebhookError(
       "PAYMENT_ATTEMPT_NOT_FOUND",
       "Tentativa nao encontrada para o PaymentIntent."
+    )
+  }
+
+  if (attempt.id !== unlocked.id) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+      "Tentativa mudou durante a correlacao do webhook."
     )
   }
 
@@ -314,23 +373,32 @@ export async function applyStripePaymentIntentWebhookInTransaction(
       : eventType === "payment_intent.canceled"
         ? "canceled_at"
         : null
+  const paymentSessionId =
+    typeof paymentIntent.metadata?.session_id === "string" &&
+    paymentIntent.metadata.session_id.trim().length > 0
+      ? paymentIntent.metadata.session_id.trim()
+      : null
   const rows = await queryRows(
     transaction,
     `
       update payment_attempt
-      set status = ?,
+      set provider_payment_intent_id = ?,
+          provider_payment_session_id = coalesce(provider_payment_session_id, ?),
+          status = ?,
           ${timestampColumn ? `${timestampColumn} = ?,` : ""}
           order_id = null,
           updated_at = ?
       where id = ?
         and cart_id = ?
-        and provider_payment_intent_id = ?
+        and (provider_payment_intent_id is null or provider_payment_intent_id = ?)
         and deleted_at is null
         and order_id is null
         and status = ?
       returning ${selectColumns()}
     `,
     [
+      paymentIntent.id,
+      paymentSessionId,
       updatedAttempt.status,
       ...(timestampColumn ? [at.toISOString()] : []),
       at.toISOString(),

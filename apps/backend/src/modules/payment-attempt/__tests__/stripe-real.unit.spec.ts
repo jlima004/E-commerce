@@ -77,6 +77,9 @@ describe("04A RealStripeCardInitiationLayer", () => {
         currency: "brl",
         payment_method_types: ["card"],
         capture_method: "automatic",
+        metadata: expect.objectContaining({
+          payment_attempt_id: "payatt_real_card_01",
+        }),
       }),
       expect.objectContaining({
         idempotencyKey: expect.stringContaining("payment-attempt:card:"),
@@ -135,6 +138,9 @@ describe("04A RealStripePixInitiationLayer", () => {
             expires_after_seconds: 3_600,
           },
         },
+        metadata: expect.objectContaining({
+          payment_attempt_id: "payatt_real_pix_01",
+        }),
       }),
       expect.objectContaining({
         idempotencyKey: expect.stringContaining("payment-attempt:pix:"),

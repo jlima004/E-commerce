@@ -44,7 +44,14 @@ function createStripePixLayer(
   rawIntent: Record<string, unknown> = mockRawStripePixPaymentIntent()
 ): StripePixInitiationLayer {
   return {
-    createPixPaymentIntent: jest.fn(async () => rawIntent),
+    createPixPaymentIntent: jest.fn(async (request) => ({
+      ...rawIntent,
+      metadata: {
+        ...((rawIntent.metadata as Record<string, unknown> | undefined) ?? {}),
+        session_id: request.payment_session_id,
+        payment_attempt_id: request.payment_attempt_id,
+      },
+    })),
   }
 }
 
@@ -62,7 +69,8 @@ function createSyntheticStripePixLayer(): StripePixInitiationLayer {
         client_secret: `pi_pix_synthetic_${suffix}_secret_synthetic`,
         metadata: {
           cart_id: request.cart_id,
-          session_id: `payses_pix_synthetic_${suffix}`,
+          session_id: request.payment_session_id ?? `payses_pix_synthetic_${suffix}`,
+          payment_attempt_id: request.payment_attempt_id,
         },
         next_action: {
           type: "pix_display_qr_code",

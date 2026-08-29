@@ -7,16 +7,17 @@ import {
 } from "./eligibility"
 import {
   reconcileStalePaymentAttemptsForCartFingerprint,
+  readPaymentAttemptCartFingerprint,
   withPaymentAttemptCartFingerprintMetadata,
 } from "./cart-invalidation"
 import { resolvePaymentAttemptCartFingerprintFromStoreCart } from "../../api/store/carts/serializers"
 import {
   assertOrderIdMustStayNull,
   assertPaymentAttemptTransition,
+  isPaymentAttemptActive,
 } from "./state-machine"
 import {
   createPaymentAttemptReplacingActive,
-  withPaymentAttemptStatus,
 } from "./service"
 import {
   splitStripePixPaymentIntent,
@@ -24,6 +25,11 @@ import {
   type StripePaymentIntentLike,
 } from "./stripe-safe"
 import type { PaymentAttemptRecord } from "./types"
+import {
+  buildPaymentAttemptProviderIdempotencyKey,
+  findReusablePaymentAttempt,
+  withDurablePaymentAttemptIdentity,
+} from "./durable-initiation"
 
 export type PixPaymentAttemptResponse = {
   payment_attempt_id: string
@@ -44,6 +50,8 @@ export type StripePixInitiationRequest = {
   currency_code: string
   cart_id: string
   idempotency_key: string
+  payment_session_id?: string | null
+  payment_attempt_id?: string | null
 }
 
 export type StripePixInitiationLayer = {
@@ -60,6 +68,7 @@ export type StartPixPaymentAttemptInput = {
   stripeLayer: StripePixInitiationLayer
   generateId: () => string
   generatePaymentCollectionId: () => string
+  generatePaymentSessionId?: () => string
   cartResourceVersion?: number | null
   at?: Date
 }
@@ -72,7 +81,14 @@ export type StartPixPaymentAttemptResult = {
   paymentSessionData: Record<string, unknown>
 }
 
-const STRIPE_SAFE_PROVIDER = "stripe_safe_layer"
+export type PreparePixPaymentAttemptResult = {
+  invalidatedAttempts: PaymentAttemptRecord[]
+  supersededAttempts: PaymentAttemptRecord[]
+  attempt: PaymentAttemptRecord
+  idempotencyKey: string
+}
+
+const STRIPE_SAFE_PROVIDER = "stripe"
 export const STRIPE_PIX_INITIATION_LAYER = "stripePixInitiationLayer"
 
 function toPixPaymentAttemptResponse(
@@ -147,9 +163,9 @@ function assertStripePixPaymentIntentMatchesEligibility(
   }
 }
 
-export async function startPixPaymentAttempt(
-  input: StartPixPaymentAttemptInput
-): Promise<StartPixPaymentAttemptResult> {
+export function preparePixPaymentAttempt(
+  input: Omit<StartPixPaymentAttemptInput, "stripeLayer">
+): PreparePixPaymentAttemptResult {
   const eligibility = assertPaymentStartEligible({
     cart: input.cart,
     actor: input.actor,
@@ -158,10 +174,33 @@ export async function startPixPaymentAttempt(
   })
 
   const at = input.at ?? new Date()
-  const idempotencyKey = `${input.cart.id}:pix:${at.getTime()}`
   const cartFingerprint = resolvePaymentAttemptCartFingerprintFromStoreCart(
     input.cart
   )
+  const reusableAttempt = findReusablePaymentAttempt(input.existingAttempts, {
+    cartId: input.cart.id,
+    paymentMethodType: "pix",
+    cartFingerprint,
+  })
+  if (reusableAttempt) {
+    if (!reusableAttempt.payment_collection_id || !reusableAttempt.payment_session_id) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "Tentativa provisional de Pix sem identidade duravel."
+      )
+    }
+
+    return {
+      invalidatedAttempts: [],
+      supersededAttempts: [],
+      attempt: reusableAttempt,
+      idempotencyKey: buildPaymentAttemptProviderIdempotencyKey(
+        "pix",
+        reusableAttempt.id
+      ),
+    }
+  }
+
   const { attempts: attemptsAfterInvalidation, invalidated } =
     reconcileStalePaymentAttemptsForCartFingerprint(
       input.existingAttempts,
@@ -170,49 +209,25 @@ export async function startPixPaymentAttempt(
       at
     )
 
-  let rawIntent: StripePaymentIntentLike
-
-  try {
-    rawIntent = await input.stripeLayer.createPixPaymentIntent({
-      amount_minor: eligibility.provider_amount_minor,
-      currency_code: eligibility.currency_code.toLowerCase(),
-      cart_id: input.cart.id,
-      idempotency_key: idempotencyKey,
-    })
-  } catch (error) {
-    wrapStripePixInitiationError(error)
-  }
-
-  const { persistable, immediate, paymentSessionData } =
-    splitStripePixPaymentIntent(rawIntent)
-
-  assertStripePixPaymentIntentMatchesEligibility(persistable, eligibility)
-
-  if (!persistable.expires_at) {
-    throw new MedusaError(
-      MedusaError.Types.INVALID_DATA,
-      "Stripe nao retornou expires_at para Pix."
-    )
-  }
-
-  const paymentCollectionId = input.generatePaymentCollectionId()
   const newAttemptId = input.generateId()
-
+  const paymentCollectionId = input.generatePaymentCollectionId()
+  const paymentSessionId =
+    input.generatePaymentSessionId?.() ?? input.generatePaymentCollectionId()
   const { supersededAttempts, newAttempt } = createPaymentAttemptReplacingActive(
     attemptsAfterInvalidation,
     {
       cart_id: input.cart.id,
       payment_collection_id: paymentCollectionId,
-      payment_session_id: persistable.provider_payment_session_id,
+      payment_session_id: paymentSessionId,
       provider: STRIPE_SAFE_PROVIDER,
-      provider_payment_intent_id: persistable.provider_payment_intent_id,
-      provider_payment_session_id: persistable.provider_payment_session_id,
+      provider_payment_intent_id: null,
+      provider_payment_session_id: null,
       payment_method_type: "pix",
-      amount: persistable.amount,
-      currency_code: persistable.currency_code,
-      expires_at: persistable.expires_at,
+      amount: eligibility.provider_amount_minor,
+      currency_code: eligibility.currency_code,
+      expires_at: null,
       metadata: withPaymentAttemptCartFingerprintMetadata(
-        persistable.metadata,
+        withDurablePaymentAttemptIdentity(null, newAttemptId),
         cartFingerprint,
         input.cartResourceVersion
       ),
@@ -221,21 +236,136 @@ export async function startPixPaymentAttempt(
     at
   )
 
-  const attempt = withPaymentAttemptStatus(
-    {
-      ...newAttempt,
-      expires_at: persistable.expires_at,
-      instructions_displayed_at: at.toISOString(),
-      updated_at: at.toISOString(),
-    },
-    "awaiting_pix_payment"
-  )
-
-  assertOrderIdMustStayNull(attempt)
-
   return {
     invalidatedAttempts: invalidated,
     supersededAttempts,
+    attempt: newAttempt,
+    idempotencyKey: buildPaymentAttemptProviderIdempotencyKey(
+      "pix",
+      newAttempt.id
+    ),
+  }
+}
+
+function resolvePixFinalStatus(
+  currentStatus: PaymentAttemptRecord["status"]
+): PaymentAttemptRecord["status"] {
+  if (currentStatus === "created") {
+    assertPaymentAttemptTransition(currentStatus, "awaiting_pix_payment")
+    return "awaiting_pix_payment"
+  }
+
+  if (!isPaymentAttemptActive(currentStatus)) {
+    throw new MedusaError(
+      MedusaError.Types.CONFLICT,
+      "Tentativa Pix nao esta mais ativa."
+    )
+  }
+
+  return currentStatus
+}
+
+export async function finalizePixPaymentAttempt(input: {
+  prepared: PreparePixPaymentAttemptResult
+  cart: PaymentStartCartSnapshot
+  actor: PaymentStartActorContext
+  sessionActiveCartId?: string | null
+  rawIntent: StripePaymentIntentLike
+  currentAttempt?: PaymentAttemptRecord
+  at?: Date
+}): Promise<StartPixPaymentAttemptResult> {
+  const eligibility = assertPaymentStartEligible({
+    cart: input.cart,
+    actor: input.actor,
+    paymentMethod: "pix",
+    sessionActiveCartId: input.sessionActiveCartId,
+  })
+  const currentAttempt = input.currentAttempt ?? input.prepared.attempt
+  if (
+    currentAttempt.id !== input.prepared.attempt.id ||
+    currentAttempt.cart_id !== input.cart.id ||
+    currentAttempt.payment_method_type !== "pix"
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.CONFLICT,
+      "Tentativa Pix divergente do cart."
+    )
+  }
+
+  const { persistable, immediate, paymentSessionData } =
+    splitStripePixPaymentIntent(input.rawIntent)
+  assertStripePixPaymentIntentMatchesEligibility(persistable, eligibility)
+
+  const providerAttemptId =
+    typeof persistable.metadata?.payment_attempt_id === "string"
+      ? persistable.metadata.payment_attempt_id
+      : null
+  if (providerAttemptId !== currentAttempt.id) {
+    throw new MedusaError(
+      MedusaError.Types.CONFLICT,
+      "PaymentIntent Stripe sem identidade de tentativa duravel."
+    )
+  }
+
+  if (!persistable.expires_at) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Stripe nao retornou expires_at para Pix."
+    )
+  }
+  if (
+    currentAttempt.provider_payment_intent_id &&
+    currentAttempt.provider_payment_intent_id !==
+      persistable.provider_payment_intent_id
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.CONFLICT,
+      "PaymentIntent Stripe divergente da tentativa duravel."
+    )
+  }
+
+  const at = input.at ?? new Date()
+  const cartFingerprint = resolvePaymentAttemptCartFingerprintFromStoreCart(
+    input.cart
+  )
+  if (readPaymentAttemptCartFingerprint(currentAttempt) !== cartFingerprint) {
+    throw new MedusaError(
+      MedusaError.Types.CONFLICT,
+      "Carrinho mudou antes da finalizacao da tentativa Pix."
+    )
+  }
+  const attempt: PaymentAttemptRecord = {
+    ...currentAttempt,
+    provider: STRIPE_SAFE_PROVIDER,
+    provider_payment_intent_id: persistable.provider_payment_intent_id,
+    provider_payment_session_id:
+      persistable.provider_payment_session_id ??
+      currentAttempt.provider_payment_session_id,
+    amount: persistable.amount,
+    currency_code: persistable.currency_code,
+    expires_at: persistable.expires_at,
+    instructions_displayed_at:
+      currentAttempt.instructions_displayed_at ?? at.toISOString(),
+    metadata: withPaymentAttemptCartFingerprintMetadata(
+      withDurablePaymentAttemptIdentity(
+        persistable.metadata,
+        currentAttempt.id
+      ),
+      cartFingerprint,
+      currentAttempt.metadata?.cart_resource_version as
+        | number
+        | null
+        | undefined
+    ),
+    status: resolvePixFinalStatus(currentAttempt.status),
+    order_id: null,
+    updated_at: at.toISOString(),
+  }
+  assertOrderIdMustStayNull(attempt)
+
+  return {
+    invalidatedAttempts: input.prepared.invalidatedAttempts,
+    supersededAttempts: input.prepared.supersededAttempts,
     attempt,
     response: toPixPaymentAttemptResponse(
       attempt,
@@ -244,6 +374,58 @@ export async function startPixPaymentAttempt(
     ),
     paymentSessionData,
   }
+}
+
+export async function initiatePixPaymentIntent(input: {
+  prepared: PreparePixPaymentAttemptResult
+  cart: PaymentStartCartSnapshot
+  actor: PaymentStartActorContext
+  sessionActiveCartId?: string | null
+  stripeLayer: StripePixInitiationLayer
+  at?: Date
+}): Promise<StripePaymentIntentLike> {
+  const eligibility = assertPaymentStartEligible({
+    cart: input.cart,
+    actor: input.actor,
+    paymentMethod: "pix",
+    sessionActiveCartId: input.sessionActiveCartId,
+  })
+
+  try {
+    return await input.stripeLayer.createPixPaymentIntent({
+      amount_minor: eligibility.provider_amount_minor,
+      currency_code: eligibility.currency_code.toLowerCase(),
+      cart_id: input.cart.id,
+      idempotency_key: input.prepared.idempotencyKey,
+      payment_session_id: input.prepared.attempt.payment_session_id,
+      payment_attempt_id: input.prepared.attempt.id,
+    })
+  } catch (error) {
+    wrapStripePixInitiationError(error)
+  }
+}
+
+export async function startPixPaymentAttempt(
+  input: StartPixPaymentAttemptInput
+): Promise<StartPixPaymentAttemptResult> {
+  const prepared = preparePixPaymentAttempt(input)
+  const rawIntent = await initiatePixPaymentIntent({
+    prepared,
+    cart: input.cart,
+    actor: input.actor,
+    sessionActiveCartId: input.sessionActiveCartId,
+    stripeLayer: input.stripeLayer,
+    at: input.at,
+  })
+
+  return finalizePixPaymentAttempt({
+    prepared,
+    cart: input.cart,
+    actor: input.actor,
+    sessionActiveCartId: input.sessionActiveCartId,
+    rawIntent,
+    at: input.at,
+  })
 }
 
 export function markPixExpired(

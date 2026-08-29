@@ -14,7 +14,10 @@ import type { CatalogVariantInput } from "../../../../../../modules/catalog/type
 import {
   serializeCardPaymentAttemptResponse,
   STRIPE_CARD_INITIATION_LAYER,
-  startCardPaymentAttempt,
+  finalizeCardPaymentAttempt,
+  initiateCardPaymentIntent,
+  prepareCardPaymentAttempt,
+  type PrepareCardPaymentAttemptResult,
   type StripeCardInitiationLayer,
 } from "../../../../../../modules/payment-attempt/card"
 import { assertPaymentStartEligible } from "../../../../../../modules/payment-attempt/eligibility"
@@ -36,6 +39,8 @@ import type {
   TransactionalManagerLike,
 } from "../../../../../../infrastructure/store-foundation-transaction-compatibility"
 import { initializeCartResourceVersion } from "../../../concurrency"
+import { resolvePaymentAttemptCartFingerprintFromStoreCart } from "../../../serializers"
+import { findReusablePaymentAttempt } from "../../../../../../modules/payment-attempt/durable-initiation"
 
 type SessionCapableRequest = MedusaRequest & {
   auth_context?: {
@@ -903,7 +908,10 @@ async function createMedusaCardPaymentSession(input: {
 }
 
 function buildSafeMedusaPaymentSessionData(
-  result: Awaited<ReturnType<typeof startCardPaymentAttempt>>
+  result: {
+    attempt: PaymentAttemptRecord
+    paymentSessionData: Record<string, unknown>
+  }
 ): Record<string, unknown> {
   const providerPaymentIntentId = result.attempt.provider_payment_intent_id
 
@@ -922,7 +930,10 @@ function buildSafeMedusaPaymentSessionData(
 
 async function updateMedusaPaymentSessionAfterStripeInitiation(
   req: SessionCapableRequest,
-  result: Awaited<ReturnType<typeof startCardPaymentAttempt>>,
+  result: {
+    attempt: PaymentAttemptRecord
+    paymentSessionData: Record<string, unknown>
+  },
   sharedContext?: SharedTransactionContext
 ): Promise<void> {
   const paymentModule = resolvePaymentModule(req)
@@ -939,43 +950,19 @@ async function updateMedusaPaymentSessionAfterStripeInitiation(
     status: PaymentSessionStatus.PENDING,
     data: buildSafeMedusaPaymentSessionData(result),
   }
-  if (sharedContext && paymentModule.updatePaymentSessions.length >= 3) {
-    await paymentModule.updatePaymentSessions(update, undefined, sharedContext)
-  } else if (sharedContext && paymentModule.updatePaymentSessions.length >= 2) {
-    await paymentModule.updatePaymentSessions(update, sharedContext)
-  } else {
-    await paymentModule.updatePaymentSessions(update)
-  }
-}
-
-async function cancelMedusaPaymentSession(
-  req: SessionCapableRequest,
-  paymentSessionId: string,
-  sharedContext?: SharedTransactionContext
-): Promise<void> {
   try {
-    const paymentModule = resolvePaymentModule(req)
-    const update = {
-      id: paymentSessionId,
-      status: PaymentSessionStatus.CANCELED,
-    }
-    if (
-      sharedContext &&
-      paymentModule.updatePaymentSessions &&
-      paymentModule.updatePaymentSessions.length >= 3
-    ) {
+    if (sharedContext && paymentModule.updatePaymentSessions.length >= 3) {
       await paymentModule.updatePaymentSessions(update, undefined, sharedContext)
-    } else if (
-      sharedContext &&
-      paymentModule.updatePaymentSessions &&
-      paymentModule.updatePaymentSessions.length >= 2
-    ) {
+    } else if (sharedContext && paymentModule.updatePaymentSessions.length >= 2) {
       await paymentModule.updatePaymentSessions(update, sharedContext)
     } else {
-      await paymentModule.updatePaymentSessions?.(update)
+      await paymentModule.updatePaymentSessions(update)
     }
   } catch {
-    return
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Falha ao finalizar tentativa de pagamento."
+    )
   }
 }
 
@@ -1026,7 +1013,10 @@ async function listExistingAttemptsForCart(
 
 async function persistCardPaymentAttemptResult(
   req: SessionCapableRequest,
-  result: Awaited<ReturnType<typeof startCardPaymentAttempt>>,
+  result: Pick<
+    PrepareCardPaymentAttemptResult,
+    "invalidatedAttempts" | "supersededAttempts" | "attempt"
+  >,
   sharedContext?: SharedTransactionContext
 ): Promise<void> {
   let service: PaymentAttemptModuleLike
@@ -1106,6 +1096,43 @@ async function persistCardPaymentAttemptResult(
   }
 }
 
+async function updateCardPaymentAttemptResult(
+  req: SessionCapableRequest,
+  attempt: PaymentAttemptRecord,
+  sharedContext?: SharedTransactionContext
+): Promise<void> {
+  let service: PaymentAttemptModuleLike
+
+  try {
+    service = req.scope.resolve(PAYMENT_ATTEMPT_MODULE) as PaymentAttemptModuleLike
+  } catch {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Falha ao finalizar tentativa de pagamento."
+    )
+  }
+
+  if (typeof service.updatePaymentAttempts !== "function") {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Falha ao finalizar tentativa de pagamento."
+    )
+  }
+
+  try {
+    if (sharedContext && service.updatePaymentAttempts.length >= 2) {
+      await service.updatePaymentAttempts(attempt, sharedContext)
+    } else {
+      await service.updatePaymentAttempts(attempt)
+    }
+  } catch {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Falha ao finalizar tentativa de pagamento."
+    )
+  }
+}
+
 function resolvePaymentStartActor(req: SessionCapableRequest) {
   const identity = resolveActiveCartIdentity({
     auth_context: req.auth_context,
@@ -1161,7 +1188,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   rejectClientMoneyFields(request.body)
 
   const actor = resolvePaymentStartActor(request)
-  const result = await withCartPaymentTransaction(request, async (sharedContext) => {
+  const preparedOperation = await withCartPaymentTransaction(request, async (sharedContext) => {
     const transaction = sharedContext.transactionManager.getTransactionContext?.()
     if (!transaction) {
       throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
@@ -1204,48 +1231,115 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       sharedContext
     )
     const stripeLayer = await resolveStripeCardInitiationLayer(request)
-    const paymentCollection = await ensurePaymentCollectionForCart(
+    const cartFingerprint = resolvePaymentAttemptCartFingerprintFromStoreCart(cart)
+    const reusableAttempt = findReusablePaymentAttempt(existingAttempts, {
+      cartId,
+      paymentMethodType: "card",
+      cartFingerprint,
+    })
+    const paymentSession = reusableAttempt
+      ? {
+          payment_collection_id: reusableAttempt.payment_collection_id,
+          payment_session_id: reusableAttempt.payment_session_id as string,
+        }
+      : await (async () => {
+          const paymentCollection = await ensurePaymentCollectionForCart(
+            request,
+            cartId,
+            sharedContext
+          )
+          return createMedusaCardPaymentSession({
+            req: request,
+            paymentCollection,
+            amountMajor: eligibility.medusa_amount_major,
+            currencyCode: eligibility.currency_code,
+            sharedContext,
+          })
+        })()
+
+    const prepared = prepareCardPaymentAttempt({
+      cart,
+      actor,
+      sessionActiveCartId: request.session?.active_cart_id,
+      existingAttempts,
+      generateId: () => `payatt_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
+      cartResourceVersion,
+      paymentSession,
+    })
+
+    if (!existingAttempts.some((attempt) => attempt.id === prepared.attempt.id)) {
+      await persistCardPaymentAttemptResult(request, prepared, sharedContext)
+    }
+    return { cart, prepared, stripeLayer }
+  })
+
+  const rawIntent = await initiateCardPaymentIntent({
+    prepared: preparedOperation.prepared,
+    cart: preparedOperation.cart,
+    actor,
+    sessionActiveCartId: request.session?.active_cart_id,
+    stripeLayer: preparedOperation.stripeLayer,
+  })
+
+  const result = await withCartPaymentTransaction(request, async (sharedContext) => {
+    const transaction = sharedContext.transactionManager.getTransactionContext?.()
+    if (!transaction) {
+      throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
+    }
+
+    await lockCartOrderAuthority(
+      transaction as unknown as PaymentAttemptSqlTransaction,
+      cartId
+    )
+    const lockedCart = await retrieveLockedCartInTransaction(
       request,
       cartId,
       sharedContext
     )
-    const paymentSession = await createMedusaCardPaymentSession({
-      req: request,
-      paymentCollection,
-      amountMajor: eligibility.medusa_amount_major,
-      currencyCode: eligibility.currency_code,
-      sharedContext,
+    const cart = await adaptLockedCartForPaymentPipeline(lockedCart, sharedContext)
+    assertPostLockCartOwnership(
+      cart,
+      actor,
+      request.session?.active_cart_id
+    )
+    await assertNoPendingCartReview(cartId, sharedContext)
+    assertPaymentStartEligible({
+      cart,
+      actor,
+      paymentMethod: "card",
+      sessionActiveCartId: request.session?.active_cart_id,
     })
 
-    let paymentResult: Awaited<ReturnType<typeof startCardPaymentAttempt>>
-
-    try {
-      paymentResult = await startCardPaymentAttempt({
-        cart,
-        actor,
-        sessionActiveCartId: request.session?.active_cart_id,
-        existingAttempts,
-        stripeLayer,
-        generateId: () => `payatt_${randomUUID().replace(/-/g, "").slice(0, 16)}`,
-        cartResourceVersion,
-        paymentSession,
-      })
-
-      await updateMedusaPaymentSessionAfterStripeInitiation(
-        request,
-        paymentResult,
-        sharedContext
+    const currentAttempt = (await listExistingAttemptsForCart(
+      request,
+      cartId,
+      sharedContext
+    )).find((attempt) => attempt.id === preparedOperation.prepared.attempt.id)
+    if (!currentAttempt) {
+      throw new MedusaError(
+        MedusaError.Types.CONFLICT,
+        "Tentativa de cartao nao esta mais disponivel."
       )
-    } catch (error) {
-      await cancelMedusaPaymentSession(
-        request,
-        paymentSession.payment_session_id,
-        sharedContext
-      )
-      throw error
     }
 
-    await persistCardPaymentAttemptResult(request, paymentResult, sharedContext)
+    const paymentResult = await finalizeCardPaymentAttempt({
+      prepared: preparedOperation.prepared,
+      cart,
+      actor,
+      sessionActiveCartId: request.session?.active_cart_id,
+      currentAttempt,
+      rawIntent,
+    })
+    await updateMedusaPaymentSessionAfterStripeInitiation(
+      request,
+      paymentResult,
+      sharedContext
+    )
+    await updateCardPaymentAttemptResult(
+      request,
+      paymentResult.attempt,
+      sharedContext
+    )
     return paymentResult
   })
 

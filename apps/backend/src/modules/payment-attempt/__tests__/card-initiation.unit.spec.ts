@@ -39,6 +39,7 @@ function createStripeLayer(
       metadata: {
         ...((rawIntent.metadata as Record<string, unknown> | undefined) ?? {}),
         session_id: request.payment_session_id,
+        payment_attempt_id: request.payment_attempt_id,
       },
     })),
   }
@@ -59,6 +60,7 @@ function createSyntheticStripeCardLayer(): StripeCardInitiationLayer {
         metadata: {
           cart_id: request.cart_id,
           session_id: request.payment_session_id ?? `payses_synthetic_${suffix}`,
+          payment_attempt_id: request.payment_attempt_id,
         },
       }
     },

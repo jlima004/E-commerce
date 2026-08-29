@@ -18,6 +18,7 @@ import type {
   PaymentMethodType,
   PaymentAttemptStatus,
 } from "./types"
+import { readDurablePaymentAttemptIdentity } from "./durable-initiation"
 
 const STRIPE_CARD_INITIATION_LAYER_TOKEN = "stripeCardInitiationLayer"
 const STRIPE_PIX_INITIATION_LAYER_TOKEN = "stripePixInitiationLayer"
@@ -268,6 +269,15 @@ function readPaymentIntentCartId(
     : null
 }
 
+function readPaymentIntentSessionId(
+  metadata: Record<string, unknown> | null | undefined
+): string | null {
+  const sessionId = metadata?.session_id
+  return typeof sessionId === "string" && sessionId.trim().length > 0
+    ? sessionId.trim()
+    : null
+}
+
 function matchesExpectedPaymentMethodType(
   attemptPaymentMethodType: PaymentMethodType,
   paymentMethodTypes: string[]
@@ -342,6 +352,46 @@ export function validatePaymentIntentForAttempt(
     throw new PaymentAttemptWebhookError(
       "PAYMENT_INTENT_ID_REQUIRED",
       "PaymentIntent sem identificador."
+    )
+  }
+
+  if (attempt.provider !== "stripe" && attempt.provider !== "stripe_safe_layer") {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_PROVIDER_MISMATCH",
+      "Provider da tentativa incompativel com Stripe."
+    )
+  }
+
+  const paymentAttemptId = readDurablePaymentAttemptIdentity(
+    paymentIntent.metadata
+  )
+  if (paymentAttemptId && paymentAttemptId !== attempt.id) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+      "Identidade da tentativa divergente do PaymentIntent."
+    )
+  }
+
+  if (
+    attempt.provider_payment_intent_id &&
+    attempt.provider_payment_intent_id !== paymentIntent.id
+  ) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+      "PaymentIntent divergente da tentativa duravel."
+    )
+  }
+
+  const paymentSessionId = readPaymentIntentSessionId(paymentIntent.metadata)
+  if (
+    paymentSessionId &&
+    attempt.payment_session_id &&
+    paymentSessionId !== attempt.payment_session_id &&
+    paymentSessionId !== attempt.provider_payment_session_id
+  ) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_SESSION_MISMATCH",
+      "PaymentSession divergente da tentativa."
     )
   }
 

@@ -251,7 +251,9 @@ function readRemoteQueryTarget(queryObject: RemoteQueryShape): {
     ? Object.keys(queryObject.__value)[0]
     : undefined
   const filters =
-    (entryPoint && queryObject.__value?.[entryPoint]?.__args?.filters) ?? {}
+    ((entryPoint && queryObject.__value?.[entryPoint]?.__args?.filters) as
+      | Record<string, unknown>
+      | undefined) ?? {}
 
   return { entryPoint, filters }
 }
@@ -612,9 +614,10 @@ function createStripeCardInitiationLayerMock(
       amount: request.amount_minor,
       currency: request.currency_code,
       client_secret: "pi_http_card_mock_secret_test",
-      metadata: {
-        cart_id: request.cart_id,
-        session_id: request.payment_session_id ?? "payses_http_card_mock",
+        metadata: {
+          cart_id: request.cart_id,
+          session_id: request.payment_session_id ?? "payses_http_card_mock",
+          payment_attempt_id: request.payment_attempt_id,
       },
       ...overrides,
     })),
@@ -632,9 +635,10 @@ function createStripePixInitiationLayerMock(
       amount: request.amount_minor,
       currency: request.currency_code,
       client_secret: "pi_http_pix_mock_secret_test",
-      metadata: {
-        cart_id: request.cart_id,
-        session_id: "payses_http_pix_mock",
+        metadata: {
+          cart_id: request.cart_id,
+          session_id: request.payment_session_id ?? "payses_http_pix_mock",
+          payment_attempt_id: request.payment_attempt_id,
       },
       next_action: {
         type: "pix_display_qr_code",
@@ -677,13 +681,18 @@ function wireScope(
         medusaPaymentState?: ReturnType<typeof createMedusaPaymentState>
       }
     ).medusaPaymentState ?? defaultMedusaPaymentState
-  const paymentAttemptModule =
-    options.paymentAttemptModule ?? createPaymentAttemptModuleMock()
-  const medusaPaymentModule =
-    options.medusaPaymentModule ??
-    createMedusaPaymentModuleMock(medusaPaymentState)
-  const workflowEngine =
-    options.workflowEngine ?? createWorkflowEngineMock(medusaPaymentState)
+  const paymentAttemptModule = (options.paymentAttemptModule ??
+    createPaymentAttemptModuleMock()) as ReturnType<
+    typeof createPaymentAttemptModuleMock
+  >
+  const medusaPaymentModule = (options.medusaPaymentModule ??
+    createMedusaPaymentModuleMock(medusaPaymentState)) as ReturnType<
+    typeof createMedusaPaymentModuleMock
+  >
+  const workflowEngine = (options.workflowEngine ??
+    createWorkflowEngineMock(medusaPaymentState)) as ReturnType<
+    typeof createWorkflowEngineMock
+  >
   const stripeCardInitiationLayer =
     options.stripeCardInitiationLayer === undefined
       ? createStripeCardInitiationLayerMock()
@@ -917,8 +926,21 @@ describe("payment attempt store card contract", () => {
         expect.objectContaining({
           payment_collection_id: "pay_col_http_01",
           payment_session_id: "payses_http_01",
+          provider_payment_intent_id: null,
+          provider_payment_session_id: null,
+          status: "created",
+          metadata: expect.objectContaining({
+            payment_attempt_id: expect.any(String),
+          }),
+        })
+      )
+      expect(paymentAttemptModule.updatePaymentAttempts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payment_collection_id: "pay_col_http_01",
+          payment_session_id: "payses_http_01",
           provider_payment_intent_id: "pi_http_card_mock",
           provider_payment_session_id: "payses_http_01",
+          status: "card_client_secret_created",
         })
       )
       expect(body.payment_attempt.client_secret).toContain("pi_http_card_mock")
@@ -926,6 +948,103 @@ describe("payment attempt store card contract", () => {
         paymentAttemptModule.resolveStripeCardInitiationLayer
       ).not.toHaveBeenCalled()
       expect(fallbackLayer.createCardPaymentIntent).not.toHaveBeenCalled()
+    })
+
+    it("mantem a identidade local e converge no mesmo PaymentIntent após falha do finalize", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const paymentAttemptModule = createPaymentAttemptModuleMock()
+      paymentAttemptModule.updatePaymentAttempts.mockRejectedValueOnce(
+        new Error("finalize write failed")
+      )
+      const req = createRequest({
+        params: { id: cart.id },
+        session: { id: "sess_guest_01", active_cart_id: cart.id },
+      })
+      const { medusaPaymentModule, stripeCardInitiationLayer } = wireScope(req, {
+        remoteQuery,
+        paymentAttemptModule,
+      })
+
+      await expect(invokeCardPaymentRoute(req)).rejects.toThrow(
+        "Falha ao finalizar tentativa de pagamento."
+      )
+
+      const provisional = paymentAttemptModule.attempts[0]
+      expect(provisional).toEqual(
+        expect.objectContaining({
+          status: "created",
+          provider_payment_intent_id: null,
+        })
+      )
+      expect(provisional?.metadata).toEqual(
+        expect.objectContaining({
+          payment_attempt_id: provisional?.id,
+        })
+      )
+
+      const firstProviderCall = stripeCardInitiationLayer?.createCardPaymentIntent as
+        | jest.Mock
+        | undefined
+      expect(firstProviderCall).toHaveBeenCalledTimes(1)
+
+      const retryResponse = await invokeCardPaymentRoute(req)
+
+      expect(retryResponse.statusCode).toBe(201)
+      expect(paymentAttemptModule.attempts).toHaveLength(1)
+      expect(firstProviderCall).toHaveBeenCalledTimes(2)
+      const providerResults = await Promise.all(
+        firstProviderCall?.mock.results.map((result) => result.value) ?? []
+      )
+      expect(new Set(providerResults.map((result) => result.id)).size).toBe(1)
+      expect(firstProviderCall?.mock.calls[1]?.[0]).toEqual(
+        expect.objectContaining({
+          idempotency_key: firstProviderCall?.mock.calls[0]?.[0].idempotency_key,
+          payment_attempt_id: provisional?.id,
+        })
+      )
+      expect(medusaPaymentModule.createPaymentSession_).toHaveBeenCalledTimes(1)
+      expect(paymentAttemptModule.attempts[0]).toEqual(
+        expect.objectContaining({
+          status: "card_client_secret_created",
+          provider_payment_intent_id: "pi_http_card_mock",
+        })
+      )
+    })
+
+    it("mantem a identidade local quando a atualizacao da PaymentSession falha", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const paymentAttemptModule = createPaymentAttemptModuleMock()
+      const req = createRequest({
+        params: { id: cart.id },
+        session: { id: "sess_guest_01", active_cart_id: cart.id },
+      })
+      const { medusaPaymentModule, stripeCardInitiationLayer } = wireScope(req, {
+        remoteQuery,
+        paymentAttemptModule,
+      })
+      medusaPaymentModule.updatePaymentSessions.mockRejectedValueOnce(
+        new Error("payment session finalize failed")
+      )
+
+      await expect(invokeCardPaymentRoute(req)).rejects.toThrow(
+        "Falha ao finalizar tentativa de pagamento."
+      )
+
+      const provisional = paymentAttemptModule.attempts[0]
+      expect(provisional?.provider_payment_intent_id).toBeNull()
+      expect(stripeCardInitiationLayer?.createCardPaymentIntent).toHaveBeenCalledTimes(1)
+
+      const retryResponse = await invokeCardPaymentRoute(req)
+
+      expect(retryResponse.statusCode).toBe(201)
+      expect(paymentAttemptModule.attempts).toHaveLength(1)
+      expect(stripeCardInitiationLayer?.createCardPaymentIntent).toHaveBeenCalledTimes(2)
+      expect(medusaPaymentModule.createPaymentSession_).toHaveBeenCalledTimes(1)
+      expect(paymentAttemptModule.attempts[0]?.provider_payment_intent_id).toBe(
+        "pi_http_card_mock"
+      )
     })
 
     it("usa uma unica vez o fallback assincrono do servico para cartao", async () => {
@@ -1215,7 +1334,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("registra middleware Store API para rota card", () => {
-      const cardRoute = defaultMiddlewares.routes.find(
+      const cardRoute = defaultMiddlewares.routes?.find(
         (route) => route.matcher === "/store/carts/:id/payment-attempts/card"
       )
 
@@ -1268,6 +1387,61 @@ describe("payment attempt store card contract", () => {
         paymentAttemptModule.resolveStripePixInitiationLayer
       ).not.toHaveBeenCalled()
       expect(fallbackLayer.createPixPaymentIntent).not.toHaveBeenCalled()
+    })
+
+    it("mantem a identidade local e converge no mesmo PaymentIntent Pix após falha do finalize", async () => {
+      const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const paymentAttemptModule = createPaymentAttemptModuleMock()
+      paymentAttemptModule.updatePaymentAttempts.mockRejectedValueOnce(
+        new Error("finalize write failed")
+      )
+      const req = createRequest({
+        params: { id: cart.id },
+        session: { id: "sess_guest_01", active_cart_id: cart.id },
+      })
+      const { stripePixInitiationLayer } = wireScope(req, {
+        remoteQuery,
+        paymentAttemptModule,
+      })
+
+      await expect(invokePixPaymentRoute(req)).rejects.toThrow(
+        "Falha ao finalizar tentativa de pagamento."
+      )
+
+      const provisional = paymentAttemptModule.attempts[0]
+      expect(provisional).toEqual(
+        expect.objectContaining({
+          status: "created",
+          provider_payment_intent_id: null,
+        })
+      )
+      const providerCall = stripePixInitiationLayer?.createPixPaymentIntent as
+        | jest.Mock
+        | undefined
+      expect(providerCall).toHaveBeenCalledTimes(1)
+
+      const retryResponse = await invokePixPaymentRoute(req)
+
+      expect(retryResponse.statusCode).toBe(201)
+      expect(paymentAttemptModule.attempts).toHaveLength(1)
+      expect(providerCall).toHaveBeenCalledTimes(2)
+      const providerResults = await Promise.all(
+        providerCall?.mock.results.map((result) => result.value) ?? []
+      )
+      expect(new Set(providerResults.map((result) => result.id)).size).toBe(1)
+      expect(providerCall?.mock.calls[1]?.[0]).toEqual(
+        expect.objectContaining({
+          idempotency_key: providerCall?.mock.calls[0]?.[0].idempotency_key,
+          payment_attempt_id: provisional?.id,
+        })
+      )
+      expect(paymentAttemptModule.attempts[0]).toEqual(
+        expect.objectContaining({
+          status: "awaiting_pix_payment",
+          provider_payment_intent_id: "pi_http_pix_mock",
+        })
+      )
     })
 
     it("usa uma unica vez o fallback assincrono do servico para Pix", async () => {
@@ -1471,7 +1645,7 @@ describe("payment attempt store card contract", () => {
     })
 
     it("registra middleware Store API para rota pix", () => {
-      const pixRoute = defaultMiddlewares.routes.find(
+      const pixRoute = defaultMiddlewares.routes?.find(
         (route) => route.matcher === "/store/carts/:id/payment-attempts/pix"
       )
 
