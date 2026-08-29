@@ -98,7 +98,16 @@ status: technical-pass-awaiting-human-phase-review
 
 # Plan 16-14 — Store OpenAPI materialization and final technical Phase 16 ledger
 
-**Store writer ran once, sequential remediations closed historical blockers, and the remainder technical ledger is PASS. Phase 16 is not closed. MRG-01..MRG-08 remain OPEN.**
+**Store writer ran once, sequential remediations closed historical blockers, and the remainder technical ledger is PASS.**
+
+Historical execution status at Plan 16-14 completion:
+HUMAN PHASE REVIEW REQUIRED; Phase 16 was not closed; MRG-01..MRG-08 remained OPEN pending human/global reconciliation.
+
+Final Phase 16 governance status:
+HUMAN APPROVED — CLOSED — PASS
+MRG-01..MRG-08: HUMAN APPROVED — COMPLETE
+
+Closure authority: `.planning/phases/16-cart-merge-review/16-CLOSURE.md`.
 
 ## Plan identity
 
@@ -125,6 +134,8 @@ OPEN pending human/global reconciliation
 ```
 
 This SUMMARY does **not** declare Phase 16 CLOSED, does **not** declare MRG-01..MRG-08 CLOSED, does **not** claim requirements complete, and does **not** claim human approval of Phase 16.
+
+Later-status annotation: a subsequent human Phase 16 review approved closure. See `.planning/phases/16-cart-merge-review/16-CLOSURE.md`.
 
 ## Authoritative extraction
 
@@ -699,3 +710,14 @@ This SUMMARY does not auto-authorize Phase 16 closure work, STATE/ROADMAP/REQUIR
 - `.planning/REQUIREMENTS.md`: UNCHANGED by this remainder
 - MRG-01..MRG-08: OPEN
 - Phase 16: IN PROGRESS — HUMAN PHASE REVIEW REQUIRED
+
+### Later-status annotation (Phase 16 documentary closure)
+
+Historical execution status at Plan 16-14 completion:
+HUMAN PHASE REVIEW REQUIRED; MRG-01..MRG-08 OPEN pending human/global reconciliation.
+
+Final Phase 16 governance status:
+HUMAN APPROVED — CLOSED — PASS
+MRG-01..MRG-08: HUMAN APPROVED — COMPLETE
+
+Closure authority: `.planning/phases/16-cart-merge-review/16-CLOSURE.md`
