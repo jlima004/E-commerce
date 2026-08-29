@@ -115,10 +115,16 @@ describe("Phase 13 final Store foundation gate", () => {
       .filter((operation) => operation.path.startsWith("/store/"))
       .map((operation) => storeSurfaceOperationKey(operation.method, operation.path))
 
-    for (const forbidden of [
-      "POST /store/customers/me/cart/attach",
+    for (const approved of [
       "POST /store/customers/me/cart/merge",
       "POST /store/carts/{id}/review/acknowledge",
+    ]) {
+      expect(documentStoreKeys).toContain(approved)
+      expect(registryStoreKeys).toContain(approved)
+    }
+
+    for (const forbidden of [
+      "POST /store/customers/me/cart/attach",
     ]) {
       expect(documentStoreKeys).not.toContain(forbidden)
       expect(registryStoreKeys).not.toContain(forbidden)

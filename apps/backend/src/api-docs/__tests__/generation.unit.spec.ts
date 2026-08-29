@@ -22,7 +22,7 @@ import {
 } from "../components"
 
 const GENERATED_STORE_SHA256 =
-  "d984abe7d4ffa3291742a57c780c7e5f0f282ca81fdb9bd4678a7b9a377b3c98"
+  "7b28ac8b3b8174b2e546f504fd1d9ee725c02d2aa2dbbe53e1dfecf3afc5329c"
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex")
@@ -293,10 +293,12 @@ describe("OpenAPI foundation generation", () => {
     )
     expect(
       builtStore?.document.paths["/store/customers/me/cart/merge"]?.post
-    ).toBeDefined()
+    ).toEqual(expect.objectContaining({ operationId: "mergeCustomerCart" }))
     expect(
       builtStore?.document.paths["/store/carts/{id}/review/acknowledge"]?.post
-    ).toBeDefined()
+    ).toEqual(
+      expect.objectContaining({ operationId: "acknowledgeCartReview" })
+    )
     for (const schemaName of [
       "CartMergeRequest",
       "CartMergeOutcome",
@@ -311,14 +313,16 @@ describe("OpenAPI foundation generation", () => {
     expect(committedStore).toContain("/health/live")
     expect(committedStoreDocument.paths["/auth/session"]).toBeUndefined()
     expect(
-      committedStoreDocument.paths["/store/customers/me/cart/merge"]
-    ).toBeUndefined()
+      committedStoreDocument.paths["/store/customers/me/cart/merge"]?.post
+    ).toEqual(expect.objectContaining({ operationId: "mergeCustomerCart" }))
     expect(
-      committedStoreDocument.paths["/store/carts/{id}/review/acknowledge"]
-    ).toBeUndefined()
+      committedStoreDocument.paths["/store/carts/{id}/review/acknowledge"]?.post
+    ).toEqual(
+      expect.objectContaining({ operationId: "acknowledgeCartReview" })
+    )
     expect(sha256(committedStore)).toBe(GENERATED_STORE_SHA256)
     expect(builtStore?.bytes).toBeDefined()
-    expect(builtStore?.bytes).not.toBe(committedStore)
+    expect(builtStore?.bytes).toBe(committedStore)
     expect(builtStore?.bytes).toBe(
       buildContracts(registry).find((contract) => contract.surface === "store")
         ?.bytes
