@@ -1,3 +1,4 @@
+import type { ResponseConfig } from "@asteasolutions/zod-to-openapi"
 import { CLIENT_MONEY_BODY_FIELDS } from "../../api/store/carts/payment-attempts/validators"
 import { AUTH_HTTP_CONTRACT } from "../../api/auth-surface/contracts"
 import {
@@ -31,6 +32,7 @@ import {
   STORE_SURFACE_M1_ENABLED_OPERATIONS,
   STORE_SURFACE_MANIFEST,
 } from "../../api/store-surface/manifest"
+import type { OperationMetadata } from "../contracts"
 
 const LEGACY_STORE_DOCUMENTATION_KEYS = [
   "GET /health/live",
@@ -128,6 +130,15 @@ function collectValuesForKeys(
       ...collectValuesForKeys(child, keys, `${path}.${key}`),
     ]
   )
+}
+
+function requireInlineResponse(
+  response: OperationMetadata["responses"][string] | undefined
+): ResponseConfig {
+  if (!response || "$ref" in response) {
+    throw new Error("expected inline response")
+  }
+  return response
 }
 
 describe("OpenAPI Store contract wave", () => {
@@ -361,13 +372,16 @@ describe("OpenAPI Store contract wave", () => {
           ),
         })
       )
-      expect(operation?.responses["409"]?.description).toMatch(
+      const conflictResponse = requireInlineResponse(
+        operation?.responses["409"]
+      )
+      expect(conflictResponse.description).toMatch(
         /(?:^|[^A-Z0-9_])REVIEW_REQUIRED(?:$|[^A-Z0-9_])/
       )
-      expect(operation?.responses["409"]?.description).not.toMatch(
+      expect(conflictResponse.description).not.toMatch(
         /CART_REVIEW_REQUIRED|CART_REVIEW_CONFLICT|CART_REVIEW_VERSION_CONFLICT/
       )
-      expect(operation?.responses["409"]?.description).not.toMatch(
+      expect(conflictResponse.description).not.toMatch(
         /CART_VERSION_MISMATCH/
       )
       expect(operation?.responses["412"]).toEqual(
@@ -385,12 +399,15 @@ describe("OpenAPI Store contract wave", () => {
           },
         })
       )
-      expect(operation?.responses["412"]?.content).toEqual({
+      const preconditionResponse = requireInlineResponse(
+        operation?.responses["412"]
+      )
+      expect(preconditionResponse.content).toEqual({
         "application/json": {
           schema: { $ref: "#/components/schemas/StoreErrorResponse" },
         },
       })
-      expect(operation?.responses["412"]?.description).not.toMatch(
+      expect(preconditionResponse.description).not.toMatch(
         /REVIEW_REQUIRED|idempotency/i
       )
       expect(operation?.responses["412"]).not.toEqual(
@@ -402,12 +419,16 @@ describe("OpenAPI Store contract wave", () => {
       )
     }
 
-    expect(operations[0]?.responses["200"]?.content).toEqual({
+    expect(
+      requireInlineResponse(operations[0]?.responses["200"]).content
+    ).toEqual({
       "application/json": {
         schema: { $ref: "#/components/schemas/CartMergeResponse" },
       },
     })
-    expect(operations[1]?.responses["200"]?.content).toEqual({
+    expect(
+      requireInlineResponse(operations[1]?.responses["200"]).content
+    ).toEqual({
       "application/json": {
         schema: { $ref: "#/components/schemas/CartReviewAcknowledgeResponse" },
       },

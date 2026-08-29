@@ -618,6 +618,8 @@ async function hydrateLockedCartVariants(
   return variantsById
 }
 
+type LockedCartMoneyAmount = number | null | undefined
+
 async function adaptLockedCartForPaymentPipeline(
   lockedCart: LockedCartRecord,
   sharedContext: SharedTransactionContext
@@ -635,8 +637,24 @@ async function adaptLockedCartForPaymentPipeline(
     hydrateLockedCartVariants(knex, variantIds),
   ])
 
+  const {
+    total,
+    subtotal,
+    item_total,
+    shipping_total,
+    tax_total,
+    discount_total,
+    ...lockedCartRest
+  } = lockedCart
+
   return {
-    ...lockedCart,
+    ...lockedCartRest,
+    total: total as LockedCartMoneyAmount,
+    subtotal: subtotal as LockedCartMoneyAmount,
+    item_total: item_total as LockedCartMoneyAmount,
+    shipping_total: shipping_total as LockedCartMoneyAmount,
+    tax_total: tax_total as LockedCartMoneyAmount,
+    discount_total: discount_total as LockedCartMoneyAmount,
     customer: projectLockedCartCustomer(lockedCart),
     region,
     items: (lockedCart.items ?? []).map((item) => {

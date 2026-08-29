@@ -1,6 +1,7 @@
 import { createHash } from "crypto"
 import fs from "fs"
 import path from "path"
+import type { OpenApiDocument } from "../contracts"
 import { buildContracts } from "../generation/build-documents"
 import { createFoundationRegistry } from "../registry"
 
@@ -545,9 +546,10 @@ describe("OpenAPI Admin contract", () => {
       path.join(generatedDir, "store.openapi.json"),
       "utf8"
     )
-    const committedStoreDocument = JSON.parse(committedStore) as {
-      paths: Record<string, unknown>
-    }
+    const committedStoreDocument = JSON.parse(committedStore) as Pick<
+      OpenApiDocument,
+      "paths"
+    >
     expect(
       registry
         .getOperations("store")

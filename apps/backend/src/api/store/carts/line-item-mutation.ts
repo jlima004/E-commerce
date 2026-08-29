@@ -14,7 +14,10 @@ import {
 import {
   applyStructuralCartInvalidation,
 } from "../../../modules/checkout/shipping-invalidation"
-import { lockCartOrderAuthority } from "../../../modules/payment-attempt/transactional-authority"
+import {
+  lockCartOrderAuthority,
+  type PaymentAttemptSqlTransaction,
+} from "../../../modules/payment-attempt/transactional-authority"
 import {
   assertNoPaymentOrOrderFields,
   resolveM1CartActor,
@@ -455,7 +458,10 @@ async function readCartSnapshotWithVersion(
       throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
     }
 
-    await lockCartOrderAuthority(transactionContext, cartId)
+    await lockCartOrderAuthority(
+      asPaymentAttemptSqlTransaction(transactionContext),
+      cartId
+    )
     const context = currentVersionContext(transactionManager)
     const versionRow = await versionService.initialize("cart", cartId, context)
     return retrieveCartSnapshotInTransaction(
@@ -547,6 +553,15 @@ async function replayTerminalFailure(
   throw new CartVersionMismatchError(snapshot.cart, snapshot.version)
 }
 
+function asPaymentAttemptSqlTransaction(
+  transactionContext: KnexLike
+): PaymentAttemptSqlTransaction {
+  return {
+    raw: async (sql, bindings) =>
+      await transactionContext.raw(sql, bindings),
+  }
+}
+
 async function runWorkflowWithinCas(
   req: CartMutationRequest,
   kind: LineItemMutationKind,
@@ -622,7 +637,7 @@ async function runWorkflowWithinCas(
 
   if (casResult.type === "updated") {
     await applyStructuralCartInvalidation(cartId, new Date(), {
-      transaction: transactionContext,
+      transaction: asPaymentAttemptSqlTransaction(transactionContext),
     })
   }
 
@@ -703,7 +718,10 @@ export async function executeLineItemMutation(
       // The Cart/order lock is the authority boundary for the entire mutation.
       // Re-read ownership under that lock without initializing/bumping the
       // resource version, so a pending review still produces zero writes.
-      await lockCartOrderAuthority(transactionContext, cartId)
+      await lockCartOrderAuthority(
+        asPaymentAttemptSqlTransaction(transactionContext),
+        cartId
+      )
       const lockedCart = await retrieveCartInTransaction(
         cartModule,
         cartId,

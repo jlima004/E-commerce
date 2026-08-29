@@ -961,7 +961,7 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
       { $ref: "#/components/schemas/PublicStoreCartPreOrder" },
       { type: "null" },
     ],
-  } as const
+  } satisfies ComponentTypeOf<"schemas">
 
   registry.registerComponent(
     "store",
