@@ -244,6 +244,7 @@ const GELATO_FULFILLMENT_RUNTIME_KEYS = [
 
 type WorkflowRuntimeOverrides = {
   now?: () => Date
+  onCartLoaded?: (cart: ConfirmedAttemptCartRecord) => void
   runCompleteCart?: (
     container: MedusaContainer,
     cartId: string
@@ -1773,6 +1774,11 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
   const persistOrderState = overrides.persistOrderState ?? persistConfirmedOrderState
   const loadCart =
     overrides.getCart ?? loadCartForOrderCreation
+  const loadConfirmedCart = async (): Promise<ConfirmedAttemptCartRecord> => {
+    const cart = await loadCart(container, attempt.cart_id)
+    overrides.onCartLoaded?.(cart)
+    return cart
+  }
   const existingAttemptOrderId = normalizeExistingPaymentAttemptOrderId(attempt)
 
   if (existingAttemptOrderId) {
@@ -1797,7 +1803,7 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
       checkoutCompletionLogId: claim.log.id,
       paymentIntentId: validated.payment_intent_id,
       orderId: existingAttemptOrderId,
-      cart: await loadCart(container, attempt.cart_id),
+      cart: await loadConfirmedCart(),
       now,
       correlationId: validated.correlation_id ?? null,
       recoveryOrigin: "payment_attempt_order_id_reuse",
@@ -1835,7 +1841,7 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
       checkoutCompletionLogId: claim.log.id,
       paymentIntentId: validated.payment_intent_id,
       orderId: claim.order_id,
-      cart: await loadCart(container, attempt.cart_id),
+      cart: await loadConfirmedCart(),
       now,
       correlationId: validated.correlation_id ?? null,
       recoveryOrigin: "checkout_completion_reuse",
@@ -1856,7 +1862,7 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
 
   try {
     const cart = normalizeCartLineItemSkuFallbacks(
-      await loadCart(container, attempt.cart_id)
+      await loadConfirmedCart()
     )
 
     assertConfirmedAttemptCartMatchesPaymentAttempt(attempt, cart)
@@ -1960,6 +1966,7 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
     )
   }
 
+  let customerIdFromConfirmedCart: string | null = null
   const result = await withCartOrderAuthorityLock(
     connection,
     input.payment_attempt_id,
@@ -1974,7 +1981,13 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       return runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
         container,
         input,
-        overrides
+        {
+          ...overrides,
+          onCartLoaded: (cart) => {
+            customerIdFromConfirmedCart = cart.customer_id?.trim() || null
+            overrides.onCartLoaded?.(cart)
+          },
+        }
       )
     }
   )
@@ -1983,18 +1996,11 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
   // Customer authority lock must never be acquired from inside that callback:
   // active/merge paths acquire Customer before Cart. Reconcile only after the
   // Cart transaction has committed, so the two scopes keep one global order.
-  if (result.order_id) {
-    const attempt = await loadPaymentAttemptById(
+  if (result.order_id && customerIdFromConfirmedCart) {
+    await reconcileTerminalCustomerCartAuthority(
       container,
-      input.payment_attempt_id
+      customerIdFromConfirmedCart
     )
-    const cart = await loadCartForOrderCreation(container, attempt.cart_id)
-    if (cart.customer_id) {
-      await reconcileTerminalCustomerCartAuthority(
-        container,
-        cart.customer_id
-      )
-    }
   }
 
   return result

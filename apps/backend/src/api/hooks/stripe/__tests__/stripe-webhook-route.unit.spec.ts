@@ -151,8 +151,17 @@ function addPaymentAttemptAuthority(
               }
               if (sql.trimStart().startsWith("update payment_attempt")) {
                 if (attempt) {
-                  attempt.status = String(bindings[0])
-                  attempt.updated_at = bindings[1] as string
+                  const hasProviderIdentityUpdate = sql.includes(
+                    "provider_payment_intent_id"
+                  )
+                  const statusIndex = hasProviderIdentityUpdate ? 2 : 0
+                  const updatedAtIndex = hasProviderIdentityUpdate
+                    ? sql.includes("failed_at") || sql.includes("canceled_at")
+                      ? 4
+                      : 3
+                    : 1
+                  attempt.status = String(bindings[statusIndex])
+                  attempt.updated_at = bindings[updatedAtIndex] as string
                   attempt.order_id = null
                 }
                 return { rows: attempt ? [attempt] : [] }
