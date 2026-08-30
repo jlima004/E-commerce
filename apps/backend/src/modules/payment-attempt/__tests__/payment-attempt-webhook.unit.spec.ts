@@ -152,6 +152,39 @@ describe("payment attempt webhook validation", () => {
     )
   })
 
+  it("recupera tentativa provisional pela identidade duravel do webhook", () => {
+    const provisional = buildAttempt({
+      id: "payatt_provisional",
+      provider_payment_intent_id: null,
+      status: "created",
+    })
+
+    expect(
+      findPaymentAttemptForWebhook(
+        [provisional],
+        "pi_recovered",
+        { payment_attempt_id: provisional.id }
+      )
+    ).toBe(provisional)
+  })
+
+  it("rejeita conflito entre identidade duravel e provider id", () => {
+    const providerAttempt = buildAttempt({ id: "payatt_provider" })
+    const durableAttempt = buildAttempt({
+      id: "payatt_durable",
+      provider_payment_intent_id: null,
+      status: "created",
+    })
+
+    expect(() =>
+      findPaymentAttemptForWebhook(
+        [providerAttempt, durableAttempt],
+        providerAttempt.provider_payment_intent_id as string,
+        { payment_attempt_id: durableAttempt.id }
+      )
+    ).toThrow("As identidades do PaymentIntent nao correspondem à mesma tentativa.")
+  })
+
   it("nao reativa tentativa terminal", () => {
     expect(() =>
       applyStripePaymentIntentWebhookToAttempt(

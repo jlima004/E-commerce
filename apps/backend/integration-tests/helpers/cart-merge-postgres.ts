@@ -1295,6 +1295,14 @@ async function boot() {
   const logger = {
     debug() {}, info() {}, log() {}, warn() {}, error() {},
   }
+  const { LinkLoader } = require("@medusajs/framework")
+  const { getResolvedPlugins } = require("@medusajs/framework/utils")
+  const configModule = container.resolve(ContainerRegistrationKeys.CONFIG_MODULE)
+  const plugins = await getResolvedPlugins(process.cwd(), configModule, true)
+  await new LinkLoader(
+    plugins.map((plugin) => path.join(plugin.resolve, "links")),
+    logger
+  ).load()
   container.register({
     [ContainerRegistrationKeys.LOGGER]: asValue(logger),
   })
@@ -1453,7 +1461,11 @@ async function run(message) {
               amount: request.amount_minor,
               currency: request.currency_code,
               client_secret: "cs_hr04_" + role.toLowerCase(),
-              metadata: { cart_id: request.cart_id },
+              metadata: {
+                cart_id: request.cart_id,
+                session_id: request.payment_session_id,
+                payment_attempt_id: request.payment_attempt_id,
+              },
             }
             pipelineStage("provider-returned")
             return result
@@ -2005,6 +2017,36 @@ export async function runCartReviewRace(
     return normalized;
   };
 
+  const readResultReleasingCartLocks = async (
+    worker: CartMergeRaceWorker,
+  ) => {
+    while (true) {
+      const message = await nextCartMergeRaceWorkerMessage(
+        worker,
+        (candidate) =>
+          (candidate?.type === "result" ||
+            candidate?.type === "cart-lock-acquired") &&
+          candidate.runId === runId,
+        30_000,
+      );
+
+      if (message.type === "cart-lock-acquired") {
+        if (!/^\d+$/.test(String(message.txid ?? ""))) {
+          throw raceError("P16_CART_REVIEW_RACE_LOCK_TXID_INVALID");
+        }
+        releaseCartLock(worker, message);
+        continue;
+      }
+
+      const normalized = reviewRaceResultFromMessage(worker, message);
+      if (normalized.operation === "ack" && normalized.statusCode === null) {
+        throw raceError("P16_CART_REVIEW_ACK_HANDLER_RESULT_INVALID");
+      }
+      results.set(worker.role, normalized);
+      return normalized;
+    }
+  };
+
   const startTransaction = async (worker: CartMergeRaceWorker) => {
     await waitFor(worker, "command-started");
     const transaction = await waitFor(worker, "transaction-started");
@@ -2064,7 +2106,9 @@ export async function runCartReviewRace(
       competitorLock = await startCompetitor();
       await startAckTransaction();
       await options.onMidpoint?.();
-      const competitorResultPromise = readResult(workerForRole("B"));
+      const competitorResultPromise = readResultReleasingCartLocks(
+        workerForRole("B"),
+      );
       releaseCartLock(workerForRole("B"), competitorLock);
       await competitorResultPromise;
       ackLock = await acquireCartLock(workerForRole("A"));
@@ -2089,7 +2133,9 @@ export async function runCartReviewRace(
       }
       competitorLock = await acquireCartLock(workerForRole("B"));
       await ackResultPromise;
-      const competitorResultPromise = readResult(workerForRole("B"));
+      const competitorResultPromise = readResultReleasingCartLocks(
+        workerForRole("B"),
+      );
       releaseCartLock(workerForRole("B"), competitorLock);
       await competitorResultPromise;
     }

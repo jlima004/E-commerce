@@ -334,51 +334,19 @@ function createTracerHarness(
       const normalized = sql.toLowerCase().replace(/\s+/g, " ").trim()
       if (normalized.includes("from cart_merge_result")) {
         if (!committedReceiptRow) return { rows: [] }
-        const record = [...idempotencyRecords.values()].find(
-          (candidate) => candidate.id === committedReceiptRow?.idempotency_record_id
-        )
         const customerIdFromQuery = bindings[0] == null ? null : String(bindings[0])
         const guestCartIdFromQuery = bindings[1] == null ? null : String(bindings[1])
         const capabilityHashFromQuery =
           bindings[2] == null ? null : String(bindings[2])
-        const idempotencyKeyHashFromQuery =
-          bindings[5] == null ? null : String(bindings[5])
         const receiptMatchesQuery =
           customerIdFromQuery === String(committedReceiptRow.customer_id) &&
           guestCartIdFromQuery === String(committedReceiptRow.guest_cart_id) &&
-          idempotencyKeyHashFromQuery != null &&
-          record?.idempotency_key_hash != null &&
-          fingerprintsMatch(record.idempotency_key_hash, idempotencyKeyHashFromQuery)
+          capabilityHashFromQuery === String(committedReceiptRow.capability_hash)
         if (!receiptMatchesQuery) {
           return { rows: [] }
         }
-        const actorScopeHashFromQuery =
-          bindings[4] == null ? record?.actor_scope_hash : String(bindings[4])
-        const resourceScopeHash = hashStoreIdempotencyScope({
-          resource_type: "cart_merge",
-          guest_cart_id: String(committedReceiptRow.guest_cart_id),
-          customer_cart_id:
-            committedReceiptRow.customer_cart_id == null
-              ? null
-              : String(committedReceiptRow.customer_cart_id),
-          capability_id: String(committedReceiptRow.capability_id),
-        })
         return {
-          rows: [
-            {
-              ...committedReceiptRow,
-              capability_hash: capabilityHashFromQuery,
-              capability_status: capability.status,
-              actor_scope_hash: actorScopeHashFromQuery,
-              resource_scope_hash: resourceScopeHash,
-              idempotency_key_hash: idempotencyKeyHashFromQuery,
-              idempotency_operation: "cart_merge",
-              idempotency_state: "completed",
-              idempotency_result_type: "cart_merge",
-              idempotency_result_id: committedReceiptRow.id,
-              idempotency_expires_at: committedReceiptRow.expires_at,
-            },
-          ],
+          rows: [{ ...committedReceiptRow }],
         }
       }
       if (normalized.includes("from cart_review")) {
@@ -507,6 +475,7 @@ function createTracerHarness(
         state: "processing" as const,
         state_version: 1,
         retry_attempt_count: 0,
+        operation: STORE_IDEMPOTENCY_CART_MERGE,
         request_fingerprint: fingerprint,
         actor_scope_hash: hashStoreIdempotencyScope(input.actorScope),
         resource_scope_hash: hashStoreIdempotencyScope(input.resourceScope),
@@ -514,7 +483,9 @@ function createTracerHarness(
           input.rawIdempotencyKey,
           env.STORE_IDEMPOTENCY_KEY_PEPPER
         ),
+        result_type: null as string | null,
         result_id: null as string | null,
+        expires_at: null as string | null,
       }
       idempotencyRecords.set(input.rawIdempotencyKey, record)
       return { type: "claimed" as const, record }
@@ -526,12 +497,27 @@ function createTracerHarness(
       if (!record) throw new Error("IDEMPOTENCY_RECORD_NOT_FOUND")
       record.state = "completed"
       record.state_version += 1
+      record.result_type = input.result_type
       record.result_id = input.result_id
+      record.expires_at = input.retentionMs
+        ? new Date(
+            new Date(input.at ?? new Date()).getTime() + input.retentionMs
+          ).toISOString()
+        : null
       return { type: "claimed" as const, record }
+    }),
+    retrieveStoreIdempotencyRecordForReplay: jest.fn(async (id: string) => {
+      return (
+        [...idempotencyRecords.values()].find((candidate) => candidate.id === id) ??
+        null
+      )
     }),
   }
   const capabilityService = {
-    lookupGuestCartCapabilityByPresentedToken: jest.fn(async () => capability),
+    lookupGuestCartCapabilityByPresentedToken: jest.fn(async (token: string) => {
+      capability.token_hash = hashGuestCartCapability(token)
+      return capability
+    }),
     authorizeGuestCartCapabilityForMutation: jest.fn(
       async (_token: string, cartId: string) => {
         if (cartId !== guestCart.id) {
@@ -545,11 +531,8 @@ function createTracerHarness(
       capability.consumed_at = "2026-08-23T12:00:01.000Z"
       return capability
     }),
-    lookupConsumedGuestCartCapabilityForReplay: jest.fn(
-      async (input: { binding: { resultId: string } }) =>
-        committedReceiptRow?.id === input.binding.resultId
-          ? { result: { id: input.binding.resultId } }
-          : null
+    retrieveGuestCartCapabilityForReplay: jest.fn(async (id: string) =>
+      id === capability.id ? capability : null
     ),
   }
   const resourceVersion = {
@@ -641,6 +624,15 @@ function createTracerHarness(
         }
       },
     },
+    listCarts: jest.fn(async (filters: Record<string, unknown> = {}) =>
+      [...carts.values()].filter(
+        (cart) =>
+          cart.customer_id === filters.customer_id &&
+          cart.completed_at == null &&
+          cart.deleted_at == null &&
+          cart.metadata?.active_for_checkout !== false
+      )
+    ),
     retrieveCart: jest.fn(async (id: string) => carts.get(id) ?? null),
     updateCarts: jest.fn(async (selector: Record<string, unknown>, data?: Record<string, unknown>) => {
       const id = String(data ? selector.id : selector.id)
@@ -656,9 +648,17 @@ function createTracerHarness(
       return target
     }),
   }
+  const pgConnection = {
+    transaction: async (callback: (trx: typeof transaction) => Promise<unknown>) =>
+      cartModule.baseRepository_.transaction(async () => callback(transaction)),
+  }
   const scope = createMedusaContainer({}, container)
   scope.register({
     [Modules.CART]: asValue(cartModule),
+    [ContainerRegistrationKeys.LINK]: asValue({
+      create: jest.fn(async () => []),
+    }),
+    [ContainerRegistrationKeys.PG_CONNECTION]: asValue(pgConnection),
     [GUEST_CART_CAPABILITY_MODULE]: asValue(capabilityService),
     [STORE_IDEMPOTENCY_MODULE]: asValue(idempotency),
     [STORE_RESOURCE_VERSION_MODULE]: asValue(resourceVersion),
@@ -1524,7 +1524,9 @@ describe("Cart merge HTTP tracer", () => {
       expect(replay.headers.etag).toBe(originalEtag)
       expect(replay.headers["cache-control"]).toBe("no-store")
       expect(replay.body).toEqual(originalBody)
-      expect(harness.capabilityService.lookupConsumedGuestCartCapabilityForReplay).toHaveBeenCalledTimes(1)
+      expect(
+        harness.capabilityService.retrieveGuestCartCapabilityForReplay
+      ).toHaveBeenCalledTimes(1)
       expect(harness.customerCart?.items).toHaveLength(2)
       expectPublicMergeBody(replay.body)
     } finally {
@@ -2807,7 +2809,7 @@ describe("Cart merge HTTP tracer", () => {
         expect(replay.body).toEqual(originalBody)
         expectPublicMergeBody(replay.body)
         expect(
-          mergeHarness.capabilityService.lookupConsumedGuestCartCapabilityForReplay
+          mergeHarness.capabilityService.retrieveGuestCartCapabilityForReplay
         ).toHaveBeenCalled()
         expect(mergeHarness.customerCart?.items).toHaveLength(2)
         expect(mergeHarness.capability.status).toBe("consumed")
@@ -2877,7 +2879,7 @@ describe("Cart merge HTTP tracer", () => {
         expect(mergeReplay.body).toEqual(attachOriginalBody)
         expectPublicMergeBody(mergeReplay.body)
         expect(
-          attachHarness.capabilityService.lookupConsumedGuestCartCapabilityForReplay
+          attachHarness.capabilityService.retrieveGuestCartCapabilityForReplay
         ).toHaveBeenCalled()
         expect(attachHarness.customerCart?.items).toHaveLength(2)
         expect(attachHarness.capability.status).toBe("consumed")

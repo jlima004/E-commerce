@@ -49,6 +49,8 @@ import {
   withCustomerCartAuthorityTransaction,
 } from "../customer-active-cart"
 import type { CustomerCartAuthoritySharedContext } from "../customer-active-cart"
+import { lockCartOrderAuthority } from "../../../../modules/payment-attempt/transactional-authority"
+import type { CartTransactionSql } from "../../../../workflows/cart/cart-transaction-boundary"
 
 type StoreCartRecord = StoreCartPreOrderRecord
 
@@ -66,8 +68,41 @@ const ACTIVE_CART_QUERY_FIELDS = storeCartPreOrderFields
 
 async function refetchActiveCart(
   req: MedusaRequest,
-  cartId: string
+  cartId: string,
+  sharedContext?: CustomerCartAuthoritySharedContext
 ): Promise<StoreCartRecord> {
+  if (sharedContext) {
+    const cartModule = req.scope.resolve(Modules.CART) as unknown as {
+      retrieveCart?: (
+        id: string,
+        config?: { relations?: string[] },
+        context?: CustomerCartAuthoritySharedContext
+      ) => Promise<StoreCartRecord | null>
+    }
+    if (typeof cartModule.retrieveCart !== "function") {
+      throw new Error("CART_RETRIEVAL_AUTHORITY_UNAVAILABLE")
+    }
+
+    const cart = await cartModule.retrieveCart(
+      cartId,
+      {
+        relations: [
+          "items",
+          "shipping_address",
+          "billing_address",
+        ],
+      },
+      sharedContext
+    )
+    if (!cart) {
+      throw new MedusaError(
+        MedusaError.Types.NOT_FOUND,
+        `Cart with id '${cartId}' not found`
+      )
+    }
+    return cart
+  }
+
   const remoteQuery = req.scope.resolve(ContainerRegistrationKeys.REMOTE_QUERY)
 
   const queryObject = remoteQueryObjectFromString({
@@ -169,10 +204,11 @@ async function compensateGuestCartCreation(
 async function retrieveCartById(
   req: MedusaRequest,
   cartId: string,
-  onCompleted?: () => Promise<void>
+  onCompleted?: () => Promise<void>,
+  sharedContext?: CustomerCartAuthoritySharedContext
 ): Promise<StoreCartRecord | null> {
   try {
-    const cart = await refetchActiveCart(req, cartId)
+    const cart = await refetchActiveCart(req, cartId, sharedContext)
 
     if (cart.completed_at) {
       if (onCompleted) {
@@ -309,7 +345,18 @@ async function createOrReuseCustomerCartUnderAuthority(
   }
 
   if (authority.type === "single") {
-    const existingCart = await retrieveCartById(req, authority.cartId)
+    const transaction = sharedContext.transactionManager
+      .getTransactionContext?.() as CartTransactionSql | null | undefined
+    if (!transaction || typeof transaction.raw !== "function") {
+      throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
+    }
+    await lockCartOrderAuthority(transaction, authority.cartId)
+    const existingCart = await retrieveCartById(
+      req,
+      authority.cartId,
+      undefined,
+      sharedContext
+    )
     if (!existingCart || existingCart.customer_id !== customerId) {
       throwCustomerAuthorityConflict()
     }
@@ -439,7 +486,7 @@ async function createOrReuseCustomerCartUnderAuthority(
 
   let cart: StoreCartRecord
   try {
-    cart = await refetchActiveCart(req, cartId)
+    cart = await refetchActiveCart(req, cartId, sharedContext)
     if (cart.customer_id !== customerId) {
       throwCustomerAuthorityConflict()
     }
@@ -460,6 +507,7 @@ async function createOrReuseCustomerCartUnderAuthority(
   }
 
   const materializedAuthority = await resolveCanonicalCustomerCartAuthority(
+    req.scope,
     sharedContext,
     customerId
   )
@@ -664,6 +712,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           sharedContext
         )
     )
+    // A newly created Cart is intentionally read with the shared Cart manager
+    // while the transaction is open. Refetch the committed public projection
+    // after commit so linked Customer/catalog fields are serialized normally.
+    const cart = await refetchActiveCart(req, result.cart.id)
+    if (cart.customer_id !== actor.customerId) {
+      throwCustomerAuthorityConflict()
+    }
+    result.cart = cart
     const version = await initializeCartResourceVersion(req, result.cart.id)
     res.setHeader("ETag", formatCartEtag(version))
     // Customer path never emits guest capability header

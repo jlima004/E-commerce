@@ -12,6 +12,7 @@ import {
 import {
   ContainerRegistrationKeys,
   MedusaError,
+  Modules,
 } from "@medusajs/framework/utils"
 import {
   assertNoPaymentOrOrderFields,
@@ -27,6 +28,7 @@ import {
   createSentryErrorHandler,
 } from "../../src/api/middlewares"
 import { env } from "../../src/config/env"
+import { CART_MERGE_MODULE } from "../../src/modules/cart-merge/module-id"
 
 jest.mock("@medusajs/core-flows", () => ({
   createCartWorkflow: jest.fn(),
@@ -127,7 +129,15 @@ type SyntheticCredentialRow = {
 
 type SyntheticCustomerHarness = {
   carts: Map<string, any>
-  authorities: Map<string, { id: string; customer_id: string; cart_id: string }>
+  authorities: Map<
+    string,
+    {
+      id: string
+      customer_id: string
+      cart_id: string
+      state?: "active" | "superseded"
+    }
+  >
   lineages: Map<string, SyntheticLineageRow>
   credentials: Map<string, SyntheticCredentialRow>
   setDbUnavailable: (unavailable: boolean) => void
@@ -160,7 +170,12 @@ function createCustomerHarness(): SyntheticCustomerHarness {
   const carts = new Map<string, any>()
   const authorities = new Map<
     string,
-    { id: string; customer_id: string; cart_id: string }
+    {
+      id: string
+      customer_id: string
+      cart_id: string
+      state?: "active" | "superseded"
+    }
   >()
   const lineages = new Map<string, SyntheticLineageRow>()
   const credentials = new Map<string, SyntheticCredentialRow>()
@@ -201,6 +216,58 @@ function createCustomerHarness(): SyntheticCustomerHarness {
     async initialize(type: string, id: string) {
       return { id: `strver_${id}`, resource_type: type, resource_id: id, version: 1 }
     },
+  }
+
+  const mockCartModule = {
+    async listCarts(filters: Record<string, unknown> = {}) {
+      return Array.from(carts.values()).filter(
+        (cart) =>
+          cart.customer_id === filters.customer_id &&
+          cart.completed_at == null &&
+          cart.deleted_at == null &&
+          cart.metadata?.active_for_checkout !== false
+      )
+    },
+    async retrieveCart(cartId: string) {
+      return carts.get(cartId) ?? null
+    },
+  }
+
+  const mockCartMergeModule = {
+    async listCustomerCartAuthoritiesForUpdate(customerId: string) {
+      const authority = authorities.get(customerId)
+      if (!authority || authority.state === "superseded") {
+        return []
+      }
+      return [{ ...authority, state: "active" as const }]
+    },
+    async createCustomerCartAuthority(input: {
+      customer_id: string
+      cart_id: string
+    }) {
+      const authority = {
+        id: `ccauth_${input.cart_id}`,
+        customer_id: input.customer_id,
+        cart_id: input.cart_id,
+        state: "active" as const,
+      }
+      authorities.set(input.customer_id, authority)
+      return authority
+    },
+    async supersedeCustomerCartAuthority(input: {
+      authority_id: string
+      customer_id: string
+      cart_id: string
+    }) {
+      const authority = authorities.get(input.customer_id)
+      if (authority) {
+        authority.state = "superseded"
+      }
+      return { type: "superseded" as const }
+    },
+  }
+  const mockLinkService = {
+    create: jest.fn(async () => []),
   }
 
   const mockPgConnection = {
@@ -254,6 +321,7 @@ function createCustomerHarness(): SyntheticCustomerHarness {
             id: String(id),
             customer_id: String(customerId),
             cart_id: String(cartId),
+            state: "active",
           })
           return { rows: [] }
         }
@@ -286,6 +354,12 @@ function createCustomerHarness(): SyntheticCustomerHarness {
         }
       }
       return { rows: [] }
+    },
+  }
+
+  ;(mockCartModule as any).baseRepository_ = {
+    async transaction(callback: (manager: unknown) => Promise<unknown>) {
+      return callback({ getTransactionContext: () => mockPgConnection })
     },
   }
 
@@ -435,6 +509,15 @@ function createCustomerHarness(): SyntheticCustomerHarness {
           if (key === "store_idempotency") {
             return mockStoreIdempotencyService
           }
+          if (key === Modules.CART) {
+            return mockCartModule
+          }
+          if (key === CART_MERGE_MODULE) {
+            return mockCartMergeModule
+          }
+          if (key === ContainerRegistrationKeys.LINK) {
+            return mockLinkService
+          }
           if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
             return mockRemoteQuery
           }
@@ -457,6 +540,7 @@ function createCustomerHarness(): SyntheticCustomerHarness {
     },
     createCustomerSession,
     createRequest,
+    mockLinkService,
   }
 }
 

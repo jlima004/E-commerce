@@ -1027,6 +1027,30 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
   }
 
   /**
+   * Transaction-bound owner read used by CartMerge replay orchestration. The
+   * caller supplies the already-open transaction; no sibling table is joined
+   * here and no independent manager is created.
+   */
+  async retrieveStoreIdempotencyRecordForReplay(
+    id: string,
+    sharedContext?: StoreIdempotencyMutationContext
+  ): Promise<StoreIdempotencyRecordRow | null> {
+    if (!sharedContext || typeof id !== "string" || id.trim().length === 0) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "STORE_IDEMPOTENCY_REPLAY_LOOKUP_INVALID"
+      )
+    }
+
+    const result = await this.knex(sharedContext).raw(
+      "select * from store_idempotency_record where id = ? and deleted_at is null",
+      [id]
+    )
+    const row = result.rows?.[0]
+    return row ? mapRow(row) : null
+  }
+
+  /**
    * Load an immutable committed receipt only after all request and result
    * bindings match. This is read-only and uses the caller's transaction when
    * supplied; it never starts a nested manager or reconstructs a response.

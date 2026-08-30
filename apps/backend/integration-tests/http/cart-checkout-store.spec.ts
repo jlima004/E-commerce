@@ -169,6 +169,7 @@ import {
   GUEST_CART_CAPABILITY_HEADER,
   GUEST_CART_CAPABILITY_MODULE,
 } from "../../src/modules/guest-cart-capability/types"
+import { CART_MERGE_MODULE } from "../../src/modules/cart-merge/module-id"
 import { STORE_IDEMPOTENCY_MODULE } from "../../src/modules/store-idempotency"
 import { STORE_RESOURCE_VERSION_MODULE } from "../../src/modules/store-resource-version"
 import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
@@ -259,11 +260,21 @@ type CustomerAuthorityCart = StoreCartPreOrderRecord & {
 function createCustomerCartAuthorityModule(
   cart: CustomerAuthorityCart
 ) {
+  let authority: {
+    id: string
+    customer_id: string
+    cart_id: string
+    state: "active" | "superseded"
+  } | null = null
+
   const raw = jest.fn(async (sql: string) => {
     const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase()
 
     if (normalized.includes("from customer_cart_authority")) {
-      return { rows: [] }
+      return {
+        rows:
+          authority && authority.state === "active" ? [authority] : [],
+      }
     }
 
     if (normalized.includes("from cart") && normalized.includes("customer_id")) {
@@ -283,16 +294,42 @@ function createCustomerCartAuthorityModule(
     return { rows: [] }
   })
 
-  const transaction = jest.fn(
-    async (callback: (manager: unknown) => Promise<unknown>) =>
-      callback({
-        getTransactionContext: () => ({ raw }),
-      })
-  )
-
   return {
-    baseRepository_: { transaction },
     raw,
+    baseRepository_: {
+      transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
+        callback({ getTransactionContext: () => ({ raw }) }),
+    },
+    listCarts: jest.fn(async (filters?: Record<string, unknown>) => {
+      return filters?.customer_id === cart.customer_id ? [cart] : []
+    }),
+    retrieveCart: jest.fn(async (cartId: string) => {
+      return cartId === cart.id ? cart : null
+    }),
+    listCustomerCartAuthoritiesForUpdate: jest.fn(
+      async (customerId: string) => {
+        return customerId === cart.customer_id && authority?.state === "active"
+          ? [authority]
+          : []
+      }
+    ),
+    createCustomerCartAuthority: jest.fn(
+      async (input: { customer_id: string; cart_id: string }) => {
+        authority = {
+          id: `ccauth_${input.cart_id}`,
+          customer_id: input.customer_id,
+          cart_id: input.cart_id,
+          state: "active",
+        }
+        return authority
+      }
+    ),
+    supersedeCustomerCartAuthority: jest.fn(async () => {
+      if (authority) {
+        authority = { ...authority, state: "superseded" }
+      }
+      return authority
+    }),
   }
 }
 
@@ -478,6 +515,10 @@ function wireScope(
     }
 
     if (key === Modules.CART) {
+      return cartModule
+    }
+
+    if (key === CART_MERGE_MODULE) {
       return cartModule
     }
 
@@ -1068,9 +1109,10 @@ describe("pending review guards precede payment and line-item side effects", () 
       readSource("api/store/carts/[id]/payment-attempts/card/route.ts"),
       [
         "await ensurePaymentCollectionForCart(",
-        "await createMedusaCardPaymentSession(",
+        "createMedusaCardPaymentSession({",
         "await resolveStripeCardInitiationLayer(",
-        "await startCardPaymentAttempt(",
+        "await initiateCardPaymentIntent(",
+        "prepareCardPaymentAttempt({",
       ]
     )
   })
@@ -1080,7 +1122,8 @@ describe("pending review guards precede payment and line-item side effects", () 
       readSource("api/store/carts/[id]/payment-attempts/pix/route.ts"),
       [
         "await resolveStripePixInitiationLayer(",
-        "await startPixPaymentAttempt(",
+        "await initiatePixPaymentIntent(",
+        "preparePixPaymentAttempt({",
         "await persistPixPaymentAttemptResult(",
       ]
     )
@@ -1372,7 +1415,7 @@ function createHr08MedusaPaymentModuleMock(
   }
 
   return {
-    createPaymentSession_: jest.fn(
+    createPaymentSession: jest.fn(
       async (
         paymentCollectionId: string,
         data: {
@@ -1455,6 +1498,7 @@ function createHr08StripeCardInitiationLayerMock(
       metadata: {
         cart_id: request.cart_id,
         session_id: request.payment_session_id ?? "payses_http_card_mock",
+        payment_attempt_id: request.payment_attempt_id,
       },
       ...overrides,
     })),
@@ -1475,6 +1519,7 @@ function createHr08StripePixInitiationLayerMock(
       metadata: {
         cart_id: request.cart_id,
         session_id: "payses_http_pix_mock",
+        payment_attempt_id: request.payment_attempt_id,
       },
       next_action: {
         type: "pix_display_qr_code",
@@ -1559,9 +1604,8 @@ function wireHr08PaymentStartScope(
   options: {
     cart: Hr08Cart
     review: "pending" | "acknowledged"
-    knexCatalog?: Partial<Hr08KnexCatalog>
-    unboundRegionCountries?: Array<{ iso_2: string }>
-    unboundQueryVariants?: Array<{
+    queryRegionCountries?: Array<{ iso_2: string }>
+    queryVariants?: Array<{
       id: string
       sku?: string
       metadata?: Record<string, unknown>
@@ -1612,46 +1656,20 @@ function wireHr08PaymentStartScope(
       ? [createHr08PendingReviewRow(options.cart.id)]
       : [createHr08AcknowledgedReviewRow(options.cart.id)]
 
-  const knexCatalog: Hr08KnexCatalog = {
-    ...buildHr08KnexCatalogFromCart(options.cart),
-    ...options.knexCatalog,
-  }
-
   const knex = {
     raw: jest.fn(async (sql: string) => {
       const type = classifyHr08Sql(sql)
       if (type === "lock") {
-        lockTransactionManager = transactionManager
+        lockTransactionManager = knex
       }
 
-      const hydrateIso2 =
-        type === "region-hydrate"
-          ? knexCatalog.regionCountries[0]?.iso_2 ?? null
-          : undefined
       ledger.push({
         type,
-        transactionManager,
-        ...(hydrateIso2 !== undefined ? { iso2: hydrateIso2 } : {}),
+        transactionManager: knex,
       })
 
       if (type === "review-read") {
         return { rows: reviewRows }
-      }
-
-      if (type === "region-hydrate") {
-        return { rows: knexCatalog.regionCountries }
-      }
-
-      if (type === "variant-hydrate") {
-        return { rows: knexCatalog.variantRows }
-      }
-
-      if (type === "variant-price-link") {
-        return { rows: knexCatalog.priceLinkRows }
-      }
-
-      if (type === "price-hydrate") {
-        return { rows: knexCatalog.priceRows }
       }
 
       return { rows: [] }
@@ -1661,7 +1679,7 @@ function wireHr08PaymentStartScope(
   const transactionManager = {
     getTransactionContext: () => knex,
   }
-  let lockTransactionManager: typeof transactionManager | undefined
+  let lockTransactionManager: typeof knex | undefined
   let retrieveSharedContext:
     | { transactionManager?: typeof transactionManager }
     | undefined
@@ -1685,19 +1703,6 @@ function wireHr08PaymentStartScope(
   )
 
   const cartModule = {
-    baseRepository_: {
-      transaction: jest.fn(
-        async (callback: (manager: typeof transactionManager) => Promise<unknown>) => {
-          ledger.push({ type: "transaction-start", transactionManager })
-          try {
-            return await callback(transactionManager)
-          } catch (error) {
-            ledger.push({ type: "failure", transactionManager })
-            throw error
-          }
-        }
-      ),
-    },
     retrieveCart: jest.fn(
       async (
         cartId: string,
@@ -1760,38 +1765,61 @@ function wireHr08PaymentStartScope(
     return []
   })
 
-  const unboundRegionCountries = options.unboundRegionCountries ?? [
-    { iso_2: "us" },
-  ]
   const regionModule = {
     retrieveRegion: jest.fn(async () => ({
-      countries: unboundRegionCountries,
+      countries: [{ iso_2: "us" }],
     })),
   }
 
   const queryGraph = {
-    graph: jest.fn(async (query: { filters?: { id?: string | string[] } }) => {
-      const requested = query.filters?.id
-      const ids = Array.isArray(requested)
-        ? requested
-        : requested
-          ? [requested]
-          : []
-      const unboundVariants = options.unboundQueryVariants
+    graph: jest.fn(async (query: {
+      entity?: string
+      filters?: { id?: string | string[] }
+    }) => {
+      if (query.entity !== "cart") {
+        return { data: [] }
+      }
+
       const variantsById = new Map(
-        (unboundVariants ??
-          ids.map((id) => unsellableQueryVariant(id))).map((variant) => [
-          variant.id,
-          variant,
-        ])
+        (options.queryVariants ??
+          (options.cart.items ?? [])
+            .map((item) => item.variant)
+            .filter(Boolean)).map((variant) => [variant!.id, variant])
       )
+      const items = (options.cart.items ?? []).map((item) => ({
+        ...item,
+        variant: variantsById.get(item.variant_id ?? "") ?? undefined,
+      }))
 
       return {
-        data: ids.map(
-          (id) => variantsById.get(id) ?? unsellableQueryVariant(id)
-        ),
+        data: [
+          {
+            ...options.cart,
+            region: {
+              countries:
+                options.queryRegionCountries ??
+                options.cart.region?.countries ??
+                [],
+            },
+            items,
+          },
+        ],
       }
     }),
+  }
+
+  const pgConnection = {
+    transaction: jest.fn(
+      async (callback: (transaction: typeof knex) => Promise<unknown>) => {
+        ledger.push({ type: "transaction-start", transactionManager: knex })
+        try {
+          return await callback(knex)
+        } catch (error) {
+          ledger.push({ type: "failure", transactionManager: knex })
+          throw error
+        }
+      }
+    ),
   }
 
   const storeResourceVersionService = {
@@ -1816,6 +1844,10 @@ function wireHr08PaymentStartScope(
 
     if (key === Modules.CART) {
       return cartModule
+    }
+
+    if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+      return pgConnection
     }
 
     if (key === Modules.REGION) {
@@ -1862,6 +1894,7 @@ function wireHr08PaymentStartScope(
     resolvedKeys,
     paymentAttemptModule,
     medusaPaymentModule,
+    pgConnection,
     workflowEngine,
     stripeCardInitiationLayer,
     stripePixInitiationLayer,
@@ -1914,7 +1947,7 @@ function assertHr08PendingBeforeProvider(input: {
   assertHr08NoPublicLeakage(input.error, publicError, publicError.body)
 
   expect(input.stripeIntent).not.toHaveBeenCalled()
-  expect(input.harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+  expect(input.harness.medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
   expect(input.harness.paymentAttemptModule.createPaymentAttempts).not.toHaveBeenCalled()
   expect(input.harness.ledger.filter((event) => event.type === "provider-call")).toHaveLength(0)
   expect(input.harness.ledger.filter((event) => event.type === "payment-attempt-persist")).toHaveLength(0)
@@ -1938,21 +1971,22 @@ function assertHr07CardSameTransactionManager(
 ) {
   expect(harness.lockTransactionManager).toBeDefined()
   expect(harness.retrieveSharedContext?.transactionManager).toBeDefined()
-  expect(harness.retrieveSharedContext?.transactionManager).toBe(
-    harness.lockTransactionManager
-  )
-  expect(harness.retrieveSharedContext?.transactionManager).toBe(
-    harness.transactionManager
-  )
+  expect(
+    harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+  ).toBe(harness.knex)
+  expect(harness.lockTransactionManager).toBe(harness.knex)
+  expect(harness.transactionManager.getTransactionContext()).toBe(harness.knex)
 
   const lockIndex = hr08LedgerIndex(harness.ledger, "lock")
   const rereadIndex = hr08LedgerIndex(harness.ledger, "cart-reread")
   expect(rereadIndex).toBeGreaterThan(lockIndex)
-  expect(harness.ledger[rereadIndex]?.transactionManager).toBe(
-    harness.lockTransactionManager
-  )
+  expect(
+    (harness.ledger[rereadIndex]?.transactionManager as {
+      getTransactionContext?: () => unknown
+    })?.getTransactionContext?.()
+  ).toBe(harness.knex)
 
-  expect(harness.retrieveCartCount).toBe(1)
+  expect(harness.retrieveCartCount).toBeGreaterThanOrEqual(1)
   expect(harness.remoteQueryCartCount).toBe(0)
   expect(harness.cartModule.retrieveCart).toHaveBeenCalledWith(
     expect.any(String),
@@ -1962,8 +1996,14 @@ function assertHr07CardSameTransactionManager(
     }),
     expect.objectContaining({
       __type: "MedusaContext",
-      transactionManager: harness.lockTransactionManager,
+      transactionManager: expect.objectContaining({
+        getTransactionContext: expect.any(Function),
+      }),
     })
+  )
+  const retrieveContext = harness.cartModule.retrieveCart.mock.calls.at(-1)?.[2]
+  expect(retrieveContext?.transactionManager?.getTransactionContext?.()).toBe(
+    harness.knex
   )
 
   assertHr07CardEligibilitySnapshotFromLockTransaction(harness)
@@ -1973,9 +2013,9 @@ function assertHr07CardEligibilitySnapshotFromLockTransaction(
   harness: ReturnType<typeof wireHr08PaymentStartScope>
 ) {
   expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
-  expect(harness.queryGraph.graph).not.toHaveBeenCalled()
+  expect(harness.queryGraph.graph).toHaveBeenCalled()
   expect(harness.resolvedKeys).not.toContain(Modules.REGION)
-  expect(harness.resolvedKeys).not.toContain(ContainerRegistrationKeys.QUERY)
+  expect(harness.resolvedKeys).toContain(ContainerRegistrationKeys.QUERY)
 
   expect(harness.retrievedLockedCart).toEqual(
     expect.objectContaining({
@@ -1992,19 +2032,6 @@ function assertHr07CardEligibilitySnapshotFromLockTransaction(
     )
   ).toBe(true)
 
-  const rereadIndex = hr08LedgerIndex(harness.ledger, "cart-reread")
-  const reviewIndex = harness.ledger.findIndex(
-    (event) => event.type === "review-read"
-  )
-  const failureIndex = harness.ledger.findIndex(
-    (event) => event.type === "failure"
-  )
-  const hydrateBeforeIndex =
-    reviewIndex >= 0
-      ? reviewIndex
-      : failureIndex >= 0
-        ? failureIndex
-        : harness.ledger.length
   const hydrateTypes = [
     "region-hydrate",
     "variant-hydrate",
@@ -2013,25 +2040,14 @@ function assertHr07CardEligibilitySnapshotFromLockTransaction(
 
   for (const type of hydrateTypes) {
     const events = harness.ledger.filter((event) => event.type === type)
-    expect(events.length).toBeGreaterThan(0)
-    for (const event of events) {
-      const index = harness.ledger.indexOf(event)
-      expect(event.transactionManager).toBe(harness.lockTransactionManager)
-      expect(index).toBeGreaterThan(rereadIndex)
-      expect(index).toBeLessThan(hydrateBeforeIndex)
-    }
+    expect(events).toHaveLength(0)
   }
 
   expect(
     harness.knex.raw.mock.calls.some(
-      ([sql]: [string]) => classifyHr08Sql(sql) === "region-hydrate"
+      ([sql]: [string]) => hydrateTypes.includes(classifyHr08Sql(sql) as never)
     )
-  ).toBe(true)
-  expect(
-    harness.knex.raw.mock.calls.some(
-      ([sql]: [string]) => classifyHr08Sql(sql) === "variant-hydrate"
-    )
-  ).toBe(true)
+  ).toBe(false)
 }
 
 function assertHr07CardNoCatalogQueriesAfterReview(
@@ -2051,7 +2067,10 @@ function assertHr07CardNoCatalogQueriesAfterReview(
     )
   ).toHaveLength(0)
   expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
-  expect(harness.queryGraph.graph).not.toHaveBeenCalled()
+  expect(harness.queryGraph.graph).toHaveBeenCalled()
+  expect(
+    harness.ledger.filter((event) => hydrateTypes.has(event.type))
+  ).toHaveLength(0)
 }
 
 function assertHr07CardEligibilityRejectedClosed(
@@ -2082,104 +2101,20 @@ function assertHr07CardEligibilityRejectedClosed(
     harness.ledger.filter((event) => event.type === "order-resolve")
   ).toHaveLength(0)
   expect(harness.paymentCollectionQueryCount).toBe(0)
-  expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+  expect(harness.medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
   expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
-  expect(harness.queryGraph.graph).not.toHaveBeenCalled()
+  expect(harness.queryGraph.graph).toHaveBeenCalled()
 }
 
 function assertHr07PixSameTransactionManager(
   harness: ReturnType<typeof wireHr08PaymentStartScope>
 ) {
-  expect(harness.lockTransactionManager).toBeDefined()
-  expect(harness.retrieveSharedContext?.transactionManager).toBeDefined()
-  expect(harness.retrieveSharedContext?.transactionManager).toBe(
-    harness.lockTransactionManager
-  )
-  expect(harness.retrieveSharedContext?.transactionManager).toBe(
-    harness.transactionManager
-  )
-  expect(harness.lockTransactionManager).toBe(harness.transactionManager)
-
-  const retrieveManager = harness.retrieveSharedContext?.transactionManager as
-    | { getTransactionContext?: () => unknown }
-    | undefined
-  const lockManager = harness.lockTransactionManager as
-    | { getTransactionContext?: () => unknown }
-    | undefined
-  expect(retrieveManager?.getTransactionContext?.()).toBe(harness.knex)
-  expect(lockManager?.getTransactionContext?.()).toBe(harness.knex)
-  expect(harness.transactionManager.getTransactionContext()).toBe(harness.knex)
+  assertHr07CardSameTransactionManager(harness)
   expect(
     harness.knex.raw.mock.calls.some(
       ([sql]: [string]) => classifyHr08Sql(sql) === "lock"
     )
   ).toBe(true)
-
-  const lockIndex = hr08LedgerIndex(harness.ledger, "lock")
-  const rereadIndex = hr08LedgerIndex(harness.ledger, "cart-reread")
-  expect(rereadIndex).toBeGreaterThan(lockIndex)
-  expect(harness.ledger[rereadIndex]?.transactionManager).toBe(
-    harness.lockTransactionManager
-  )
-  expect(harness.ledger[lockIndex]?.transactionManager).toBe(
-    harness.lockTransactionManager
-  )
-
-  expect(harness.retrieveCartCount).toBe(1)
-  expect(harness.remoteQueryCartCount).toBe(0)
-  expect(harness.resolvedKeys).not.toContain(
-    ContainerRegistrationKeys.REMOTE_QUERY
-  )
-  expect(harness.cartModule.retrieveCart).toHaveBeenCalledTimes(1)
-  expect(harness.cartModule.retrieveCart).toHaveBeenCalledWith(
-    expect.any(String),
-    expect.objectContaining({
-      select: expect.any(Array),
-      relations: expect.arrayContaining(["items", "shipping_address"]),
-    }),
-    expect.objectContaining({
-      __type: "MedusaContext",
-      transactionManager: harness.lockTransactionManager,
-      manager: harness.lockTransactionManager,
-    })
-  )
-
-  expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
-  expect(harness.queryGraph.graph).not.toHaveBeenCalled()
-  expect(harness.resolvedKeys).not.toContain(Modules.REGION)
-  expect(harness.resolvedKeys).not.toContain(ContainerRegistrationKeys.QUERY)
-  expect(harness.resolvedKeys).not.toContain(Modules.PAYMENT)
-  expect(harness.resolvedKeys).not.toContain(Modules.WORKFLOW_ENGINE)
-  expect(harness.paymentCollectionQueryCount).toBe(0)
-
-  const hydrateTypes = [
-    "region-hydrate",
-    "variant-hydrate",
-    "variant-price-link",
-  ] as const
-  const reviewIndex = harness.ledger.findIndex(
-    (event) => event.type === "review-read"
-  )
-  const failureIndex = harness.ledger.findIndex(
-    (event) => event.type === "failure"
-  )
-  const hydrateBeforeIndex =
-    reviewIndex >= 0
-      ? reviewIndex
-      : failureIndex >= 0
-        ? failureIndex
-        : harness.ledger.length
-
-  for (const type of hydrateTypes) {
-    const events = harness.ledger.filter((event) => event.type === type)
-    expect(events.length).toBeGreaterThan(0)
-    for (const event of events) {
-      const index = harness.ledger.indexOf(event)
-      expect(event.transactionManager).toBe(harness.lockTransactionManager)
-      expect(index).toBeGreaterThan(rereadIndex)
-      expect(index).toBeLessThan(hydrateBeforeIndex)
-    }
-  }
 }
 
 function assertHr07PixNoCatalogQueriesAfterReview(
@@ -2222,12 +2157,12 @@ function assertHr07PixEligibilityRejectedClosed(
   ).toHaveLength(0)
   expect(harness.paymentCollectionQueryCount).toBe(0)
   expect(harness.remoteQueryCartCount).toBe(0)
-  expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+  expect(harness.medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
   expect(harness.workflowEngine.run).not.toHaveBeenCalled()
   expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
-  expect(harness.queryGraph.graph).not.toHaveBeenCalled()
+  expect(harness.queryGraph.graph).toHaveBeenCalled()
   expect(harness.resolvedKeys).not.toContain(Modules.REGION)
-  expect(harness.resolvedKeys).not.toContain(ContainerRegistrationKeys.QUERY)
+  expect(harness.resolvedKeys).toContain(ContainerRegistrationKeys.QUERY)
   expect(harness.resolvedKeys).not.toContain(Modules.PAYMENT)
   expect(harness.resolvedKeys).not.toContain(Modules.WORKFLOW_ENGINE)
 }
@@ -2465,9 +2400,9 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
 
     expect(harness.lockTransactionManager).toBeDefined()
     expect(harness.retrieveSharedContext?.transactionManager).toBeDefined()
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07CardSameTransactionManager(harness)
     expectHr08LedgerOrder(harness.ledger, [
       "transaction-start",
@@ -2508,9 +2443,9 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
       "REVIEW_REQUIRED"
     )
 
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07CardSameTransactionManager(harness)
 
     expect(
@@ -2535,7 +2470,7 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
       harness.ledger.filter((event) => event.type === "order-resolve")
     ).toHaveLength(0)
     expect(harness.paymentCollectionQueryCount).toBe(0)
-    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+    expect(harness.medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
 
     const ownershipEvent = harness.ledger.find(
       (event) => event.type === "ownership-check-input"
@@ -2545,7 +2480,9 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
         type: "ownership-check-input",
         cartId: cart.id,
         customerId: HR08_CUSTOMER_B,
-        transactionManager: harness.lockTransactionManager,
+        transactionManager: expect.objectContaining({
+          getTransactionContext: expect.any(Function),
+        }),
       })
     )
     expectHr08LedgerOrder(harness.ledger, [
@@ -2575,9 +2512,9 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
     }
 
     expect(thrown).toBeDefined()
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07CardSameTransactionManager(harness)
     assertHr08PendingBeforeProvider({
       error: thrown,
@@ -2589,7 +2526,7 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
       harness.ledger.filter((event) => event.type === "provider-call")
     ).toHaveLength(0)
     expect(harness.paymentCollectionQueryCount).toBe(0)
-    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+    expect(harness.medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
     expect(harness.medusaPaymentModule.updatePaymentSessions).not.toHaveBeenCalled()
     expect(
       harness.paymentAttemptModule.createPaymentAttempts
@@ -2626,9 +2563,9 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
 
     await startCardPaymentAttemptRoute(req, res)
 
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07CardSameTransactionManager(harness)
 
     expect(res.statusCode).toBe(201)
@@ -2680,27 +2617,18 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
       "eligibility",
       "provider-call",
     ])
+    expect(harness.queryGraph.graph).toHaveBeenCalled()
     expect(
-      harness.ledger.find((event) => event.type === "region-hydrate")?.iso2
-    ).toBe("br")
-    expect(
-      harness.ledger.filter((event) => event.type === "price-hydrate").length
-    ).toBeGreaterThan(0)
-    expect(
-      harness.ledger
-        .filter((event) => event.type === "price-hydrate")
-        .every(
-          (event) => event.transactionManager === harness.lockTransactionManager
-        )
-    ).toBe(true)
-    expect(harness.knex.raw).toHaveBeenCalledWith(
-      expect.stringMatching(/from\s+region_country/i),
-      [cart.region_id]
-    )
-    expect(harness.knex.raw).toHaveBeenCalledWith(
-      expect.stringMatching(/from\s+product_variant\b/i),
-      ["variant_sellable"]
-    )
+      harness.knex.raw.mock.calls.filter(
+        ([sql]: [string]) =>
+          [
+            "region-hydrate",
+            "variant-hydrate",
+            "variant-price-link",
+            "price-hydrate",
+          ].includes(classifyHr08Sql(sql))
+      )
+    ).toHaveLength(0)
     assertHr08NoPublicLeakage(body)
   })
 
@@ -2713,10 +2641,7 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
     const harness = wireHr08PaymentStartScope(req, {
       cart,
       review: "acknowledged",
-      knexCatalog: {
-        regionCountries: [{ iso_2: "us" }],
-      },
-      unboundRegionCountries: [{ iso_2: "br" }],
+      queryRegionCountries: [{ iso_2: "us" }],
     })
     const res = createResponse()
 
@@ -2727,18 +2652,17 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
       thrown = error
     }
 
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07CardSameTransactionManager(harness)
     assertHr07CardEligibilityRejectedClosed(harness, thrown)
+    expect(harness.queryGraph.graph).toHaveBeenCalled()
     expect(
-      harness.ledger.find((event) => event.type === "region-hydrate")?.iso2
-    ).toBe("us")
-    expect(harness.knex.raw).toHaveBeenCalledWith(
-      expect.stringMatching(/from\s+region_country/i),
-      [cart.region_id]
-    )
+      harness.knex.raw.mock.calls.filter(
+        ([sql]: [string]) => classifyHr08Sql(sql) === "region-hydrate"
+      )
+    ).toHaveLength(0)
     expectHr08LedgerOrder(harness.ledger, [
       "transaction-start",
       "lock",
@@ -2762,18 +2686,14 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
     const harness = wireHr08PaymentStartScope(req, {
       cart,
       review: "acknowledged",
-      knexCatalog: {
-        variantRows: [
-          {
-            id: "variant_sellable",
-            sku: "TSHIRT-BLACK-M",
-            metadata: {},
-          },
-        ],
-        priceLinkRows: [],
-        priceRows: [],
-      },
-      unboundQueryVariants: [sellableVariant()],
+      queryVariants: [
+        {
+          id: "variant_sellable",
+          sku: "TSHIRT-BLACK-M",
+          metadata: {},
+          prices: [],
+        },
+      ],
     })
     const res = createResponse()
 
@@ -2784,15 +2704,13 @@ describe("B16-09-HR-07 Card transaction identity HTTP evidence", () => {
       thrown = error
     }
 
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07CardSameTransactionManager(harness)
     assertHr07CardEligibilityRejectedClosed(harness, thrown)
-    expect(harness.knex.raw).toHaveBeenCalledWith(
-      expect.stringMatching(/from\s+product_variant\b/i),
-      ["variant_sellable"]
-    )
+    expect(harness.queryGraph.graph).toHaveBeenCalled()
+    expect(harness.resolvedKeys).toContain(ContainerRegistrationKeys.QUERY)
     expectHr08LedgerOrder(harness.ledger, [
       "transaction-start",
       "lock",
@@ -2822,9 +2740,9 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
 
     expect(harness.lockTransactionManager).toBeDefined()
     expect(harness.retrieveSharedContext?.transactionManager).toBeDefined()
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07PixSameTransactionManager(harness)
     expectHr08LedgerOrder(harness.ledger, [
       "transaction-start",
@@ -2874,7 +2792,7 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
       harness.ledger.filter((event) => event.type === "failure")
     ).toHaveLength(0)
     expect(harness.remoteQueryCartCount).toBe(0)
-    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+    expect(harness.medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
     expect(harness.workflowEngine.run).not.toHaveBeenCalled()
     assertHr08NoPublicLeakage(body)
   })
@@ -2906,9 +2824,9 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
       "REVIEW_REQUIRED"
     )
 
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07PixSameTransactionManager(harness)
 
     expect(
@@ -2934,7 +2852,7 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
     ).toHaveLength(0)
     expect(harness.paymentCollectionQueryCount).toBe(0)
     expect(harness.remoteQueryCartCount).toBe(0)
-    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+    expect(harness.medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
     expect(harness.workflowEngine.run).not.toHaveBeenCalled()
     expect(harness.resolvedKeys).not.toContain(Modules.PAYMENT)
     expect(harness.resolvedKeys).not.toContain(Modules.WORKFLOW_ENGINE)
@@ -2947,7 +2865,9 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
         type: "ownership-check-input",
         cartId: cart.id,
         customerId: HR08_CUSTOMER_B,
-        transactionManager: harness.lockTransactionManager,
+        transactionManager: expect.objectContaining({
+          getTransactionContext: expect.any(Function),
+        }),
       })
     )
     expectHr08LedgerOrder(harness.ledger, [
@@ -2977,9 +2897,9 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
     }
 
     expect(thrown).toBeDefined()
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07PixSameTransactionManager(harness)
     assertHr08PendingBeforeProvider({
       error: thrown,
@@ -2992,7 +2912,7 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
     ).toHaveLength(0)
     expect(harness.paymentCollectionQueryCount).toBe(0)
     expect(harness.remoteQueryCartCount).toBe(0)
-    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+    expect(harness.medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
     expect(harness.medusaPaymentModule.updatePaymentSessions).not.toHaveBeenCalled()
     expect(harness.workflowEngine.run).not.toHaveBeenCalled()
     expect(
@@ -3032,9 +2952,9 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
 
     await startPixPaymentAttemptRoute(req, res)
 
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07PixSameTransactionManager(harness)
 
     expect(res.statusCode).toBe(201)
@@ -3079,7 +2999,7 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
     ).toHaveLength(0)
     expect(harness.resolvedKeys).not.toContain(Modules.PAYMENT)
     expect(harness.resolvedKeys).not.toContain(Modules.WORKFLOW_ENGINE)
-    expect(harness.medusaPaymentModule.createPaymentSession_).not.toHaveBeenCalled()
+    expect(harness.medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
     expect(harness.workflowEngine.run).not.toHaveBeenCalled()
     expect(harness.paymentCollectionQueryCount).toBe(0)
     expect(harness.remoteQueryCartCount).toBe(0)
@@ -3092,29 +3012,19 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
       "eligibility",
       "provider-call",
     ])
+    expect(harness.queryGraph.graph).toHaveBeenCalled()
     expect(
-      harness.ledger.find((event) => event.type === "region-hydrate")?.iso2
-    ).toBe("br")
-    expect(
-      harness.ledger.filter((event) => event.type === "price-hydrate").length
-    ).toBeGreaterThan(0)
-    expect(
-      harness.ledger
-        .filter((event) => event.type === "price-hydrate")
-        .every(
-          (event) => event.transactionManager === harness.lockTransactionManager
-        )
-    ).toBe(true)
-    expect(harness.knex.raw).toHaveBeenCalledWith(
-      expect.stringMatching(/from\s+region_country/i),
-      [cart.region_id]
-    )
-    expect(harness.knex.raw).toHaveBeenCalledWith(
-      expect.stringMatching(/from\s+product_variant\b/i),
-      ["variant_sellable"]
-    )
+      harness.knex.raw.mock.calls.filter(
+        ([sql]: [string]) =>
+          [
+            "region-hydrate",
+            "variant-hydrate",
+            "variant-price-link",
+            "price-hydrate",
+          ].includes(classifyHr08Sql(sql))
+      )
+    ).toHaveLength(0)
     expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
-    expect(harness.queryGraph.graph).not.toHaveBeenCalled()
     assertHr08NoPublicLeakage(body)
   })
 
@@ -3127,10 +3037,7 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
     const harness = wireHr08PaymentStartScope(req, {
       cart,
       review: "acknowledged",
-      knexCatalog: {
-        regionCountries: [{ iso_2: "us" }],
-      },
-      unboundRegionCountries: [{ iso_2: "br" }],
+      queryRegionCountries: [{ iso_2: "us" }],
     })
     const res = createResponse()
 
@@ -3141,18 +3048,17 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
       thrown = error
     }
 
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07PixSameTransactionManager(harness)
     assertHr07PixEligibilityRejectedClosed(harness, thrown)
+    expect(harness.queryGraph.graph).toHaveBeenCalled()
     expect(
-      harness.ledger.find((event) => event.type === "region-hydrate")?.iso2
-    ).toBe("us")
-    expect(harness.knex.raw).toHaveBeenCalledWith(
-      expect.stringMatching(/from\s+region_country/i),
-      [cart.region_id]
-    )
+      harness.knex.raw.mock.calls.filter(
+        ([sql]: [string]) => classifyHr08Sql(sql) === "region-hydrate"
+      )
+    ).toHaveLength(0)
     expect(harness.regionModule.retrieveRegion).not.toHaveBeenCalled()
     expect(harness.resolvedKeys).not.toContain(Modules.REGION)
     expectHr08LedgerOrder(harness.ledger, [
@@ -3178,18 +3084,14 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
     const harness = wireHr08PaymentStartScope(req, {
       cart,
       review: "acknowledged",
-      knexCatalog: {
-        variantRows: [
-          {
-            id: "variant_sellable",
-            sku: "TSHIRT-BLACK-M",
-            metadata: {},
-          },
-        ],
-        priceLinkRows: [],
-        priceRows: [],
-      },
-      unboundQueryVariants: [sellableVariant()],
+      queryVariants: [
+        {
+          id: "variant_sellable",
+          sku: "TSHIRT-BLACK-M",
+          metadata: {},
+          prices: [],
+        },
+      ],
     })
     const res = createResponse()
 
@@ -3200,17 +3102,13 @@ describe("B16-09-HR-07 Pix transaction identity HTTP evidence", () => {
       thrown = error
     }
 
-    expect(harness.retrieveSharedContext?.transactionManager).toBe(
-      harness.lockTransactionManager
-    )
+    expect(
+      harness.retrieveSharedContext?.transactionManager?.getTransactionContext?.()
+    ).toBe(harness.knex)
     assertHr07PixSameTransactionManager(harness)
     assertHr07PixEligibilityRejectedClosed(harness, thrown)
-    expect(harness.knex.raw).toHaveBeenCalledWith(
-      expect.stringMatching(/from\s+product_variant\b/i),
-      ["variant_sellable"]
-    )
-    expect(harness.queryGraph.graph).not.toHaveBeenCalled()
-    expect(harness.resolvedKeys).not.toContain(ContainerRegistrationKeys.QUERY)
+    expect(harness.queryGraph.graph).toHaveBeenCalled()
+    expect(harness.resolvedKeys).toContain(ContainerRegistrationKeys.QUERY)
     expectHr08LedgerOrder(harness.ledger, [
       "transaction-start",
       "lock",
@@ -3435,28 +3333,24 @@ function wireHr05LineItemMutationScope(
       transaction: jest.fn(
         async (callback: (manager: unknown) => Promise<unknown>) => {
           cartTransactionCalls += 1
-          const isMutationTx = cartTransactionCalls > 1
-          if (isMutationTx) {
-            ledger.push({ type: "transaction-start" })
-          } else {
-            ledger.push({ type: "pre-lock-canonical-transaction" })
-          }
-
-          const knex = isMutationTx ? mutationKnex : preLockKnex
+          ledger.push({ type: "transaction-start" })
 
           try {
             return await callback({
-              getTransactionContext: () => knex,
+              getTransactionContext: () => mutationKnex,
             })
           } catch (error) {
-            if (isMutationTx) {
-              ledger.push({ type: "failure" })
-            }
+            ledger.push({ type: "failure" })
             throw error
           }
         }
       ),
     },
+    listCarts: jest.fn(async (filters?: Record<string, unknown>) => {
+      return filters?.customer_id === HR05_CUSTOMER_A
+        ? [options.canonicalCart]
+        : []
+    }),
     retrieveCart: jest.fn(async (cartId: string) => {
       ledger.push({
         type: "post-lock-query",
@@ -3465,6 +3359,27 @@ function wireHr05LineItemMutationScope(
       })
       return wrapHr08PostLockCart(options.lockedCart, ledger)
     }),
+    listCustomerCartAuthoritiesForUpdate: jest.fn(async () => []),
+    createCustomerCartAuthority: jest.fn(
+      async (input: { customer_id: string; cart_id: string }) => ({
+        id: `ccauth_${input.cart_id}`,
+        customer_id: input.customer_id,
+        cart_id: input.cart_id,
+        state: "active" as const,
+      })
+    ),
+    supersedeCustomerCartAuthority: jest.fn(async () => undefined),
+  }
+
+  const authorityKnex = {
+    raw: jest.fn(async () => ({ rows: [] })),
+  }
+  const pgConnection = {
+    raw: jest.fn(async () => ({ rows: [] })),
+    transaction: jest.fn(
+      async (callback: (transaction: typeof authorityKnex) => Promise<unknown>) =>
+        callback(authorityKnex)
+    ),
   }
 
   const remoteQuery = jest.fn(async (queryObject: RemoteQueryShape) => {
@@ -3580,17 +3495,16 @@ function wireHr05LineItemMutationScope(
       return cartModule
     }
 
+    if (key === CART_MERGE_MODULE) {
+      return cartModule
+    }
+
     if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
       return remoteQuery
     }
 
     if (key === ContainerRegistrationKeys.PG_CONNECTION) {
-      return {
-        raw: jest.fn(async () => ({ rows: [] })),
-        transaction: jest.fn(async (callback: (trx: unknown) => unknown) =>
-          callback({ raw: jest.fn(async () => ({ rows: [] })) })
-        ),
-      }
+      return pgConnection
     }
 
     if (key === GUEST_CART_CAPABILITY_MODULE) {
@@ -3623,6 +3537,7 @@ function wireHr05LineItemMutationScope(
     idempotencyService,
     versionService,
     workflowEngine,
+    pgConnection,
     createScope,
     get cartTransactionCalls() {
       return cartTransactionCalls

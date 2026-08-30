@@ -459,11 +459,52 @@ export function validatePaymentIntentForAttempt(
 
 export function findPaymentAttemptForWebhook(
   attempts: PaymentAttemptRecord[],
-  paymentIntentId: string
+  paymentIntentId: string,
+  paymentIntentMetadata?: Record<string, unknown> | null
 ): PaymentAttemptRecord {
-  const attempt = attempts.find(
+  const providerMatches = attempts.filter(
     (entry) => entry.provider_payment_intent_id === paymentIntentId
   )
+  if (providerMatches.length > 1) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_CONFLICT",
+      "Mais de uma tentativa corresponde ao PaymentIntent."
+    )
+  }
+
+  const durableAttemptId = readDurablePaymentAttemptIdentity(
+    paymentIntentMetadata
+  )
+  const durableMatches = durableAttemptId
+    ? attempts.filter((entry) => entry.id === durableAttemptId)
+    : []
+  if (durableMatches.length > 1) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_CONFLICT",
+      "Mais de uma tentativa corresponde à identidade duravel."
+    )
+  }
+
+  const providerAttempt = providerMatches[0]
+  const durableAttempt = durableMatches[0]
+  if (durableAttemptId && !durableAttempt) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+      "Identidade da tentativa nao encontrada."
+    )
+  }
+  if (
+    providerAttempt &&
+    durableAttempt &&
+    providerAttempt.id !== durableAttempt.id
+  ) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+      "As identidades do PaymentIntent nao correspondem à mesma tentativa."
+    )
+  }
+
+  const attempt = durableAttempt ?? providerAttempt
 
   if (!attempt) {
     throw new PaymentAttemptWebhookError(

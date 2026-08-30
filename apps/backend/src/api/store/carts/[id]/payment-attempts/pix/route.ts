@@ -7,7 +7,6 @@ import {
 } from "@medusajs/framework/utils"
 import { rejectClientMoneyFields } from "../../../payment-attempts/validators"
 import type { StoreCartPreOrderRecord } from "../../../serializers"
-import type { CatalogVariantInput } from "../../../../../../modules/catalog/types"
 import {
   serializePixPaymentAttemptResponse,
   STRIPE_PIX_INITIATION_LAYER,
@@ -36,6 +35,8 @@ import type {
   TransactionalManagerLike,
 } from "../../../../../../infrastructure/store-foundation-transaction-compatibility"
 import { initializeCartResourceVersion } from "../../../concurrency"
+import { resolvePaymentCartCatalog } from "../../../payment-catalog"
+import { withCartModuleTransaction } from "../../../../../../workflows/cart/cart-transaction-boundary"
 
 type SessionCapableRequest = MedusaRequest & {
   auth_context?: {
@@ -106,11 +107,6 @@ type LockedCartRecord = {
 }
 
 type CartModuleForPaymentTransaction = {
-  baseRepository_?: {
-    transaction<T>(
-      callback: (transactionManager: TransactionalManagerLike) => Promise<T>
-    ): Promise<T>
-  }
   retrieveCart?: (
     cartId: string,
     config?: CartOwnedRetrieveConfig,
@@ -140,37 +136,6 @@ const CART_OWNED_RETRIEVE_CONFIG: CartOwnedRetrieveConfig = {
   relations: ["items", "shipping_address"],
 }
 
-type PgConnectionForPaymentTransaction = {
-  transaction<T>(callback: (transaction: KnexLike) => Promise<T>): Promise<T>
-}
-
-function currentPaymentTransactionContext(
-  transactionManager: TransactionalManagerLike
-): SharedTransactionContext {
-  return {
-    __type: "MedusaContext",
-    transactionManager,
-    manager: transactionManager,
-  }
-}
-
-function requirePaymentKnex(
-  sharedContext: SharedTransactionContext
-): KnexLike {
-  const knex = sharedContext.transactionManager.getTransactionContext?.()
-  if (!knex || typeof knex.raw !== "function") {
-    throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
-  }
-
-  return knex
-}
-
-function paymentKnexRows(
-  result: { rows?: Array<Record<string, unknown>> }
-): Array<Record<string, unknown>> {
-  return result.rows ?? []
-}
-
 function asNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
@@ -181,52 +146,40 @@ async function withCartPaymentTransaction<T>(
   req: SessionCapableRequest,
   callback: (sharedContext: SharedTransactionContext) => Promise<T>
 ): Promise<T> {
-  let cartModule: CartModuleForPaymentTransaction | undefined
-
   try {
-    cartModule = req.scope.resolve(
-      Modules.CART
-    ) as CartModuleForPaymentTransaction
-  } catch {
-    cartModule = undefined
-  }
-
-  const cartTransaction = cartModule?.baseRepository_?.transaction
-  if (typeof cartTransaction === "function") {
-    return cartTransaction.call(
-      cartModule?.baseRepository_,
-      async (transactionManager) => {
-        if (!transactionManager.getTransactionContext?.()) {
-          throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
-        }
-
-        return callback(currentPaymentTransactionContext(transactionManager))
-      }
+    return await withCartModuleTransaction(
+      req.scope,
+      (_transaction, _manager, sharedContext) => callback(sharedContext)
     )
-  }
+  } catch (error) {
+    // Narrow test-double compatibility only: real Medusa always exposes the
+    // Cart module transaction boundary above. Do not fall back after a
+    // transaction has started or after callback work has failed.
+    if (
+      !(error instanceof Error) ||
+      error.message !== "CART_TRANSACTION_AUTHORITY_UNAVAILABLE"
+    ) {
+      throw error
+    }
 
-  let pgConnection: PgConnectionForPaymentTransaction | undefined
-  try {
-    pgConnection = req.scope.resolve(
+    const pgConnection = req.scope.resolve(
       ContainerRegistrationKeys.PG_CONNECTION
-    ) as PgConnectionForPaymentTransaction
-  } catch {
-    pgConnection = undefined
-  }
-
-  if (typeof pgConnection?.transaction === "function") {
+    ) as {
+      transaction<TInner>(
+        callback: (transaction: KnexLike) => Promise<TInner>
+      ): Promise<TInner>
+    }
     return pgConnection.transaction(async (transaction) => {
       const transactionManager: TransactionalManagerLike = {
         getTransactionContext: () => transaction,
       }
-      return callback(currentPaymentTransactionContext(transactionManager))
+      return callback({
+        __type: "MedusaContext",
+        transactionManager,
+        manager: transactionManager,
+      })
     })
   }
-
-  throw new MedusaError(
-    MedusaError.Types.INVALID_DATA,
-    "Autoridade transacional do cart indisponivel."
-  )
 }
 
 const PAYMENT_ATTEMPT_LIST_ERROR_MESSAGE =
@@ -291,10 +244,7 @@ function resolveCartModuleForLockedRetrieve(
     cartModule = undefined
   }
 
-  if (
-    typeof cartModule?.retrieveCart !== "function" ||
-    typeof cartModule.baseRepository_?.transaction !== "function"
-  ) {
+  if (typeof cartModule?.retrieveCart !== "function") {
     throw new MedusaError(
       MedusaError.Types.INVALID_DATA,
       "Autoridade transacional do cart indisponivel."
@@ -340,258 +290,13 @@ function projectLockedCartCustomer(
   }
 }
 
-async function hydrateLockedCartRegion(
-  knex: KnexLike,
-  regionId: string | null
-): Promise<StoreCartPreOrderRecord["region"]> {
-  if (!regionId) {
-    return null
-  }
-
-  const result = await knex.raw(
-    `
-      select iso_2
-      from region_country
-      where region_id = ?
-        and deleted_at is null
-    `,
-    [regionId]
-  )
-
-  return {
-    countries: paymentKnexRows(result).map((row) => ({
-      iso_2: asNonEmptyString(row.iso_2),
-    })),
-  }
-}
-
-function coerceLockedCartPriceAmount(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value
-  }
-
-  if (typeof value === "string" && value.trim().length > 0) {
-    const amount = Number(value)
-    return Number.isFinite(amount) ? amount : undefined
-  }
-
-  return undefined
-}
-
-function parseLockedCartVariantMetadata(
-  value: unknown
-): Record<string, unknown> | null {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>
-  }
-
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return null
-  }
-
-  try {
-    const parsed = JSON.parse(value) as unknown
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
-    }
-  } catch {
-    return null
-  }
-
-  return null
-}
-
-function mapLockedCartVariant(row: unknown): CatalogVariantInput | null {
-  if (!row || typeof row !== "object") {
-    return null
-  }
-
-  const variant = row as {
-    id?: unknown
-    sku?: unknown
-    metadata?: unknown
-    prices?: unknown
-  }
-  const id = asNonEmptyString(variant.id)
-  if (!id) {
-    return null
-  }
-
-  const prices = Array.isArray(variant.prices)
-    ? variant.prices.flatMap((price) => {
-        if (!price || typeof price !== "object") {
-          return []
-        }
-
-        const currencyCode = asNonEmptyString(
-          (price as { currency_code?: unknown }).currency_code
-        )
-        if (!currencyCode) {
-          return []
-        }
-
-        const amount = coerceLockedCartPriceAmount(
-          (price as { amount?: unknown }).amount
-        )
-        if (amount === undefined) {
-          return []
-        }
-
-        return [
-          {
-            currency_code: currencyCode,
-            amount,
-          },
-        ]
-      })
-    : undefined
-
-  return {
-    id,
-    sku: asNonEmptyString(variant.sku) ?? undefined,
-    metadata:
-      variant.metadata && typeof variant.metadata === "object"
-        ? (variant.metadata as Record<string, unknown>)
-        : ((variant.metadata as CatalogVariantInput["metadata"]) ?? null),
-    prices,
-  }
-}
-
-async function hydrateLockedCartVariants(
-  knex: KnexLike,
-  variantIds: string[]
-): Promise<Map<string, CatalogVariantInput>> {
-  const variantsById = new Map<string, CatalogVariantInput>()
-  if (variantIds.length === 0) {
-    return variantsById
-  }
-
-  const placeholders = variantIds.map(() => "?").join(", ")
-  const [variantResult, linkResult] = await Promise.all([
-    knex.raw(
-      `
-        select id, sku, metadata
-        from product_variant
-        where id in (${placeholders})
-          and deleted_at is null
-      `,
-      variantIds
-    ),
-    knex.raw(
-      `
-        select variant_id, price_set_id
-        from product_variant_price_set
-        where variant_id in (${placeholders})
-          and deleted_at is null
-      `,
-      variantIds
-    ),
-  ])
-
-  const variantRows = paymentKnexRows(variantResult)
-  const linkRows = paymentKnexRows(linkResult)
-  const priceSetIds = [
-    ...new Set(
-      linkRows
-        .map((row) => asNonEmptyString(row.price_set_id))
-        .filter((priceSetId): priceSetId is string => Boolean(priceSetId))
-    ),
-  ]
-
-  const pricesByPriceSetId = new Map<
-    string,
-    Array<{ currency_code: string; amount: number }>
-  >()
-  if (priceSetIds.length > 0) {
-    const pricePlaceholders = priceSetIds.map(() => "?").join(", ")
-    const priceResult = await knex.raw(
-      `
-        select price_set_id, currency_code, amount
-        from price
-        where price_set_id in (${pricePlaceholders})
-          and deleted_at is null
-      `,
-      priceSetIds
-    )
-
-    for (const row of paymentKnexRows(priceResult)) {
-      const priceSetId = asNonEmptyString(row.price_set_id)
-      const currencyCode = asNonEmptyString(row.currency_code)
-      const amount = coerceLockedCartPriceAmount(row.amount)
-      if (!priceSetId || !currencyCode || amount === undefined) {
-        continue
-      }
-
-      const prices = pricesByPriceSetId.get(priceSetId) ?? []
-      prices.push({ currency_code: currencyCode, amount })
-      pricesByPriceSetId.set(priceSetId, prices)
-    }
-  }
-
-  const pricesByVariantId = new Map<
-    string,
-    Array<{ currency_code: string; amount: number }>
-  >()
-  for (const row of linkRows) {
-    const variantId = asNonEmptyString(row.variant_id)
-    const priceSetId = asNonEmptyString(row.price_set_id)
-    if (!variantId || !priceSetId) {
-      continue
-    }
-
-    const linkedPrices = pricesByPriceSetId.get(priceSetId) ?? []
-    const prices = pricesByVariantId.get(variantId) ?? []
-    prices.push(...linkedPrices)
-    pricesByVariantId.set(variantId, prices)
-  }
-
-  for (const row of variantRows) {
-    const variantId = asNonEmptyString(row.id)
-    if (!variantId) {
-      continue
-    }
-
-    const variant = mapLockedCartVariant({
-      id: variantId,
-      sku: row.sku,
-      metadata: parseLockedCartVariantMetadata(row.metadata),
-      prices: pricesByVariantId.get(variantId) ?? [],
-    })
-    if (variant?.id) {
-      variantsById.set(variant.id, variant)
-    }
-  }
-
-  for (const variantId of variantIds) {
-    if (!variantsById.has(variantId)) {
-      throw new MedusaError(
-        MedusaError.Types.INVALID_DATA,
-        "Catalogo de variantes indisponivel para iniciar pagamento."
-      )
-    }
-  }
-
-  return variantsById
-}
-
 type LockedCartMoneyAmount = number | null | undefined
 
 async function adaptLockedCartForPaymentPipeline(
-  lockedCart: LockedCartRecord,
-  sharedContext: SharedTransactionContext
+  req: SessionCapableRequest,
+  lockedCart: LockedCartRecord
 ): Promise<StoreCartPreOrderRecord & { total?: number | null }> {
-  const knex = requirePaymentKnex(sharedContext)
-  const variantIds = [
-    ...new Set(
-      (lockedCart.items ?? [])
-        .map((item) => asNonEmptyString(item.variant_id))
-        .filter((variantId): variantId is string => Boolean(variantId))
-    ),
-  ]
-  const [region, variantsById] = await Promise.all([
-    hydrateLockedCartRegion(knex, asNonEmptyString(lockedCart.region_id)),
-    hydrateLockedCartVariants(knex, variantIds),
-  ])
+  const catalog = await resolvePaymentCartCatalog(req, lockedCart)
 
   const {
     total,
@@ -612,7 +317,7 @@ async function adaptLockedCartForPaymentPipeline(
     tax_total: tax_total as LockedCartMoneyAmount,
     discount_total: discount_total as LockedCartMoneyAmount,
     customer: projectLockedCartCustomer(lockedCart),
-    region,
+    region: catalog.region,
     items: (lockedCart.items ?? []).map((item) => {
       const variantId = asNonEmptyString(item.variant_id)
 
@@ -624,7 +329,7 @@ async function adaptLockedCartForPaymentPipeline(
         variant_id: variantId,
         variant_title: item.variant_title ?? null,
         unit_price: item.unit_price as number | null,
-        variant: variantId ? variantsById.get(variantId) ?? null : null,
+        variant: variantId ? catalog.variantsById.get(variantId) ?? null : null,
       }
     }),
     shipping_address: lockedCart.shipping_address ?? null,
@@ -821,6 +526,72 @@ async function updatePixPaymentAttemptResult(
   }
 }
 
+/**
+ * Persist the provider binding before any later cross-module write. This
+ * separate commit keeps a successful Pix initiation recoverable if the
+ * PaymentAttempt finalization or another local operation fails afterwards.
+ */
+async function finalizePixPaymentAttemptInTransaction(input: {
+  request: SessionCapableRequest
+  cartId: string
+  actor: ReturnType<typeof resolvePaymentStartActor>
+  prepared: PreparePixPaymentAttemptResult
+  rawIntent: Parameters<typeof finalizePixPaymentAttempt>[0]["rawIntent"]
+  sharedContext: SharedTransactionContext
+}): Promise<Awaited<ReturnType<typeof finalizePixPaymentAttempt>>> {
+  const transaction = input.sharedContext.transactionManager.getTransactionContext?.()
+  if (!transaction) {
+    throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
+  }
+
+  await lockCartOrderAuthority(
+    transaction as unknown as PaymentAttemptSqlTransaction,
+    input.cartId
+  )
+  const lockedCart = await retrieveLockedCartInTransaction(
+    input.request,
+    input.cartId,
+    input.sharedContext
+  )
+  const cart = await adaptLockedCartForPaymentPipeline(
+    input.request,
+    lockedCart
+  )
+  assertPostLockCartOwnership(
+    cart,
+    input.actor,
+    input.request.session?.active_cart_id
+  )
+  await assertNoPendingCartReview(input.cartId, input.sharedContext)
+  assertPaymentStartEligible({
+    cart,
+    actor: input.actor,
+    paymentMethod: "pix",
+    sessionActiveCartId: input.request.session?.active_cart_id,
+  })
+
+  const currentAttempt = (await listExistingAttemptsForCart(
+    input.request,
+    input.cartId,
+    input.sharedContext
+  )).find((attempt) => attempt.id === input.prepared.attempt.id)
+  if (!currentAttempt) {
+    throw new MedusaError(
+      MedusaError.Types.CONFLICT,
+      "Tentativa Pix nao esta mais disponivel."
+    )
+  }
+
+  return finalizePixPaymentAttempt({
+    prepared: input.prepared,
+    cart,
+    actor: input.actor,
+    sessionActiveCartId: input.request.session?.active_cart_id,
+    currentAttempt,
+    rawIntent: input.rawIntent,
+  })
+}
+
 function resolvePaymentStartActor(req: SessionCapableRequest) {
   const identity = resolveActiveCartIdentity({
     auth_context: req.auth_context,
@@ -892,8 +663,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       sharedContext
     )
     const cart = await adaptLockedCartForPaymentPipeline(
-      lockedCart,
-      sharedContext
+      request,
+      lockedCart
     )
     assertPostLockCartOwnership(
       cart,
@@ -947,54 +718,30 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     stripeLayer: preparedOperation.stripeLayer,
   })
 
-  const result = await withCartPaymentTransaction(request, async (sharedContext) => {
-    const transaction = sharedContext.transactionManager.getTransactionContext?.()
-    if (!transaction) {
-      throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
-    }
-
-    await lockCartOrderAuthority(
-      transaction as unknown as PaymentAttemptSqlTransaction,
-      cartId
-    )
-    const lockedCart = await retrieveLockedCartInTransaction(
+  await withCartPaymentTransaction(request, async (sharedContext) => {
+    const paymentResult = await finalizePixPaymentAttemptInTransaction({
       request,
       cartId,
-      sharedContext
-    )
-    const cart = await adaptLockedCartForPaymentPipeline(lockedCart, sharedContext)
-    assertPostLockCartOwnership(
-      cart,
       actor,
-      request.session?.active_cart_id
-    )
-    await assertNoPendingCartReview(cartId, sharedContext)
-    assertPaymentStartEligible({
-      cart,
-      actor,
-      paymentMethod: "pix",
-      sessionActiveCartId: request.session?.active_cart_id,
-    })
-
-    const currentAttempt = (await listExistingAttemptsForCart(
-      request,
-      cartId,
-      sharedContext
-    )).find((attempt) => attempt.id === preparedOperation.prepared.attempt.id)
-    if (!currentAttempt) {
-      throw new MedusaError(
-        MedusaError.Types.CONFLICT,
-        "Tentativa Pix nao esta mais disponivel."
-      )
-    }
-
-    const paymentResult = await finalizePixPaymentAttempt({
       prepared: preparedOperation.prepared,
-      cart,
-      actor,
-      sessionActiveCartId: request.session?.active_cart_id,
-      currentAttempt,
       rawIntent,
+      sharedContext,
+    })
+    await updatePixPaymentAttemptResult(
+      request,
+      paymentResult.attempt,
+      sharedContext
+    )
+  })
+
+  const result = await withCartPaymentTransaction(request, async (sharedContext) => {
+    const paymentResult = await finalizePixPaymentAttemptInTransaction({
+      request,
+      cartId,
+      actor,
+      prepared: preparedOperation.prepared,
+      rawIntent,
+      sharedContext,
     })
     await updatePixPaymentAttemptResult(
       request,

@@ -12,7 +12,6 @@ import {
 import { hashGuestCartCapability } from "../../guest-cart-capability/hash"
 import {
   GUEST_CART_CAPABILITY_STATUS,
-  type GuestCartCapabilityReplayBinding,
   type GuestCartCapabilityRecord,
 } from "../../guest-cart-capability/types"
 
@@ -117,37 +116,6 @@ function capabilityRecord(overrides: Partial<GuestCartCapabilityRecord> = {}): G
     updated_at: at.toISOString(),
     deleted_at: null,
     ...overrides,
-  }
-}
-
-function replayBinding(): GuestCartCapabilityReplayBinding {
-  return {
-    customerId,
-    guestCartId,
-    customerCartId: null,
-    operation,
-    actorScopeHash: hashStoreIdempotencyScope({
-      actor_type: "customer",
-      customer_id: customerId,
-    }),
-    resourceScopeHash: hashStoreIdempotencyScope({
-      resource_type: "cart_merge",
-      guest_cart_id: guestCartId,
-      customer_cart_id: null,
-      capability_id: "gccap_phase16",
-    }),
-    idempotencyKeyHash: hashStoreIdempotencyKey(
-      rawIdempotencyKey,
-      Buffer.alloc(32).toString("base64url")
-    ),
-    idempotencyRecordId,
-    requestFingerprint: buildStoreIdempotencyRequestFingerprint(semanticObject),
-    resultId,
-    resultType: "cart_merge",
-    capabilityHash: hashGuestCartCapability(presentedCapability),
-    expiresAt: new Date(
-      at.getTime() + STORE_IDEMPOTENCY_DEFAULT_TERMINAL_RETENTION_MS
-    ).toISOString(),
   }
 }
 
@@ -343,7 +311,7 @@ describe("Task 16-05-02: idempotency e replay terminal", () => {
   })
 })
 
-describe("Task 16-05-02: consumed capability replay", () => {
+describe("Task 16-05-02: capability owner replay read", () => {
   function capabilityServiceWithRaw(raw: jest.Mock): GuestCartCapabilityModuleService {
     const service = Object.create(GuestCartCapabilityModuleService.prototype)
     Object.defineProperty(service, "baseRepository_", {
@@ -356,103 +324,46 @@ describe("Task 16-05-02: consumed capability replay", () => {
     return service
   }
 
-  it("permite somente replay compatível após auth/bindings e não toca TTL nem capability", async () => {
+  it("lê somente a capability própria sem consultar tabelas de outros módulos", async () => {
     const originalExpiresAt = capabilityRecord().expires_at
     const capability = capabilityRecord()
-    const binding = replayBinding()
     const raw = jest
       .fn()
       .mockResolvedValueOnce({ rows: [capability] })
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: resultId,
-            idempotency_record_id: idempotencyRecordId,
-            customer_id: customerId,
-            guest_cart_id: guestCartId,
-            customer_cart_id: null,
-            canonical_cart_id: guestCartId,
-            capability_id: capability.id,
-            capability_hash: binding.capabilityHash,
-            request_fingerprint: binding.requestFingerprint,
-            outcome: "GUEST_CART_ATTACHED",
-            rejected_items: [],
-            review_id: null,
-            review_ref: null,
-            original_public_cart_snapshot: { id: guestCartId, items: [] },
-            original_review_snapshot: {
-              requiresReview: false,
-              reviewRef: null,
-              rejectedItems: [],
-            },
-            original_etag: '"8"',
-            expires_at: binding.expiresAt,
-            idempotency_id: idempotencyRecordId,
-            idempotency_operation: operation,
-            idempotency_state: "completed",
-            idempotency_result_type: "cart_merge",
-            idempotency_result_id: resultId,
-            idempotency_expires_at: binding.expiresAt,
-          },
-        ],
-      })
     const service = capabilityServiceWithRaw(raw)
     const context = sharedContext(raw)
 
-    const replay = await service.lookupConsumedGuestCartCapabilityForReplay({
-      presentedToken: presentedCapability,
-      cartId: guestCartId,
-      bffAuthorized: true,
-      customerAuthorized: true,
-      binding,
-      sharedContext: context,
-      now: at,
-    })
+    const replay = await service.retrieveGuestCartCapabilityForReplay(
+      capability.id,
+      context
+    )
 
-    expect(replay?.result.id).toBe(resultId)
-    expect(replay?.result.original_etag).toBe('"8"')
-    expect(replay?.capability.status).toBe(GUEST_CART_CAPABILITY_STATUS.CONSUMED)
-    expect(replay?.capability.expires_at).toBe(originalExpiresAt)
-    expect(raw).toHaveBeenCalledTimes(2)
+    expect(replay?.id).toBe(capability.id)
+    expect(replay?.status).toBe(GUEST_CART_CAPABILITY_STATUS.CONSUMED)
+    expect(replay?.expires_at).toBe(originalExpiresAt)
+    expect(raw).toHaveBeenCalledTimes(1)
     expect(
       raw.mock.calls
         .map(([sql]) => String(sql).toLowerCase())
         .join(" ")
-    ).not.toMatch(/\bupdate\s+/)
+    ).not.toMatch(/\b(update|join)\s+/)
+    expect(
+      raw.mock.calls
+        .map(([sql]) => String(sql).toLowerCase())
+        .join(" ")
+    ).toContain("from guest_cart_capability")
     expect((service as any).baseRepository_.transaction).not.toHaveBeenCalled()
   })
 
-  it("nega different-key ou ausência de BFF/Customer sem ativar nova mutação", async () => {
-    const capability = capabilityRecord()
-    const raw = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: [capability] })
-      .mockResolvedValueOnce({ rows: [] })
+  it("retorna null para registro ausente e mantém a transação obrigatória", async () => {
+    const raw = jest.fn().mockResolvedValueOnce({ rows: [] })
     const service = capabilityServiceWithRaw(raw)
-    const binding = replayBinding()
 
-    const differentKey = await service.lookupConsumedGuestCartCapabilityForReplay({
-      presentedToken: presentedCapability,
-      cartId: guestCartId,
-      bffAuthorized: true,
-      customerAuthorized: true,
-      binding: { ...binding, idempotencyKeyHash: "f".repeat(64) },
-      sharedContext: sharedContext(raw),
-      now: at,
-    })
-    expect(differentKey).toBeNull()
-
-    const unauthorizedRaw = jest.fn()
-    const unauthorized = await service.lookupConsumedGuestCartCapabilityForReplay({
-      presentedToken: presentedCapability,
-      cartId: guestCartId,
-      bffAuthorized: false,
-      customerAuthorized: true,
-      binding,
-      sharedContext: sharedContext(unauthorizedRaw),
-      now: at,
-    })
-    expect(unauthorized).toBeNull()
-    expect(unauthorizedRaw).not.toHaveBeenCalled()
+    await expect(
+      service.retrieveGuestCartCapabilityForReplay("missing", sharedContext(raw))
+    ).resolves.toBeNull()
+    await expect(
+      service.retrieveGuestCartCapabilityForReplay("missing", undefined as never)
+    ).rejects.toThrow()
   })
 })

@@ -12,12 +12,9 @@ import {
   GUEST_CART_CAPABILITY_LOOKUP_INVALID,
   GUEST_CART_CAPABILITY_LIFECYCLE_INVALID,
   GUEST_CART_CAPABILITY_PLAINTEXT_FORBIDDEN,
-  GUEST_CART_CAPABILITY_REPLAY_BINDING_INVALID,
   GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED,
   GUEST_CART_CAPABILITY_STATUS,
   type GuestCartCapabilityMutationContext,
-  type GuestCartCapabilityReplayResult,
-  type LookupConsumedGuestCartCapabilityForReplayInput,
   type GuestCartCapabilityRecord,
   type GuestCartCapabilitySqlTransaction,
   type GuestCartCapabilityStatus,
@@ -98,83 +95,6 @@ function lookupInvalid(): never {
 
 function lifecycleInvalid(): never {
   throw new Error(GUEST_CART_CAPABILITY_LIFECYCLE_INVALID)
-}
-
-const REPLAY_HASH_PATTERN = /^[a-f0-9]{64}$/
-const REPLAY_REFERENCE_PATTERN = /^[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_-]{1,80}$/
-
-function replayIso(value: unknown): string | null {
-  const date = value instanceof Date ? value : new Date(String(value))
-  return Number.isNaN(date.getTime()) ? null : date.toISOString()
-}
-
-function replayBindingIsValid(
-  input: LookupConsumedGuestCartCapabilityForReplayInput,
-  presentedHash: string
-): boolean {
-  const binding = input.binding
-  if (
-    input.bffAuthorized !== true ||
-    input.customerAuthorized !== true ||
-    input.cartId !== binding.guestCartId ||
-    !binding.customerId ||
-    !binding.guestCartId ||
-    !binding.operation ||
-    !binding.idempotencyRecordId ||
-    !binding.resultType ||
-    !binding.resultId ||
-    (binding.customerCartId !== null &&
-      typeof binding.customerCartId !== "string") ||
-    !REPLAY_HASH_PATTERN.test(binding.actorScopeHash) ||
-    !REPLAY_HASH_PATTERN.test(binding.resourceScopeHash) ||
-    !REPLAY_HASH_PATTERN.test(binding.idempotencyKeyHash) ||
-    !REPLAY_HASH_PATTERN.test(binding.requestFingerprint) ||
-    !REPLAY_HASH_PATTERN.test(binding.capabilityHash) ||
-    !REPLAY_REFERENCE_PATTERN.test(binding.idempotencyRecordId) ||
-    !REPLAY_REFERENCE_PATTERN.test(binding.resultId) ||
-    !compareGuestCartCapabilityHash(presentedHash, binding.capabilityHash)
-  ) {
-    return false
-  }
-
-  const expiresAt =
-    typeof binding.expiresAt === "string"
-      ? new Date(binding.expiresAt)
-      : binding.expiresAt
-  if (!(expiresAt instanceof Date) || Number.isNaN(expiresAt.getTime())) {
-    return false
-  }
-
-  return true
-}
-
-function replayResultFromRow(
-  row: Record<string, unknown>,
-  capability: GuestCartCapabilityRecord
-): GuestCartCapabilityReplayResult {
-  return {
-    capability,
-    result: {
-      id: String(row.id),
-      idempotency_record_id: String(row.idempotency_record_id),
-      customer_id: String(row.customer_id),
-      guest_cart_id: String(row.guest_cart_id),
-      customer_cart_id:
-        row.customer_cart_id == null ? null : String(row.customer_cart_id),
-      canonical_cart_id: String(row.canonical_cart_id),
-      capability_id: String(row.capability_id),
-      capability_hash: String(row.capability_hash),
-      request_fingerprint: String(row.request_fingerprint),
-      outcome: String(row.outcome),
-      rejected_items: row.rejected_items,
-      review_id: row.review_id == null ? null : String(row.review_id),
-      review_ref: row.review_ref == null ? null : String(row.review_ref),
-      original_public_cart_snapshot: row.original_public_cart_snapshot,
-      original_review_snapshot: row.original_review_snapshot,
-      original_etag: String(row.original_etag),
-      expires_at: row.expires_at as string | Date,
-    },
-  }
 }
 
 export const GUEST_CART_CAPABILITY_TTL_ROLLING_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -578,171 +498,26 @@ export class GuestCartCapabilityModuleService extends MedusaService({
   }
 
   /**
-   * Read-only replay authorization for a capability consumed by a committed
-   * cart merge. This path deliberately does not reuse the active lookup:
-   * consumed capabilities can only match an already terminal receipt whose
-   * Customer, key/scope hashes, fingerprint and 1:1 result binding all agree.
-   * No lifecycle field is touched, renewed or reactivated here.
+   * Owner-only transaction-bound read used to validate a CartMerge receipt.
+   * It returns lifecycle state without exposing or re-deriving the presented
+   * capability token and never joins another module's private table.
    */
-  async lookupConsumedGuestCartCapabilityForReplay(
-    input: LookupConsumedGuestCartCapabilityForReplayInput
-  ): Promise<GuestCartCapabilityReplayResult | null> {
-    if (!input.sharedContext) {
+  async retrieveGuestCartCapabilityForReplay(
+    id: string,
+    sharedContext: GuestCartCapabilityMutationContext
+  ): Promise<GuestCartCapabilityRecord | null> {
+    if (!sharedContext || typeof id !== "string" || id.trim().length === 0) {
       throw new Error(GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED)
     }
 
-    let presentedHash: string
-    try {
-      presentedHash = hashGuestCartCapability(input.presentedToken)
-    } catch {
-      performDummyGuestCartCapabilityHashComparison()
-      return null
-    }
-
-    if (!replayBindingIsValid(input, presentedHash)) {
-      performDummyGuestCartCapabilityHashComparison()
-      return null
-    }
-
-    const now = input.now instanceof Date ? input.now : new Date()
-    const binding = input.binding
-    const expiresAt =
-      typeof binding.expiresAt === "string"
-        ? new Date(binding.expiresAt)
-        : binding.expiresAt
-
-    return this.withCapabilityTransaction(input.sharedContext, async (transaction) => {
-      const candidates = await capabilityRows(
-        transaction,
-        `select ${capabilityColumns()}
-           from guest_cart_capability
-          where cart_id = ?
-            and status = 'consumed'
-            and consumed_at is not null
-            and revoked_at is null
-            and deleted_at is null`,
-        [input.cartId]
-      )
-
-      let matched: GuestCartCapabilityRecord | null = null
-      for (const candidateRow of candidates) {
-        const candidate = mapCapabilityRow(candidateRow)
-        if (
-          compareGuestCartCapabilityHash(presentedHash, candidate.token_hash)
-        ) {
-          matched = candidate
-        }
-      }
-
-      if (!matched) {
-        performDummyGuestCartCapabilityHashComparison()
-        return null
-      }
-
-      const resultRows = await capabilityRows(
-        transaction,
-        `select
-            r.id,
-            r.idempotency_record_id,
-            r.customer_id,
-            r.guest_cart_id,
-            r.customer_cart_id,
-            r.canonical_cart_id,
-            r.capability_id,
-            r.capability_hash,
-            r.request_fingerprint,
-            r.outcome,
-            r.rejected_items,
-            r.review_id,
-            r.review_ref,
-            r.original_public_cart_snapshot,
-            r.original_review_snapshot,
-            r.original_etag,
-            r.expires_at,
-            i.id as idempotency_id,
-            i.operation as idempotency_operation,
-            i.state as idempotency_state,
-            i.result_type as idempotency_result_type,
-            i.result_id as idempotency_result_id,
-            i.expires_at as idempotency_expires_at
-          from cart_merge_result r
-          join store_idempotency_record i
-            on i.id = r.idempotency_record_id
-         where r.id = ?
-           and r.idempotency_record_id = ?
-           and r.customer_id = ?
-           and r.guest_cart_id = ?
-           and r.customer_cart_id is not distinct from ?
-           and r.capability_id = ?
-           and r.capability_hash = ?
-           and r.request_fingerprint = ?
-           and r.expires_at = ?
-           and r.expires_at > ?
-           and i.id = r.idempotency_record_id
-           and i.operation = ?
-           and i.actor_scope_hash = ?
-           and i.resource_scope_hash = ?
-           and i.idempotency_key_hash = ?
-           and i.request_fingerprint = r.request_fingerprint
-           and i.state = 'completed'
-           and i.result_type = ?
-           and i.result_id = r.id
-           and i.expires_at = r.expires_at
-           and i.expires_at > ?
-           and i.deleted_at is null
-           and r.deleted_at is null`,
-        [
-          binding.resultId,
-          binding.idempotencyRecordId,
-          binding.customerId,
-          binding.guestCartId,
-          binding.customerCartId,
-          matched.id,
-          binding.capabilityHash,
-          binding.requestFingerprint,
-          expiresAt.toISOString(),
-          now.toISOString(),
-          binding.operation,
-          binding.actorScopeHash,
-          binding.resourceScopeHash,
-          binding.idempotencyKeyHash,
-          binding.resultType,
-          now.toISOString(),
-        ]
-      )
-
-      if (resultRows.length !== 1) {
-        return null
-      }
-
-      const resultRow = resultRows[0]
-      const resultExpiresAt = replayIso(resultRow.expires_at)
-      const idempotencyExpiresAt = replayIso(resultRow.idempotency_expires_at)
-      const sameExpiry =
-        resultExpiresAt !== null &&
-        resultExpiresAt === idempotencyExpiresAt &&
-        resultExpiresAt === expiresAt.toISOString()
-      const sameBindings =
-        String(resultRow.id) === binding.resultId &&
-        String(resultRow.idempotency_record_id) === binding.idempotencyRecordId &&
-        String(resultRow.customer_id) === binding.customerId &&
-        String(resultRow.guest_cart_id) === binding.guestCartId &&
-        (resultRow.customer_cart_id ?? null) === binding.customerCartId &&
-        compareGuestCartCapabilityHash(
-          String(resultRow.capability_hash),
-          binding.capabilityHash
-        ) &&
-        compareGuestCartCapabilityHash(
-          String(resultRow.request_fingerprint),
-          binding.requestFingerprint
-        )
-
-      if (!sameExpiry || !sameBindings) {
-        return null
-      }
-
-      return replayResultFromRow(resultRow, matched)
-    })
+    const rows = await capabilityRows(
+      requireCapabilityTransaction(sharedContext),
+      `select ${capabilityColumns()}
+         from guest_cart_capability
+        where id = ? and deleted_at is null`,
+      [id]
+    )
+    return rows[0] ? mapCapabilityRow(rows[0]) : null
   }
 
   /**

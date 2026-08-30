@@ -450,10 +450,10 @@ function createDefaultCartModuleForPayment(
   }
 
   return {
-    baseRepository_: {
+    pgConnection: {
       transaction: jest.fn(
-        async (callback: (manager: typeof transactionManager) => Promise<unknown>) =>
-          callback(transactionManager)
+        async (callback: (transaction: typeof knex) => Promise<unknown>) =>
+          callback(knex)
       ),
     },
     retrieveCart: jest.fn(
@@ -534,7 +534,7 @@ function createMedusaPaymentModuleMock(
   }
 
   return {
-    createPaymentSession_: jest.fn(
+    createPaymentSession: jest.fn(
       async (
         paymentCollectionId: string,
         data: {
@@ -751,6 +751,10 @@ function wireScope(
       return cartModule
     }
 
+    if (key === ContainerRegistrationKeys.PG_CONNECTION) {
+      return cartModule.pgConnection
+    }
+
     return undefined
   }) as SessionCapableRequest["scope"]["resolve"]
 
@@ -902,10 +906,10 @@ describe("payment attempt store card contract", () => {
           input: { cart_id: cart.id },
         }
       )
-      expect(medusaPaymentModule.createPaymentSession_).toHaveBeenCalledWith(
+      expect(medusaPaymentModule.createPaymentSession).toHaveBeenCalledWith(
         "pay_col_http_01",
         expect.objectContaining({
-          provider_id: "pp_stripe_stripe",
+          provider_id: "pp_stripe_deferred",
           amount: 99,
           currency_code: "brl",
           data: {},
@@ -1003,7 +1007,7 @@ describe("payment attempt store card contract", () => {
           payment_attempt_id: provisional?.id,
         })
       )
-      expect(medusaPaymentModule.createPaymentSession_).toHaveBeenCalledTimes(1)
+      expect(medusaPaymentModule.createPaymentSession).toHaveBeenCalledTimes(1)
       expect(paymentAttemptModule.attempts[0]).toEqual(
         expect.objectContaining({
           status: "card_client_secret_created",
@@ -1033,7 +1037,12 @@ describe("payment attempt store card contract", () => {
       )
 
       const provisional = paymentAttemptModule.attempts[0]
-      expect(provisional?.provider_payment_intent_id).toBeNull()
+      expect(provisional).toEqual(
+        expect.objectContaining({
+          status: "card_client_secret_created",
+          provider_payment_intent_id: "pi_http_card_mock",
+        })
+      )
       expect(stripeCardInitiationLayer?.createCardPaymentIntent).toHaveBeenCalledTimes(1)
 
       const retryResponse = await invokeCardPaymentRoute(req)
@@ -1041,7 +1050,7 @@ describe("payment attempt store card contract", () => {
       expect(retryResponse.statusCode).toBe(201)
       expect(paymentAttemptModule.attempts).toHaveLength(1)
       expect(stripeCardInitiationLayer?.createCardPaymentIntent).toHaveBeenCalledTimes(2)
-      expect(medusaPaymentModule.createPaymentSession_).toHaveBeenCalledTimes(1)
+      expect(medusaPaymentModule.createPaymentSession).toHaveBeenCalledTimes(1)
       expect(paymentAttemptModule.attempts[0]?.provider_payment_intent_id).toBe(
         "pi_http_card_mock"
       )

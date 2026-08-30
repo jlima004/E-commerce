@@ -21,6 +21,10 @@ const infrastructureMode = describeInfrastructureMode(infrastructureEnv)
 const projectRedisUrl = resolveProjectRedisUrl(infrastructureEnv)
 const projectRedisOptions = redisOptionsForUrl(projectRedisUrl)
 const redisModules = buildRedisModules(infrastructureEnv)
+const deferredStripePaymentProvider = {
+  resolve: "./src/modules/payment-attempt/providers/deferred-stripe",
+  id: "deferred",
+}
 const stripePaymentModule =
   env.STRIPE_REAL_INITIATION_ENABLED && env.STRIPE_SECRET_KEY
     ? [
@@ -37,10 +41,20 @@ const stripePaymentModule =
                   capture: true,
                 },
               },
+              deferredStripePaymentProvider,
             ],
           },
         },
       ]
+    : env.NODE_ENV === "test"
+      ? [
+          {
+            resolve: "@medusajs/medusa/payment",
+            options: {
+              providers: [deferredStripePaymentProvider],
+            },
+          },
+        ]
     : []
 
 const projectConfig = {

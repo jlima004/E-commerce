@@ -31,12 +31,14 @@ function buildHarness(overrides: {
           deleted_at: null,
         }
   const raw = jest.fn(async () => ({ rows: [] }))
-  const listCustomerCartAuthorities = jest.fn(
-    async (filters?: Record<string, unknown>) =>
-      authorities.filter((authority) =>
-        Object.entries(filters ?? {}).every(
-          ([key, value]) => authority[key as keyof Authority] === value
-        )
+  const cartTransaction = jest.fn(async (callback: (manager: unknown) => Promise<unknown>) =>
+    callback({ getTransactionContext: () => ({ raw }) })
+  )
+  const listCustomerCartAuthoritiesForUpdate = jest.fn(
+    async (customerId: string) =>
+      authorities.filter(
+        (authority) =>
+          authority.customer_id === customerId && authority.state === "active"
       )
   )
   const supersedeCustomerCartAuthority = jest.fn(
@@ -58,12 +60,13 @@ function buildHarness(overrides: {
     resolve: jest.fn((key: string) => {
       if (key === CART_MERGE_MODULE) {
         return {
-          listCustomerCartAuthorities,
+          listCustomerCartAuthoritiesForUpdate,
           supersedeCustomerCartAuthority,
         }
       }
       if (key === Modules.CART) {
         return {
+          baseRepository_: { transaction: cartTransaction },
           retrieveCart: jest.fn(async () => cart),
         }
       }
@@ -82,7 +85,8 @@ function buildHarness(overrides: {
     container,
     authorities,
     raw,
-    listCustomerCartAuthorities,
+    cartTransaction,
+    listCustomerCartAuthoritiesForUpdate,
     supersedeCustomerCartAuthority,
   }
 }
@@ -102,11 +106,14 @@ describe("reconcileTerminalCustomerCartAuthority", () => {
       expect.stringContaining("pg_advisory_xact_lock"),
       ["cus_01"]
     )
-    expect(harness.supersedeCustomerCartAuthority).toHaveBeenCalledWith({
-      authority_id: "ccauth_01",
-      customer_id: "cus_01",
-      cart_id: "cart_01",
-    })
+    expect(harness.supersedeCustomerCartAuthority).toHaveBeenCalledWith(
+      {
+        authority_id: "ccauth_01",
+        customer_id: "cus_01",
+        cart_id: "cart_01",
+      },
+      expect.objectContaining({ __type: "MedusaContext" })
+    )
     expect(harness.authorities[0].state).toBe("superseded")
 
     await expect(
