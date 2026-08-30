@@ -529,12 +529,37 @@ function wireScope(
     if (key === ContainerRegistrationKeys.LINK) {
       return {
         create: jest.fn(async (input: Record<string, unknown>) => {
-          expect(input[Modules.CART]).toEqual({
-            cart_id: expect.any(String),
-          })
-          expect(input[GUEST_CART_CAPABILITY_MODULE]).toEqual({
-            guest_cart_capability_id: expect.any(String),
-          })
+          const guestCapabilityLink = input[GUEST_CART_CAPABILITY_MODULE]
+          const authorityCustomerLink =
+            input[CART_MERGE_MODULE] && input[Modules.CUSTOMER]
+          const authorityCartLink = input[CART_MERGE_MODULE] && input[Modules.CART]
+
+          expect(
+            guestCapabilityLink || authorityCustomerLink || authorityCartLink
+          ).toBeTruthy()
+
+          if (guestCapabilityLink) {
+            expect(input[Modules.CART]).toEqual({
+              cart_id: expect.any(String),
+            })
+            expect(guestCapabilityLink).toEqual({
+              guest_cart_capability_id: expect.any(String),
+            })
+          } else if (authorityCustomerLink) {
+            expect(input[CART_MERGE_MODULE]).toEqual({
+              customer_cart_authority_customer_id: expect.any(String),
+            })
+            expect(input[Modules.CUSTOMER]).toEqual({
+              customer_id: expect.any(String),
+            })
+          } else {
+            expect(input[CART_MERGE_MODULE]).toEqual({
+              customer_cart_authority_cart_id: expect.any(String),
+            })
+            expect(input[Modules.CART]).toEqual({
+              cart_id: expect.any(String),
+            })
+          }
           expect(JSON.stringify(input)).not.toContain(
             "synth_guest_capability_token"
           )
@@ -3509,6 +3534,26 @@ function wireHr05LineItemMutationScope(
 
     if (key === GUEST_CART_CAPABILITY_MODULE) {
       return guestCapabilityService
+    }
+
+    if (key === ContainerRegistrationKeys.LINK) {
+      return {
+        create: jest.fn(async (input: Record<string, unknown>) => {
+          const guestCapabilityLink = input[GUEST_CART_CAPABILITY_MODULE]
+          const authorityCustomerLink =
+            input[CART_MERGE_MODULE] && input[Modules.CUSTOMER]
+          const authorityCartLink = input[CART_MERGE_MODULE] && input[Modules.CART]
+
+          expect(
+            guestCapabilityLink || authorityCustomerLink || authorityCartLink
+          ).toBeTruthy()
+          expect(JSON.stringify(input)).not.toContain(
+            "synth_guest_capability_token"
+          )
+          return undefined
+        }),
+        dismiss: jest.fn(async () => undefined),
+      }
     }
 
     if (key === STORE_IDEMPOTENCY_MODULE) {

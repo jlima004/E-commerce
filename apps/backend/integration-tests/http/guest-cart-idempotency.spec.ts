@@ -22,7 +22,9 @@ import {
 import {
   ContainerRegistrationKeys,
   MedusaError,
+  Modules,
 } from "@medusajs/framework/utils"
+import { CART_MERGE_MODULE } from "../../src/modules/cart-merge/module-id"
 import {
   generateGuestCartCapability,
   hashGuestCartCapability,
@@ -300,7 +302,12 @@ function createIdempotencyHarness() {
 
   const authorities = new Map<
     string,
-    { id: string; customer_id: string; cart_id: string }
+    {
+      id: string
+      customer_id: string
+      cart_id: string
+      state: "active" | "superseded"
+    }
   >()
 
   const mockPgConnection = {
@@ -318,6 +325,7 @@ function createIdempotencyHarness() {
             id: String(id),
             customer_id: String(customerId),
             cart_id: String(cartId),
+            state: "active",
           })
           return { rows: [] }
         }
@@ -329,29 +337,78 @@ function createIdempotencyHarness() {
             : [],
         }
       }
-      if (sql.includes("from cart") && sql.includes("customer_id")) {
-        const customerId = String(bindings[0])
-        return {
-          rows: Array.from(db.carts.values())
-            .filter((cart) => {
-              const cartCustomerId = cart.customer_id ?? cart.customer?.id
-              return (
-                cartCustomerId === customerId &&
-                !cart.completed_at &&
-                cart.deleted_at == null &&
-                cart.metadata?.active_for_checkout !== false
-              )
-            })
-            .map((cart) => ({
-              id: cart.id,
-              customer_id: cart.customer_id ?? cart.customer?.id,
-              completed_at: cart.completed_at ?? null,
-              deleted_at: cart.deleted_at ?? null,
-              metadata: cart.metadata ?? null,
-            })),
-        }
-      }
       return { rows: [] }
+    },
+  }
+
+  const cartModule = {
+    async listCarts(filters?: Record<string, unknown>) {
+      return Array.from(db.carts.values())
+        .filter((cart) => {
+          const cartCustomerId = cart.customer_id ?? cart.customer?.id
+          return (
+            (!filters?.customer_id ||
+              cartCustomerId === filters.customer_id) &&
+            !cart.completed_at &&
+            cart.deleted_at == null &&
+            cart.metadata?.active_for_checkout !== false
+          )
+        })
+        .map((cart) => ({
+          id: cart.id,
+          customer_id: cart.customer_id ?? cart.customer?.id,
+          completed_at: cart.completed_at ?? null,
+          deleted_at: cart.deleted_at ?? null,
+          metadata: cart.metadata ?? null,
+        }))
+    },
+    async retrieveCart(id: string) {
+      const cart = db.carts.get(id)
+      return cart ? { ...cart } : null
+    },
+    baseRepository_: {
+      async transaction(callback: (manager: unknown) => Promise<unknown>) {
+        return callback({
+          getTransactionContext: () => ({ raw: mockPgConnection.raw }),
+        })
+      },
+    },
+  }
+
+  const cartMergeAuthority = {
+    async listCustomerCartAuthoritiesForUpdate(customerId: string) {
+      const authority = authorities.get(customerId)
+      return authority && authority.state === "active"
+        ? [{ ...authority }]
+        : []
+    },
+    async createCustomerCartAuthority(input: {
+      customer_id: string
+      cart_id: string
+    }) {
+      const authority = {
+        id: `ccauth_${input.cart_id}`,
+        customer_id: input.customer_id,
+        cart_id: input.cart_id,
+        state: "active" as const,
+      }
+      authorities.set(input.customer_id, authority)
+      return { ...authority }
+    },
+    async supersedeCustomerCartAuthority(input: {
+      authority_id: string
+      customer_id: string
+      cart_id: string
+    }) {
+      const authority = authorities.get(input.customer_id)
+      if (
+        authority &&
+        authority.id === input.authority_id &&
+        authority.cart_id === input.cart_id
+      ) {
+        authority.state = "superseded"
+      }
+      return authority ? { ...authority } : undefined
     },
   }
 
@@ -406,6 +463,12 @@ function createIdempotencyHarness() {
           }
           if (key === ContainerRegistrationKeys.LINK) {
             return { create: async () => undefined }
+          }
+          if (key === Modules.CART) {
+            return cartModule
+          }
+          if (key === CART_MERGE_MODULE) {
+            return cartMergeAuthority
           }
           throw new Error(`Unrecognized container key: ${String(key)}`)
         },

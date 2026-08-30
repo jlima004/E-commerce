@@ -13,6 +13,7 @@ import {
 } from "@medusajs/core-flows"
 import { ContainerRegistrationKeys, MedusaError, Modules } from "@medusajs/framework/utils"
 import { GUEST_CART_CAPABILITY_MODULE } from "../../src/modules/guest-cart-capability/types"
+import { CART_MERGE_MODULE } from "../../src/modules/cart-merge/module-id"
 import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
 import { STORE_IDEMPOTENCY_MODULE } from "../../src/modules/store-idempotency"
 import { STORE_RESOURCE_VERSION_MODULE } from "../../src/modules/store-resource-version"
@@ -103,7 +104,12 @@ function createHarness() {
   const credentials = new Map<string, SyntheticCredentialRow>()
   const authorities = new Map<
     string,
-    { id: string; customer_id: string; cart_id: string }
+    {
+      id: string
+      customer_id: string
+      cart_id: string
+      state: "active" | "superseded"
+    }
   >()
 
   const idempotency = {
@@ -205,6 +211,7 @@ function createHarness() {
             id: String(id),
             customer_id: String(customerId),
             cart_id: String(cartId),
+            state: "active",
           })
           return { rows: [] }
         }
@@ -214,30 +221,6 @@ function createHarness() {
           rows: authority
             ? [{ ...authority, state: "active" }]
             : [],
-        }
-      }
-
-      if (sql.includes("from cart") && sql.includes("customer_id")) {
-        const customerId = String(bindings[0])
-        return {
-          rows: Array.from(carts.values())
-            .filter((candidate) => {
-              const cartCustomerId =
-                candidate.customer_id ?? candidate.customer?.id
-              return (
-                cartCustomerId === customerId &&
-                !candidate.completed_at &&
-                candidate.deleted_at == null &&
-                candidate.metadata?.active_for_checkout !== false
-              )
-            })
-            .map((candidate) => ({
-              id: candidate.id,
-              customer_id: candidate.customer_id ?? candidate.customer?.id,
-              completed_at: candidate.completed_at ?? null,
-              deleted_at: candidate.deleted_at ?? null,
-              metadata: candidate.metadata ?? null,
-            })),
         }
       }
 
@@ -325,12 +308,69 @@ function createHarness() {
     async retrieveCart(id: string) {
       return carts.get(id) ?? null
     },
+    async listCarts(filters?: Record<string, unknown>) {
+      return Array.from(carts.values())
+        .filter((candidate) => {
+          const cartCustomerId =
+            candidate.customer_id ?? candidate.customer?.id
+          return (
+            (!filters?.customer_id ||
+              cartCustomerId === filters.customer_id) &&
+            !candidate.completed_at &&
+            candidate.deleted_at == null &&
+            candidate.metadata?.active_for_checkout !== false
+          )
+        })
+        .map((candidate) => ({
+          id: candidate.id,
+          customer_id: candidate.customer_id ?? candidate.customer?.id,
+          completed_at: candidate.completed_at ?? null,
+          deleted_at: candidate.deleted_at ?? null,
+          metadata: candidate.metadata ?? null,
+        }))
+    },
     async addLineItems() {},
     async updateLineItems() {},
     async softDeleteLineItems() {},
     async deleteLineItems() {},
     async listLineItems() {
       return []
+    },
+  }
+  const cartMergeAuthority = {
+    async listCustomerCartAuthoritiesForUpdate(customerId: string) {
+      const authority = authorities.get(customerId)
+      return authority && authority.state === "active"
+        ? [{ ...authority }]
+        : []
+    },
+    async createCustomerCartAuthority(input: {
+      customer_id: string
+      cart_id: string
+    }) {
+      const authority = {
+        id: `ccauth_${input.cart_id}`,
+        customer_id: input.customer_id,
+        cart_id: input.cart_id,
+        state: "active" as const,
+      }
+      authorities.set(input.customer_id, authority)
+      return { ...authority }
+    },
+    async supersedeCustomerCartAuthority(input: {
+      authority_id: string
+      customer_id: string
+      cart_id: string
+    }) {
+      const authority = authorities.get(input.customer_id)
+      if (
+        authority &&
+        authority.id === input.authority_id &&
+        authority.cart_id === input.cart_id
+      ) {
+        authority.state = "superseded"
+      }
+      return authority ? { ...authority } : undefined
     },
   }
   const addWorkflow = addToCartWorkflow as unknown as jest.Mock
@@ -492,7 +532,11 @@ function createHarness() {
         if (keyToResolve === STORE_RESOURCE_VERSION_MODULE) return versionService
         if (keyToResolve === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
         if (keyToResolve === ContainerRegistrationKeys.PG_CONNECTION) return pg
+        if (keyToResolve === ContainerRegistrationKeys.LINK) {
+          return { create: async () => undefined }
+        }
         if (keyToResolve === Modules.CART) return cartModule
+        if (keyToResolve === CART_MERGE_MODULE) return cartMergeAuthority
         throw new Error(`unrecognized scope key ${String(keyToResolve)}`)
       }
       return {
@@ -548,6 +592,7 @@ function createHarness() {
       id: `ccauth_${input.id}`,
       customer_id: customerId,
       cart_id: input.id,
+      state: "active",
     })
     return customerCart
   }

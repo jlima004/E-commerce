@@ -27,6 +27,7 @@ import {
   GUEST_CART_CAPABILITY_HEADER,
   GUEST_CART_CAPABILITY_MODULE,
 } from "../../src/modules/guest-cart-capability/types"
+import { CART_MERGE_MODULE } from "../../src/modules/cart-merge/module-id"
 import {
   PAYMENT_ATTEMPT_MODULE,
 } from "../../src/modules/payment-attempt"
@@ -144,7 +145,12 @@ function createHarness() {
   let requestedCartId = guestCart.id
   const authorities = new Map<
     string,
-    { id: string; customer_id: string; cart_id: string }
+    {
+      id: string
+      customer_id: string
+      cart_id: string
+      state: "active" | "superseded"
+    }
   >()
 
   const guestCapability = {
@@ -297,6 +303,7 @@ function createHarness() {
             id: String(id),
             customer_id: String(customerId),
             cart_id: String(cartId),
+            state: "active",
           })
           return { rows: [] }
         }
@@ -306,28 +313,6 @@ function createHarness() {
           rows: authority
             ? [{ ...authority, state: "active" }]
             : [],
-        }
-      }
-      if (sql.includes("from cart") && sql.includes("customer_id")) {
-        const customerId = String(bindings[0])
-        return {
-          rows: [...carts.values()]
-            .filter((cart) => {
-              const cartCustomerId = cart.customer_id ?? cart.customer?.id
-              return (
-                cartCustomerId === customerId &&
-                !cart.completed_at &&
-                (cart as { deleted_at?: unknown }).deleted_at == null &&
-                cart.metadata?.active_for_checkout !== false
-              )
-            })
-            .map((cart) => ({
-              id: cart.id,
-              customer_id: cart.customer_id ?? cart.customer?.id,
-              completed_at: cart.completed_at ?? null,
-              deleted_at: (cart as { deleted_at?: unknown }).deleted_at ?? null,
-              metadata: cart.metadata ?? null,
-            })),
         }
       }
       if (sql.includes("from payment_attempt")) {
@@ -349,6 +334,27 @@ function createHarness() {
   }
 
   const cartModule = {
+    listCarts: async (filters?: Record<string, unknown>) => {
+      const customerId = filters?.customer_id
+      return [...carts.values()]
+        .filter((cart) => {
+          const cartCustomerId = cart.customer_id ?? cart.customer?.id
+          return (
+            (!customerId || cartCustomerId === customerId) &&
+            !cart.completed_at &&
+            (cart as Cart & { deleted_at?: unknown }).deleted_at == null &&
+            cart.metadata?.active_for_checkout !== false
+          )
+        })
+        .map((cart) => ({
+          id: cart.id,
+          customer_id: cart.customer_id ?? cart.customer?.id,
+          completed_at: cart.completed_at ?? null,
+          deleted_at:
+            (cart as Cart & { deleted_at?: unknown }).deleted_at ?? null,
+          metadata: cart.metadata ?? null,
+        }))
+    },
     retrieveCart: async (id: string) => {
       const cart = carts.get(id)
       return cart ? JSON.parse(JSON.stringify(cart)) : null
@@ -357,7 +363,44 @@ function createHarness() {
       transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
         callback({
           getTransactionContext: () => ({ raw: pgConnection.raw }),
-        }),
+      }),
+    },
+  }
+
+  const cartMergeAuthority = {
+    listCustomerCartAuthoritiesForUpdate: async (customerId: string) => {
+      const authority = authorities.get(customerId)
+      return authority && authority.state === "active"
+        ? [{ ...authority }]
+        : []
+    },
+    createCustomerCartAuthority: async (input: {
+      customer_id: string
+      cart_id: string
+    }) => {
+      const authority = {
+        id: `ccauth_${input.cart_id}`,
+        customer_id: input.customer_id,
+        cart_id: input.cart_id,
+        state: "active" as const,
+      }
+      authorities.set(input.customer_id, authority)
+      return { ...authority }
+    },
+    supersedeCustomerCartAuthority: async (input: {
+      authority_id: string
+      customer_id: string
+      cart_id: string
+    }) => {
+      const authority = authorities.get(input.customer_id)
+      if (
+        authority &&
+        authority.id === input.authority_id &&
+        authority.cart_id === input.cart_id
+      ) {
+        authority.state = "superseded"
+      }
+      return authority ? { ...authority } : undefined
     },
   }
 
@@ -466,6 +509,7 @@ function createHarness() {
           if (keyToResolve === ContainerRegistrationKeys.PG_CONNECTION) return pgConnection
           if (keyToResolve === ContainerRegistrationKeys.LINK) return { create: async () => undefined }
           if (keyToResolve === Modules.CART) return cartModule
+          if (keyToResolve === CART_MERGE_MODULE) return cartMergeAuthority
           throw new Error(`unrecognized scope key ${String(keyToResolve)}`)
         }
         return {
