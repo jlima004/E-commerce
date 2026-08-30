@@ -718,22 +718,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     stripeLayer: preparedOperation.stripeLayer,
   })
 
-  await withCartPaymentTransaction(request, async (sharedContext) => {
-    const paymentResult = await finalizePixPaymentAttemptInTransaction({
-      request,
-      cartId,
-      actor,
-      prepared: preparedOperation.prepared,
-      rawIntent,
-      sharedContext,
-    })
-    await updatePixPaymentAttemptResult(
-      request,
-      paymentResult.attempt,
-      sharedContext
-    )
-  })
-
   const result = await withCartPaymentTransaction(request, async (sharedContext) => {
     const paymentResult = await finalizePixPaymentAttemptInTransaction({
       request,

@@ -1053,22 +1053,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     stripeLayer: preparedOperation.stripeLayer,
   })
 
-  await withCartPaymentTransaction(request, async (sharedContext) => {
-    const paymentResult = await finalizeCardPaymentAttemptInTransaction({
-      request,
-      cartId,
-      actor,
-      prepared: preparedOperation.prepared,
-      rawIntent,
-      sharedContext,
-    })
-    await updateCardPaymentAttemptResult(
-      request,
-      paymentResult.attempt,
-      sharedContext
-    )
-  })
-
   const result = await withCartPaymentTransaction(request, async (sharedContext) => {
     const paymentResult = await finalizeCardPaymentAttemptInTransaction({
       request,
@@ -1078,17 +1062,20 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       rawIntent,
       sharedContext,
     })
-    await updateMedusaPaymentSessionAfterStripeInitiation(
-      request,
-      paymentResult,
-      sharedContext
-    )
     await updateCardPaymentAttemptResult(
       request,
       paymentResult.attempt,
       sharedContext
     )
     return paymentResult
+  })
+
+  await withCartPaymentTransaction(request, async (sharedContext) => {
+    await updateMedusaPaymentSessionAfterStripeInitiation(
+      request,
+      result,
+      sharedContext
+    )
   })
 
   res.status(201).json({

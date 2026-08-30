@@ -947,6 +947,7 @@ describe("payment attempt store card contract", () => {
           status: "card_client_secret_created",
         })
       )
+      expect(paymentAttemptModule.updatePaymentAttempts).toHaveBeenCalledTimes(1)
       expect(body.payment_attempt.client_secret).toContain("pi_http_card_mock")
       expect(
         paymentAttemptModule.resolveStripeCardInitiationLayer
@@ -1396,6 +1397,7 @@ describe("payment attempt store card contract", () => {
         paymentAttemptModule.resolveStripePixInitiationLayer
       ).not.toHaveBeenCalled()
       expect(fallbackLayer.createPixPaymentIntent).not.toHaveBeenCalled()
+      expect(paymentAttemptModule.updatePaymentAttempts).toHaveBeenCalledTimes(1)
     })
 
     it("mantem a identidade local e converge no mesmo PaymentIntent Pix após falha do finalize", async () => {
