@@ -170,18 +170,23 @@ function createPaymentAttemptModule(attempts: PaymentAttemptRecord[] = []) {
 function createPaymentAttemptAuthorityConnection(
   paymentAttemptModule: ReturnType<typeof createPaymentAttemptModule>
 ) {
+  const nullableString = (value: unknown): string | null =>
+    value == null ? null : String(value)
+
   return {
     transaction: jest.fn(async (callback: (transaction: {
       raw: (sql: string, bindings?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>
     }) => Promise<unknown>) =>
       callback({
         raw: jest.fn(async (sql: string, bindings: unknown[] = []) => {
-          const attemptFor = (value: unknown) =>
-            paymentAttemptModule.attempts.find(
+          const attemptFor = (value: unknown) => {
+            const normalizedValue = nullableString(value)
+            return paymentAttemptModule.attempts.find(
               (attempt) =>
-                attempt.id === value ||
-                attempt.provider_payment_intent_id === value
+                attempt.id === normalizedValue ||
+                attempt.provider_payment_intent_id === normalizedValue
             )
+          }
 
           if (sql.includes("pg_advisory_xact_lock")) {
             return { rows: [] }
@@ -193,21 +198,81 @@ function createPaymentAttemptAuthorityConnection(
           }
 
           if (sql.includes("update payment_attempt")) {
-            const hasTerminalTimestamp =
-              sql.includes("failed_at =") || sql.includes("canceled_at =")
-            const attempt = attemptFor(bindings[hasTerminalTimestamp ? 3 : 2])
-            if (!attempt) return { rows: [] }
+            const normalizedSql = sql.replace(/\s+/g, " ").trim()
+            const setAndWhere = normalizedSql.match(
+              /\bset\s+(.+?)\s+\bwhere\b(.+)$/i
+            )
+            if (!setAndWhere) {
+              throw new Error(`Unexpected PaymentAttempt update SQL: ${sql}`)
+            }
 
-            const updated = {
+            const setColumns = [
+              ...setAndWhere[1].matchAll(
+                /\b(provider_payment_intent_id|provider_payment_session_id|status|failed_at|canceled_at|updated_at)\s*=/gi
+              ),
+            ].map((match) => match[1].toLowerCase())
+            let bindingIndex = 0
+            const setValues: Record<string, unknown> = {}
+            for (const column of setColumns) {
+              setValues[column] = bindings[bindingIndex++]
+            }
+
+            const whereBindings = [
+              { column: "id", pattern: /\bid\s*=\s*\?/gi },
+              { column: "cart_id", pattern: /\bcart_id\s*=\s*\?/gi },
+              {
+                column: "provider_payment_intent_id",
+                pattern: /\bprovider_payment_intent_id\s*=\s*\?/gi,
+              },
+              { column: "status", pattern: /\bstatus\s*=\s*\?/gi },
+            ]
+              .flatMap(({ column, pattern }) =>
+                [...setAndWhere[2].matchAll(pattern)].map((match) => ({
+                  column,
+                  index: match.index ?? 0,
+                }))
+              )
+              .sort((left, right) => left.index - right.index)
+
+            if (whereBindings.length !== 4) {
+              throw new Error(`Unexpected PaymentAttempt WHERE SQL: ${sql}`)
+            }
+
+            const whereValues: Record<string, unknown> = {}
+            for (const { column } of whereBindings) {
+              whereValues[column] = bindings[bindingIndex++]
+            }
+
+            const attempt = attemptFor(whereValues.id)
+            if (
+              !attempt ||
+              attempt.cart_id !== String(whereValues.cart_id) ||
+              attempt.order_id != null ||
+              attempt.status !== whereValues.status ||
+              (attempt.provider_payment_intent_id != null &&
+                attempt.provider_payment_intent_id !==
+                  String(whereValues.provider_payment_intent_id))
+            ) {
+              return { rows: [] }
+            }
+
+            const updated: PaymentAttemptRecord = {
               ...attempt,
-              status: String(bindings[0]) as PaymentAttemptRecord["status"],
-              order_id: null,
-              updated_at: String(bindings[hasTerminalTimestamp ? 2 : 1]),
-              ...(sql.includes("failed_at =")
-                ? { failed_at: String(bindings[1]) }
+              provider_payment_intent_id: nullableString(
+                setValues.provider_payment_intent_id
+              ),
+              provider_payment_session_id:
+                setValues.provider_payment_session_id == null
+                  ? attempt.provider_payment_session_id
+                  : String(setValues.provider_payment_session_id),
+              status: String(setValues.status) as PaymentAttemptRecord["status"],
+              updated_at:
+                nullableString(setValues.updated_at) ?? attempt.updated_at,
+              ...(Object.prototype.hasOwnProperty.call(setValues, "failed_at")
+                ? { failed_at: nullableString(setValues.failed_at) }
                 : {}),
-              ...(sql.includes("canceled_at =")
-                ? { canceled_at: String(bindings[1]) }
+              ...(Object.prototype.hasOwnProperty.call(setValues, "canceled_at")
+                ? { canceled_at: nullableString(setValues.canceled_at) }
                 : {}),
             }
             await paymentAttemptModule.updatePaymentAttempts(updated)
