@@ -19,7 +19,7 @@
     "db:migrate:safe": "node scripts/run-migrations.mjs",
     "lint": "medusa lint",
     "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
-    "test:integration:modules": "TEST_TYPE=integration:modules NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
+    "test:integration:modules": "node scripts/run-disposable-postgres-modules.mjs",
     "test:unit": "TEST_TYPE=unit NODE_OPTIONS=--experimental-vm-modules jest --silent --runInBand --forceExit",
     "openapi:generate": "ts-node --swc scripts/openapi/generate.ts --write",
     "openapi:lint": "ts-node --swc scripts/openapi/lint.ts",
