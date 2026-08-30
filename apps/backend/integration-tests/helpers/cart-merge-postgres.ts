@@ -6,6 +6,7 @@ import { randomBytes } from "node:crypto";
 import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route";
 import {
   GUEST_CART_CAPABILITY_MODULE,
+  GUEST_CART_CAPABILITY_TTL_ROLLING_MS,
   type GuestCartCapabilityModuleService,
 } from "../../src/modules/guest-cart-capability";
 import { STORE_RESOURCE_VERSION_MODULE } from "../../src/modules/store-resource-version";
@@ -714,9 +715,14 @@ export async function createRealCartMergeFixture(
   const capabilityService = container.resolve(
     GUEST_CART_CAPABILITY_MODULE,
   ) as GuestCartCapabilityModuleService;
+  const fixtureNow = new Date();
+  const expiresAt = new Date(
+    fixtureNow.getTime() + GUEST_CART_CAPABILITY_TTL_ROLLING_MS,
+  );
   const minted = await capabilityService.mintGuestCartCapability({
     cart_id: cart.id,
-    now: new Date("2026-08-23T12:00:00.000Z"),
+    now: fixtureNow,
+    expires_at: expiresAt,
   });
 
   const resourceVersionService = container.resolve(
