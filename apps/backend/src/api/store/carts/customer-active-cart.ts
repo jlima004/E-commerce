@@ -7,9 +7,11 @@ import { storeCartPreOrderFields } from "./query-config"
 import type { StoreCartPreOrderRecord } from "./serializers"
 import type { CanonicalCustomerCartAuthorityResult } from "../../../modules/cart-merge/types"
 import {
+  materializeCustomerCartAuthorityLinks,
   reconcileTerminalCustomerCartAuthority,
   resolveCanonicalCustomerCartAuthority,
 } from "../../../workflows/cart/customer-cart-authority"
+import type { CustomerCartAuthorityRow } from "../../../modules/cart-merge/service"
 export { resolveCanonicalCustomerCartAuthority } from "../../../workflows/cart/customer-cart-authority"
 
 export type {
@@ -28,7 +30,12 @@ export type CustomerCartAuthorityTransactionInput = {
   authority: CanonicalCustomerCartAuthorityResult
   sharedContext: CustomerCartAuthoritySharedContext
   transactionContext: CustomerCartAuthoritySqlTransaction
+  registerAuthority: CustomerCartAuthorityRegistration
 }
+
+export type CustomerCartAuthorityRegistration = (
+  authority: CanonicalCustomerCartAuthorityResult
+) => void
 
 export const CUSTOMER_CART_AUTHORITY_CONFLICT =
   "CUSTOMER_CART_AUTHORITY_CONFLICT"
@@ -64,18 +71,39 @@ export async function withCustomerCartAuthorityTransaction<T>(
   // owned, terminal pointer and otherwise leaves fail-closed resolution intact.
   await reconcileTerminalCustomerCartAuthority(req.scope, customerId)
 
-  return withCartModuleTransaction(req.scope, async (transaction, _manager, sharedContext) => {
+  let authorityForLinks: CustomerCartAuthorityRow | null = null
+  const registerAuthority: CustomerCartAuthorityRegistration = (authority) => {
+    if (authority.type !== "single") {
+      return
+    }
+    authorityForLinks = {
+      id: authority.authorityId,
+      customer_id: authority.customerId,
+      cart_id: authority.cartId,
+      state: "active",
+    }
+  }
+
+  const result = await withCartModuleTransaction(req.scope, async (transaction, _manager, sharedContext) => {
     const authority = await resolveCanonicalCustomerCartAuthority(
       req.scope,
       sharedContext as CustomerCartAuthoritySharedContext,
       customerId
     )
+    registerAuthority(authority)
     return callback({
       authority,
       sharedContext: sharedContext as CustomerCartAuthoritySharedContext,
       transactionContext: transaction,
+      registerAuthority,
     })
   })
+
+  if (authorityForLinks) {
+    await materializeCustomerCartAuthorityLinks(req.scope, authorityForLinks)
+  }
+
+  return result
 }
 
 /** Legacy pure selector, now fail-closed and never timestamp-based. */

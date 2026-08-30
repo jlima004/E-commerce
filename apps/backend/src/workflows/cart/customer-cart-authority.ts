@@ -62,9 +62,11 @@ type CartModule = {
 
 type LinkService = {
   create(
-    input: Record<string, unknown> | Array<Record<string, unknown>>,
-    sharedContext?: CustomerCartAuthoritySharedContext
+    input: Record<string, unknown> | Array<Record<string, unknown>>
   ): Promise<unknown>
+  list?(
+    input: Record<string, unknown> | Array<Record<string, unknown>>
+  ): Promise<unknown[]>
 }
 
 const TERMINAL_CART_SELECT = [
@@ -188,14 +190,15 @@ async function createAuthority(
 }
 
 /**
- * Materializes the two cross-module associations for a newly-created
- * authority. The CartMerge service owns the authority row; the Link service
- * owns the association, and receives the same transaction context.
+ * Materializes the two cross-module associations for a committed authority.
+ * The CartMerge service owns the authority row; the Link service owns the
+ * association and its own ORM transaction. Callers deliberately invoke this
+ * only after the Cart transaction commits, so a rolled-back authority cannot
+ * leave an orphan link row behind.
  */
 export async function materializeCustomerCartAuthorityLinks(
   container: MedusaContainer,
-  authority: CustomerCartAuthorityRow,
-  sharedContext: CustomerCartAuthoritySharedContext
+  authority: CustomerCartAuthorityRow
 ): Promise<void> {
   const link = container.resolve(
     ContainerRegistrationKeys.LINK
@@ -208,7 +211,7 @@ export async function materializeCustomerCartAuthorityLinks(
   // Cart transaction manager here makes LinkService hydrate LinkModel with
   // Cart metadata. Domain writes stay in the Cart transaction; the Link
   // module persists its own association rows with its own manager.
-  await link.create([
+  const definitions = [
     {
       [CART_MERGE_MODULE]: {
         customer_cart_authority_customer_id: authority.id,
@@ -221,7 +224,38 @@ export async function materializeCustomerCartAuthorityLinks(
       },
       [Modules.CART]: { cart_id: authority.cart_id },
     },
-  ])
+  ]
+
+  for (const definition of definitions) {
+    await createLinkIdempotently(link, definition)
+  }
+}
+
+async function createLinkIdempotently(
+  link: LinkService,
+  definition: Record<string, unknown>,
+): Promise<void> {
+  if (typeof link.list !== "function") {
+    await link.create(definition)
+    return
+  }
+
+  const existing = await link.list(definition)
+  if (existing.length > 0) {
+    return
+  }
+
+  try {
+    await link.create(definition)
+  } catch (error) {
+    // Two post-commit retries can observe the gap at the same time. Treat a
+    // subsequent exact match as success, but preserve a real one-to-one
+    // conflict for a different target.
+    const materialized = await link.list(definition)
+    if (materialized.length === 0) {
+      throw error
+    }
+  }
 }
 
 async function retrieveCustomerCart(
@@ -332,11 +366,6 @@ export async function resolveCanonicalCustomerCartAuthority(
     authorityModule,
     customerId,
     cartId,
-    sharedContext
-  )
-  await materializeCustomerCartAuthorityLinks(
-    container,
-    newAuthority,
     sharedContext
   )
   return authorityResult("single", customerId, cartId, newAuthority.id)

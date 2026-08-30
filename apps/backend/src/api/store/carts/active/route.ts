@@ -48,7 +48,10 @@ import {
   resolveCanonicalCustomerCartAuthority,
   withCustomerCartAuthorityTransaction,
 } from "../customer-active-cart"
-import type { CustomerCartAuthoritySharedContext } from "../customer-active-cart"
+import type {
+  CustomerCartAuthorityRegistration,
+  CustomerCartAuthoritySharedContext,
+} from "../customer-active-cart"
 import { lockCartOrderAuthority } from "../../../../modules/payment-attempt/transactional-authority"
 import type { CartTransactionSql } from "../../../../workflows/cart/cart-transaction-boundary"
 
@@ -336,7 +339,8 @@ async function createOrReuseCustomerCartUnderAuthority(
   authority: Awaited<
     ReturnType<typeof resolveCanonicalCustomerCartAuthority>
   >,
-  sharedContext: CustomerCartAuthoritySharedContext
+  sharedContext: CustomerCartAuthoritySharedContext,
+  registerAuthority: CustomerCartAuthorityRegistration
 ): Promise<CustomerActiveCartResult> {
   await awaitCartMergeCustomerLockBarrier(sharedContext, customerId)
 
@@ -517,6 +521,7 @@ async function createOrReuseCustomerCartUnderAuthority(
   ) {
     throwCustomerAuthorityConflict()
   }
+  registerAuthority(materializedAuthority)
 
   let completion: LifecycleClaimResult
   try {
@@ -703,13 +708,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     const result = await withCustomerCartAuthorityTransaction(
       req,
       actor.customerId,
-      ({ authority, sharedContext }) =>
+      ({ authority, sharedContext, registerAuthority }) =>
         createOrReuseCustomerCartUnderAuthority(
           req,
           actor.customerId,
           rawIdempotencyKey,
           authority,
-          sharedContext
+          sharedContext,
+          registerAuthority
         )
     )
     // A newly created Cart is intentionally read with the shared Cart manager

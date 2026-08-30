@@ -128,6 +128,11 @@ type CartMergeLinkService = {
     input: Record<string, unknown> | Array<Record<string, unknown>>,
     sharedContext?: CustomerCartAuthoritySharedContext
   ): Promise<unknown>
+  list?(
+    input: Record<string, unknown> | Array<Record<string, unknown>>,
+    options?: { asLinkDefinition?: boolean },
+    sharedContext?: CustomerCartAuthoritySharedContext
+  ): Promise<unknown[]>
 }
 
 function createTransactionalCartModule(
@@ -1135,20 +1140,34 @@ function requireCartMergeLinkService(
   return link
 }
 
-async function materializeCartMergeResultLinks(
-  request: MergeRequest,
-  input: {
-    resultId: string
-    idempotencyRecordId: string
-    customerId: string
-    guestCartId: string
-    customerCartId: string | null
-    canonicalCartId: string
-    capabilityId: string
-  },
-  sharedContext: CustomerCartAuthoritySharedContext
-): Promise<void> {
-  const link = requireCartMergeLinkService(request)
+type CartMergeResultLinkInput = {
+  resultId: string
+  idempotencyRecordId: string
+  customerId: string
+  guestCartId: string
+  customerCartId: string | null
+  canonicalCartId: string
+  capabilityId: string
+}
+
+function toCustomerCartAuthorityRow(
+  authority: Awaited<ReturnType<typeof resolveCanonicalCustomerCartAuthority>>
+): CustomerCartAuthorityRow | null {
+  if (authority.type !== "single") {
+    return null
+  }
+
+  return {
+    id: authority.authorityId,
+    customer_id: authority.customerId,
+    cart_id: authority.cartId,
+    state: "active",
+  }
+}
+
+function buildCartMergeResultLinkDefinitions(
+  input: CartMergeResultLinkInput,
+): Array<Record<string, unknown>> {
   const definitions: Array<Record<string, unknown>> = [
     {
       [CART_MERGE_MODULE]: {
@@ -1195,25 +1214,56 @@ async function materializeCartMergeResultLinks(
     })
   }
 
-  // The Link module owns a separate MikroORM metadata boundary. Passing the
-  // Cart module's transaction manager here makes LinkService try to hydrate
-  // LinkModel with Cart metadata (and fails with MetadataError). Link.create
-  // therefore uses its own manager; the Cart-owned domain writes stay inside
-  // the surrounding Cart transaction.
-  await link.create(definitions)
+  return definitions
 }
 
-async function materializeCartReviewLink(
-  request: MergeRequest,
+function buildCartReviewLinkDefinition(
   reviewId: string,
   cartId: string,
-  sharedContext: CustomerCartAuthoritySharedContext
-): Promise<void> {
-  const link = requireCartMergeLinkService(request)
-  await link.create({
+): Record<string, unknown> {
+  return {
     [CART_MERGE_MODULE]: { cart_review_cart_id: reviewId },
     [Modules.CART]: { cart_id: cartId },
-  })
+  }
+}
+
+/**
+ * Link owns a separate ORM transaction. Materialize only after the Cart-owned
+ * transaction has committed. Replays reconcile each exact relation before
+ * creating it, and a concurrent duplicate is accepted only after the exact
+ * relation can be observed.
+ */
+async function materializeCartMergeLinks(
+  request: MergeRequest,
+  definitions: Array<Record<string, unknown>>
+): Promise<void> {
+  if (definitions.length === 0) {
+    return
+  }
+
+  const link = requireCartMergeLinkService(request)
+  for (const definition of definitions) {
+    if (typeof link.list !== "function") {
+      await link.create(definition)
+      continue
+    }
+
+    const existing = await link.list(definition)
+    if (existing.length > 0) {
+      continue
+    }
+
+    try {
+      await link.create(definition)
+    } catch (error) {
+      // A same-key replay may race with the first post-commit materializer.
+      // Do not hide a conflict with a different one-to-one target.
+      const materialized = await link.list(definition)
+      if (materialized.length === 0) {
+        throw error
+      }
+    }
+  }
 }
 
 /**
@@ -1259,7 +1309,8 @@ export class CartMergeOrchestrator {
     const cartMergeOwner = request.scope.resolve<CartMergeAuthorityOwner>(
       CART_MERGE_MODULE
     )
-    return withCartMergeTransaction(
+    let authorityForLinks: CustomerCartAuthorityRow | null = null
+    const result = await withCartMergeTransaction(
       request,
       async (transactionContext, _manager, sharedContext) => {
 
@@ -1278,6 +1329,7 @@ export class CartMergeOrchestrator {
       ) {
         throwNotFound()
       }
+      authorityForLinks = toCustomerCartAuthorityRow(authority)
 
       // Cart row/advisory lock precedes the version and CartReview locks.
       await lockCartRows(transactionContext, [input.cartId])
@@ -1395,6 +1447,15 @@ export class CartMergeOrchestrator {
       }
       }
     )
+
+    if (authorityForLinks) {
+      await materializeCustomerCartAuthorityLinks(
+        request.scope,
+        authorityForLinks
+      )
+    }
+
+    return result
   }
 
   async executeCartMerge(
@@ -1415,7 +1476,9 @@ export class CartMergeOrchestrator {
     const idempotencyService = request.scope.resolve<StoreIdempotencyModuleService>(
       STORE_IDEMPOTENCY_MODULE
     )
-    return withCartMergeTransaction(
+    const deferredLinkDefinitions: Array<Record<string, unknown>> = []
+    let authorityForLinks: CustomerCartAuthorityRow | null = null
+    const result = await withCartMergeTransaction(
       request,
       async (transactionContext, _manager, sharedContext) => {
       const operationAt = new Date()
@@ -1440,6 +1503,17 @@ export class CartMergeOrchestrator {
         capabilityService
       )
       if (committedReceipt) {
+        deferredLinkDefinitions.push(
+          ...buildCartMergeResultLinkDefinitions({
+            resultId: committedReceipt.id,
+            idempotencyRecordId: committedReceipt.idempotency_record_id,
+            customerId: committedReceipt.customer_id,
+            guestCartId: committedReceipt.guest_cart_id,
+            customerCartId: committedReceipt.customer_cart_id,
+            canonicalCartId: committedReceipt.canonical_cart_id,
+            capabilityId: committedReceipt.capability_id,
+          })
+        )
         return replayCommittedReceipt(
           input,
           committedReceipt
@@ -1462,6 +1536,7 @@ export class CartMergeOrchestrator {
         customerAuthority.type === "single"
           ? customerAuthority.cartId
           : null
+      authorityForLinks = toCustomerCartAuthorityRow(customerAuthority)
 
       await lockCartRows(
         transactionContext,
@@ -1653,19 +1728,6 @@ export class CartMergeOrchestrator {
           originalEtag: formatCartEtag(canonicalVersion),
           expiresAt,
         }, sharedContext)
-        await materializeCartMergeResultLinks(
-          request,
-          {
-            resultId,
-            idempotencyRecordId: claim.record.id,
-            customerId: input.customerId,
-            guestCartId: input.guestCartId,
-            customerCartId,
-            canonicalCartId: canonicalCart.id,
-            capabilityId: preflightCapability.id,
-          },
-          sharedContext
-        )
         tripFailpoint(request, "result")
 
         const completion = await completeStoreIdempotencyCompat(idempotencyService, {
@@ -1693,6 +1755,18 @@ export class CartMergeOrchestrator {
           throwConflict("IDEMPOTENCY_KEY_IN_PROGRESS")
         }
         tripFailpoint(request, "idempotency_completion")
+
+        deferredLinkDefinitions.push(
+          ...buildCartMergeResultLinkDefinitions({
+            resultId,
+            idempotencyRecordId: claim.record.id,
+            customerId: input.customerId,
+            guestCartId: input.guestCartId,
+            customerCartId,
+            canonicalCartId: canonicalCart.id,
+            capabilityId: preflightCapability.id,
+          })
+        )
 
         return {
           outcome: decision.outcome,
@@ -1799,11 +1873,7 @@ export class CartMergeOrchestrator {
           { customer_id: input.customerId, cart_id: guestCart.id },
           sharedContext
         )
-        await materializeCustomerCartAuthorityLinks(
-          request.scope,
-          authority,
-          sharedContext
-        )
+        authorityForLinks = authority
       }
       tripFailpoint(request, "association")
 
@@ -1858,19 +1928,6 @@ export class CartMergeOrchestrator {
         originalEtag: formatCartEtag(canonicalVersion),
         expiresAt,
       }, sharedContext)
-      await materializeCartMergeResultLinks(
-        request,
-        {
-          resultId,
-          idempotencyRecordId: claim.record.id,
-          customerId: input.customerId,
-          guestCartId: input.guestCartId,
-          customerCartId,
-          canonicalCartId,
-          capabilityId: preflightCapability.id,
-        },
-        sharedContext
-      )
       tripFailpoint(request, "result")
 
       if (reviewIdentity) {
@@ -1882,12 +1939,6 @@ export class CartMergeOrchestrator {
           producedCartVersion: canonicalVersion,
           rejectedItems: decision.rejectedItems,
         }, sharedContext)
-        await materializeCartReviewLink(
-          request,
-          reviewIdentity.id,
-          canonicalCartId,
-          sharedContext
-        )
         tripFailpoint(request, "review")
       }
 
@@ -1924,6 +1975,23 @@ export class CartMergeOrchestrator {
       }
       tripFailpoint(request, "idempotency_completion")
 
+      deferredLinkDefinitions.push(
+        ...buildCartMergeResultLinkDefinitions({
+          resultId,
+          idempotencyRecordId: claim.record.id,
+          customerId: input.customerId,
+          guestCartId: input.guestCartId,
+          customerCartId,
+          canonicalCartId,
+          capabilityId: preflightCapability.id,
+        })
+      )
+      if (reviewIdentity) {
+        deferredLinkDefinitions.push(
+          buildCartReviewLinkDefinition(reviewIdentity.id, canonicalCartId)
+        )
+      }
+
       return {
         outcome: decision.outcome,
         cart: originalPublicCartSnapshot,
@@ -1932,6 +2000,16 @@ export class CartMergeOrchestrator {
       }
       }
     )
+
+    if (authorityForLinks) {
+      await materializeCustomerCartAuthorityLinks(
+        request.scope,
+        authorityForLinks
+      )
+    }
+    await materializeCartMergeLinks(request, deferredLinkDefinitions)
+
+    return result
   }
 }
 

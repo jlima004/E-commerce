@@ -174,6 +174,31 @@ if (!requestedDatabaseName) {
         return response;
       };
 
+      const scopedContainerWithObservedLinkCreates = (
+        container: any,
+        createdLinkInputs: unknown[],
+      ) => {
+        const realLink = container.resolve(
+          ContainerRegistrationKeys.LINK,
+        ) as {
+          create(input: unknown): Promise<unknown>;
+        };
+        const scope = Object.create(container);
+        const resolve = container.resolve.bind(container);
+        scope.resolve = (key: string) => {
+          if (key === ContainerRegistrationKeys.LINK) {
+            return {
+              create: async (input: unknown) => {
+                createdLinkInputs.push(input);
+                return realLink.create(input);
+              },
+            };
+          }
+          return resolve(key);
+        };
+        return scope;
+      };
+
       const readCartRow = async (cartId: string) => {
         const result = await connection.raw(
           `
@@ -645,6 +670,45 @@ if (!requestedDatabaseName) {
         ).toBe(1);
         expect(await countPersistedOrders(connection)).toBe(beforeOrders);
 
+        const query = container.resolve(ContainerRegistrationKeys.QUERY) as {
+          graph(input: {
+            entity: string;
+            fields: string[];
+            filters: Record<string, unknown>;
+          }): Promise<{ data: Array<Record<string, any>> }>;
+        };
+        const resultGraph = await query.graph({
+          entity: "cart_merge_result",
+          fields: [
+            "id",
+            "store_idempotency.id",
+            "merge_customer.id",
+            "guest_cart.id",
+            "canonical_cart.id",
+            "guest_capability.id",
+          ],
+          filters: { id: afterState.result_id },
+        });
+        expect(resultGraph.data).toHaveLength(1);
+        expect(resultGraph.data[0]).toEqual(
+          expect.objectContaining({
+            id: afterState.result_id,
+            store_idempotency: expect.objectContaining({
+              id: receipt?.idempotency_record_id,
+            }),
+            merge_customer: expect.objectContaining({
+              id: fixture.customerId,
+            }),
+            guest_cart: expect.objectContaining({ id: fixture.guestCartId }),
+            canonical_cart: expect.objectContaining({
+              id: fixture.guestCartId,
+            }),
+            guest_capability: expect.objectContaining({
+              id: fixture.capabilityId,
+            }),
+          }),
+        );
+
         expect(transaction.transactionIds).toHaveLength(2);
         expect(new Set(transaction.transactionIds).size).toBe(1);
         expect(
@@ -876,6 +940,11 @@ if (!requestedDatabaseName) {
         const beforeOrders = await countPersistedOrders(connection);
         const failpoint = createCartMergeFailpoint();
         failpoint.arm("review");
+        const createdLinkInputs: unknown[] = [];
+        const requestScope = scopedContainerWithObservedLinkCreates(
+          container,
+          createdLinkInputs,
+        );
         const cartModule = container.resolve(Modules.CART) as unknown as {
           baseRepository_: {
             transaction: (...args: any[]) => Promise<unknown>;
@@ -890,7 +959,9 @@ if (!requestedDatabaseName) {
 
         try {
           await expect(
-            runMerge(container, fixture, { cartMergeFailpoint: failpoint }),
+            runMerge(requestScope, fixture, {
+              cartMergeFailpoint: failpoint,
+            }),
           ).rejects.toThrow("P16_CART_MERGE_FAILPOINT:review");
         } finally {
           transaction.restore();
@@ -917,6 +988,7 @@ if (!requestedDatabaseName) {
         expect(afterGuest.review_status).toBeNull();
         expect(await countPersistedOrders(connection)).toBe(beforeOrders);
         expect(failpoint.ledger).toContain("review");
+        expect(createdLinkInputs).toHaveLength(0);
         expect(transaction.transactionIds).toHaveLength(1);
       });
 

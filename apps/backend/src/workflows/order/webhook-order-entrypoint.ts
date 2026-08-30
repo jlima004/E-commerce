@@ -1880,13 +1880,6 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
     )
     completedOrderId = completedOrder.id
 
-    if (cart.customer_id) {
-      await reconcileTerminalCustomerCartAuthority(
-        container,
-        cart.customer_id,
-      )
-    }
-
     await completeRecoveredOrderCorrelation({
       container,
       attempt,
@@ -1967,7 +1960,7 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
     )
   }
 
-  return withCartOrderAuthorityLock(
+  const result = await withCartOrderAuthorityLock(
     connection,
     input.payment_attempt_id,
     async ({ attempt, currentCartResourceVersion }) => {
@@ -1985,6 +1978,26 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       )
     }
   )
+
+  // The order authority transaction holds the Cart-scope advisory lock. The
+  // Customer authority lock must never be acquired from inside that callback:
+  // active/merge paths acquire Customer before Cart. Reconcile only after the
+  // Cart transaction has committed, so the two scopes keep one global order.
+  if (result.order_id) {
+    const attempt = await loadPaymentAttemptById(
+      container,
+      input.payment_attempt_id
+    )
+    const cart = await loadCartForOrderCreation(container, attempt.cart_id)
+    if (cart.customer_id) {
+      await reconcileTerminalCustomerCartAuthority(
+        container,
+        cart.customer_id
+      )
+    }
+  }
+
+  return result
 }
 
 const createOrderFromConfirmedPaymentAttemptStep = createStep(
