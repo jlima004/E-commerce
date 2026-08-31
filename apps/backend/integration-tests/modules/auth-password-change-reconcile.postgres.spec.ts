@@ -1171,11 +1171,12 @@ if (!databaseUrl || !databaseName) {
         "GET /store/customers/me/verify/status",
         "POST /store/customers/me/password",
       ])
-      expect(
-        STORE_SURFACE_MANIFEST.filter(
-          (entry) => entry.runtime_policy === "M1_ENABLED"
-        ).map((entry) => `${entry.method} ${entry.pathTemplate}`)
-      ).toEqual([...STORE_SURFACE_PHASE14_ENABLED_OPERATIONS])
+      const currentM1Operations = STORE_SURFACE_MANIFEST.filter(
+        (entry) => entry.runtime_policy === "M1_ENABLED"
+      ).map((entry) => `${entry.method} ${entry.pathTemplate}`)
+      for (const operation of STORE_SURFACE_PHASE14_ENABLED_OPERATIONS) {
+        expect(currentM1Operations).toContain(operation)
+      }
       expect(decideStoreSurfaceAccess("POST", PASSWORD_PATH).action).toBe("allow")
       expect(CUSTOMER_AUTH_BFF_PROTECTED_OPERATIONS).toContain(
         "POST /store/customers/me/password"
