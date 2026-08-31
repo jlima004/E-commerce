@@ -29,8 +29,6 @@ import {
   handleCustomerAuthVerificationStatus,
 } from "../../src/api/store/customers/me/verify/route"
 import { issueCustomerAuthAccessToken } from "../../src/modules/customer-auth/jwt"
-import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
-import type { PaymentAttemptRecord } from "../../src/modules/payment-attempt/types"
 import { WEBHOOKS_MODULE } from "../../src/modules/webhooks"
 import { CHECKOUT_COMPLETION_MODULE } from "../../src/modules/checkout-completion"
 import { ANALYTICS_EVENT_LOG_MODULE } from "../../src/modules/analytics-event-log"
@@ -145,61 +143,6 @@ if (!requestedDatabaseName) {
     paymentCollectionId: string
     paymentSessionId: string
     email: string
-  }
-
-  function attempt(
-    identity: string,
-    prerequisites: PersistedPrerequisites
-  ): PaymentAttemptRecord {
-    return {
-      id: `payatt_${identity}`,
-      cart_id: prerequisites.cartId,
-      payment_collection_id: prerequisites.paymentCollectionId,
-      payment_session_id: prerequisites.paymentSessionId,
-      provider: "stripe",
-      provider_payment_intent_id: `pi_${identity}`,
-      provider_payment_session_id: `ps_${identity}`,
-      payment_method_type: "card",
-      status: "awaiting_webhook_confirmation",
-      amount: 9900,
-      currency_code: "brl",
-      expires_at: null,
-      order_id: null,
-      metadata: null,
-      client_confirmed_at: null,
-      instructions_displayed_at: null,
-      awaiting_webhook_since: "2026-08-18T15:00:00.000Z",
-      superseded_at: null,
-      invalidated_at: null,
-      canceled_at: null,
-      failed_at: null,
-      expired_at: null,
-      created_at: "2026-08-18T15:00:00.000Z",
-      updated_at: "2026-08-18T15:00:00.000Z",
-    }
-  }
-
-  function paymentAttemptService(seed: PaymentAttemptRecord) {
-    const rows = [seed]
-    return {
-      rows,
-      listPaymentAttempts: jest.fn(async (filters?: Record<string, unknown>) =>
-        rows.filter(
-          (row) =>
-            (!filters?.id || row.id === filters.id) &&
-            (!filters?.provider_payment_intent_id ||
-              row.provider_payment_intent_id === filters.provider_payment_intent_id)
-        )
-      ),
-      updatePaymentAttempts: jest.fn(async (input) => {
-        const updates = Array.isArray(input) ? input : [input]
-        for (const update of updates) {
-          const index = rows.findIndex((row) => row.id === update.id)
-          if (index >= 0) rows[index] = update
-        }
-        return updates
-      }),
-    }
   }
 
   function webhookService() {
@@ -544,6 +487,77 @@ if (!requestedDatabaseName) {
         )
         await paymentModule.authorizePaymentSession(paymentSession.id, {})
 
+        const resourceVersionRows = await dbConnection.raw(
+          `
+            select version
+            from store_resource_version
+            where resource_type = 'cart'
+              and resource_id = ?
+              and deleted_at is null
+          `,
+          [cart.id]
+        )
+        if (resourceVersionRows.rows.length > 1) {
+          throw new Error("R1_CART_RESOURCE_VERSION_MULTIPLE")
+        }
+        if (resourceVersionRows.rows.length === 0) {
+          await dbConnection.raw(
+            `
+              insert into store_resource_version
+                (id, resource_type, resource_id, version)
+              values (?, 'cart', ?, ?)
+            `,
+            [`strver_${cart.id}`, cart.id, 1]
+          )
+        }
+        const currentResourceVersionRows = await dbConnection.raw(
+          `
+            select version
+            from store_resource_version
+            where resource_type = 'cart'
+              and resource_id = ?
+              and deleted_at is null
+          `,
+          [cart.id]
+        )
+        if (currentResourceVersionRows.rows.length !== 1) {
+          throw new Error("R1_CART_RESOURCE_VERSION_UNAVAILABLE")
+        }
+        const cartResourceVersion = Number(
+          currentResourceVersionRows.rows[0]?.version
+        )
+        if (!Number.isSafeInteger(cartResourceVersion) || cartResourceVersion <= 0) {
+          throw new Error("R1_CART_RESOURCE_VERSION_INVALID")
+        }
+
+        const paymentAttemptId = `payatt_${identity}`
+        await dbConnection.raw(
+          `
+            insert into payment_attempt (
+              id, cart_id, payment_collection_id, payment_session_id,
+              provider, provider_payment_intent_id, provider_payment_session_id,
+              payment_method_type, status, amount, currency_code, metadata,
+              awaiting_webhook_since, created_at, updated_at
+            ) values (?, ?, ?, ?, 'stripe', ?, ?, 'card',
+              'awaiting_webhook_confirmation', 9900, 'brl', ?, ?, ?, ?)
+          `,
+          [
+            paymentAttemptId,
+            cart.id,
+            paymentCollection.id,
+            paymentSession.id,
+            `pi_${identity}`,
+            `ps_${identity}`,
+            JSON.stringify({
+              payment_attempt_id: paymentAttemptId,
+              cart_resource_version: cartResourceVersion,
+            }),
+            new Date("2026-08-18T15:00:00.000Z"),
+            new Date("2026-08-18T15:00:00.000Z"),
+            new Date("2026-08-18T15:00:00.000Z"),
+          ]
+        )
+
         return {
           cartId: cart.id,
           paymentCollectionId: paymentCollection.id,
@@ -552,9 +566,8 @@ if (!requestedDatabaseName) {
         }
       }
 
-      function harness(identity: string, prerequisites: PersistedPrerequisites) {
+      function harness(identity: string) {
         const realContainer = getContainer()
-        const payment = paymentAttemptService(attempt(identity, prerequisites))
         const webhooks = webhookService()
         const analytics: Array<Record<string, unknown>> = []
         let completeCartInvocations = 0
@@ -580,7 +593,6 @@ if (!requestedDatabaseName) {
         const container = {
           resolve: (key: string) => {
             if (key === CHECKOUT_COMPLETION_MODULE) return realCheckout
-            if (key === PAYMENT_ATTEMPT_MODULE) return payment
             if (key === WEBHOOKS_MODULE) return webhooks
             if (key === ANALYTICS_EVENT_LOG_MODULE || key === "analytics_event_log") {
               return analyticsModule
@@ -618,7 +630,7 @@ if (!requestedDatabaseName) {
               amount_received: 9900,
               currency: "brl",
               payment_method_types: ["card"],
-              metadata: {},
+              metadata: { payment_attempt_id: `payatt_${identity}` },
             },
           },
         })
@@ -651,7 +663,6 @@ if (!requestedDatabaseName) {
         }
 
         return {
-          payment,
           post,
           counts: () => ({ completeCartInvocations }),
         }
@@ -1081,8 +1092,25 @@ if (!requestedDatabaseName) {
       it("uses the real canonical payment_intent.succeeded webhook as the only Order birth", async () => {
         expect(await countOrders()).toBe(0)
         const prerequisites = await seedPersistedPrerequisites("auth_pos_1421")
-        const state = harness("auth_pos_1421", prerequisites)
-        expect(state.payment.rows[0].order_id).toBeNull()
+        const state = harness("auth_pos_1421")
+        const paymentAttempts = await dbConnection.raw(
+          `
+            select id, cart_id, provider, provider_payment_intent_id, status, order_id
+            from payment_attempt
+            where id = ? and deleted_at is null
+          `,
+          ["payatt_auth_pos_1421"]
+        )
+        expect(paymentAttempts.rows).toEqual([
+          {
+            id: "payatt_auth_pos_1421",
+            cart_id: prerequisites.cartId,
+            provider: "stripe",
+            provider_payment_intent_id: "pi_auth_pos_1421",
+            status: "awaiting_webhook_confirmation",
+            order_id: null,
+          },
+        ])
 
         const first = await state.post("evt_auth_pos_1421")
         expect(first.statusCode).toBe(200)
