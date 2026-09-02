@@ -1,3 +1,5 @@
+import type { ReconciliationReasonCode } from "../../reconciliation/reason-codes"
+
 export const CHECKOUT_COMPLETION_OPERATION = {
   COMPLETE_CHECKOUT_CREATE_ORDER: "complete_checkout_create_order",
 } as const
@@ -6,6 +8,7 @@ export const CHECKOUT_COMPLETION_STATUS = {
   PROCESSING: "processing",
   COMPLETED: "completed",
   FAILED: "failed",
+  RECONCILIATION_REQUIRED: "reconciliation_required",
 } as const
 
 export const CHECKOUT_COMPLETION_OPERATIONS = [
@@ -16,6 +19,7 @@ export const CHECKOUT_COMPLETION_STATUSES = [
   CHECKOUT_COMPLETION_STATUS.PROCESSING,
   CHECKOUT_COMPLETION_STATUS.COMPLETED,
   CHECKOUT_COMPLETION_STATUS.FAILED,
+  CHECKOUT_COMPLETION_STATUS.RECONCILIATION_REQUIRED,
 ] as const
 
 export type CheckoutCompletionOperation =
@@ -50,6 +54,24 @@ export type CreateCheckoutCompletionLogInput = {
   locked_at?: Date | string | null
   completed_at?: Date | string | null
   failed_at?: Date | string | null
+  execution_started_at?: Date | string | null
+  last_reconciliation_at?: Date | string | null
+  reconciliation_reason_code?: ReconciliationReasonCode | null
+}
+
+export type CheckoutCompletionOrderBirthAuthority = {
+  id: string
+  operation: CheckoutCompletionOperation
+  idempotency_key: string
+  cart_id: string
+  payment_intent_id: string
+  payment_attempt_id: string | null
+  order_id: string | null
+  status: CheckoutCompletionStatus
+  execution_started_at: Date | string | null
+  last_reconciliation_at: Date | string | null
+  reconciliation_reason_code: ReconciliationReasonCode | null
+  deleted_at: Date | string | null
 }
 
 export type BuildCheckoutCompletionIdempotencyKeyInput = {

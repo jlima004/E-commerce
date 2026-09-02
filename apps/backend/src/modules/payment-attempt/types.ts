@@ -1,3 +1,5 @@
+import type { ReconciliationReasonCode } from "../../reconciliation/reason-codes"
+
 export const PAYMENT_ATTEMPT_STATUS = {
   CREATED: "created",
   PROVIDER_SESSION_CREATED: "provider_session_created",
@@ -73,9 +75,28 @@ export type PaymentAttemptRecord = {
   canceled_at: Date | string | null
   failed_at: Date | string | null
   expired_at: Date | string | null
+  financial_freeze_started_at?: Date | string | null
+  provider_canceled_confirmed_at?: Date | string | null
+  provider_discovery_started_at?: Date | string | null
+  reconciliation_reason_code?: ReconciliationReasonCode | null
+  reconciliation_locked_at?: Date | string | null
+  last_reconciliation_at?: Date | string | null
   created_at?: Date | string
   updated_at?: Date | string
 }
+
+export type PaymentAttemptFinancialAuthority = {
+  id: string
+  cart_id: string
+  order_id: string | null
+  financial_freeze_started_at: Date | string | null
+  provider_canceled_confirmed_at: Date | string | null
+}
+
+export type PaymentAttemptFinancialAuthorityProjection =
+  PaymentAttemptFinancialAuthority & {
+    unresolved_financial_freeze: boolean
+  }
 
 export type CreatePaymentAttemptInput = {
   cart_id: string
@@ -89,4 +110,10 @@ export type CreatePaymentAttemptInput = {
   currency_code: string
   expires_at?: Date | string | null
   metadata?: Record<string, unknown> | null
+  financial_freeze_started_at?: Date | string | null
+  provider_canceled_confirmed_at?: Date | string | null
+  provider_discovery_started_at?: Date | string | null
+  reconciliation_reason_code?: ReconciliationReasonCode | null
+  reconciliation_locked_at?: Date | string | null
+  last_reconciliation_at?: Date | string | null
 }

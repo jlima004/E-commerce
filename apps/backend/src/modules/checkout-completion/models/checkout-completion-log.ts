@@ -20,6 +20,7 @@ const CheckoutCompletionLog = model
         CHECKOUT_COMPLETION_STATUS.PROCESSING,
         CHECKOUT_COMPLETION_STATUS.COMPLETED,
         CHECKOUT_COMPLETION_STATUS.FAILED,
+        CHECKOUT_COMPLETION_STATUS.RECONCILIATION_REQUIRED,
       ])
       .default(CHECKOUT_COMPLETION_STATUS.PROCESSING),
     error_code: model.text().nullable(),
@@ -28,12 +29,14 @@ const CheckoutCompletionLog = model
     locked_at: model.dateTime().nullable(),
     completed_at: model.dateTime().nullable(),
     failed_at: model.dateTime().nullable(),
+    execution_started_at: model.dateTime().nullable(),
+    last_reconciliation_at: model.dateTime().nullable(),
+    reconciliation_reason_code: model.text().nullable(),
   })
   .indexes([
     {
       name: "IDX_checkout_completion_log_idempotency_key",
       on: ["idempotency_key"],
-      unique: true,
     },
     {
       name: "IDX_checkout_completion_log_payment_intent_id",

@@ -20,7 +20,11 @@ import {
 
 const migrationPath = path.join(
   __dirname,
-  "../migrations/Migration20260702000000.ts"
+  "../migrations/Migration20260901130100.ts"
+)
+const paymentMigrationPath = path.join(
+  __dirname,
+  "../../payment-attempt/migrations/Migration20260901130000.ts"
 )
 const modelPath = path.join(
   __dirname,
@@ -81,11 +85,12 @@ describe("CheckoutCompletionLog status and operation vocabulary", () => {
     )
   })
 
-  it("accepts processing, completed and failed statuses", () => {
+  it("accepts every R3 status, including reconciliation_required", () => {
     for (const status of [
       CHECKOUT_COMPLETION_STATUS.PROCESSING,
       CHECKOUT_COMPLETION_STATUS.COMPLETED,
       CHECKOUT_COMPLETION_STATUS.FAILED,
+      CHECKOUT_COMPLETION_STATUS.RECONCILIATION_REQUIRED,
     ]) {
       expect(() => assertValidCheckoutCompletionStatus(status)).not.toThrow()
     }
@@ -165,20 +170,46 @@ describe("CheckoutCompletionLog metadata allowlist", () => {
 })
 
 describe("CheckoutCompletionLog schema draft", () => {
+  it("keeps reconciliation migrations self-contained with immutable historical literals", () => {
+    const checkoutMigration = fs.readFileSync(migrationPath, "utf8")
+    const paymentMigration = fs.readFileSync(paymentMigrationPath, "utf8")
+    const runtimeReasonCodesImport =
+      'from "../../../reconciliation/reason-codes"'
+
+    expect(checkoutMigration).not.toContain(runtimeReasonCodesImport)
+    expect(paymentMigration).not.toContain(runtimeReasonCodesImport)
+    expect(paymentMigration).toContain(
+      'const LEGACY_PROVIDER_DISPATCH_UNKNOWN = "LEGACY_PROVIDER_DISPATCH_UNKNOWN"'
+    )
+    expect(checkoutMigration).toContain(
+      'const ORDER_BIRTH_EXECUTION_AMBIGUOUS = "ORDER_BIRTH_EXECUTION_AMBIGUOUS"'
+    )
+    expect(checkoutMigration).toContain(
+      'const ORDER_RECOVERY_INCOMPLETE = "ORDER_RECOVERY_INCOMPLETE"'
+    )
+  })
+
   it("keeps canonical unique indexes and lookup indexes in the migration draft", () => {
     const migration = fs.readFileSync(migrationPath, "utf8")
+    const model = fs.readFileSync(modelPath, "utf8")
 
     expect(migration).toContain('"idempotency_key"')
-    expect(migration).toContain(
-      'IDX_checkout_completion_log_idempotency_key_unique'
-    )
+    expect(migration).toContain("UQ_checkout_completion_log_operation_idempotency_key")
+    expect(migration).toContain("UQ_checkout_completion_log_operation_cart_id")
+    expect(migration).toContain("UQ_checkout_completion_log_operation_payment_intent_id")
+    expect(migration).toContain("UQ_checkout_completion_log_operation_payment_attempt_id")
+    expect(migration).toContain("UQ_checkout_completion_log_operation_order_id")
     expect(migration).toContain('"payment_intent_id"')
     expect(migration).toContain('"cart_id"')
     expect(migration).toContain('"payment_attempt_id"')
     expect(migration).toContain('"order_id"')
-    expect(migration).toContain('"status", "locked_at"')
-    expect(migration).toContain('"operation" in')
-    expect(migration).toContain('"status" in')
+    expect(model).toContain('"status", "locked_at"')
+    expect(model).toContain("CHECKOUT_COMPLETION_OPERATION.COMPLETE_CHECKOUT_CREATE_ORDER")
+    expect(model).toContain("CHECKOUT_COMPLETION_STATUS.RECONCILIATION_REQUIRED")
+    expect(migration).toContain("reconciliation_required")
+    expect(migration).toContain("ORDER_BIRTH_EXECUTION_AMBIGUOUS")
+    expect(migration).toContain("ORDER_RECOVERY_INCOMPLETE")
+    expect(migration).toContain("deleted_at")
     expect(migration).not.toContain("raw_body")
     expect(migration).not.toContain(CLIENT_SECRET_KEY)
     expect(migration).not.toContain(AUTHORIZATION_KEY)
@@ -219,6 +250,9 @@ describe("CheckoutCompletionLog schema slice side effects", () => {
     expect(record.status).toBe(CHECKOUT_COMPLETION_STATUS.PROCESSING)
     expect(record.idempotency_key).toBe("pi_123")
     expect(record.order_id).toBeNull()
+    expect(record.execution_started_at).toBeNull()
+    expect(record.last_reconciliation_at).toBeNull()
+    expect(record.reconciliation_reason_code).toBeNull()
     expect(record.metadata).toEqual({
       stripe_event_id: "evt_123",
       payment_method_type: "card",

@@ -57,6 +57,12 @@ const PAYMENT_ATTEMPT_COLUMNS = [
   "canceled_at",
   "failed_at",
   "expired_at",
+  "financial_freeze_started_at",
+  "provider_canceled_confirmed_at",
+  "provider_discovery_started_at",
+  "reconciliation_reason_code",
+  "reconciliation_locked_at",
+  "last_reconciliation_at",
   "created_at",
   "updated_at",
 ] as const
@@ -113,6 +119,15 @@ function mapPaymentAttemptRow(row: Record<string, unknown>): PaymentAttemptRecor
     canceled_at: readNullableDate(row.canceled_at),
     failed_at: readNullableDate(row.failed_at),
     expired_at: readNullableDate(row.expired_at),
+    financial_freeze_started_at: readNullableDate(row.financial_freeze_started_at),
+    provider_canceled_confirmed_at: readNullableDate(row.provider_canceled_confirmed_at),
+    provider_discovery_started_at: readNullableDate(row.provider_discovery_started_at),
+    reconciliation_reason_code:
+      row.reconciliation_reason_code === null || row.reconciliation_reason_code === undefined
+        ? null
+        : (String(row.reconciliation_reason_code) as PaymentAttemptRecord["reconciliation_reason_code"]),
+    reconciliation_locked_at: readNullableDate(row.reconciliation_locked_at),
+    last_reconciliation_at: readNullableDate(row.last_reconciliation_at),
     created_at: readNullableDate(row.created_at) ?? undefined,
     updated_at: readNullableDate(row.updated_at) ?? undefined,
   }

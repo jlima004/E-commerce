@@ -35,6 +35,7 @@ const EXPECTED_MODULE_SPECS = Object.freeze([
   "guest-cart-order-invariants.postgres.spec.ts",
   "guest-cart-validation-foundation.postgres.spec.ts",
   "payment-attempt-cart-authority.postgres.spec.ts",
+  "payment-attempt-financial-authority.postgres.spec.ts",
 ])
 
 const MEDUSA_RUNNER_SPECS = new Set([

@@ -19,6 +19,13 @@ import type {
   PaymentAttemptStatus,
 } from "./types"
 import { readDurablePaymentAttemptIdentity } from "./durable-initiation"
+import type {
+  PaymentAttemptFinancialAuthorityProjection,
+} from "./types"
+import {
+  assertCompletePaymentAttemptFinancialAuthority,
+  projectPaymentAttemptFinancialAuthority,
+} from "./financial-authority"
 
 const STRIPE_CARD_INITIATION_LAYER_TOKEN = "stripeCardInitiationLayer"
 const STRIPE_PIX_INITIATION_LAYER_TOKEN = "stripePixInitiationLayer"
@@ -80,6 +87,18 @@ class PaymentAttemptModuleService extends MedusaService({
       STRIPE_PIX_INITIATION_LAYER_TOKEN,
       isStripePixInitiationLayer
     )
+  }
+
+  async readPaymentAttemptFinancialAuthority(
+    attemptId: string
+  ): Promise<PaymentAttemptFinancialAuthorityProjection | null> {
+    const attempts = await this.listPaymentAttempts({ id: attemptId })
+    const attempt = attempts[0] as PaymentAttemptRecord | undefined
+    if (!attempt) {
+      return null
+    }
+    assertCompletePaymentAttemptFinancialAuthority(attempt)
+    return projectPaymentAttemptFinancialAuthority(attempt)
   }
 }
 
@@ -159,6 +178,12 @@ export function buildNewPaymentAttemptRecord(
     canceled_at: null,
     failed_at: null,
     expired_at: null,
+    financial_freeze_started_at: null,
+    provider_canceled_confirmed_at: null,
+    provider_discovery_started_at: null,
+    reconciliation_reason_code: null,
+    reconciliation_locked_at: null,
+    last_reconciliation_at: null,
     created_at: at.toISOString(),
     updated_at: at.toISOString(),
   }

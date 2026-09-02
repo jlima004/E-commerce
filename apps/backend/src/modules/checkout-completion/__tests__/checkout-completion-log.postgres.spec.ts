@@ -127,13 +127,16 @@ if (!requestedDatabaseName) {
           id, operation, idempotency_key, cart_id, payment_intent_id,
           payment_attempt_id, order_id, status, locked_at, created_at, updated_at
         ) values (
-          $1, 'complete_checkout_create_order', $2, 'cart_ccl_01', 'pi_ccl_01',
-          'payatt_ccl_01', $3, $4, $5, now(), now()
+          $1, 'complete_checkout_create_order', $2, $3, $4,
+          $5, $6, $7, $8, now(), now()
         )
       `,
       [
         input.id,
         input.idempotency_key,
+        `cart_${input.idempotency_key}`,
+        `pi_${input.idempotency_key}`,
+        `payatt_${input.idempotency_key}`,
         input.order_id ?? null,
         input.status ?? "processing",
         input.locked_at ?? new Date().toISOString(),
@@ -165,7 +168,7 @@ if (!requestedDatabaseName) {
         expect(table.rows).toEqual([{ table_name: "checkout_completion_log" }])
         expect(indexes.rows.map((row: { indexname: string }) => row.indexname)).toEqual(
           expect.arrayContaining([
-            "IDX_checkout_completion_log_idempotency_key_unique",
+            "UQ_checkout_completion_log_operation_idempotency_key",
             "IDX_checkout_completion_log_status_locked_at",
           ])
         )

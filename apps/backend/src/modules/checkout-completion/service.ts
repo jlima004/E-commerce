@@ -14,6 +14,7 @@ import {
   type CheckoutCompletionOperation,
   type CheckoutCompletionStatus,
   type CreateCheckoutCompletionLogInput,
+  type CheckoutCompletionOrderBirthAuthority,
 } from "./types"
 
 export { CHECKOUT_COMPLETION_STALE_AFTER_MS } from "./staleness"
@@ -127,9 +128,75 @@ function sanitizeMetadataValue(value: unknown): CheckoutCompletionMetadataValue 
   return sanitizeString(JSON.stringify(value))
 }
 
+export type CheckoutCompletionLogSqlTransaction = {
+  raw(
+    sql: string,
+    bindings?: unknown[]
+  ): Promise<{ rows?: Array<Record<string, unknown>> }>
+}
+
+const CHECKOUT_COMPLETION_AUTHORITY_COLUMNS = [
+  "id", "operation", "idempotency_key", "cart_id", "payment_intent_id",
+  "payment_attempt_id", "order_id", "status", "execution_started_at",
+  "last_reconciliation_at", "reconciliation_reason_code", "deleted_at",
+] as const
+
+const CHECKOUT_COMPLETION_FILTER_COLUMNS = {
+  id: "id",
+  idempotency_key: "idempotency_key",
+  cart_id: "cart_id",
+  payment_attempt_id: "payment_attempt_id",
+} as const
+
+function mapOrderBirthAuthority(
+  row: Record<string, unknown>
+): CheckoutCompletionOrderBirthAuthority {
+  return {
+    id: String(row.id),
+    operation: row.operation as CheckoutCompletionOrderBirthAuthority["operation"],
+    idempotency_key: String(row.idempotency_key),
+    cart_id: String(row.cart_id),
+    payment_intent_id: String(row.payment_intent_id),
+    payment_attempt_id: row.payment_attempt_id == null ? null : String(row.payment_attempt_id),
+    order_id: row.order_id == null ? null : String(row.order_id),
+    status: row.status as CheckoutCompletionOrderBirthAuthority["status"],
+    execution_started_at: row.execution_started_at instanceof Date || typeof row.execution_started_at === "string" ? row.execution_started_at : null,
+    last_reconciliation_at: row.last_reconciliation_at instanceof Date || typeof row.last_reconciliation_at === "string" ? row.last_reconciliation_at : null,
+    reconciliation_reason_code: row.reconciliation_reason_code == null ? null : String(row.reconciliation_reason_code) as CheckoutCompletionOrderBirthAuthority["reconciliation_reason_code"],
+    deleted_at: row.deleted_at instanceof Date || typeof row.deleted_at === "string" ? row.deleted_at : null,
+  }
+}
+
+export async function readCheckoutCompletionLogHistory(
+  transaction: CheckoutCompletionLogSqlTransaction,
+  filters: { id?: string; idempotency_key?: string; cart_id?: string; payment_attempt_id?: string }
+): Promise<CheckoutCompletionOrderBirthAuthority[]> {
+  const entries = Object.entries(filters)
+    .filter(([key, value]) => key in CHECKOUT_COMPLETION_FILTER_COLUMNS && value != null)
+    .map(([key, value]) => [
+      CHECKOUT_COMPLETION_FILTER_COLUMNS[key as keyof typeof CHECKOUT_COMPLETION_FILTER_COLUMNS],
+      value,
+    ] as const)
+  const where = entries.length > 0
+    ? `where ${entries.map(([key]) => `${key} = ?`).join(" and ")}`
+    : ""
+  const result = await transaction.raw(
+    `select ${CHECKOUT_COMPLETION_AUTHORITY_COLUMNS.join(", ")} from checkout_completion_log ${where} order by id`,
+    entries.map(([, value]) => value)
+  )
+  return (result.rows ?? []).map(mapOrderBirthAuthority)
+}
+
 class CheckoutCompletionModuleService extends MedusaService({
   CheckoutCompletionLog,
-}) {}
+}) {
+  async readCheckoutCompletionLogHistory(
+    transaction: CheckoutCompletionLogSqlTransaction,
+    filters: { id?: string; idempotency_key?: string; cart_id?: string; payment_attempt_id?: string } = {}
+  ): Promise<CheckoutCompletionOrderBirthAuthority[]> {
+    return readCheckoutCompletionLogHistory(transaction, filters)
+  }
+}
 
 export default CheckoutCompletionModuleService
 
@@ -171,7 +238,8 @@ export function assertValidCheckoutCompletionStatus(
   if (
     status !== CHECKOUT_COMPLETION_STATUS.PROCESSING &&
     status !== CHECKOUT_COMPLETION_STATUS.COMPLETED &&
-    status !== CHECKOUT_COMPLETION_STATUS.FAILED
+    status !== CHECKOUT_COMPLETION_STATUS.FAILED &&
+    status !== CHECKOUT_COMPLETION_STATUS.RECONCILIATION_REQUIRED
   ) {
     throw new Error("CHECKOUT_COMPLETION_STATUS_INVALID")
   }
@@ -228,11 +296,34 @@ export function sanitizeCheckoutCompletionMetadata(
   return Object.keys(output).length > 0 ? output : null
 }
 
+export type CheckoutCompletionLogRecord = {
+  id: string
+  operation: CheckoutCompletionOperation
+  idempotency_key: string
+  cart_id: string
+  payment_intent_id: string
+  payment_attempt_id: string | null
+  order_id: string | null
+  status: CheckoutCompletionStatus
+  error_code: string | null
+  error_message: string | null
+  metadata: CheckoutCompletionMetadata | null
+  locked_at: Date | string | null
+  completed_at: Date | string | null
+  failed_at: Date | string | null
+  execution_started_at?: Date | string | null
+  last_reconciliation_at?: Date | string | null
+  reconciliation_reason_code?: import("../../reconciliation/reason-codes").ReconciliationReasonCode | null
+  created_at: Date | string
+  updated_at: Date | string
+  deleted_at: Date | string | null
+}
+
 export function buildCheckoutCompletionLogRecord(
   input: CreateCheckoutCompletionLogInput,
   id: string,
   at: Date = new Date()
-) {
+): CheckoutCompletionLogRecord {
   const timestamp = at.toISOString()
   const operation =
     input.operation ??
@@ -266,15 +357,14 @@ export function buildCheckoutCompletionLogRecord(
     locked_at: input.locked_at ?? null,
     completed_at: input.completed_at ?? null,
     failed_at: input.failed_at ?? null,
+    execution_started_at: input.execution_started_at ?? null,
+    last_reconciliation_at: input.last_reconciliation_at ?? null,
+    reconciliation_reason_code: input.reconciliation_reason_code ?? null,
     created_at: timestamp,
     updated_at: timestamp,
     deleted_at: null,
   }
 }
-
-export type CheckoutCompletionLogRecord = ReturnType<
-  typeof buildCheckoutCompletionLogRecord
->
 
 export type CheckoutCompletionClaimDecision =
   | {
