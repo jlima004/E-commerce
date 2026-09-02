@@ -16,6 +16,7 @@ import { createStoreSurfaceGuardMiddleware } from "../../../api/store-surface/gu
 import { POST as completeCartOverride } from "../../../api/store/carts/[id]/complete/route"
 import { PAYMENT_ATTEMPT_MODULE } from "../../payment-attempt"
 import type { PaymentAttemptRecord } from "../../payment-attempt/types"
+import { STORE_RESOURCE_VERSION_MODULE } from "../../store-resource-version"
 import { WEBHOOKS_MODULE } from "../../webhooks"
 import { CHECKOUT_COMPLETION_MODULE } from ".."
 import { ANALYTICS_EVENT_LOG_MODULE } from "../../analytics-event-log"
@@ -98,7 +99,7 @@ if (!requestedDatabaseName) {
   ) as typeof import("@medusajs/test-utils")
   const databaseName = requireDisposableDatabaseName(requestedDatabaseName)
 
-  jest.setTimeout(120_000)
+  jest.setTimeout(180_000)
 
   type WebhookRecord = {
     id: string
@@ -110,66 +111,70 @@ if (!requestedDatabaseName) {
     metadata?: Record<string, unknown> | null
   }
 
+  type SeedMoney = {
+    itemUnitPrice: number
+    shippingAmount?: number
+    paymentSessionAmount: number
+    paymentAttemptAmount: number
+    stripeMinorAmount: number
+  }
+
   type PersistedPrerequisites = {
     cartId: string
     paymentCollectionId: string
     paymentSessionId: string
     email: string
+    paymentAttemptId: string
+    stripeMinorAmount: number
   }
 
-  function attempt(
-    identity: string,
-    prerequisites: PersistedPrerequisites
-  ): PaymentAttemptRecord {
-    return {
-      id: `payatt_${identity}`,
-      cart_id: prerequisites.cartId,
-      payment_collection_id: prerequisites.paymentCollectionId,
-      payment_session_id: prerequisites.paymentSessionId,
-      provider: "stripe",
-      provider_payment_intent_id: `pi_${identity}`,
-      provider_payment_session_id: `ps_${identity}`,
-      payment_method_type: "card",
-      status: "awaiting_webhook_confirmation",
-      amount: 9900,
-      currency_code: "brl",
-      expires_at: null,
-      order_id: null,
-      metadata: null,
-      client_confirmed_at: null,
-      instructions_displayed_at: null,
-      awaiting_webhook_since: "2026-08-09T12:00:00.000Z",
-      superseded_at: null,
-      invalidated_at: null,
-      canceled_at: null,
-      failed_at: null,
-      expired_at: null,
-      created_at: "2026-08-09T12:00:00.000Z",
-      updated_at: "2026-08-09T12:00:00.000Z",
+  const DEFAULT_SEED_MONEY: SeedMoney = {
+    itemUnitPrice: 99,
+    paymentSessionAmount: 99,
+    paymentAttemptAmount: 9900,
+    stripeMinorAmount: 9900,
+  }
+
+  function exactMajorLiteral(value: unknown): number {
+    if (typeof value === "number") {
+      return value
     }
-  }
-
-  function paymentAttemptService(seed: PaymentAttemptRecord) {
-    const rows = [seed]
-    return {
-      rows,
-      listPaymentAttempts: jest.fn(async (filters?: Record<string, unknown>) =>
-        rows.filter(
-          (row) =>
-            (!filters?.id || row.id === filters.id) &&
-            (!filters?.provider_payment_intent_id ||
-              row.provider_payment_intent_id === filters.provider_payment_intent_id)
-        )
-      ),
-      updatePaymentAttempts: jest.fn(async (input) => {
-        const updates = Array.isArray(input) ? input : [input]
-        for (const update of updates) {
-          const index = rows.findIndex((row) => row.id === update.id)
-          if (index >= 0) rows[index] = update
+    if (typeof value === "bigint") {
+      return Number(value)
+    }
+    if (typeof value === "string") {
+      const parsed = Number(value)
+      if (!Number.isFinite(parsed)) {
+        throw new Error(`AMOUNT_STRING_UNPARSABLE:${value}`)
+      }
+      return parsed
+    }
+    if (value && typeof value === "object") {
+      const record = value as {
+        numeric?: unknown
+        toNumber?: () => unknown
+      }
+      if (typeof record.numeric === "number") {
+        return record.numeric
+      }
+      if (typeof record.numeric === "string") {
+        const parsed = Number(record.numeric)
+        if (!Number.isFinite(parsed)) {
+          throw new Error(`AMOUNT_NUMERIC_UNPARSABLE:${record.numeric}`)
         }
-        return updates
-      }),
+        return parsed
+      }
+      if (typeof record.toNumber === "function") {
+        return Number(record.toNumber())
+      }
+      const digits = String(value)
+      if (/^-?\d+(\.\d+)?$/.test(digits)) {
+        return Number(digits)
+      }
     }
+    throw new Error(
+      `AMOUNT_REPRESENTATION_UNREADABLE:${typeof value}:${String(value)}`
+    )
   }
 
   function webhookService() {
@@ -246,7 +251,8 @@ if (!requestedDatabaseName) {
       })
 
       async function seedPersistedPrerequisites(
-        identity: string
+        identity: string,
+        money: SeedMoney = DEFAULT_SEED_MONEY
       ): Promise<PersistedPrerequisites> {
         const handleIdentity = identity.replace(/_/g, "-")
         const realContainer = getContainer()
@@ -258,6 +264,10 @@ if (!requestedDatabaseName) {
         }
         const cartModule = realContainer.resolve(Modules.CART) as unknown as {
           createCarts(input: Record<string, unknown>): Promise<{ id: string }>
+          addShippingMethods(
+            cartId: string,
+            methods: Array<{ name: string; amount: number }>
+          ): Promise<unknown>
         }
         const paymentModule = realContainer.resolve(Modules.PAYMENT) as unknown as {
           createPaymentSession(
@@ -295,7 +305,7 @@ if (!requestedDatabaseName) {
                       gelato_variant_options: { size: "M", color: "Preto" },
                       template_mode: "fixed",
                     },
-                    prices: [{ amount: 99, currency_code: "brl" }],
+                    prices: [{ amount: money.itemUnitPrice, currency_code: "brl" }],
                   },
                 ],
               },
@@ -311,7 +321,7 @@ if (!requestedDatabaseName) {
             {
               title: `Canonical item ${identity}`,
               quantity: 1,
-              unit_price: 99,
+              unit_price: money.itemUnitPrice,
               variant_id: variant.id,
               variant_sku: variant.sku,
               requires_shipping: false,
@@ -319,6 +329,14 @@ if (!requestedDatabaseName) {
             },
           ],
         })
+        if (money.shippingAmount != null) {
+          await cartModule.addShippingMethods(cart.id, [
+            {
+              name: `Canonical shipping ${identity}`,
+              amount: money.shippingAmount,
+            },
+          ])
+        }
         const { result: paymentCollection } =
           await createPaymentCollectionForCartWorkflow(realContainer).run({
             input: { cart_id: cart.id },
@@ -327,31 +345,129 @@ if (!requestedDatabaseName) {
           paymentCollection.id,
           {
             provider_id: "pp_system_default",
-            amount: 99,
+            amount: money.paymentSessionAmount,
             currency_code: "brl",
             data: {},
           }
         )
         await paymentModule.authorizePaymentSession(paymentSession.id, {})
 
+        const resourceVersionModule = realContainer.resolve(
+          STORE_RESOURCE_VERSION_MODULE
+        ) as {
+          baseRepository_: {
+            transaction<T>(
+              callback: (transactionManager: unknown) => Promise<T>
+            ): Promise<T>
+          }
+          initialize(
+            resourceType: string,
+            resourceId: string,
+            sharedContext: unknown
+          ): Promise<{ version: number }>
+        }
+        const cartResourceVersion =
+          await resourceVersionModule.baseRepository_.transaction(
+            async (transactionManager) =>
+              resourceVersionModule.initialize("cart", cart.id, {
+                __type: "MedusaContext",
+                transactionManager,
+                manager: transactionManager,
+              })
+          )
+
+        const paymentAttemptId = `payatt_${identity}`
+        const paymentAttemptModule = realContainer.resolve(
+          PAYMENT_ATTEMPT_MODULE
+        ) as {
+          createPaymentAttempts(input: Record<string, unknown>): Promise<unknown>
+        }
+        await paymentAttemptModule.createPaymentAttempts({
+          id: paymentAttemptId,
+          cart_id: cart.id,
+          payment_collection_id: paymentCollection.id,
+          payment_session_id: paymentSession.id,
+          provider: "stripe",
+          provider_payment_intent_id: `pi_${identity}`,
+          provider_payment_session_id: `ps_${identity}`,
+          payment_method_type: "card",
+          status: "awaiting_webhook_confirmation",
+          amount: money.paymentAttemptAmount,
+          currency_code: "brl",
+          metadata: { cart_resource_version: cartResourceVersion.version },
+          awaiting_webhook_since: new Date("2026-08-09T12:00:00.000Z"),
+        })
+
         return {
           cartId: cart.id,
           paymentCollectionId: paymentCollection.id,
           paymentSessionId: paymentSession.id,
           email,
+          paymentAttemptId,
+          stripeMinorAmount: money.stripeMinorAmount,
         }
       }
 
       async function persistedOrders(email: string) {
         const orderModule = getContainer().resolve(Modules.ORDER) as {
-          listOrders(selector: Record<string, unknown>): Promise<Array<{ id: string }>>
+          listOrders(
+            selector: Record<string, unknown>,
+            config?: { select?: string[] }
+          ): Promise<
+            Array<{
+              id: string
+              total?: unknown
+              currency_code?: string
+              email?: string
+            }>
+          >
         }
-        return orderModule.listOrders({ email })
+        return orderModule.listOrders(
+          { email },
+          { select: ["id", "total", "currency_code", "email"] }
+        )
+      }
+
+      async function loadCartObservedMoney(cartId: string) {
+        const query = getContainer().resolve(ContainerRegistrationKeys.QUERY) as {
+          graph(input: {
+            entity: string
+            fields: string[]
+            filters: Record<string, unknown>
+          }): Promise<{ data: Array<Record<string, unknown>> }>
+        }
+        const { data } = await query.graph({
+          entity: "cart",
+          fields: [
+            "id",
+            "total",
+            "item_total",
+            "shipping_total",
+            "currency_code",
+            "items.unit_price",
+            "items.quantity",
+          ],
+          filters: { id: cartId },
+        })
+        return data[0]
+      }
+
+      async function persistedPaymentAttempt(paymentAttemptId: string) {
+        const paymentAttemptModule = getContainer().resolve(
+          PAYMENT_ATTEMPT_MODULE
+        ) as {
+          listPaymentAttempts(
+            filters: Record<string, unknown>
+          ): Promise<PaymentAttemptRecord[]>
+        }
+        const rows = await paymentAttemptModule.listPaymentAttempts({
+          id: paymentAttemptId,
+        })
+        return rows[0]
       }
 
       function harness(identity: string, prerequisites: PersistedPrerequisites) {
         const realContainer = getContainer()
-        const payment = paymentAttemptService(attempt(identity, prerequisites))
         const webhooks = webhookService()
         const analytics: Array<Record<string, unknown>> = []
         let completeCartInvocations = 0
@@ -377,7 +493,6 @@ if (!requestedDatabaseName) {
         const container = {
           resolve: (key: string) => {
             if (key === CHECKOUT_COMPLETION_MODULE) return realCheckout
-            if (key === PAYMENT_ATTEMPT_MODULE) return payment
             if (key === WEBHOOKS_MODULE) return webhooks
             if (key === ANALYTICS_EVENT_LOG_MODULE || key === "analytics_event_log") {
               return analyticsModule
@@ -411,8 +526,8 @@ if (!requestedDatabaseName) {
               id: `pi_${identity}`,
               object: "payment_intent",
               status: "succeeded",
-              amount: 9900,
-              amount_received: 9900,
+              amount: prerequisites.stripeMinorAmount,
+              amount_received: prerequisites.stripeMinorAmount,
               currency: "brl",
               payment_method_types: ["card"],
               metadata: {},
@@ -449,7 +564,6 @@ if (!requestedDatabaseName) {
 
         return {
           container,
-          payment,
           webhooks,
           post,
           counts: () => ({ completeCartInvocations }),
@@ -509,7 +623,10 @@ if (!requestedDatabaseName) {
         const first = await state.post("evt_canonical_1307_r1")
         expect(first.statusCode).toBe(200)
         expect(first.body).toEqual(expect.objectContaining({ ok: true, status: "processed" }))
-        expect(state.payment.rows[0].status).toBe("payment_confirmed_by_webhook")
+        const confirmedAttempt = await persistedPaymentAttempt(
+          prerequisites.paymentAttemptId
+        )
+        expect(confirmedAttempt.status).toBe("payment_confirmed_by_webhook")
         const firstOrders = await persistedOrders(prerequisites.email)
         expect(firstOrders).toHaveLength(1)
         expect(state.counts()).toEqual({ completeCartInvocations: 1 })
@@ -555,6 +672,101 @@ if (!requestedDatabaseName) {
         expect(rows.rows).toEqual([
           { count: 1, order_id: orders[0].id },
         ])
+      })
+
+      it("canonical webhook births Order.total 110 from cart 110 and PaymentAttempt 11000", async () => {
+        const prerequisites = await seedPersistedPrerequisites("money_110_r1", {
+          itemUnitPrice: 100,
+          shippingAmount: 10,
+          paymentSessionAmount: 110,
+          paymentAttemptAmount: 11000,
+          stripeMinorAmount: 11000,
+        })
+
+        const cartBefore = await loadCartObservedMoney(prerequisites.cartId)
+        expect(cartBefore).toBeDefined()
+        const cartTotal = cartBefore.total
+        const itemUnitPrice = (
+          cartBefore.items as Array<{ unit_price?: unknown }> | undefined
+        )?.[0]?.unit_price
+        const itemTotal = cartBefore.item_total
+        const shippingTotal = cartBefore.shipping_total
+
+        if (typeof cartTotal === "number") {
+          expect(cartTotal).toBe(110)
+        } else {
+          expect(exactMajorLiteral(cartTotal)).toBe(110)
+        }
+        expect(exactMajorLiteral(itemUnitPrice)).toBe(100)
+        expect(exactMajorLiteral(cartTotal)).not.toBe(
+          exactMajorLiteral(itemUnitPrice)
+        )
+        if (itemTotal !== undefined && itemTotal !== null) {
+          expect(exactMajorLiteral(itemTotal)).not.toBe(110)
+        }
+        if (shippingTotal !== undefined && shippingTotal !== null) {
+          expect(exactMajorLiteral(shippingTotal)).toBe(10)
+        }
+
+        const attemptBefore = await persistedPaymentAttempt(
+          prerequisites.paymentAttemptId
+        )
+        if (typeof attemptBefore.amount === "number") {
+          expect(attemptBefore.amount).toBe(11000)
+        } else {
+          expect(attemptBefore.amount).toBe("11000")
+        }
+        const attemptSqlBefore = await dbConnection.raw(
+          "select amount from payment_attempt where id = ?",
+          [prerequisites.paymentAttemptId]
+        )
+        expect(Number(attemptSqlBefore.rows[0].amount)).toBe(11000)
+
+        const state = harness("money_110_r1", prerequisites)
+        const first = await state.post("evt_money_110_r1")
+        expect(first.statusCode).toBe(200)
+        expect(first.body).toEqual(
+          expect.objectContaining({ ok: true, status: "processed" })
+        )
+        expect(state.counts()).toEqual({ completeCartInvocations: 1 })
+
+        const orders = await persistedOrders(prerequisites.email)
+        expect(orders).toHaveLength(1)
+        const order = orders[0]
+        const orderTotal = order.total
+        if (typeof orderTotal === "number") {
+          expect(orderTotal).toBe(110)
+        } else {
+          expect(exactMajorLiteral(orderTotal)).toBe(110)
+        }
+
+        const query = getContainer().resolve(ContainerRegistrationKeys.QUERY) as {
+          graph(input: {
+            entity: string
+            fields: string[]
+            filters: Record<string, unknown>
+          }): Promise<{ data: Array<Record<string, unknown>> }>
+        }
+        const graphOrder = await query.graph({
+          entity: "order",
+          fields: ["id", "total", "currency_code", "email"],
+          filters: { id: order.id },
+        })
+        const graphTotal = graphOrder.data[0]?.total
+        if (typeof graphTotal === "number") {
+          expect(graphTotal).toBe(110)
+        } else {
+          expect(exactMajorLiteral(graphTotal)).toBe(110)
+        }
+
+        const attemptAfter = await persistedPaymentAttempt(
+          prerequisites.paymentAttemptId
+        )
+        if (typeof attemptAfter.amount === "number") {
+          expect(attemptAfter.amount).toBe(11000)
+        } else {
+          expect(attemptAfter.amount).toBe("11000")
+        }
       })
     },
   })

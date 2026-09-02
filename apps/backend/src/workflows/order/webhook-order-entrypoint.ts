@@ -266,6 +266,7 @@ type WorkflowRuntimeOverrides = {
 const ORDER_CART_FIELDS = [
   "id",
   "customer_id",
+  "total",
   "currency_code",
   "completed_at",
   "items.id",

@@ -161,6 +161,30 @@ function buildCompleteGuestCart(
   }
 }
 
+function buildDecorativeGuestCart110(
+  overrides: Partial<StoreCartPreOrderRecord & { total?: number | null }> = {}
+): StoreCartPreOrderRecord & { total?: number | null } {
+  return buildCompleteGuestCart({
+    id: "cart_guest_110",
+    total: 110,
+    shipping_total: 15,
+    discount_total: 10,
+    tax_total: 5,
+    items: [
+      {
+        id: "item_01",
+        quantity: 1,
+        title: "Camiseta Essential",
+        variant_id: "variant_sellable",
+        variant_title: "Preto / M",
+        unit_price: 100,
+        variant: sellableVariant(),
+      },
+    ],
+    ...overrides,
+  })
+}
+
 type MedusaPaymentSessionMock = {
   id: string
   status: string
@@ -955,6 +979,101 @@ describe("payment attempt store card contract", () => {
       expect(fallbackLayer.createCardPaymentIntent).not.toHaveBeenCalled()
     })
 
+    it("POST card com cart.total 110 propaga S literal em PaymentSession major e Stripe minor", async () => {
+      const cart = buildDecorativeGuestCart110()
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_110",
+          active_cart_id: cart.id,
+        },
+      })
+      const fallbackLayer = createStripeCardInitiationLayerMock()
+      const paymentAttemptModule = createPaymentAttemptModuleMock([], {
+        card: fallbackLayer,
+      })
+      const {
+        medusaPaymentModule,
+        stripeCardInitiationLayer,
+      } = wireScope(req, { remoteQuery, paymentAttemptModule })
+
+      const res = await invokeCardPaymentRoute(req)
+
+      expect(res.statusCode).toBe(201)
+      const body = res.jsonSpy.mock.calls[0][0]
+      expect(body.payment_attempt.amount).toBe(11000)
+      expect(stripeCardInitiationLayer?.createCardPaymentIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount_minor: 11000,
+          currency_code: "brl",
+          cart_id: cart.id,
+        })
+      )
+      expect(medusaPaymentModule.createPaymentSession).toHaveBeenCalledWith(
+        "pay_col_http_01",
+        expect.objectContaining({
+          amount: 110,
+          currency_code: "brl",
+        })
+      )
+      expect(paymentAttemptModule.attempts[0]?.amount).toBe(11000)
+      expect(
+        paymentAttemptModule.resolveStripeCardInitiationLayer
+      ).not.toHaveBeenCalled()
+      expect(fallbackLayer.createCardPaymentIntent).not.toHaveBeenCalled()
+    })
+
+    it("rejeita cart com total canonico ausente antes de chamar Stripe card", async () => {
+      const cart = buildCompleteGuestCart({
+        id: "cart_no_total_card",
+        total: undefined,
+      })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_no_total",
+          active_cart_id: cart.id,
+        },
+      })
+      const {
+        medusaPaymentModule,
+        stripeCardInitiationLayer,
+      } = wireScope(req, { remoteQuery })
+
+      await expect(invokeCardPaymentRoute(req)).rejects.toThrow(MedusaError)
+      expect(
+        stripeCardInitiationLayer?.createCardPaymentIntent
+      ).not.toHaveBeenCalled()
+      expect(medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
+    })
+
+    it("rejeita cart com total canonico nulo antes de chamar Stripe card", async () => {
+      const cart = buildCompleteGuestCart({
+        id: "cart_null_total_card",
+        total: null,
+      })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_null_total",
+          active_cart_id: cart.id,
+        },
+      })
+      const {
+        medusaPaymentModule,
+        stripeCardInitiationLayer,
+      } = wireScope(req, { remoteQuery })
+
+      await expect(invokeCardPaymentRoute(req)).rejects.toThrow(MedusaError)
+      expect(
+        stripeCardInitiationLayer?.createCardPaymentIntent
+      ).not.toHaveBeenCalled()
+      expect(medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
+    })
+
     it("mantem a identidade local e converge no mesmo PaymentIntent após falha do finalize", async () => {
       const cart = buildCompleteGuestCart({ id: "cart_guest_01", total: 99 })
       const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
@@ -1398,6 +1517,66 @@ describe("payment attempt store card contract", () => {
       ).not.toHaveBeenCalled()
       expect(fallbackLayer.createPixPaymentIntent).not.toHaveBeenCalled()
       expect(paymentAttemptModule.updatePaymentAttempts).toHaveBeenCalledTimes(1)
+    })
+
+    it("POST pix com cart.total 110 propaga S literal em PaymentAttempt minor e Stripe minor", async () => {
+      const cart = buildDecorativeGuestCart110({ id: "cart_guest_pix_110" })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_pix_110",
+          active_cart_id: cart.id,
+        },
+      })
+      const fallbackLayer = createStripePixInitiationLayerMock()
+      const paymentAttemptModule = createPaymentAttemptModuleMock([], {
+        pix: fallbackLayer,
+      })
+      const {
+        medusaPaymentModule,
+        stripePixInitiationLayer,
+      } = wireScope(req, { remoteQuery, paymentAttemptModule })
+
+      const res = await invokePixPaymentRoute(req)
+
+      expect(res.statusCode).toBe(201)
+      const body = res.jsonSpy.mock.calls[0][0]
+      expect(body.payment_attempt.amount).toBe(11000)
+      expect(stripePixInitiationLayer?.createPixPaymentIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount_minor: 11000,
+          currency_code: "brl",
+          cart_id: cart.id,
+        })
+      )
+      expect(medusaPaymentModule.createPaymentSession).not.toHaveBeenCalled()
+      expect(paymentAttemptModule.attempts[0]?.amount).toBe(11000)
+      expect(
+        paymentAttemptModule.resolveStripePixInitiationLayer
+      ).not.toHaveBeenCalled()
+      expect(fallbackLayer.createPixPaymentIntent).not.toHaveBeenCalled()
+    })
+
+    it("rejeita cart com total canonico ausente antes de chamar Stripe Pix", async () => {
+      const cart = buildCompleteGuestCart({
+        id: "cart_no_total_pix",
+        total: undefined,
+      })
+      const remoteQuery = createRemoteQueryResolver({ carts: { [cart.id]: cart } })
+      const req = createRequest({
+        params: { id: cart.id },
+        session: {
+          id: "sess_guest_no_total_pix",
+          active_cart_id: cart.id,
+        },
+      })
+      const { stripePixInitiationLayer } = wireScope(req, { remoteQuery })
+
+      await expect(invokePixPaymentRoute(req)).rejects.toThrow(MedusaError)
+      expect(
+        stripePixInitiationLayer?.createPixPaymentIntent
+      ).not.toHaveBeenCalled()
     })
 
     it("mantem a identidade local e converge no mesmo PaymentIntent Pix após falha do finalize", async () => {

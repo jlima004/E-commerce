@@ -734,18 +734,47 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
     expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
   })
 
-  it("valida PaymentAttempt.amount pelo total dos line items quando cart.total nao vem carregado", async () => {
+  it("rejeita Order quando cart.total nao vem carregado", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule([])
     const orderModule = createOrderModule()
     const { total: _missingTotal, ...cartWithoutTotal } = buildCart()
+    const runCompleteCart = jest.fn(async () => ({ id: "order_entry_existing" }))
+
+    await expect(
+      runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+        createContainer({
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          orderModule,
+          cart: cartWithoutTotal,
+        }),
+        buildInput(),
+        {
+          now: () => new Date("2026-07-07T13:00:00.000Z"),
+          runCompleteCart,
+        }
+      )
+    ).rejects.toThrow("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
+
+    expect(runCompleteCart).not.toHaveBeenCalled()
+    expect(paymentAttemptModule.store[0]?.order_id).toBeNull()
+  })
+
+  it("aceita Order quando cart.total major 99 corresponde a PaymentAttempt.amount 9900", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule([])
+    const orderModule = createOrderModule()
 
     const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       createContainer({
         paymentAttemptModule,
         checkoutCompletionModule,
         orderModule,
-        cart: cartWithoutTotal,
+        cart: {
+          ...buildCart(),
+          total: 99,
+        },
       }),
       buildInput(),
       {
@@ -762,5 +791,76 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
       })
     )
     expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
+    expect(paymentAttemptModule.store[0]?.amount).toBe(9900)
+  })
+
+  it("aceita Order quando PaymentAttempt.amount 11000 segue cart.total e nao a soma dos line items", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(
+      buildEligibleAttempt({ amount: 11000 })
+    )
+    const checkoutCompletionModule = createCheckoutCompletionModule([])
+    const orderModule = createOrderModule()
+    const cart = buildCart()
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        orderModule,
+        cart: {
+          ...cart,
+          total: 110,
+          items: [{ ...cart.items[0], unit_price: 100, quantity: 1 }],
+        },
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-07-07T13:00:00.000Z"),
+        runCompleteCart: async () => ({ id: "order_entry_existing" }),
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "created",
+        order_id: "order_entry_existing",
+        checkout_completion_status: "completed",
+      })
+    )
+    expect(paymentAttemptModule.store[0]?.amount).toBe(11000)
+    expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
+  })
+
+  it("rejeita Order quando PaymentAttempt.amount 10000 segue line items e nao cart.total 110", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(
+      buildEligibleAttempt({ amount: 10000 })
+    )
+    const checkoutCompletionModule = createCheckoutCompletionModule([])
+    const orderModule = createOrderModule()
+    const cart = buildCart()
+    const runCompleteCart = jest.fn(async () => ({ id: "order_entry_existing" }))
+
+    await expect(
+      runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+        createContainer({
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          orderModule,
+          cart: {
+            ...cart,
+            total: 110,
+            items: [{ ...cart.items[0], unit_price: 100, quantity: 1 }],
+          },
+        }),
+        buildInput(),
+        {
+          now: () => new Date("2026-07-07T13:00:00.000Z"),
+          runCompleteCart,
+        }
+      )
+    ).rejects.toThrow("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
+
+    expect(runCompleteCart).not.toHaveBeenCalled()
+    expect(paymentAttemptModule.store[0]?.order_id).toBeNull()
   })
 })

@@ -400,26 +400,64 @@ describe("validateCreateOrderFromConfirmedPaymentAttemptInput", () => {
 })
 
 describe("assertConfirmedAttemptCartMatchesPaymentAttempt monetary units", () => {
-  it("converte unit_price 99 major para 9900 minor antes de comparar", () => {
+  it("aceita cart.total 115 (S=11500) mesmo com line item 100 e shipping 15", () => {
     const cart = buildCart()
 
     expect(() =>
-      assertConfirmedAttemptCartMatchesPaymentAttempt(buildAttempt(), {
-        ...cart,
-        items: [{ ...cart.items[0], unit_price: 99 }],
-      })
+      assertConfirmedAttemptCartMatchesPaymentAttempt(
+        buildAttempt({ amount: 11500 }),
+        {
+          ...cart,
+          total: 115,
+          items: [{ ...cart.items[0], unit_price: 100, quantity: 1 }],
+        }
+      )
     ).not.toThrow()
   })
 
-  it("converte 49.5 major antes de multiplicar por quantidade 2", () => {
+  it("usa cart.total 90 (S=9000) e nao multiplica unit_price pela quantidade", () => {
     const cart = buildCart()
 
     expect(() =>
-      assertConfirmedAttemptCartMatchesPaymentAttempt(buildAttempt(), {
-        ...cart,
-        items: [{ ...cart.items[0], quantity: 2, unit_price: 49.5 }],
-      })
+      assertConfirmedAttemptCartMatchesPaymentAttempt(
+        buildAttempt({ amount: 9000 }),
+        {
+          ...cart,
+          total: 90,
+          items: [{ ...cart.items[0], quantity: 2, unit_price: 49.5 }],
+        }
+      )
     ).not.toThrow()
+  })
+
+  it("aceita Order com S=11000 de cart.total mesmo quando line items somam 10000", () => {
+    const cart = buildCart()
+
+    expect(() =>
+      assertConfirmedAttemptCartMatchesPaymentAttempt(
+        buildAttempt({ amount: 11000 }),
+        {
+          ...cart,
+          total: 110,
+          items: [{ ...cart.items[0], unit_price: 100, quantity: 1 }],
+        }
+      )
+    ).not.toThrow()
+  })
+
+  it("rejeita quando PaymentAttempt.amount 10000 segue line items e nao cart.total 110", () => {
+    const cart = buildCart()
+
+    expect(() =>
+      assertConfirmedAttemptCartMatchesPaymentAttempt(
+        buildAttempt({ amount: 10000 }),
+        {
+          ...cart,
+          total: 110,
+          items: [{ ...cart.items[0], unit_price: 100, quantity: 1 }],
+        }
+      )
+    ).toThrow("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
   })
 
   it("preserva mismatch quando PaymentAttempt.amount 99 nao esta em minor units", () => {
@@ -430,19 +468,21 @@ describe("assertConfirmedAttemptCartMatchesPaymentAttempt monetary units", () =>
         buildAttempt({ amount: 99 }),
         {
           ...cart,
+          total: 99,
           items: [{ ...cart.items[0], unit_price: 99 }],
         }
       )
     ).toThrow("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
   })
 
-  it("falha fechado para unit_price major com mais de duas casas decimais", () => {
+  it("falha fechado quando cart.total 99.999 tem precisao alem de centavos", () => {
     const cart = buildCart()
 
     expect(() =>
       assertConfirmedAttemptCartMatchesPaymentAttempt(buildAttempt(), {
         ...cart,
-        items: [{ ...cart.items[0], unit_price: 99.999 }],
+        total: 99.999,
+        items: [{ ...cart.items[0], unit_price: 99 }],
       })
     ).toThrow("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
   })
@@ -772,12 +812,7 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
           now: () => new Date("2026-06-30T16:00:00.000Z"),
           getCart: async () => ({
             ...buildCart(),
-            items: [
-              {
-                ...buildCart().items[0],
-                unit_price: 98,
-              },
-            ],
+            total: 98,
           }),
         }
       )

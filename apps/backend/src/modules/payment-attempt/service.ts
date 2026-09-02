@@ -310,38 +310,45 @@ function matchesExpectedPaymentMethodType(
   return paymentMethodTypes.includes(attemptPaymentMethodType)
 }
 
+const MAX_SAFE_MINOR = BigInt(Number.MAX_SAFE_INTEGER)
+
 function toCanonicalPaymentAmount(value: unknown): bigint | null {
+  let parsed: bigint
+
   if (typeof value === "bigint") {
-    return value >= 0n ? value : null
-  }
-
-  if (typeof value === "number") {
-    if (!Number.isInteger(value) || value < 0) {
+    parsed = value
+  } else if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
       return null
     }
-
-    return BigInt(value)
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim()
-    if (trimmed.length === 0) {
+    parsed = BigInt(value)
+  } else if (typeof value === "string") {
+    const normalized = value.trim()
+    if (!/^\d+$/.test(normalized)) {
       return null
     }
-
     try {
-      const parsed = BigInt(trimmed)
-      return parsed >= 0n ? parsed : null
+      parsed = BigInt(normalized)
     } catch {
       return null
     }
+  } else {
+    return null
   }
 
-  return null
+  if (parsed <= 0n || parsed > MAX_SAFE_MINOR) {
+    return null
+  }
+
+  return parsed
 }
 
 function paymentIntentAmountToBigInt(value: unknown): bigint | null {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value <= 0
+  ) {
     return null
   }
 
@@ -435,18 +442,30 @@ export function validatePaymentIntentForAttempt(
   }
 
   const attemptAmount = toCanonicalPaymentAmount(attempt.amount)
-  const comparableAmounts = [paymentIntent.amount_received, paymentIntent.amount]
-    .map(paymentIntentAmountToBigInt)
-    .filter((value): value is bigint => value !== null)
-  const amountMatches =
-    attemptAmount !== null &&
-    comparableAmounts.some((value) => value === attemptAmount)
+  const intentAmount = paymentIntentAmountToBigInt(paymentIntent.amount)
 
-  if (!amountMatches) {
+  if (
+    attemptAmount === null ||
+    intentAmount === null ||
+    intentAmount !== attemptAmount
+  ) {
     throw new PaymentAttemptWebhookError(
       "PAYMENT_ATTEMPT_AMOUNT_MISMATCH",
       "Amount do PaymentIntent divergente da tentativa."
     )
+  }
+
+  if (eventType === "payment_intent.succeeded") {
+    const receivedAmount = paymentIntentAmountToBigInt(
+      paymentIntent.amount_received
+    )
+
+    if (receivedAmount === null || receivedAmount !== attemptAmount) {
+      throw new PaymentAttemptWebhookError(
+        "PAYMENT_ATTEMPT_AMOUNT_MISMATCH",
+        "Amount do PaymentIntent divergente da tentativa."
+      )
+    }
   }
 
   const normalizedCurrency = normalizeCurrencyCode(paymentIntent.currency)

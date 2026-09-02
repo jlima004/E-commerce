@@ -10,12 +10,7 @@ import {
   type StoreCartPreOrderRecord,
 } from "../../api/store/carts/serializers"
 import type { PaymentMethodType } from "./types"
-import {
-  assertNonNegativeBrlMinorAmount,
-  assertPositiveBrlMinorAmount,
-  brlMajorToMinor,
-  normalizeBrlMajorAmount,
-} from "../../utils/money-units"
+import { resolveCanonicalCartPaymentAmount } from "../../utils/canonical-cart-money"
 
 export type PaymentStartActorContext = {
   actorType: "guest" | "customer"
@@ -108,146 +103,6 @@ function toLineItemSnapshots(
   }))
 }
 
-function resolvePositiveBrlMajorToMinor(value: unknown): number | null {
-  try {
-    return assertPositiveBrlMinorAmount(brlMajorToMinor(value))
-  } catch {
-    return null
-  }
-}
-
-function resolveNonNegativeBrlMajorToMinor(value: unknown): number | null {
-  try {
-    return assertNonNegativeBrlMinorAmount(brlMajorToMinor(value))
-  } catch {
-    return null
-  }
-}
-
-function sumLineItemsTotalMinor(
-  items: PaymentStartCartLineItem[] | null | undefined
-): number | null {
-  const lineItems = items ?? []
-  if (lineItems.length === 0) {
-    return null
-  }
-
-  let total = 0
-
-  for (const item of lineItems) {
-    const quantity = item.quantity
-    const unitPrice = item.unit_price
-
-    if (
-      typeof quantity !== "number" ||
-      !Number.isFinite(quantity) ||
-      quantity <= 0
-    ) {
-      return null
-    }
-
-    if (!Number.isSafeInteger(quantity)) {
-      return null
-    }
-
-    const unitPriceMinor = resolveNonNegativeBrlMajorToMinor(unitPrice)
-    if (unitPriceMinor === null) {
-      return null
-    }
-
-    const lineTotalMinor = unitPriceMinor * quantity
-    if (!Number.isSafeInteger(lineTotalMinor) || lineTotalMinor <= 0) {
-      return null
-    }
-
-    total += lineTotalMinor
-    if (!Number.isSafeInteger(total)) {
-      return null
-    }
-  }
-
-  return total > 0 ? total : null
-}
-
-function resolveCalculatedItemsTotalMinor(
-  cart: PaymentStartCartSnapshot
-): number | null {
-  for (const value of [cart.item_total, cart.subtotal]) {
-    if (value === undefined || value === null) {
-      continue
-    }
-
-    return resolvePositiveBrlMajorToMinor(value)
-  }
-
-  return sumLineItemsTotalMinor(cart.items)
-}
-
-function resolveOptionalCartComponentMinor(value: unknown): number | null {
-  if (value === undefined || value === null) {
-    return 0
-  }
-
-  return resolveNonNegativeBrlMajorToMinor(value)
-}
-
-function resolveCartAmounts(cart: PaymentStartCartSnapshot): {
-  medusa_amount_major: number
-  provider_amount_minor: number
-} | null {
-  if (cart.total !== undefined && cart.total !== null) {
-    try {
-      const medusaAmountMajor = normalizeBrlMajorAmount(cart.total)
-      const providerAmountMinor = assertPositiveBrlMinorAmount(
-        brlMajorToMinor(cart.total)
-      )
-
-      return {
-        medusa_amount_major: medusaAmountMajor,
-        provider_amount_minor: providerAmountMinor,
-      }
-    } catch {
-      return null
-    }
-  }
-
-  const lineItemsTotalMinor = resolveCalculatedItemsTotalMinor(cart)
-  if (lineItemsTotalMinor === null) {
-    return null
-  }
-
-  const shippingTotalMinor = resolveOptionalCartComponentMinor(
-    cart.shipping_total
-  )
-  const taxTotalMinor = resolveOptionalCartComponentMinor(cart.tax_total)
-  const discountTotalMinor = resolveOptionalCartComponentMinor(
-    cart.discount_total
-  )
-
-  if (
-    shippingTotalMinor === null ||
-    taxTotalMinor === null ||
-    discountTotalMinor === null
-  ) {
-    return null
-  }
-
-  const providerAmountMinor =
-    lineItemsTotalMinor +
-    shippingTotalMinor +
-    taxTotalMinor -
-    discountTotalMinor
-
-  if (!Number.isSafeInteger(providerAmountMinor) || providerAmountMinor <= 0) {
-    return null
-  }
-
-  return {
-    medusa_amount_major: providerAmountMinor / 100,
-    provider_amount_minor: providerAmountMinor,
-  }
-}
-
 export function derivePaymentAmountFromCart(
   cart: PaymentStartCartSnapshot
 ): {
@@ -255,19 +110,16 @@ export function derivePaymentAmountFromCart(
   provider_amount_minor: number
   currency_code: "BRL"
 } | null {
-  const currency = (cart.currency_code ?? "").toLowerCase()
-  if (currency !== "brl") {
-    return null
-  }
+  try {
+    const snapshot = resolveCanonicalCartPaymentAmount(cart)
 
-  const amounts = resolveCartAmounts(cart)
-  if (!amounts) {
+    return {
+      medusa_amount_major: snapshot.amount_major,
+      provider_amount_minor: snapshot.amount_minor,
+      currency_code: "BRL",
+    }
+  } catch {
     return null
-  }
-
-  return {
-    ...amounts,
-    currency_code: "BRL",
   }
 }
 

@@ -129,7 +129,7 @@ describe("derivePaymentAmountFromCart", () => {
     })
   })
 
-  it("deriva amount somando line items quando cart.total ausente", () => {
+  it("retorna null quando cart.total ausente mesmo com line items somaveis", () => {
     expect(
       derivePaymentAmountFromCart(
         buildCompleteCart({
@@ -145,14 +145,10 @@ describe("derivePaymentAmountFromCart", () => {
           ],
         })
       )
-    ).toEqual({
-      medusa_amount_major: 100,
-      provider_amount_minor: 10000,
-      currency_code: "BRL",
-    })
+    ).toBeNull()
   })
 
-  it("deriva amount de item_total calculado quando cart.total esta nulo", () => {
+  it("retorna null quando cart.total esta nulo mesmo com item_total", () => {
     expect(
       derivePaymentAmountFromCart(
         buildCompleteCart({
@@ -169,14 +165,10 @@ describe("derivePaymentAmountFromCart", () => {
           ],
         })
       )
-    ).toEqual({
-      medusa_amount_major: 99,
-      provider_amount_minor: 9900,
-      currency_code: "BRL",
-    })
+    ).toBeNull()
   })
 
-  it("inclui shipping_total, tax_total e discount_total quando cart.total ausente", () => {
+  it("retorna null quando cart.total ausente mesmo com shipping tax e discount", () => {
     expect(
       derivePaymentAmountFromCart(
         buildCompleteCart({
@@ -186,9 +178,111 @@ describe("derivePaymentAmountFromCart", () => {
           discount_total: 7,
         })
       )
+    ).toBeNull()
+  })
+
+  it("retorna null quando cart.total ausente mesmo com line items e ajustes que somariam valor valido", () => {
+    expect(
+      derivePaymentAmountFromCart(
+        buildCompleteCart({
+          total: undefined,
+          shipping_total: 15,
+          tax_total: 5,
+          discount_total: 10,
+          items: [
+            {
+              id: "item_01",
+              quantity: 1,
+              unit_price: 100,
+              variant_id: "variant_01",
+              variant: sellableVariant({
+                prices: [{ currency_code: "brl", amount: 100 }],
+              }),
+            },
+          ],
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("retorna null quando cart.total ausente mesmo com credito extra reconstruivel", () => {
+    const cart = {
+      ...buildCompleteCart({
+        total: undefined,
+        shipping_total: 15,
+        tax_total: 5,
+        discount_total: 10,
+        items: [
+          {
+            id: "item_01",
+            quantity: 1,
+            unit_price: 100,
+            variant_id: "variant_01",
+            variant: sellableVariant({
+              prices: [{ currency_code: "brl", amount: 100 }],
+            }),
+          },
+        ],
+      }),
+      credit_total: 20,
+    } as PaymentStartCartSnapshot
+
+    expect(derivePaymentAmountFromCart(cart)).toBeNull()
+  })
+
+  it("deriva S=11000 de cart.total 110 e nao de line item 100 no cenario combinado", () => {
+    expect(
+      derivePaymentAmountFromCart(
+        buildCompleteCart({
+          total: 110,
+          shipping_total: 15,
+          discount_total: 10,
+          tax_total: 5,
+          items: [
+            {
+              id: "item_01",
+              quantity: 1,
+              unit_price: 100,
+              variant_id: "variant_01",
+              variant: sellableVariant({
+                prices: [{ currency_code: "brl", amount: 100 }],
+              }),
+            },
+          ],
+        })
+      )
     ).toEqual({
-      medusa_amount_major: 109,
-      provider_amount_minor: 10900,
+      medusa_amount_major: 110,
+      provider_amount_minor: 11000,
+      currency_code: "BRL",
+    })
+  })
+
+  it("deriva S=9000 de cart.total 90 no cenario com credito e nao 10000 nem 11000", () => {
+    const cart = {
+      ...buildCompleteCart({
+        total: 90,
+        shipping_total: 15,
+        discount_total: 10,
+        tax_total: 5,
+        items: [
+          {
+            id: "item_01",
+            quantity: 1,
+            unit_price: 100,
+            variant_id: "variant_01",
+            variant: sellableVariant({
+              prices: [{ currency_code: "brl", amount: 100 }],
+            }),
+          },
+        ],
+      }),
+      credit_total: 20,
+    } as PaymentStartCartSnapshot
+
+    expect(derivePaymentAmountFromCart(cart)).toEqual({
+      medusa_amount_major: 90,
+      provider_amount_minor: 9000,
       currency_code: "BRL",
     })
   })
@@ -204,7 +298,18 @@ describe("derivePaymentAmountFromCart", () => {
     ).toBeNull()
   })
 
-  it("retorna null para total zero, negativo ou nao inteiro", () => {
+  it("retorna null para currency_code ausente", () => {
+    expect(
+      derivePaymentAmountFromCart(
+        buildCompleteCart({
+          currency_code: undefined,
+          total: 100,
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("retorna null para total zero, negativo, ausente ou nulo", () => {
     expect(
       derivePaymentAmountFromCart(
         buildCompleteCart({
@@ -225,11 +330,31 @@ describe("derivePaymentAmountFromCart", () => {
       derivePaymentAmountFromCart(
         buildCompleteCart({
           total: undefined,
-          items: [],
+        })
+      )
+    ).toBeNull()
+
+    expect(
+      derivePaymentAmountFromCart(
+        buildCompleteCart({
+          total: null,
         })
       )
     ).toBeNull()
   })
+
+  it.each([99.999, NaN, Infinity, "90071992547409.92"])(
+    "retorna null para cart.total invalido %p",
+    (total) => {
+      expect(
+        derivePaymentAmountFromCart(
+          buildCompleteCart({
+            total: total as unknown as number,
+          })
+        )
+      ).toBeNull()
+    }
+  )
 })
 
 describe("evaluatePaymentStartEligibility", () => {
@@ -249,6 +374,133 @@ describe("evaluatePaymentStartEligibility", () => {
         payment_method_type: paymentMethod,
       })
     }
+  })
+
+  it("card e pix compartilham S=9000 no cenario com credito de cart.total 90", () => {
+    const cart = {
+      ...buildCompleteCart({
+        total: 90,
+        shipping_total: 15,
+        discount_total: 10,
+        tax_total: 5,
+        items: [
+          {
+            id: "item_01",
+            quantity: 1,
+            unit_price: 100,
+            variant_id: "variant_01",
+            variant: sellableVariant({
+              prices: [{ currency_code: "brl", amount: 100 }],
+            }),
+          },
+        ],
+      }),
+      credit_total: 20,
+    } as PaymentStartCartSnapshot
+
+    const amounts: number[] = []
+
+    for (const paymentMethod of ["card", "pix"] as const) {
+      const result = evaluatePaymentStartEligibility(
+        buildEligibleInput({ cart, paymentMethod })
+      )
+
+      expect(result.eligible).toBe(true)
+      if (result.eligible) {
+        expect(result.medusa_amount_major).toBe(90)
+        expect(result.provider_amount_minor).toBe(9000)
+        expect(result.provider_amount_minor).not.toBe(10000)
+        expect(result.provider_amount_minor).not.toBe(11000)
+        amounts.push(result.provider_amount_minor)
+      }
+    }
+
+    expect(amounts).toEqual([9000, 9000])
+  })
+
+  it("card e pix compartilham S=11000 no cenario combinado de cart.total 110", () => {
+    const cart = buildCompleteCart({
+      total: 110,
+      shipping_total: 15,
+      discount_total: 10,
+      tax_total: 5,
+      items: [
+        {
+          id: "item_01",
+          quantity: 1,
+          unit_price: 100,
+          variant_id: "variant_01",
+          variant: sellableVariant({
+            prices: [{ currency_code: "brl", amount: 100 }],
+          }),
+        },
+      ],
+    })
+
+    const amounts: number[] = []
+
+    for (const paymentMethod of ["card", "pix"] as const) {
+      const result = evaluatePaymentStartEligibility(
+        buildEligibleInput({ cart, paymentMethod })
+      )
+
+      expect(result.eligible).toBe(true)
+      if (result.eligible) {
+        expect(result.medusa_amount_major).toBe(110)
+        expect(result.provider_amount_minor).toBe(11000)
+        expect(result.provider_amount_minor).not.toBe(10000)
+        amounts.push(result.provider_amount_minor)
+      }
+    }
+
+    expect(amounts).toEqual([11000, 11000])
+  })
+
+  it("rejeita INVALID_CART_TOTAL quando cart.total ausente com checkout completo", () => {
+    const result = evaluatePaymentStartEligibility(
+      buildEligibleInput({
+        cart: buildCompleteCart({
+          total: undefined,
+        }),
+      })
+    )
+
+    expect(result).toMatchObject({
+      eligible: false,
+      code: "INVALID_CART_TOTAL",
+    })
+  })
+
+  it("rejeita INVALID_CART_TOTAL quando cart.total ausente mesmo com credito extra reconstruivel", () => {
+    const cart = {
+      ...buildCompleteCart({
+        total: undefined,
+        shipping_total: 15,
+        tax_total: 5,
+        discount_total: 10,
+        items: [
+          {
+            id: "item_01",
+            quantity: 1,
+            unit_price: 100,
+            variant_id: "variant_01",
+            variant: sellableVariant({
+              prices: [{ currency_code: "brl", amount: 100 }],
+            }),
+          },
+        ],
+      }),
+      credit_total: 20,
+    } as PaymentStartCartSnapshot
+
+    const result = evaluatePaymentStartEligibility(
+      buildEligibleInput({ cart })
+    )
+
+    expect(result).toMatchObject({
+      eligible: false,
+      code: "INVALID_CART_TOTAL",
+    })
   })
 
   it("rejeita cart incompleto por checkout_data_complete=false", () => {

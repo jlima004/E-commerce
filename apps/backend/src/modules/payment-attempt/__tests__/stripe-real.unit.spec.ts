@@ -48,7 +48,62 @@ function createPaymentIntentsMock(
   }
 }
 
+function buildDecorativeCart110() {
+  return buildCompleteGuestCart({
+    id: "cart_real_amount_110",
+    total: 110,
+    shipping_total: 15,
+    discount_total: 10,
+    tax_total: 5,
+    items: [
+      {
+        id: "item_01",
+        quantity: 1,
+        title: "Camiseta Essential",
+        variant_id: "variant_sellable",
+        variant_title: "Preto / M",
+        unit_price: 100,
+        variant: {
+          id: "variant_sellable",
+          sku: "TSHIRT-BLACK-M",
+          metadata: {
+            gelato_product_uid: "prod_gelato_abc123",
+            gelato_template_id: "template_fixed_001",
+            gelato_variant_options: { size: "M", color: "Preto" },
+            template_mode: "fixed",
+          },
+          prices: [{ currency_code: "brl", amount: 100 }],
+        },
+      },
+    ],
+  })
+}
+
 describe("04A RealStripeCardInitiationLayer", () => {
+  it("repassa amount_minor 11000 e currency brl diretamente no adapter card", async () => {
+    const paymentIntents = createPaymentIntentsMock("card")
+    const stripeLayer = new RealStripeCardInitiationLayer({ paymentIntents })
+
+    await stripeLayer.createCardPaymentIntent({
+      amount_minor: 11000,
+      currency_code: "brl",
+      cart_id: "cart_direct_card_110",
+      idempotency_key: "idem_direct_card_110",
+      payment_attempt_id: "payatt_direct_card_110",
+      payment_session_id: "payses_direct_card_110",
+    })
+
+    expect(paymentIntents.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 11000,
+        currency: "brl",
+      }),
+      expect.objectContaining({
+        idempotencyKey: "idem_direct_card_110",
+      })
+    )
+  })
+
   it("cria PaymentIntent card test-mode com amount/currency derivados e safe boundary response-only", async () => {
     const paymentIntents = createPaymentIntentsMock("card")
     const stripeLayer = new RealStripeCardInitiationLayer({ paymentIntents })
@@ -100,9 +155,62 @@ describe("04A RealStripeCardInitiationLayer", () => {
       "pi_real_card_mock_secret_test"
     )
   })
+
+  it("inicia cartao via adapter real com cart.total 110 e repassa 11000 ao Stripe", async () => {
+    const paymentIntents = createPaymentIntentsMock("card")
+    const stripeLayer = new RealStripeCardInitiationLayer({ paymentIntents })
+    const cart = buildDecorativeCart110()
+
+    await startCardPaymentAttempt({
+      cart,
+      actor: { actorType: "guest", actorId: "sess_real_card_110" },
+      sessionActiveCartId: cart.id,
+      existingAttempts: [],
+      stripeLayer,
+      generateId: () => "payatt_real_card_110",
+      paymentSession: {
+        payment_collection_id: "paycol_real_card_110",
+        payment_session_id: "payses_real_card_110",
+      },
+      at: new Date("2026-06-29T18:00:00.000Z"),
+    })
+
+    expect(paymentIntents.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 11000,
+        currency: "brl",
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining("payment-attempt:card:"),
+      })
+    )
+  })
 })
 
 describe("04A RealStripePixInitiationLayer", () => {
+  it("repassa amount_minor 11000 e currency brl diretamente no adapter Pix", async () => {
+    const paymentIntents = createPaymentIntentsMock("pix")
+    const stripeLayer = new RealStripePixInitiationLayer({ paymentIntents })
+
+    await stripeLayer.createPixPaymentIntent({
+      amount_minor: 11000,
+      currency_code: "brl",
+      cart_id: "cart_direct_pix_110",
+      idempotency_key: "idem_direct_pix_110",
+      payment_attempt_id: "payatt_direct_pix_110",
+    })
+
+    expect(paymentIntents.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 11000,
+        currency: "brl",
+      }),
+      expect.objectContaining({
+        idempotencyKey: "idem_direct_pix_110",
+      })
+    )
+  })
+
   it("cria PaymentIntent Pix BRL confirmado com TTL e persiste apenas expires_at seguro", async () => {
     const paymentIntents = createPaymentIntentsMock("pix")
     const stripeLayer = new RealStripePixInitiationLayer({
@@ -155,6 +263,36 @@ describe("04A RealStripePixInitiationLayer", () => {
     expect(JSON.stringify(result.attempt)).not.toContain("next_action")
     expect(JSON.stringify(result.paymentSessionData)).not.toContain(
       "next_action"
+    )
+  })
+
+  it("inicia Pix via adapter real com cart.total 110 e repassa 11000 ao Stripe", async () => {
+    const paymentIntents = createPaymentIntentsMock("pix")
+    const stripeLayer = new RealStripePixInitiationLayer({
+      paymentIntents,
+      pixExpiresAfterSeconds: 3_600,
+    })
+    const cart = buildDecorativeCart110()
+
+    await startPixPaymentAttempt({
+      cart,
+      actor: { actorType: "guest", actorId: "sess_real_pix_110" },
+      sessionActiveCartId: cart.id,
+      existingAttempts: [],
+      stripeLayer,
+      generateId: () => "payatt_real_pix_110",
+      generatePaymentCollectionId: () => "paycol_real_pix_110",
+      at: new Date("2026-06-29T18:05:00.000Z"),
+    })
+
+    expect(paymentIntents.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 11000,
+        currency: "brl",
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining("payment-attempt:pix:"),
+      })
     )
   })
 

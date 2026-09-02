@@ -1,9 +1,7 @@
 import { sanitizeString } from "../../../observability/sanitize"
 import type { PaymentAttemptRecord } from "../../../modules/payment-attempt/types"
-import {
-  assertPositiveBrlMinorAmount,
-  brlMajorToMinor,
-} from "../../../utils/money-units"
+import { resolveCanonicalCartPaymentAmount } from "../../../utils/canonical-cart-money"
+import { assertPositiveBrlMinorAmount } from "../../../utils/money-units"
 
 type CartVariantRecord = {
   id?: string | null
@@ -65,17 +63,19 @@ export function assertConfirmedAttemptCartMatchesPaymentAttempt(
     throw new Error("ORDER_ENTRYPOINT_CART_ITEMS_REQUIRED")
   }
 
-  const calculatedCartTotal = calculateCartLineItemsTotalMinor(
-    cart.items,
-    cart.currency_code
-  )
+  let cartAmountMinor: bigint
+
+  try {
+    cartAmountMinor = BigInt(
+      resolveCanonicalCartPaymentAmount(cart).amount_minor
+    )
+  } catch {
+    throw new Error("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
+  }
+
   const attemptAmount = resolvePositiveMinorBigInt(attempt.amount)
 
-  if (
-    calculatedCartTotal === null ||
-    attemptAmount === null ||
-    calculatedCartTotal !== attemptAmount
-  ) {
+  if (attemptAmount === null || cartAmountMinor !== attemptAmount) {
     throw new Error("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
   }
 
@@ -85,108 +85,12 @@ export function assertConfirmedAttemptCartMatchesPaymentAttempt(
 
 }
 
-function resolveIntegerBigInt(value: unknown): bigint | null {
-  if (typeof value === "bigint") {
-    return value
-  }
-
-  if (typeof value === "number") {
-    return Number.isSafeInteger(value) ? BigInt(value) : null
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim()
-    return /^-?\d+$/.test(trimmed) ? BigInt(trimmed) : null
-  }
-
-  if (!value || typeof value !== "object") {
-    return null
-  }
-
-  const rawAmount = (value as { rawAmount?: unknown }).rawAmount
-  if (rawAmount !== undefined) {
-    return resolveIntegerBigInt(rawAmount)
-  }
-
-  const numeric = (value as { numeric?: unknown }).numeric
-  if (numeric !== undefined) {
-    return resolveIntegerBigInt(numeric)
-  }
-
-  const valueOf = (value as { valueOf?: () => unknown }).valueOf
-  if (typeof valueOf === "function") {
-    const resolved = valueOf.call(value)
-    if (resolved !== value) {
-      return resolveIntegerBigInt(resolved)
-    }
-  }
-
-  const toString = (value as { toString?: () => string }).toString
-  if (typeof toString === "function") {
-    const resolved = toString.call(value)
-    if (resolved && resolved !== "[object Object]") {
-      return resolveIntegerBigInt(resolved)
-    }
-  }
-
-  return null
-}
-
-function resolvePositiveIntegerBigInt(value: unknown): bigint | null {
-  const integer = resolveIntegerBigInt(value)
-  return integer !== null && integer > 0n ? integer : null
-}
-
 function resolvePositiveMinorBigInt(value: unknown): bigint | null {
   try {
     return BigInt(assertPositiveBrlMinorAmount(value))
   } catch {
     return null
   }
-}
-
-function resolveLineItemUnitPriceMinor(
-  item: CartLineItemRecord,
-  currencyCode: string
-): bigint | null {
-  const majorAmount =
-    item.unit_price !== undefined && item.unit_price !== null
-      ? item.unit_price
-      : item.variant?.prices?.find((price) => {
-          return price.currency_code?.toLowerCase() === currencyCode.toLowerCase()
-        })?.amount
-
-  try {
-    const minorAmount = brlMajorToMinor(majorAmount)
-    return minorAmount >= 0 ? BigInt(minorAmount) : null
-  } catch {
-    return null
-  }
-}
-
-function calculateCartLineItemsTotalMinor(
-  items: CartLineItemRecord[] | null | undefined,
-  currencyCode: string
-): bigint | null {
-  const lineItems = items ?? []
-  if (lineItems.length === 0) {
-    return null
-  }
-
-  let total = 0n
-
-  for (const item of lineItems) {
-    const quantity = resolvePositiveIntegerBigInt(item.quantity)
-    const unitPriceMinor = resolveLineItemUnitPriceMinor(item, currencyCode)
-
-    if (quantity === null || unitPriceMinor === null) {
-      return null
-    }
-
-    total += quantity * unitPriceMinor
-  }
-
-  return total > 0n ? total : null
 }
 
 export function linkConfirmedPaymentAttemptToOrder(
