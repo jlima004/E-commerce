@@ -19,6 +19,9 @@ import {
   type PaymentAttemptSqlTransaction,
 } from "../../../modules/payment-attempt/transactional-authority"
 import {
+  assertNoUnresolvedFinancialFreezeInTransaction,
+} from "../../../modules/payment-attempt/financial-authority"
+import {
   assertNoPaymentOrOrderFields,
   resolveM1CartActor,
   type M1CartActorDecision,
@@ -719,6 +722,10 @@ export async function executeLineItemMutation(
       // Re-read ownership under that lock without initializing/bumping the
       // resource version, so a pending review still produces zero writes.
       await lockCartOrderAuthority(
+        asPaymentAttemptSqlTransaction(transactionContext),
+        cartId
+      )
+      await assertNoUnresolvedFinancialFreezeInTransaction(
         asPaymentAttemptSqlTransaction(transactionContext),
         cartId
       )

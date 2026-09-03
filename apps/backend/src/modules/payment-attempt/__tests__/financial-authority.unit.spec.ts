@@ -160,4 +160,156 @@ describe("PaymentAttempt R3 financial authority", () => {
   it("keeps reconciliation vocabulary shared with CheckoutCompletionLog", () => {
     expect(CHECKOUT_COMPLETION_STATUS.RECONCILIATION_REQUIRED).toBe("reconciliation_required")
   })
+
+  describe("Financial Freeze Enforcement Matrix (F1-F5)", () => {
+    const {
+      PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE,
+      assertNoUnresolvedFinancialFreezeInTransaction,
+      assertNoUnresolvedFinancialFreezeForCartsInTransaction,
+      findUnresolvedFinancialFreezeInTransaction,
+    } = require("../financial-authority")
+
+    it("F1: no freeze -> not unresolved and check passes", async () => {
+      const trx = {
+        raw: jest.fn().mockResolvedValue({ rows: [] }),
+      }
+      await expect(
+        assertNoUnresolvedFinancialFreezeInTransaction(trx, "cart_unfrozen")
+      ).resolves.toBeUndefined()
+    })
+
+    it("F2: unresolved freeze -> mutation rejected with PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE", async () => {
+      const trx = {
+        raw: jest.fn().mockResolvedValue({
+          rows: [
+            {
+              id: "payatt_frozen",
+              cart_id: "cart_frozen",
+              order_id: null,
+              financial_freeze_started_at: new Date("2026-09-01T00:00:00Z"),
+              provider_canceled_confirmed_at: null,
+            },
+          ],
+        }),
+      }
+
+      await expect(
+        assertNoUnresolvedFinancialFreezeInTransaction(trx, "cart_frozen")
+      ).rejects.toMatchObject({
+        code: PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE,
+        status: 409,
+        statusCode: 409,
+      })
+    })
+
+    it("F3: soft-deleted unresolved freeze -> query does not filter deleted_at and rejects", async () => {
+      let executedSql = ""
+      const trx = {
+        raw: jest.fn().mockImplementation((sql: string) => {
+          executedSql = sql
+          return Promise.resolve({
+            rows: [
+              {
+                id: "payatt_soft_deleted_frozen",
+                cart_id: "cart_soft_deleted",
+                order_id: null,
+                financial_freeze_started_at: new Date("2026-09-01T00:00:00Z"),
+                provider_canceled_confirmed_at: null,
+                deleted_at: new Date("2026-09-01T00:00:01Z"),
+              },
+            ],
+          })
+        }),
+      }
+
+      await expect(
+        assertNoUnresolvedFinancialFreezeInTransaction(trx, "cart_soft_deleted")
+      ).rejects.toMatchObject({
+        code: PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE,
+      })
+      expect(executedSql).not.toContain("deleted_at is null")
+    })
+
+    it("F4: financial_freeze_started_at + provider_canceled_confirmed_at -> no longer unresolved", async () => {
+      const trx = {
+        raw: jest.fn().mockResolvedValue({ rows: [] }),
+      }
+      const authority = {
+        id: "payatt_thawed",
+        cart_id: "cart_thawed",
+        order_id: null,
+        financial_freeze_started_at: new Date("2026-09-01T00:00:00Z"),
+        provider_canceled_confirmed_at: new Date("2026-09-01T00:05:00Z"),
+      }
+      expect(isUnresolvedFinancialFreeze(authority)).toBe(false)
+      await expect(
+        assertNoUnresolvedFinancialFreezeInTransaction(trx, "cart_thawed")
+      ).resolves.toBeUndefined()
+    })
+
+    it("F5: order_id non-null -> not unresolved by freeze predicate", async () => {
+      const authority = {
+        id: "payatt_ordered",
+        cart_id: "cart_ordered",
+        order_id: "order_123",
+        financial_freeze_started_at: new Date("2026-09-01T00:00:00Z"),
+        provider_canceled_confirmed_at: null,
+      }
+      expect(isUnresolvedFinancialFreeze(authority)).toBe(false)
+    })
+
+    it("Merge check: rejects if source, target, or both carts are frozen", async () => {
+      const frozenTrx = {
+        raw: jest.fn().mockImplementation((_sql: string, bindings: unknown[]) => {
+          const cartId = bindings?.[0]
+          if (cartId === "cart_frozen_source" || cartId === "cart_frozen_target") {
+            return Promise.resolve({
+              rows: [
+                {
+                  id: `payatt_${cartId}`,
+                  cart_id: cartId,
+                  order_id: null,
+                  financial_freeze_started_at: new Date(),
+                  provider_canceled_confirmed_at: null,
+                },
+              ],
+            })
+          }
+          return Promise.resolve({ rows: [] })
+        }),
+      }
+
+      // Source frozen
+      await expect(
+        assertNoUnresolvedFinancialFreezeForCartsInTransaction(frozenTrx, [
+          "cart_frozen_source",
+          "cart_clean_target",
+        ])
+      ).rejects.toMatchObject({ code: PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE })
+
+      // Target frozen
+      await expect(
+        assertNoUnresolvedFinancialFreezeForCartsInTransaction(frozenTrx, [
+          "cart_clean_source",
+          "cart_frozen_target",
+        ])
+      ).rejects.toMatchObject({ code: PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE })
+
+      // Both frozen
+      await expect(
+        assertNoUnresolvedFinancialFreezeForCartsInTransaction(frozenTrx, [
+          "cart_frozen_source",
+          "cart_frozen_target",
+        ])
+      ).rejects.toMatchObject({ code: PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE })
+
+      // Neither frozen
+      await expect(
+        assertNoUnresolvedFinancialFreezeForCartsInTransaction(frozenTrx, [
+          "cart_clean_source",
+          "cart_clean_target",
+        ])
+      ).resolves.toBeUndefined()
+    })
+  })
 })

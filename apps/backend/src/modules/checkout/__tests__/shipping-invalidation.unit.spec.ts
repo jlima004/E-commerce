@@ -66,4 +66,36 @@ describe("structural cart invalidation hooks (CART-09)", () => {
     expect(source).not.toMatch(/\bfetch\s*\(/)
     expect(source).not.toMatch(/gelato/i)
   })
+
+  it("rejeita com PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE quando existe freeze não resolvido", async () => {
+    const trx = {
+      raw: jest.fn().mockImplementation((sql: string) => {
+        if (sql.includes("pg_advisory_xact_lock")) {
+          return Promise.resolve({ rows: [] })
+        }
+        if (sql.includes("from payment_attempt") && sql.includes("financial_freeze_started_at is not null")) {
+          return Promise.resolve({
+            rows: [
+              {
+                id: "payatt_frozen",
+                order_id: null,
+                financial_freeze_started_at: new Date(),
+                provider_canceled_confirmed_at: null,
+              },
+            ],
+          })
+        }
+        return Promise.resolve({ rows: [] })
+      }),
+    }
+
+    await expect(
+      applyStructuralCartInvalidation("cart_frozen", new Date(), {
+        transaction: trx as never,
+      })
+    ).rejects.toMatchObject({
+      code: "PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE",
+      status: 409,
+    })
+  })
 })

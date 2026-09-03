@@ -215,12 +215,12 @@ export type StripePaymentIntentWebhookObject = {
 
 export class PaymentAttemptWebhookError extends Error {
   readonly code: string
-  readonly webhookDisposition: "failed" | "ignored"
+  readonly webhookDisposition: "failed" | "ignored" | "processed"
 
   constructor(
     code: string,
     message: string,
-    webhookDisposition: "failed" | "ignored" = "failed"
+    webhookDisposition: "failed" | "ignored" | "processed" = "failed"
   ) {
     super(message)
     this.name = code
@@ -372,6 +372,13 @@ function isTargetStatusAlreadyApplied(
   attempt: PaymentAttemptRecord,
   eventType: SupportedStripePaymentIntentEventType
 ): boolean {
+  if (
+    eventType === "payment_intent.succeeded" &&
+    (attempt.status === "payment_confirmed_by_webhook" ||
+      attempt.order_id != null)
+  ) {
+    return true
+  }
   return attempt.status === resolveTargetStatusForStripeEvent(eventType)
 }
 
@@ -433,6 +440,13 @@ export function validatePaymentIntentForAttempt(
     try {
       assertPaymentAttemptTransition(attempt.status, targetStatus)
     } catch {
+      if (eventType === "payment_intent.succeeded") {
+        throw new PaymentAttemptWebhookError(
+          "PAYMENT_ATTEMPT_LATE_SUCCEEDED_CONFLICT",
+          "Pagamento succeeded recebido para tentativa em estado conflitante.",
+          "processed"
+        )
+      }
       throw new PaymentAttemptWebhookError(
         "PAYMENT_ATTEMPT_WEBHOOK_STALE",
         "Tentativa nao pode ser atualizada pelo webhook atual.",

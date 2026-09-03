@@ -123,6 +123,10 @@ function createProbe(state: ProbeState, blockFirstLock = false) {
       return { rows: [{ version: state.resourceVersion }] }
     }
 
+    if (sql.includes("checkout_completion_log")) {
+      return { rows: [] }
+    }
+
     if (sql.trimStart().startsWith("select") && sql.includes("from payment_attempt")) {
       return { rows: [toRow(state.attempt)] }
     }
@@ -130,12 +134,19 @@ function createProbe(state: ProbeState, blockFirstLock = false) {
       if (sql.trimStart().startsWith("update payment_attempt")) {
         owner.writes += 1
         if (sql.includes("invalidated_by_cart_change")) {
-        state.attempt = {
-          ...state.attempt,
-          status: "invalidated_by_cart_change",
-          invalidated_at: String(bindings[0]),
-          updated_at: String(bindings[1]),
-        }
+          state.attempt = {
+            ...state.attempt,
+            status: "invalidated_by_cart_change",
+            invalidated_at: String(bindings[0]),
+            updated_at: String(bindings[1]),
+          }
+        } else if (sql.includes("reconciliation_reason_code = ?")) {
+          state.attempt = {
+            ...state.attempt,
+            reconciliation_reason_code: String(bindings[1]) as any,
+            last_reconciliation_at: String(bindings[2]),
+            updated_at: String(bindings[3]),
+          }
         } else {
           const usesDurableBinding = sql.includes(
             "set provider_payment_intent_id"
@@ -293,11 +304,15 @@ describe("PaymentAttempt/cart/webhook Order authority HR-01", () => {
     probe.releaseFirstLock()
 
     await invalidation
-    await expect(webhook).rejects.toMatchObject({
-      code: "PAYMENT_ATTEMPT_WEBHOOK_STALE",
-      webhookDisposition: "ignored",
-    })
+    const updated = await webhook
+    expect(updated.status).toBe("invalidated_by_cart_change")
+    expect(updated.reconciliation_reason_code).toBe(
+      "LATE_SUCCEEDED_AUTHORITY_CONFLICT"
+    )
     expect(state.attempt.status).toBe("invalidated_by_cart_change")
+    expect(state.attempt.reconciliation_reason_code).toBe(
+      "LATE_SUCCEEDED_AUTHORITY_CONFLICT"
+    )
   })
 
   it("correlaciona webhook com tentativa provisional antes do finalize local", async () => {

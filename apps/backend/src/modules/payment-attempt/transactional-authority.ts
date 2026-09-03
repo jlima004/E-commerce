@@ -9,7 +9,10 @@ import {
 } from "./state-machine"
 import type { PaymentAttemptRecord } from "./types"
 import { readDurablePaymentAttemptIdentity } from "./durable-initiation"
-import { isUnresolvedFinancialFreeze } from "./financial-authority"
+import {
+  isUnresolvedFinancialFreeze,
+  toPaymentAttemptFinancialAuthority,
+} from "./financial-authority"
 import {
   assertValidPreProviderCartResourceVersion,
   isStripePaymentIntentCreateAuthorityV1,
@@ -29,6 +32,10 @@ import {
   PAYMENT_ATTEMPT_PROVIDER_INTENT_INCOMPATIBLE,
 } from "./provider-request-authority"
 import type { StripePaymentIntentLike } from "./stripe-safe"
+import {
+  RECONCILIATION_REASON_CODE,
+  type ReconciliationReasonCode,
+} from "../../reconciliation/reason-codes"
 
 export type PaymentAttemptSqlTransaction = {
   raw(
@@ -401,23 +408,54 @@ export async function applyStripePaymentIntentWebhookInTransaction(
     )
   }
 
-  const updatedAttempt = applyStripePaymentIntentWebhookToAttempt(
-    attempt,
-    paymentIntent,
-    eventType,
-    at
-  )
+  let updatedAttempt: PaymentAttemptRecord
+  try {
+    updatedAttempt = applyStripePaymentIntentWebhookToAttempt(
+      attempt,
+      paymentIntent,
+      eventType,
+      at
+    )
+  } catch (error) {
+    if (
+      eventType === "payment_intent.succeeded" &&
+      error instanceof PaymentAttemptWebhookError &&
+      error.code === "PAYMENT_ATTEMPT_LATE_SUCCEEDED_CONFLICT"
+    ) {
+      return recordDurableReconciliationInTransaction(
+        transaction,
+        {
+          paymentAttemptId: attempt.id,
+          cartId: attempt.cart_id,
+          paymentIntentId: String(paymentIntent.id),
+          reasonCode: RECONCILIATION_REASON_CODE.LATE_SUCCEEDED_AUTHORITY_CONFLICT,
+          errorCode: "LATE_SUCCEEDED_AUTHORITY_CONFLICT",
+          errorMessage:
+            "Pagamento confirmado pelo Stripe em estado local conflitante.",
+          skipCartLock: true,
+        },
+        at
+      )
+    }
+    throw error
+  }
 
-  if (updatedAttempt.status === attempt.status) {
+  if (
+    eventType === "payment_intent.canceled" &&
+    attempt.provider_canceled_confirmed_at != null
+  ) {
     return attempt
   }
 
-  const timestampColumn =
-    eventType === "payment_intent.payment_failed"
-      ? "failed_at"
-      : eventType === "payment_intent.canceled"
-        ? "canceled_at"
-        : null
+  if (
+    eventType !== "payment_intent.canceled" &&
+    updatedAttempt.status === attempt.status
+  ) {
+    return attempt
+  }
+
+  const isFailed = eventType === "payment_intent.payment_failed"
+  const isCanceled = eventType === "payment_intent.canceled"
   const paymentSessionId =
     typeof paymentIntent.metadata?.session_id === "string" &&
     paymentIntent.metadata.session_id.trim().length > 0
@@ -430,27 +468,29 @@ export async function applyStripePaymentIntentWebhookInTransaction(
       set provider_payment_intent_id = ?,
           provider_payment_session_id = coalesce(provider_payment_session_id, ?),
           status = ?,
-          ${timestampColumn ? `${timestampColumn} = ?,` : ""}
+          ${isFailed ? "failed_at = coalesce(failed_at, ?)," : ""}
+          ${isCanceled ? "canceled_at = coalesce(canceled_at, CURRENT_TIMESTAMP), provider_canceled_confirmed_at = coalesce(provider_canceled_confirmed_at, CURRENT_TIMESTAMP)," : ""}
           order_id = null,
-          updated_at = ?
+          updated_at = ${isCanceled ? "CURRENT_TIMESTAMP" : "?"}
       where id = ?
         and cart_id = ?
         and (provider_payment_intent_id is null or provider_payment_intent_id = ?)
         and deleted_at is null
         and order_id is null
-        and status = ?
+        and (status = ? or (status = 'payment_canceled' and ? = 'payment_intent.canceled'))
       returning ${selectColumns()}
     `,
     [
       paymentIntent.id,
       paymentSessionId,
       updatedAttempt.status,
-      ...(timestampColumn ? [at.toISOString()] : []),
-      at.toISOString(),
+      ...(isFailed ? [at.toISOString()] : []),
+      ...(isCanceled ? [] : [at.toISOString()]),
       attempt.id,
       attempt.cart_id,
       paymentIntent.id,
       attempt.status,
+      eventType,
     ]
   )
 
@@ -463,6 +503,210 @@ export async function applyStripePaymentIntentWebhookInTransaction(
   }
 
   return mapPaymentAttemptRow(rows[0])
+}
+
+export async function recordProviderCanceledConfirmedInTransaction(
+  transaction: PaymentAttemptSqlTransaction,
+  input: {
+    paymentAttemptId: string
+    cartId: string
+    providerPaymentIntentId: string
+  },
+  at: Date = new Date()
+): Promise<{ updated: boolean; attempt: PaymentAttemptRecord }> {
+  await lockCartOrderAuthority(transaction, input.cartId)
+  const attempt = await readPaymentAttemptForUpdate(transaction, {
+    id: input.paymentAttemptId,
+  })
+
+  if (!attempt) {
+    throw new Error(PAYMENT_ATTEMPT_NOT_FOUND)
+  }
+
+  if (attempt.cart_id !== input.cartId) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_IDENTITY_MISMATCH)
+  }
+
+  if (
+    attempt.provider_payment_intent_id &&
+    attempt.provider_payment_intent_id !== input.providerPaymentIntentId
+  ) {
+    throw new Error(PAYMENT_ATTEMPT_PROVIDER_INTENT_INCOMPATIBLE)
+  }
+
+  if (attempt.provider_canceled_confirmed_at != null) {
+    return { updated: false, attempt }
+  }
+
+  const rows = await queryRows(
+    transaction,
+    `
+      update payment_attempt
+      set provider_canceled_confirmed_at = coalesce(provider_canceled_confirmed_at, CURRENT_TIMESTAMP),
+          status = case
+            when status in ('payment_canceled', 'created', 'provider_session_created', 'client_action_required', 'card_client_secret_created', 'payment_client_confirmed', 'payment_instructions_displayed', 'awaiting_pix_payment', 'awaiting_webhook_confirmation', 'pix_expired', 'payment_failed')
+            then 'payment_canceled'
+            else status
+          end,
+          canceled_at = coalesce(canceled_at, CURRENT_TIMESTAMP),
+          updated_at = CURRENT_TIMESTAMP
+      where id = ?
+        and cart_id = ?
+        and (provider_payment_intent_id is null or provider_payment_intent_id = ?)
+        and order_id is null
+        and provider_canceled_confirmed_at is null
+      returning ${selectColumns()}
+    `,
+    [
+      attempt.id,
+      attempt.cart_id,
+      input.providerPaymentIntentId,
+    ]
+  )
+
+  if (rows.length !== 1) {
+    const reread = await readPaymentAttemptForUpdate(transaction, {
+      id: input.paymentAttemptId,
+    })
+    if (reread?.provider_canceled_confirmed_at != null) {
+      return { updated: false, attempt: reread }
+    }
+    throw new Error("PAYMENT_ATTEMPT_THAW_CAS_FAILED")
+  }
+
+  return { updated: true, attempt: mapPaymentAttemptRow(rows[0]) }
+}
+
+export async function recordDurableReconciliationInTransaction(
+  transaction: PaymentAttemptSqlTransaction,
+  input: {
+    paymentAttemptId: string
+    cartId: string
+    paymentIntentId: string
+    reasonCode: ReconciliationReasonCode
+    errorCode?: string
+    errorMessage?: string
+    skipCartLock?: boolean
+  },
+  at: Date = new Date()
+): Promise<PaymentAttemptRecord> {
+  if (!input.skipCartLock) {
+    await lockCartOrderAuthority(transaction, input.cartId)
+  }
+
+  // 1. Update PaymentAttempt
+  const rows = await queryRows(
+    transaction,
+    `
+      update payment_attempt
+      set provider_payment_intent_id = coalesce(provider_payment_intent_id, ?),
+          reconciliation_reason_code = ?,
+          last_reconciliation_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      where id = ?
+        and cart_id = ?
+        and order_id is null
+      returning ${selectColumns()}
+    `,
+    [
+      input.paymentIntentId,
+      input.reasonCode,
+      input.paymentAttemptId,
+      input.cartId,
+    ]
+  )
+
+  // 2. Persist or update CheckoutCompletionLog
+  const existingCcl = await queryRows(
+    transaction,
+    `
+      select id from checkout_completion_log
+      where payment_intent_id = ?
+      limit 1
+    `,
+    [input.paymentIntentId]
+  )
+
+  if (existingCcl.length > 0) {
+    await queryRows(
+      transaction,
+      `
+        update checkout_completion_log
+        set status = 'reconciliation_required',
+            reconciliation_reason_code = ?,
+            last_reconciliation_at = CURRENT_TIMESTAMP,
+            error_code = ?,
+            error_message = ?,
+            updated_at = CURRENT_TIMESTAMP
+        where id = ?
+          and order_id is null
+      `,
+      [
+        input.reasonCode,
+        input.errorCode ?? input.reasonCode,
+        input.errorMessage ?? "Reconciliação requerida para o pagamento confirmado.",
+        existingCcl[0].id,
+      ]
+    )
+  } else {
+    const cclId = `chkcpl_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+    await queryRows(
+      transaction,
+      `
+        insert into checkout_completion_log (
+          id,
+          operation,
+          idempotency_key,
+          cart_id,
+          payment_intent_id,
+          payment_attempt_id,
+          status,
+          reconciliation_reason_code,
+          last_reconciliation_at,
+          error_code,
+          error_message,
+          created_at,
+          updated_at
+        ) values (
+          ?,
+          'complete_checkout_create_order',
+          ?,
+          ?,
+          ?,
+          ?,
+          'reconciliation_required',
+          ?,
+          CURRENT_TIMESTAMP,
+          ?,
+          ?,
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+        )
+      `,
+      [
+        cclId,
+        input.paymentIntentId,
+        input.cartId,
+        input.paymentIntentId,
+        input.paymentAttemptId,
+        input.reasonCode,
+        input.errorCode ?? input.reasonCode,
+        input.errorMessage ?? "Reconciliação requerida para o pagamento confirmado.",
+      ]
+    )
+  }
+
+  if (rows.length > 0) {
+    return mapPaymentAttemptRow(rows[0])
+  }
+
+  const attempt = await readPaymentAttemptForUpdate(transaction, {
+    id: input.paymentAttemptId,
+  })
+  if (!attempt) {
+    throw new Error(PAYMENT_ATTEMPT_NOT_FOUND)
+  }
+  return attempt
 }
 
 export async function withCartOrderAuthorityLock<T>(
@@ -688,7 +932,9 @@ export async function listUnresolvedFrozenPaymentAttemptsForCart(
   )
   return rows
     .map(mapPaymentAttemptRow)
-    .filter((attempt) => isUnresolvedFinancialFreeze(attempt))
+    .filter((attempt) =>
+      isUnresolvedFinancialFreeze(toPaymentAttemptFinancialAuthority(attempt))
+    )
 }
 
 export async function persistPreProviderFinancialFreezeInTransaction(
@@ -819,7 +1065,9 @@ export async function readDurablePreProviderAuthority(
     throw new Error(PAYMENT_ATTEMPT_NOT_FOUND)
   }
 
-  if (!isUnresolvedFinancialFreeze(attempt)) {
+  if (
+    !isUnresolvedFinancialFreeze(toPaymentAttemptFinancialAuthority(attempt))
+  ) {
     throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
   }
 

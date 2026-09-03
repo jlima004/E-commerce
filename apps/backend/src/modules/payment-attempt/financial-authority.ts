@@ -58,3 +58,110 @@ export function projectPaymentAttemptFinancialAuthority(
     unresolved_financial_freeze: isUnresolvedFinancialFreeze(attempt),
   }
 }
+
+export function toPaymentAttemptFinancialAuthority(
+  attempt: {
+    id: string
+    cart_id: string
+    order_id?: string | null
+    financial_freeze_started_at?: Date | string | null
+    provider_canceled_confirmed_at?: Date | string | null
+  }
+): PaymentAttemptFinancialAuthority {
+  return {
+    id: attempt.id,
+    cart_id: attempt.cart_id,
+    order_id: attempt.order_id ?? null,
+    financial_freeze_started_at: attempt.financial_freeze_started_at ?? null,
+    provider_canceled_confirmed_at: attempt.provider_canceled_confirmed_at ?? null,
+  }
+}
+
+export const PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE =
+  "PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE"
+
+export function createFinancialFreezeActiveError(
+  message = "Operação bloqueada por congelamento financeiro ativo."
+): Error & { code: string; status: number; statusCode: number } {
+  const error = new Error(message) as Error & {
+    code: string
+    status: number
+    statusCode: number
+  }
+  error.name = PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE
+  error.code = PAYMENT_ATTEMPT_FINANCIAL_FREEZE_ACTIVE
+  error.status = 409
+  error.statusCode = 409
+  return error
+}
+
+export type FinancialFreezeSqlTransaction = {
+  raw(
+    sql: string,
+    bindings?: unknown[]
+  ): Promise<{ rows?: Array<Record<string, unknown>> }>
+}
+
+export async function findUnresolvedFinancialFreezeInTransaction(
+  transaction: FinancialFreezeSqlTransaction,
+  cartId: string
+): Promise<PaymentAttemptFinancialAuthority | null> {
+  const result = await transaction.raw(
+    `
+      select id, cart_id, order_id, financial_freeze_started_at, provider_canceled_confirmed_at
+      from payment_attempt
+      where cart_id = ?
+        and financial_freeze_started_at is not null
+        and provider_canceled_confirmed_at is null
+        and order_id is null
+      order by id
+      limit 1
+    `,
+    [cartId]
+  )
+  const row = result.rows?.[0]
+  if (!row) {
+    return null
+  }
+  const authority: PaymentAttemptFinancialAuthority = {
+    id: String(row.id),
+    cart_id: String(row.cart_id),
+    order_id: row.order_id == null ? null : String(row.order_id),
+    financial_freeze_started_at:
+      row.financial_freeze_started_at instanceof Date ||
+      typeof row.financial_freeze_started_at === "string"
+        ? row.financial_freeze_started_at
+        : null,
+    provider_canceled_confirmed_at:
+      row.provider_canceled_confirmed_at instanceof Date ||
+      typeof row.provider_canceled_confirmed_at === "string"
+        ? row.provider_canceled_confirmed_at
+        : null,
+  }
+  return isUnresolvedFinancialFreeze(authority) ? authority : null
+}
+
+export async function assertNoUnresolvedFinancialFreezeInTransaction(
+  transaction: FinancialFreezeSqlTransaction,
+  cartId: string
+): Promise<void> {
+  const unresolved = await findUnresolvedFinancialFreezeInTransaction(
+    transaction,
+    cartId
+  )
+  if (unresolved) {
+    throw createFinancialFreezeActiveError()
+  }
+}
+
+export async function assertNoUnresolvedFinancialFreezeForCartsInTransaction(
+  transaction: FinancialFreezeSqlTransaction,
+  cartIds: string[]
+): Promise<void> {
+  const uniqueCartIds = [...new Set(cartIds)].filter(
+    (id) => typeof id === "string" && id.trim().length > 0
+  )
+  for (const cartId of uniqueCartIds) {
+    await assertNoUnresolvedFinancialFreezeInTransaction(transaction, cartId)
+  }
+}

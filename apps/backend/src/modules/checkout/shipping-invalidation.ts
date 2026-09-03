@@ -4,6 +4,7 @@ import {
 import type { PaymentAttemptRecord } from "../payment-attempt/types"
 import { ACTIVE_PAYMENT_ATTEMPT_STATUSES } from "../payment-attempt/state-machine"
 import type { PaymentAttemptSqlTransaction } from "../payment-attempt/transactional-authority"
+import { createFinancialFreezeActiveError } from "../payment-attempt/financial-authority"
 
 const ACTIVE_STATUS_BINDINGS = ACTIVE_PAYMENT_ATTEMPT_STATUSES.map(() => "?").join(
   ", "
@@ -19,6 +20,27 @@ async function invalidatePaymentAttemptsForCartChangeInTransaction(
     "select pg_advisory_xact_lock(hashtextextended(?, 1515))",
     [cartId]
   )
+  const freezeCheck = await transaction.raw(
+    `
+      select id, order_id, financial_freeze_started_at, provider_canceled_confirmed_at
+      from payment_attempt
+      where cart_id = ?
+        and financial_freeze_started_at is not null
+        and provider_canceled_confirmed_at is null
+        and order_id is null
+      limit 1
+    `,
+    [cartId]
+  )
+  const hasUnresolvedFreeze = (freezeCheck.rows ?? []).some(
+    (row) =>
+      row.financial_freeze_started_at != null &&
+      row.provider_canceled_confirmed_at == null &&
+      row.order_id == null
+  )
+  if (hasUnresolvedFreeze) {
+    throw createFinancialFreezeActiveError()
+  }
   const locked = await transaction.raw(
     `
       select id, status, order_id

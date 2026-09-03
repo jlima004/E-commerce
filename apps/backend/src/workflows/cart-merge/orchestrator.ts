@@ -53,6 +53,10 @@ import {
   type StoreResourceVersionMutationContext,
 } from "../../modules/store-resource-version"
 import { lockCartOrderAuthority } from "../../modules/payment-attempt/transactional-authority"
+import {
+  assertNoUnresolvedFinancialFreezeForCartsInTransaction,
+  assertNoUnresolvedFinancialFreezeInTransaction,
+} from "../../modules/payment-attempt/financial-authority"
 import { lockCustomerCartAuthority } from "../../modules/cart-merge/authority-lock"
 import { CART_MERGE_MODULE } from "../../modules/cart-merge/module-id"
 import {
@@ -1333,6 +1337,10 @@ export class CartMergeOrchestrator {
 
       // Cart row/advisory lock precedes the version and CartReview locks.
       await lockCartRows(transactionContext, [input.cartId])
+      await assertNoUnresolvedFinancialFreezeInTransaction(
+        transactionContext,
+        input.cartId
+      )
       const versionService = request.scope.resolve<StoreResourceVersionModuleService>(
         STORE_RESOURCE_VERSION_MODULE
       )
@@ -1539,6 +1547,10 @@ export class CartMergeOrchestrator {
       authorityForLinks = toCustomerCartAuthorityRow(customerAuthority)
 
       await lockCartRows(
+        transactionContext,
+        [input.guestCartId, ...(customerCartId ? [customerCartId] : [])]
+      )
+      await assertNoUnresolvedFinancialFreezeForCartsInTransaction(
         transactionContext,
         [input.guestCartId, ...(customerCartId ? [customerCartId] : [])]
       )

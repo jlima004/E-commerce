@@ -37,6 +37,15 @@ export type StripePaymentIntentsClient = {
     params: StripePaymentIntentSearchParams,
     options?: Stripe.RequestOptions
   ) => Promise<StripePaymentIntentSearchPage>
+  retrieve?: (
+    id: string,
+    options?: Stripe.RequestOptions
+  ) => Promise<StripePaymentIntentLike>
+  cancel?: (
+    id: string,
+    params?: Stripe.PaymentIntentCancelParams,
+    options?: Stripe.RequestOptions
+  ) => Promise<StripePaymentIntentLike>
 }
 
 export type RealStripeInitiationLayerConfig = {
@@ -311,5 +320,10 @@ export function createStripePaymentIntentsClient(
         next_page: result.next_page ?? null,
       }
     },
+    retrieve: async (id, options) =>
+      (await stripe.paymentIntents.retrieve(
+        id,
+        options
+      )) as unknown as StripePaymentIntentLike,
   }
 }

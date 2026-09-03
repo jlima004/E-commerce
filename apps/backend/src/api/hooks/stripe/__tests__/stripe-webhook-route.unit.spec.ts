@@ -213,23 +213,19 @@ function createRequest(overrides: Partial<RequestWithRawBody> = {}) {
 describe("stripe webhook route", () => {
   it("usa req.rawBody no constructEvent", async () => {
     const service = createWebhookService()
-    const constructEvent = jest.fn(() => ({
-      id: "evt_test",
-      type: "payment_intent.succeeded",
-      livemode: false,
-      data: {
-        object: {
-          id: "pi_123",
-          object: "payment_intent",
-        },
-      },
-    }))
+    const paymentAttempts = createPaymentAttemptService("order_existing")
+    const constructEvent = jest.fn(() => createSucceededPaymentIntentEvent())
     const req = createRequest({
       headers: {
         "stripe-signature": "t=1,v1=signature",
       },
     })
-    req.scope.resolve = jest.fn(() => service)
+    req.scope.resolve = jest.fn((key: string) => {
+      if (key === WEBHOOKS_MODULE) return service
+      if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttempts
+      return undefined
+    })
+    addPaymentAttemptAuthority(req, paymentAttempts)
 
     const handler = createStripeWebhookPostHandler({
       appEnv: {
@@ -504,15 +500,15 @@ describe("stripe webhook route", () => {
     expect(runOrderEntrypoint).toHaveBeenCalledTimes(1)
     expect(webhooks.updateWebhookEventLogs).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        status: "failed",
-        processed_at: null,
+        status: "processed",
+        processed_at: "2026-07-07T12:00:00.000Z",
         error_code: "CHECKOUT_COMPLETION_NOT_TERMINAL",
       })
     )
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         ok: true,
-        status: "failed",
+        status: "processed",
       })
     )
   })
@@ -585,8 +581,8 @@ describe("stripe webhook route", () => {
 
     expect(webhooks.updateWebhookEventLogs).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        status: "failed",
-        processed_at: null,
+        status: "processed",
+        processed_at: "2026-07-07T12:00:00.000Z",
         error_code: "ORDER_ENTRYPOINT_COMPLETE_CART_FAILED",
         error_message: "completeCart rejected missing shipping method",
         metadata: expect.objectContaining({
@@ -619,7 +615,7 @@ describe("stripe webhook route", () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         ok: true,
-        status: "failed",
+        status: "processed",
       })
     )
   })
