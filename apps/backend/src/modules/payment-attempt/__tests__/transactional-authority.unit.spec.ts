@@ -1,10 +1,16 @@
 import {
   applyStripePaymentIntentWebhookInTransaction,
   invalidatePaymentAttemptsForCartChangeInTransaction,
+  PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE,
+  PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH,
+  readDurablePreProviderAuthority,
 } from "../transactional-authority"
 import { createStructuralCartInvalidationRunner } from "../../checkout/shipping-invalidation"
+import { buildCompleteStripePaymentIntentCreateAuthorityV1 } from "../provider-request-authority"
 import type { PaymentAttemptRecord } from "../types"
 import type { StripePaymentIntentWebhookObject } from "../service"
+
+const DB_REPLAY_DEADLINE = "2026-09-03T14:00:00.000Z"
 
 type ProbeState = {
   cartItems: string[]
@@ -372,5 +378,206 @@ describe("PaymentAttempt/cart/webhook Order authority HR-01", () => {
     })
     expect(state.attempt.provider_payment_intent_id).toBeNull()
     expect(state.attempt.status).toBe("created")
+  })
+})
+
+function completeV1(input: {
+  method?: "card" | "pix"
+  collection?: string | null
+  session?: string | null
+}) {
+  return buildCompleteStripePaymentIntentCreateAuthorityV1({
+    payment_method_type: input.method ?? "card",
+    amount_minor: 9900,
+    cart_id: "cart_id_seal",
+    cart_resource_version: 3,
+    payment_attempt_id: "payatt_id_seal",
+    payment_collection_id:
+      input.collection === undefined ? "paycol_A" : input.collection,
+    payment_session_id: input.session === undefined ? "payses_A" : input.session,
+    authority_created_at: "2026-09-02T10:00:00.000Z",
+    replay_deadline: DB_REPLAY_DEADLINE,
+  })
+}
+
+function buildFrozenAttempt(
+  overrides: Partial<PaymentAttemptRecord> = {}
+): PaymentAttemptRecord {
+  const method = overrides.payment_method_type ?? "card"
+  const v1 = completeV1({
+    method,
+    collection: "paycol_A",
+    session: method === "pix" ? null : "payses_A",
+  })
+  return {
+    id: "payatt_id_seal",
+    cart_id: "cart_id_seal",
+    payment_collection_id: "paycol_A",
+    payment_session_id: method === "pix" ? null : "payses_A",
+    provider: "stripe",
+    provider_payment_intent_id: null,
+    provider_payment_session_id: null,
+    payment_method_type: method,
+    status: "created",
+    amount: 9900,
+    currency_code: "brl",
+    expires_at: null,
+    order_id: null,
+    metadata: {
+      cart_resource_version: 3,
+      provider_idempotency_key: `payment-attempt:${method}:payatt_id_seal`,
+      payment_attempt_id: "payatt_id_seal",
+      stripe_payment_intent_create: v1,
+    },
+    client_confirmed_at: null,
+    instructions_displayed_at: null,
+    awaiting_webhook_since: null,
+    superseded_at: null,
+    invalidated_at: null,
+    canceled_at: null,
+    failed_at: null,
+    expired_at: null,
+    financial_freeze_started_at: "2026-09-02T10:00:00.000Z",
+    provider_canceled_confirmed_at: null,
+    provider_discovery_started_at: null,
+    reconciliation_reason_code: null,
+    reconciliation_locked_at: null,
+    last_reconciliation_at: null,
+    created_at: "2026-09-02T09:00:00.000Z",
+    updated_at: "2026-09-02T10:00:00.000Z",
+    ...overrides,
+  }
+}
+
+function createIdentitySealHarness(attempt: PaymentAttemptRecord) {
+  const state = { attempt }
+  const transaction = {
+    raw: async (sql: string, bindings: unknown[] = []) => {
+      if (
+        sql.trimStart().startsWith("select") &&
+        sql.includes("from payment_attempt")
+      ) {
+        return { rows: [{ ...state.attempt }] }
+      }
+      return { rows: [] }
+    },
+  }
+  return { transaction, state }
+}
+
+describe("readDurablePreProviderAuthority local identity seal", () => {
+  it("U1 — Card exact identities", async () => {
+    const harness = createIdentitySealHarness(buildFrozenAttempt())
+    await expect(
+      readDurablePreProviderAuthority(harness.transaction, "payatt_id_seal")
+    ).resolves.toMatchObject({
+      payment_method_type: "card",
+      amount_minor: 9900,
+    })
+  })
+
+  it("U2 — Card collection mismatch", async () => {
+    const harness = createIdentitySealHarness(
+      buildFrozenAttempt({ payment_collection_id: "paycol_B" })
+    )
+    await expect(
+      readDurablePreProviderAuthority(harness.transaction, "payatt_id_seal")
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  })
+
+  it("U3 — Card session mismatch", async () => {
+    const harness = createIdentitySealHarness(
+      buildFrozenAttempt({ payment_session_id: "payses_B" })
+    )
+    await expect(
+      readDurablePreProviderAuthority(harness.transaction, "payatt_id_seal")
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  })
+
+  it("U4 — Card null session mismatch", async () => {
+    const harness = createIdentitySealHarness(
+      buildFrozenAttempt({ payment_session_id: null })
+    )
+    await expect(
+      readDurablePreProviderAuthority(harness.transaction, "payatt_id_seal")
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  })
+
+  it("U5 — Pix exact", async () => {
+    const harness = createIdentitySealHarness(
+      buildFrozenAttempt({
+        payment_method_type: "pix",
+        payment_session_id: null,
+      })
+    )
+    await expect(
+      readDurablePreProviderAuthority(harness.transaction, "payatt_id_seal")
+    ).resolves.toMatchObject({
+      payment_method_type: "pix",
+    })
+  })
+
+  it("U6 — Pix collection mismatch", async () => {
+    const harness = createIdentitySealHarness(
+      buildFrozenAttempt({
+        payment_method_type: "pix",
+        payment_collection_id: "paycol_B",
+        payment_session_id: null,
+      })
+    )
+    await expect(
+      readDurablePreProviderAuthority(harness.transaction, "payatt_id_seal")
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  })
+
+  it("U7 — Pix invented/non-null session", async () => {
+    const harness = createIdentitySealHarness(
+      buildFrozenAttempt({
+        payment_method_type: "pix",
+        payment_session_id: "payses_fake",
+      })
+    )
+    await expect(
+      readDurablePreProviderAuthority(harness.transaction, "payatt_id_seal")
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  })
+
+  it("U8 — reverse Pix session mismatch", async () => {
+    const attempt = buildFrozenAttempt({
+      payment_method_type: "pix",
+      payment_session_id: null,
+    })
+    attempt.metadata = {
+      ...attempt.metadata,
+      stripe_payment_intent_create: completeV1({
+        method: "pix",
+        collection: "paycol_A",
+        session: "payses_fake",
+      }),
+    }
+    const harness = createIdentitySealHarness(attempt)
+    await expect(
+      readDurablePreProviderAuthority(harness.transaction, "payatt_id_seal")
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  })
+
+  it("U9 — null PaymentCollection on Card durable reread", async () => {
+    const attempt = buildFrozenAttempt({ payment_collection_id: null })
+    const harness = createIdentitySealHarness(attempt)
+    await expect(
+      readDurablePreProviderAuthority(harness.transaction, "payatt_id_seal")
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
+  })
+
+  it("U9 — null PaymentCollection on Pix durable reread", async () => {
+    const attempt = buildFrozenAttempt({
+      payment_method_type: "pix",
+      payment_collection_id: null,
+      payment_session_id: null,
+    })
+    const harness = createIdentitySealHarness(attempt)
+    await expect(
+      readDurablePreProviderAuthority(harness.transaction, "payatt_id_seal")
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
   })
 })

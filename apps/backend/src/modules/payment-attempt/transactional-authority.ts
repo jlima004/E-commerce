@@ -9,6 +9,26 @@ import {
 } from "./state-machine"
 import type { PaymentAttemptRecord } from "./types"
 import { readDurablePaymentAttemptIdentity } from "./durable-initiation"
+import { isUnresolvedFinancialFreeze } from "./financial-authority"
+import {
+  assertValidPreProviderCartResourceVersion,
+  isStripePaymentIntentCreateAuthorityV1,
+  persistedRequestAuthorityDisagrees,
+  readFrozenAttemptDurableIdempotencyKey,
+  readPersistedRequestAuthorityBlob,
+  readPreProviderCartResourceVersion,
+  resolveRequestedIdempotencyKey,
+  type DurablePreProviderAuthority,
+  type PersistPreProviderFinancialFreezeInput,
+} from "./pre-provider-arbitration"
+import {
+  assertCompleteStripePaymentIntentCreateAuthorityV1,
+  assertStripePaymentIntentMatchesAuthorityV1,
+  buildStripeCanonicalPaymentIntentCreateRequest,
+  digestStripeCanonicalPaymentIntentCreateRequest,
+  PAYMENT_ATTEMPT_PROVIDER_INTENT_INCOMPATIBLE,
+} from "./provider-request-authority"
+import type { StripePaymentIntentLike } from "./stripe-safe"
 
 export type PaymentAttemptSqlTransaction = {
   raw(
@@ -29,6 +49,16 @@ export const PAYMENT_ATTEMPT_CART_VERSION_UNBOUND =
   "PAYMENT_ATTEMPT_CART_VERSION_UNBOUND"
 export const PAYMENT_ATTEMPT_CART_VERSION_STALE =
   "PAYMENT_ATTEMPT_CART_VERSION_STALE"
+export const PAYMENT_ATTEMPT_NOT_FOUND = "PAYMENT_ATTEMPT_NOT_FOUND"
+export const PAYMENT_ATTEMPT_PRE_PROVIDER_IDENTITY_MISMATCH =
+  "PAYMENT_ATTEMPT_PRE_PROVIDER_IDENTITY_MISMATCH"
+export const PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH =
+  "PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH"
+export const PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE =
+  "PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE"
+export const PAYMENT_ATTEMPT_PROVIDER_BIND_CONFLICT =
+  "PAYMENT_ATTEMPT_PROVIDER_BIND_CONFLICT"
+export { PAYMENT_ATTEMPT_PROVIDER_INTENT_INCOMPATIBLE }
 
 const ACTIVE_STATUS_BINDINGS = ACTIVE_PAYMENT_ATTEMPT_STATUSES.map(() => "?").join(
   ", "
@@ -478,4 +508,606 @@ export async function withCartOrderAuthorityLock<T>(
       ),
     })
   })
+}
+
+export function buildListUnresolvedFrozenPaymentAttemptsForCartSql(
+  forUpdate = true
+): string {
+  return `
+      select ${selectColumns()}
+      from payment_attempt
+      where cart_id = ?
+        and financial_freeze_started_at is not null
+        and provider_canceled_confirmed_at is null
+        and order_id is null
+      order by id
+      ${forUpdate ? "for update" : ""}
+    `
+}
+
+export function buildReadPaymentAttemptByIdForAuthoritySql(
+  forUpdate = false
+): string {
+  return `select ${selectColumns()} from payment_attempt where id = ?${forUpdate ? " for update" : ""}`
+}
+
+export function buildPersistPreProviderFinancialFreezeSql(): string {
+  return `
+      update payment_attempt
+      set
+        financial_freeze_started_at = coalesce(financial_freeze_started_at, CURRENT_TIMESTAMP),
+        payment_collection_id = coalesce(?, payment_collection_id),
+        payment_session_id = coalesce(?, payment_session_id),
+        metadata = jsonb_set(
+          coalesce(metadata, '{}'::jsonb) || jsonb_build_object(
+            'cart_resource_version', cast(? as integer),
+            'provider_idempotency_key', cast(? as text),
+            'payment_attempt_id', id
+          ),
+          '{stripe_payment_intent_create}',
+          case
+            when coalesce(metadata, '{}'::jsonb) -> 'stripe_payment_intent_create' ->> 'schema' = 'stripe_payment_intent_create'
+             and coalesce(metadata, '{}'::jsonb) -> 'stripe_payment_intent_create' ->> 'version' = '1'
+            then coalesce(metadata -> 'stripe_payment_intent_create', '{}'::jsonb)
+            else jsonb_build_object(
+              'schema', 'stripe_payment_intent_create',
+              'version', 1,
+              'operation', 'stripe_payment_intent_create',
+              'provider', 'stripe',
+              'authority_created_at', to_char((CURRENT_TIMESTAMP at time zone 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+              'payment_method_type', payment_method_type,
+              'amount_minor', amount,
+              'currency_code', 'brl',
+              'cart_id', cart_id,
+              'cart_resource_version', cast(? as integer),
+              'payment_attempt_id', id,
+              'payment_collection_id', coalesce(to_jsonb(cast(coalesce(?, payment_collection_id) as text)), 'null'::jsonb),
+              'payment_session_id', coalesce(to_jsonb(cast(coalesce(?, payment_session_id) as text)), 'null'::jsonb),
+              'idempotency_key', cast(? as text),
+              'provider_payment_intent_id', 'null'::jsonb,
+              'canonical_request', cast(? as jsonb),
+              'request_digest', cast(? as text),
+              'replay_deadline', to_char(((CURRENT_TIMESTAMP + interval '23 hours') at time zone 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            ) || case
+              when payment_method_type = 'pix' then jsonb_build_object(
+                'payment_method_options', jsonb_build_object(
+                  'pix', jsonb_build_object('expires_after_seconds', 86400)
+                )
+              )
+              else '{}'::jsonb
+            end
+          end,
+          true
+        ),
+        updated_at = CURRENT_TIMESTAMP
+      where id = ?
+        and cart_id = ?
+        and payment_method_type = ?
+        and amount = ?
+        and currency_code = ?
+      returning ${selectColumns()}
+    `
+}
+
+export function buildBindProviderPaymentIntentSql(): string {
+  return `
+      update payment_attempt
+      set
+        provider_payment_intent_id = ?,
+        provider_payment_session_id = coalesce(provider_payment_session_id, ?),
+        updated_at = CURRENT_TIMESTAMP
+      where id = ?
+        and cart_id = ?
+        and (provider_payment_intent_id is null or provider_payment_intent_id = ?)
+        and amount = ?
+        and currency_code = ?
+        and payment_method_type = ?
+        and financial_freeze_started_at is not null
+        and provider_canceled_confirmed_at is null
+        and order_id is null
+      returning ${selectColumns()}
+    `
+}
+
+export function buildClaimProviderDiscoverySql(): string {
+  return `
+      update payment_attempt
+      set
+        provider_discovery_started_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      where id = ?
+        and provider_discovery_started_at is null
+      returning ${selectColumns()}
+    `
+}
+
+export function buildSameOperationReplayEligibleSql(): string {
+  return `
+      select
+        (CURRENT_TIMESTAMP < (metadata #>> '{stripe_payment_intent_create,replay_deadline}')::timestamptz) as eligible
+      from payment_attempt
+      where id = ?
+    `
+}
+
+export {
+  PRE_PROVIDER_ARBITRATION_DECISION,
+  arbitratePreProviderPaymentAttempt,
+} from "./pre-provider-arbitration"
+export type {
+  DurablePreProviderAuthority,
+  PersistPreProviderFinancialFreezeInput,
+  PreProviderArbitrationResult,
+  PreProviderRequestedOperation,
+} from "./pre-provider-arbitration"
+
+function optionalProvidedText(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null
+  }
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function readDurableMedusaIdentityText(
+  value: string | null | undefined
+): string | null {
+  if (value == null) {
+    return null
+  }
+  const trimmed = value.trim()
+  if (trimmed.length === 0 || trimmed === "null") {
+    return null
+  }
+  return trimmed
+}
+
+async function readPaymentAttemptByIdForAuthority(
+  transaction: PaymentAttemptSqlTransaction,
+  paymentAttemptId: string,
+  forUpdate = false
+): Promise<PaymentAttemptRecord | null> {
+  const rows = await queryRows(
+    transaction,
+    buildReadPaymentAttemptByIdForAuthoritySql(forUpdate),
+    [paymentAttemptId]
+  )
+  return rows[0] ? mapPaymentAttemptRow(rows[0]) : null
+}
+
+export async function listUnresolvedFrozenPaymentAttemptsForCart(
+  transaction: PaymentAttemptSqlTransaction,
+  cartId: string,
+  options: { forUpdate?: boolean } = {}
+): Promise<PaymentAttemptRecord[]> {
+  const forUpdate = options.forUpdate !== false
+  const rows = await queryRows(
+    transaction,
+    buildListUnresolvedFrozenPaymentAttemptsForCartSql(forUpdate),
+    [cartId]
+  )
+  return rows
+    .map(mapPaymentAttemptRow)
+    .filter((attempt) => isUnresolvedFinancialFreeze(attempt))
+}
+
+export async function persistPreProviderFinancialFreezeInTransaction(
+  transaction: PaymentAttemptSqlTransaction,
+  input: PersistPreProviderFinancialFreezeInput
+): Promise<PaymentAttemptRecord> {
+  const cartResourceVersion = assertValidPreProviderCartResourceVersion(
+    input.cart_resource_version
+  )
+  const idempotencyKey = resolveRequestedIdempotencyKey(input)
+  if (!idempotencyKey) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_IDENTITY_MISMATCH)
+  }
+
+  const attempt = await readPaymentAttemptByIdForAuthority(
+    transaction,
+    input.payment_attempt_id,
+    true
+  )
+  if (!attempt) {
+    throw new Error(PAYMENT_ATTEMPT_NOT_FOUND)
+  }
+
+  if (
+    attempt.cart_id !== input.cart_id ||
+    attempt.payment_method_type !== input.payment_method_type ||
+    attempt.amount !== input.amount_minor ||
+    attempt.currency_code !== input.currency_code ||
+    attempt.id !== input.payment_attempt_id
+  ) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_IDENTITY_MISMATCH)
+  }
+
+  const providedCollection = optionalProvidedText(input.payment_collection_id)
+  if (
+    providedCollection &&
+    providedCollection !== attempt.payment_collection_id
+  ) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_IDENTITY_MISMATCH)
+  }
+
+  const providedSession = optionalProvidedText(input.payment_session_id)
+  if (
+    providedSession &&
+    attempt.payment_session_id != null &&
+    providedSession !== attempt.payment_session_id
+  ) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_IDENTITY_MISMATCH)
+  }
+
+  const reconstructedKey = readFrozenAttemptDurableIdempotencyKey(attempt)
+  if (reconstructedKey !== idempotencyKey) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_IDENTITY_MISMATCH)
+  }
+
+  const blob = readPersistedRequestAuthorityBlob(attempt.metadata)
+  const validV1 = isStripePaymentIntentCreateAuthorityV1(blob)
+  const alreadyFrozen = attempt.financial_freeze_started_at != null
+
+  if (alreadyFrozen && !validV1) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  }
+
+  if (persistedRequestAuthorityDisagrees(blob, input, idempotencyKey)) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  }
+
+  if (validV1) {
+    const boundVersion = readPreProviderCartResourceVersion(attempt)
+    if (boundVersion !== cartResourceVersion) {
+      throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+    }
+    const storedKey = readFrozenAttemptDurableIdempotencyKey(attempt)
+    if (storedKey !== idempotencyKey) {
+      throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+    }
+  }
+
+  const canonicalRequest = buildStripeCanonicalPaymentIntentCreateRequest({
+    payment_method_type: attempt.payment_method_type,
+    amount_minor: attempt.amount,
+    cart_id: attempt.cart_id,
+    payment_attempt_id: attempt.id,
+    payment_session_id: providedSession ?? attempt.payment_session_id,
+  })
+  const requestDigest =
+    digestStripeCanonicalPaymentIntentCreateRequest(canonicalRequest)
+
+  const rows = await queryRows(
+    transaction,
+    buildPersistPreProviderFinancialFreezeSql(),
+    [
+      providedCollection,
+      providedSession,
+      cartResourceVersion,
+      idempotencyKey,
+      cartResourceVersion,
+      providedCollection,
+      providedSession,
+      idempotencyKey,
+      JSON.stringify(canonicalRequest),
+      requestDigest,
+      attempt.id,
+      attempt.cart_id,
+      attempt.payment_method_type,
+      attempt.amount,
+      attempt.currency_code,
+    ]
+  )
+
+  if (rows.length !== 1) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_IDENTITY_MISMATCH)
+  }
+
+  return mapPaymentAttemptRow(rows[0])
+}
+
+export async function readDurablePreProviderAuthority(
+  transaction: PaymentAttemptSqlTransaction,
+  paymentAttemptId: string
+): Promise<DurablePreProviderAuthority> {
+  const attempt = await readPaymentAttemptByIdForAuthority(
+    transaction,
+    paymentAttemptId,
+    false
+  )
+  if (!attempt) {
+    throw new Error(PAYMENT_ATTEMPT_NOT_FOUND)
+  }
+
+  if (!isUnresolvedFinancialFreeze(attempt)) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
+  }
+
+  const cartResourceVersion = readPreProviderCartResourceVersion(attempt)
+  if (cartResourceVersion === null) {
+    throw new Error(PAYMENT_ATTEMPT_CART_VERSION_UNBOUND)
+  }
+
+  if (
+    attempt.currency_code !== "brl" ||
+    (attempt.payment_method_type !== "card" &&
+      attempt.payment_method_type !== "pix") ||
+    typeof attempt.amount !== "number" ||
+    !Number.isFinite(attempt.amount)
+  ) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
+  }
+
+  const providerIdempotencyKey = readFrozenAttemptDurableIdempotencyKey(attempt)
+  if (!providerIdempotencyKey) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
+  }
+
+  const blob = readPersistedRequestAuthorityBlob(attempt.metadata)
+  if (!isStripePaymentIntentCreateAuthorityV1(blob)) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
+  }
+  const completeAuthority = assertCompleteStripePaymentIntentCreateAuthorityV1(blob)
+  if (
+    completeAuthority.cart_id !== attempt.cart_id ||
+    completeAuthority.payment_attempt_id !== attempt.id ||
+    completeAuthority.payment_method_type !== attempt.payment_method_type ||
+    completeAuthority.amount_minor !== attempt.amount ||
+    completeAuthority.currency_code !== "brl" ||
+    completeAuthority.cart_resource_version !== cartResourceVersion ||
+    completeAuthority.idempotency_key !== providerIdempotencyKey
+  ) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  }
+
+  const authorityCollection = readDurableMedusaIdentityText(
+    completeAuthority.payment_collection_id
+  )
+  const attemptCollection = readDurableMedusaIdentityText(
+    attempt.payment_collection_id
+  )
+  if (!authorityCollection || !attemptCollection) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
+  }
+  if (authorityCollection !== attemptCollection) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  }
+
+  if (attempt.payment_method_type === "card") {
+    const authoritySession = optionalProvidedText(
+      completeAuthority.payment_session_id ?? undefined
+    )
+    const attemptSession = optionalProvidedText(
+      attempt.payment_session_id ?? undefined
+    )
+    if (
+      !authoritySession ||
+      !attemptSession ||
+      authoritySession !== attemptSession
+    ) {
+      throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+    }
+  } else if (
+    completeAuthority.payment_session_id !== attempt.payment_session_id
+  ) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  }
+
+  const authorityCreatedAt = completeAuthority.authority_created_at
+  const replayDeadline = completeAuthority.replay_deadline
+  const financialFreezeStartedAt = attempt.financial_freeze_started_at
+  if (!authorityCreatedAt || !replayDeadline || financialFreezeStartedAt == null) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
+  }
+
+  return {
+    attempt,
+    cart_resource_version: cartResourceVersion,
+    amount_minor: attempt.amount,
+    currency_code: "brl",
+    payment_method_type: attempt.payment_method_type,
+    provider_idempotency_key: providerIdempotencyKey,
+    financial_freeze_started_at: financialFreezeStartedAt,
+    authority_created_at: authorityCreatedAt,
+    replay_deadline: replayDeadline,
+  }
+}
+
+export type BindProviderPaymentIntentInput = {
+  payment_attempt_id: string
+  cart_id: string
+  cart_resource_version?: number
+  amount_minor: number
+  currency_code: "brl"
+  payment_method_type: PaymentAttemptRecord["payment_method_type"]
+  provider_payment_intent_id: string
+  provider_payment_session_id?: string | null
+  idempotency_key?: string
+  request_digest?: string
+  payment_intent: StripePaymentIntentLike
+}
+
+export type BindProviderPaymentIntentResult = {
+  outcome: "BOUND" | "REUSED"
+  attempt: PaymentAttemptRecord
+}
+
+export type ClaimProviderDiscoveryResult = {
+  claimed: boolean
+  attempt: PaymentAttemptRecord
+}
+
+export type SameOperationReplayEligibility =
+  | { eligible: true }
+  | { eligible: false; reason: "REPLAY_DEADLINE_ELAPSED" }
+
+function snapshotRequestAuthority(
+  attempt: PaymentAttemptRecord
+): Record<string, unknown> | null {
+  const blob = readPersistedRequestAuthorityBlob(attempt.metadata)
+  return blob ? { ...blob } : null
+}
+
+function requestAuthorityUnchanged(
+  before: Record<string, unknown> | null,
+  after: PaymentAttemptRecord
+): boolean {
+  const next = readPersistedRequestAuthorityBlob(after.metadata)
+  return JSON.stringify(before) === JSON.stringify(next)
+}
+
+export async function bindProviderPaymentIntentInTransaction(
+  transaction: PaymentAttemptSqlTransaction,
+  input: BindProviderPaymentIntentInput
+): Promise<BindProviderPaymentIntentResult> {
+  const attempt = await readPaymentAttemptByIdForAuthority(
+    transaction,
+    input.payment_attempt_id,
+    true
+  )
+  if (!attempt) {
+    throw new Error(PAYMENT_ATTEMPT_NOT_FOUND)
+  }
+
+  await readDurablePreProviderAuthority(
+    transaction,
+    input.payment_attempt_id
+  )
+  const v1 = assertCompleteStripePaymentIntentCreateAuthorityV1(
+    readPersistedRequestAuthorityBlob(attempt.metadata)
+  )
+  const originalV1 = snapshotRequestAuthority(attempt)
+
+  if (
+    input.cart_id !== v1.cart_id ||
+    input.amount_minor !== v1.amount_minor ||
+    input.currency_code !== v1.currency_code ||
+    input.payment_method_type !== v1.payment_method_type ||
+    (input.cart_resource_version !== undefined &&
+      input.cart_resource_version !== v1.cart_resource_version) ||
+    (input.idempotency_key !== undefined &&
+      input.idempotency_key !== v1.idempotency_key) ||
+    (input.request_digest !== undefined &&
+      input.request_digest !== v1.request_digest)
+  ) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  }
+
+  const boundIntentId =
+    typeof attempt.provider_payment_intent_id === "string" &&
+    attempt.provider_payment_intent_id.trim().length > 0
+      ? attempt.provider_payment_intent_id.trim()
+      : null
+
+  if (boundIntentId && boundIntentId !== input.provider_payment_intent_id) {
+    throw new Error(PAYMENT_ATTEMPT_PROVIDER_BIND_CONFLICT)
+  }
+
+  assertStripePaymentIntentMatchesAuthorityV1(input.payment_intent, v1)
+
+  const intentId =
+    typeof input.payment_intent.id === "string"
+      ? input.payment_intent.id.trim()
+      : ""
+  if (!intentId || intentId !== input.provider_payment_intent_id) {
+    throw new Error(PAYMENT_ATTEMPT_PROVIDER_INTENT_INCOMPATIBLE)
+  }
+
+  const rows = await queryRows(
+    transaction,
+    buildBindProviderPaymentIntentSql(),
+    [
+      input.provider_payment_intent_id,
+      optionalProvidedText(input.provider_payment_session_id),
+      attempt.id,
+      attempt.cart_id,
+      input.provider_payment_intent_id,
+      v1.amount_minor,
+      v1.currency_code,
+      v1.payment_method_type,
+    ]
+  )
+
+  if (rows.length !== 1) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_IDENTITY_MISMATCH)
+  }
+
+  const updated = mapPaymentAttemptRow(rows[0])
+  if (!requestAuthorityUnchanged(originalV1, updated)) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  }
+
+  return {
+    outcome: boundIntentId === input.provider_payment_intent_id ? "REUSED" : "BOUND",
+    attempt: updated,
+  }
+}
+
+export async function claimProviderDiscoveryInTransaction(
+  transaction: PaymentAttemptSqlTransaction,
+  paymentAttemptId: string
+): Promise<ClaimProviderDiscoveryResult> {
+  const rows = await queryRows(
+    transaction,
+    buildClaimProviderDiscoverySql(),
+    [paymentAttemptId]
+  )
+  if (rows.length === 1) {
+    return {
+      claimed: true,
+      attempt: mapPaymentAttemptRow(rows[0]),
+    }
+  }
+
+  const existing = await readPaymentAttemptByIdForAuthority(
+    transaction,
+    paymentAttemptId,
+    false
+  )
+  if (!existing) {
+    throw new Error(PAYMENT_ATTEMPT_NOT_FOUND)
+  }
+
+  return {
+    claimed: false,
+    attempt: existing,
+  }
+}
+
+export async function isSameOperationReplayEligibleInTransaction(
+  transaction: PaymentAttemptSqlTransaction,
+  paymentAttemptId: string
+): Promise<SameOperationReplayEligibility> {
+  const authority = await readDurablePreProviderAuthority(
+    transaction,
+    paymentAttemptId
+  )
+  const v1 = assertCompleteStripePaymentIntentCreateAuthorityV1(
+    readPersistedRequestAuthorityBlob(authority.attempt.metadata)
+  )
+  const reconstructedKey = readFrozenAttemptDurableIdempotencyKey(
+    authority.attempt
+  )
+  if (
+    reconstructedKey !== v1.idempotency_key ||
+    reconstructedKey !== authority.provider_idempotency_key ||
+    v1.amount_minor !== authority.amount_minor ||
+    v1.currency_code !== authority.currency_code ||
+    v1.payment_method_type !== authority.payment_method_type ||
+    v1.cart_id !== authority.attempt.cart_id ||
+    v1.cart_resource_version !== authority.cart_resource_version
+  ) {
+    throw new Error(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_MISMATCH)
+  }
+
+  const rows = await queryRows(
+    transaction,
+    buildSameOperationReplayEligibleSql(),
+    [paymentAttemptId]
+  )
+  const eligible = rows[0]?.eligible
+  if (eligible === true || eligible === "t" || eligible === "true") {
+    return { eligible: true }
+  }
+  return { eligible: false, reason: "REPLAY_DEADLINE_ELAPSED" }
 }

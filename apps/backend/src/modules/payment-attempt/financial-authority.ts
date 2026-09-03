@@ -30,6 +30,8 @@ export function assertCompletePaymentAttemptFinancialAuthority(
 /**
  * Financial freeze resolution is deliberately independent of operational
  * status. Only the three persisted authority fields participate.
+ * Soft-deletion does not resolve freeze; listing unresolved financial
+ * authority must not filter deleted_at IS NULL.
  */
 export function isUnresolvedFinancialFreeze(
   attempt: PaymentAttemptFinancialAuthority
