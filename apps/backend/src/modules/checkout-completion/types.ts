@@ -72,10 +72,79 @@ export type CheckoutCompletionOrderBirthAuthority = {
   last_reconciliation_at: Date | string | null
   reconciliation_reason_code: ReconciliationReasonCode | null
   deleted_at: Date | string | null
+  created_at?: Date | string | null
 }
 
 export type BuildCheckoutCompletionIdempotencyKeyInput = {
   payment_intent_id: string
   cart_id?: string | null
   composite?: boolean
+}
+
+export type AcquireCheckoutOrderBirthAuthorityInput = {
+  cart_id: string
+  payment_attempt_id: string
+  payment_intent_id: string
+  idempotency_key?: string
+  metadata?: CheckoutCompletionMetadata | null
+  at?: Date
+}
+
+export type AcquireCheckoutOrderBirthAuthorityResult = {
+  authority: CheckoutCompletionOrderBirthAuthority
+  action: "created" | "reused"
+}
+
+export type MarkOrderBirthExecutionStartedInput = {
+  id: string
+  cart_id: string
+  payment_intent_id: string
+  payment_attempt_id: string
+  at?: Date
+}
+
+export type MarkOrderBirthExecutionStartedResult = {
+  won: boolean
+  authority: CheckoutCompletionOrderBirthAuthority
+}
+
+export type BindRecoveredOrderInput = {
+  id: string
+  cart_id: string
+  payment_intent_id: string
+  payment_attempt_id?: string | null
+  order_id: string
+  at?: Date
+}
+
+export type MarkReconciliationRequiredInput = {
+  id: string
+  reason_code: ReconciliationReasonCode
+  error_message?: string | null
+  at?: Date
+}
+
+export type MarkCompletedInput = {
+  id: string
+  cart_id: string
+  payment_intent_id: string
+  payment_attempt_id?: string | null
+  order_id: string
+  at?: Date
+}
+
+export type ReadOrderBirthAuthorityFilters = {
+  id?: string
+  cart_id?: string
+  payment_intent_id?: string
+  payment_attempt_id?: string
+  idempotency_key?: string
+}
+
+export type MarkFailedInput = {
+  id: string
+  error_code: string
+  error_message: string
+  metadata?: Record<string, unknown> | null
+  at?: Date
 }

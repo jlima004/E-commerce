@@ -8,6 +8,7 @@ import {
   type PaymentAttemptReconcilerResult,
 } from "../reconciliation/payment-attempt-reconciler"
 import { createStripePaymentIntentsClient } from "../modules/payment-attempt/stripe-real"
+import { runCreateOrderFromConfirmedPaymentAttemptEntrypoint } from "../workflows/order/webhook-order-entrypoint"
 
 export function isWorkerMode(
   inputEnv: Record<string, string | undefined> = process.env
@@ -51,6 +52,8 @@ export async function runPaymentAttemptReconciliationJob(
     connection,
     stripeClient,
     logger,
+    container,
+    runOrderEntrypoint: runCreateOrderFromConfirmedPaymentAttemptEntrypoint,
     ...overrides,
   })
 }

@@ -11,6 +11,7 @@ import {
   type CreateOrderFromConfirmedPaymentAttemptInput,
 } from "../webhook-order-entrypoint"
 import { assertConfirmedAttemptCartMatchesPaymentAttempt } from "../steps/create-order-from-confirmed-attempt"
+import { ORDER_BIRTH_CHECKOUT_COMPLETION_LOG_ID_KEY } from "../order-birth-marker"
 
 function buildAttempt(
   overrides: Partial<PaymentAttemptRecord> = {}
@@ -186,11 +187,14 @@ function createPaymentAttemptModule(attempt: PaymentAttemptRecord) {
   }
 }
 
-function createOrderAuthorityConnection(attempt: PaymentAttemptRecord) {
+function createOrderAuthorityConnection(
+  attempt: PaymentAttemptRecord,
+  cclStore: Array<Record<string, unknown>> = []
+) {
   return {
-    transaction: jest.fn(async (callback: (transaction: { raw: (sql: string) => Promise<{ rows: Array<Record<string, unknown>> }> }) => Promise<unknown>) =>
+    transaction: jest.fn(async (callback: (transaction: { raw: (sql: string, bindings?: any[]) => Promise<{ rows: Array<Record<string, unknown>> }> }) => Promise<unknown>) =>
       callback({
-        raw: jest.fn(async (sql: string) => {
+        raw: jest.fn(async (sql: string, bindings?: any[]) => {
           if (sql.includes("select cart_id from payment_attempt")) {
             return { rows: [{ cart_id: attempt.cart_id }] }
           }
@@ -202,6 +206,99 @@ function createOrderAuthorityConnection(attempt: PaymentAttemptRecord) {
           }
           if (sql.includes("from store_resource_version")) {
             return { rows: [{ version: 1 }] }
+          }
+          if (sql.includes("from checkout_completion_log")) {
+            if (sql.includes("cart_id = ?")) {
+              const cartId = bindings?.[1]
+              const found = cclStore.find((r) => r.cart_id === cartId)
+              return { rows: found ? [found] : [] }
+            }
+            if (sql.includes("idempotency_key = ?")) {
+              const idemp = bindings?.[1]
+              const found = cclStore.find((r) => r.idempotency_key === idemp)
+              return { rows: found ? [found] : [] }
+            }
+            if (sql.includes("id = ?")) {
+              const id = bindings?.[0]
+              const found = cclStore.find((r) => r.id === id)
+              return { rows: found ? [found] : [] }
+            }
+            return { rows: [] }
+          }
+          if (sql.includes("insert into checkout_completion_log")) {
+            const newRow = {
+              id: bindings?.[0] ?? `chkcpl_mock_${cclStore.length + 1}`,
+              operation: bindings?.[1] ?? "complete_checkout_create_order",
+              idempotency_key: bindings?.[2],
+              cart_id: bindings?.[3],
+              payment_intent_id: bindings?.[4],
+              payment_attempt_id: bindings?.[5],
+              order_id: null,
+              status: "processing",
+              execution_started_at: bindings?.[6] ?? null,
+              locked_at: bindings?.[7] ?? new Date().toISOString(),
+              completed_at: null,
+              created_at: bindings?.[9] ?? new Date().toISOString(),
+              updated_at: bindings?.[10] ?? new Date().toISOString(),
+              deleted_at: null,
+            }
+            cclStore.push(newRow)
+            return { rows: [newRow] }
+          }
+          if (sql.includes("update checkout_completion_log")) {
+            if (sql.includes("execution_started_at = CURRENT_TIMESTAMP")) {
+              const id = bindings?.[0]
+              const row = cclStore.find((r) => r.id === id)
+              if (row && !row.execution_started_at) {
+                const mockDbNow = new Date().toISOString()
+                row.execution_started_at = mockDbNow
+                row.updated_at = mockDbNow
+                return { rows: [row] }
+              }
+              return { rows: [] }
+            }
+            if (sql.includes("order_id = ?")) {
+              const id = bindings?.[3]
+              const row = cclStore.find((r) => r.id === id)
+              if (row) {
+                row.order_id = bindings?.[0]
+                row.status = "completed"
+                row.completed_at = bindings?.[1]
+                row.updated_at = bindings?.[2]
+                return { rows: [row] }
+              }
+              return { rows: [] }
+            }
+            if (sql.includes("status = 'failed'")) {
+              const id = bindings?.[5]
+              const row = cclStore.find((r) => r.id === id)
+              if (row && !row.execution_started_at) {
+                row.status = "failed"
+                row.failed_at = bindings?.[0]
+                row.error_code = bindings?.[1]
+                row.error_message = bindings?.[2]
+                if (bindings?.[3]) {
+                  try {
+                    row.metadata = JSON.parse(bindings[3])
+                  } catch {
+                    row.metadata = bindings[3]
+                  }
+                }
+                return { rows: [row] }
+              }
+              return { rows: [] }
+            }
+            if (sql.includes("reconciliation_required")) {
+              const id = bindings?.[4]
+              const row = cclStore.find((r) => r.id === id)
+              if (row) {
+                row.status = "reconciliation_required"
+                row.reconciliation_reason_code = bindings?.[0]
+                return { rows: [row] }
+              }
+              return { rows: [] }
+            }
+            return { rows: [] }
           }
           throw new Error(`Unexpected Order authority SQL: ${sql}`)
         }),
@@ -226,6 +323,13 @@ function createOrderModule(records: Array<Record<string, unknown>> = []) {
 
         return true
       })
+    }),
+    listAndCountOrders: jest.fn(async (filters?: any, config?: any) => {
+      const rows = store.filter((order) => {
+        if (filters?.id && order.id !== filters.id) return false
+        return true
+      })
+      return [rows, rows.length]
     }),
     updateOrders: jest.fn(async (selector: Record<string, unknown>, update: Record<string, unknown>) => {
       const index = store.findIndex((order) => order.id === selector.id)
@@ -340,6 +444,8 @@ function createContainer(input: {
   gelatoFulfillmentModule?: ReturnType<typeof createGelatoFulfillmentModule>
   orderModule?: ReturnType<typeof createOrderModule>
 }) {
+  const cartData: any = buildCart()
+
   return {
     resolve: jest.fn((key: string) => {
       if (key === PAYMENT_ATTEMPT_MODULE) {
@@ -365,7 +471,7 @@ function createContainer(input: {
       if (key === ContainerRegistrationKeys.QUERY) {
         return {
           graph: jest.fn(async () => ({
-            data: [buildCart()],
+            data: [cartData],
           })),
         }
       }
@@ -373,11 +479,21 @@ function createContainer(input: {
       if (key === Modules.CART) {
         return {
           updateLineItems: jest.fn(async (rows) => rows),
+          retrieveCart: jest.fn(async () => cartData),
+          updateCarts: jest.fn(async (update: any) => {
+            if (update?.metadata) {
+              cartData.metadata = { ...(cartData.metadata as any), ...update.metadata }
+            }
+            return cartData
+          }),
         }
       }
 
       if (key === ContainerRegistrationKeys.PG_CONNECTION) {
-        return createOrderAuthorityConnection(input.paymentAttemptModule.store[0]!)
+        return createOrderAuthorityConnection(
+          input.paymentAttemptModule.store[0]!,
+          input.checkoutCompletionModule.store
+        )
       }
 
       if (key === Modules.ORDER) {
@@ -585,7 +701,11 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
         }),
       ]
     )
-    expect(runCompleteCart).toHaveBeenCalledWith(expect.anything(), "cart_01")
+    expect(runCompleteCart).toHaveBeenCalledWith(
+      expect.anything(),
+      "cart_01",
+      expect.stringMatching(/^chkcpl_/)
+    )
     expect(checkoutCompletionModule.store[0]).toEqual(
       expect.objectContaining({
         status: "completed",
@@ -593,10 +713,12 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
       })
     )
     expect(paymentAttemptModule.store[0]?.order_id).toBe("order_01")
-    expect(orderModule.store[0]?.metadata).toEqual({
-      order_status: "confirmed",
-      payment_status: "captured",
-    })
+    expect(orderModule.store[0]?.metadata).toEqual(
+      expect.objectContaining({
+        order_status: "confirmed",
+        payment_status: "captured",
+      })
+    )
   })
 
   it("reusa Order ja completada sem criar segunda Order", async () => {
@@ -925,10 +1047,10 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
     expect(paymentAttemptModule.store[0]?.order_id).toBe("order_partial_01")
     expect(orderModule.store.find((order) => order.id === "order_partial_01")).toEqual(
       expect.objectContaining({
-        metadata: {
+        metadata: expect.objectContaining({
           order_status: "confirmed",
           payment_status: "captured",
-        },
+        }),
       })
     )
   })

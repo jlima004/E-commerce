@@ -17,7 +17,27 @@ import {
   type CheckoutCompletionLogRecord,
 } from "../../modules/checkout-completion/service"
 import type { CreateCheckoutCompletionLogInput } from "../../modules/checkout-completion/types"
-import { CHECKOUT_COMPLETION_MODULE } from "../../modules/checkout-completion"
+import {
+  acquireCheckoutOrderBirthAuthorityInTransaction,
+  bindRecoveredOrderInTransaction,
+  markCompletedInTransaction,
+  markFailedInTransaction,
+  markOrderBirthExecutionStartedInTransaction,
+  markReconciliationRequiredInTransaction,
+  readCheckoutOrderBirthAuthorityInTransaction,
+  CheckoutCompletionAuthorityConflictError,
+  CHECKOUT_COMPLETION_MODULE,
+} from "../../modules/checkout-completion"
+import {
+  ensureCartOrderBirthMarkerDurable,
+  validateOrderBirthMarkerOnOrder,
+  CartOrderBirthMarkerConflictError,
+  ORDER_BIRTH_CHECKOUT_COMPLETION_LOG_ID_KEY,
+} from "./order-birth-marker"
+import {
+  scanOrdersForRecovery,
+  type OrderRecoveryScanResult,
+} from "./order-recovery-scanner"
 import {
   linkPaymentAttemptToOrder,
 } from "../../modules/payment-attempt/service"
@@ -28,6 +48,7 @@ import {
   assertPaymentAttemptCartResourceVersion,
   withCartOrderAuthorityLock,
   type PaymentAttemptSqlConnection,
+  type PaymentAttemptSqlTransaction,
 } from "../../modules/payment-attempt/transactional-authority"
 import {
   assertConfirmedAttemptCartMatchesPaymentAttempt,
@@ -242,13 +263,22 @@ const GELATO_FULFILLMENT_RUNTIME_KEYS = [
   GELATO_FULFILLMENT_MODULE,
 ] as const
 
-type WorkflowRuntimeOverrides = {
+export type WorkflowRuntimeOverrides = {
   now?: () => Date
   onCartLoaded?: (cart: ConfirmedAttemptCartRecord) => void
   runCompleteCart?: (
     container: MedusaContainer,
-    cartId: string
+    cartId: string,
+    transactionId?: string
   ) => Promise<{ id: string }>
+  afterPhysicalOrderCreated?: (
+    order: { id: string },
+    context: { transactionId: string; cartId: string; cclId: string }
+  ) => Promise<void>
+  getOrder?: (
+    container: MedusaContainer,
+    orderId: string
+  ) => Promise<Record<string, unknown>>
   getCart?: (
     container: MedusaContainer,
     cartId: string
@@ -261,6 +291,14 @@ type WorkflowRuntimeOverrides = {
     container: MedusaContainer,
     orderId: string
   ) => Promise<void>
+  acquireAuthority?: typeof acquireCheckoutOrderBirthAuthorityInTransaction
+  markExecutionStarted?: typeof markOrderBirthExecutionStartedInTransaction
+  readAuthority?: typeof readCheckoutOrderBirthAuthorityInTransaction
+  bindRecoveredOrder?: typeof bindRecoveredOrderInTransaction
+  markReconciliationRequired?: typeof markReconciliationRequiredInTransaction
+  markCompleted?: typeof markCompletedInTransaction
+  markFailed?: typeof markFailedInTransaction
+  scanOrders?: typeof scanOrdersForRecovery
 }
 
 const ORDER_CART_FIELDS = [
@@ -629,10 +667,12 @@ async function claimCheckoutCompletionLog(
   log: CheckoutCompletionLogRecord
   order_id: string | null
 }> {
-  const module = resolveCheckoutCompletionModule(container)
   const idempotencyKey = buildCheckoutCompletionIdempotencyKey({
     payment_intent_id: input.payment_intent_id,
+    cart_id: attempt.cart_id,
   })
+
+  const module = resolveCheckoutCompletionModule(container)
   const nextInput: CreateCheckoutCompletionLogInput = {
     cart_id: attempt.cart_id,
     payment_intent_id: input.payment_intent_id,
@@ -650,174 +690,219 @@ async function claimCheckoutCompletionLog(
       (await module.listCheckoutCompletionLogs?.({
         idempotency_key: idempotencyKey,
       })) ?? []
-    const existingByIdempotency = byIdempotency[0] ?? null
+    const existingByIdempotency =
+      byIdempotency.find(
+        (record) => record.idempotency_key === idempotencyKey
+      ) ?? null
 
     if (existingByIdempotency) {
       return existingByIdempotency
     }
 
-    const byAttempt =
+    const byCart =
       (await module.listCheckoutCompletionLogs?.({
         cart_id: attempt.cart_id,
-        payment_attempt_id: attempt.id,
       })) ?? []
 
     return (
-      byAttempt.find((record) => {
-        return (
-          record.cart_id === attempt.cart_id &&
-          record.payment_attempt_id === attempt.id
-        )
-      }) ?? null
+      byCart.find((record) => record.cart_id === attempt.cart_id) ?? null
     )
   }
 
   const existing = await readExisting()
-  const decision = resolveCheckoutCompletionClaimDecision({
-    existing,
-    next: nextInput,
-    at: now,
-  })
-
-  if (decision.type === "reuse_completed") {
-    return {
-      status: "completed",
-      log: decision.log,
-      order_id: decision.order_id,
+  if (existing) {
+    if (
+      existing.payment_attempt_id &&
+      existing.payment_attempt_id !== attempt.id
+    ) {
+      throw new OrderCreationEntrypointError(
+        "ORDER_ENTRYPOINT_CHECKOUT_COMPLETION_AUTHORITY_CONFLICT",
+        `Existing CCL owned by attempt ${existing.payment_attempt_id}, cannot claim for ${attempt.id}`
+      )
     }
-  }
-
-  if (decision.type === "already_processing") {
-    return {
-      status: "processing",
-      log: decision.log,
-      order_id: null,
+    if (existing.payment_intent_id !== input.payment_intent_id) {
+      throw new OrderCreationEntrypointError(
+        "ORDER_ENTRYPOINT_CHECKOUT_COMPLETION_AUTHORITY_CONFLICT",
+        `Existing CCL owned by intent ${existing.payment_intent_id}, cannot claim for ${input.payment_intent_id}`
+      )
     }
-  }
 
-  if (decision.type === "recover_created_order") {
-    return {
-      status: "completed",
-      log: decision.log,
-      order_id: decision.order_id,
-    }
-  }
-
-  if (decision.type === "retry_failed") {
-    const updated = asArray(
-      await module.updateCheckoutCompletionLogs?.({
-        id: decision.log.id,
-        ...decision.update,
-      })
-    )[0] as CheckoutCompletionLogRecord
-
-    return {
-      status: "claimed",
-      log: updated,
-      order_id: null,
-    }
-  }
-
-  if (decision.type === "retry_processing_without_order") {
-    await module.updateCheckoutCompletionLogs?.({
-      id: decision.log.id,
-      ...decision.failedUpdate,
+    const decision = resolveCheckoutCompletionClaimDecision({
+      existing,
+      next: nextInput,
+      at: now,
     })
 
-    const updated = asArray(
-      await module.updateCheckoutCompletionLogs?.({
-        id: decision.log.id,
-        ...decision.retryUpdate,
-      })
-    )[0] as CheckoutCompletionLogRecord
-
-    return {
-      status: "claimed",
-      log: updated,
-      order_id: null,
+    if (decision.type === "reuse_completed") {
+      return {
+        status: "completed",
+        log: decision.log,
+        order_id: decision.order_id,
+      }
     }
-  }
 
-  if (decision.type === "create") {
-    try {
-      const created = asArray(
-        await module.createCheckoutCompletionLogs?.(decision.record)
+    if (decision.type === "already_processing") {
+      return {
+        status: "processing",
+        log: decision.log,
+        order_id: null,
+      }
+    }
+
+    if (decision.type === "recover_created_order") {
+      return {
+        status: "completed",
+        log: decision.log,
+        order_id: decision.order_id,
+      }
+    }
+
+    if (decision.type === "retry_failed") {
+      const updated = asArray(
+        await module.updateCheckoutCompletionLogs?.({
+          id: decision.log.id,
+          ...decision.update,
+        })
       )[0] as CheckoutCompletionLogRecord
 
       return {
         status: "claimed",
-        log: created,
+        log: updated,
         order_id: null,
       }
-    } catch (error) {
-      if (!isUniqueConstraintError(error)) {
-        throw error
-      }
+    }
 
-      const conflicted = await readExisting()
-
-      if (!conflicted) {
-        throw error
-      }
-
-      const afterConflict = resolveCheckoutCompletionClaimDecision({
-        existing: conflicted,
-        next: nextInput,
-        at: now,
+    if (decision.type === "retry_processing_without_order") {
+      await module.updateCheckoutCompletionLogs?.({
+        id: decision.log.id,
+        ...decision.failedUpdate,
       })
 
-      if (afterConflict.type === "reuse_completed") {
-        return {
-          status: "completed",
-          log: afterConflict.log,
-          order_id: afterConflict.order_id,
-        }
-      }
-
-      if (afterConflict.type === "already_processing") {
-        return {
-          status: "processing",
-          log: afterConflict.log,
-          order_id: null,
-        }
-      }
-
-      if (afterConflict.type === "recover_created_order") {
-        return {
-          status: "completed",
-          log: afterConflict.log,
-          order_id: afterConflict.order_id,
-        }
-      }
-
-      if (afterConflict.type === "retry_processing_without_order") {
+      const updated = asArray(
         await module.updateCheckoutCompletionLogs?.({
-          id: afterConflict.log.id,
-          ...afterConflict.failedUpdate,
+          id: decision.log.id,
+          ...decision.retryUpdate,
         })
+      )[0] as CheckoutCompletionLogRecord
 
-        const updated = asArray(
-          await module.updateCheckoutCompletionLogs?.({
-            id: afterConflict.log.id,
-            ...afterConflict.retryUpdate,
-          })
-        )[0] as CheckoutCompletionLogRecord
-
-        return {
-          status: "claimed",
-          log: updated,
-          order_id: null,
-        }
+      return {
+        status: "claimed",
+        log: updated,
+        order_id: null,
       }
-
-      throw error
     }
   }
 
-  throw new OrderCreationEntrypointError(
-    "ORDER_ENTRYPOINT_CHECKOUT_COMPLETION_CLAIM_INVALID",
-    "Estado de reivindicacao de checkout completion invalido."
-  )
+  try {
+    const created = asArray(
+      await module.createCheckoutCompletionLogs?.({
+        ...nextInput,
+        operation: "complete_checkout_create_order",
+        order_id: null,
+        status: "processing",
+        execution_started_at: now.toISOString(),
+        locked_at: now.toISOString(),
+      })
+    )[0] as CheckoutCompletionLogRecord
+
+    return {
+      status: "claimed",
+      log: created,
+      order_id: null,
+    }
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error
+    }
+
+    const conflicted = await readExisting()
+    if (!conflicted) {
+      throw error
+    }
+
+    if (
+      conflicted.payment_attempt_id &&
+      conflicted.payment_attempt_id !== attempt.id
+    ) {
+      throw new OrderCreationEntrypointError(
+        "ORDER_ENTRYPOINT_CHECKOUT_COMPLETION_AUTHORITY_CONFLICT",
+        `Conflicted CCL owned by attempt ${conflicted.payment_attempt_id}`
+      )
+    }
+    if (conflicted.payment_intent_id !== input.payment_intent_id) {
+      throw new OrderCreationEntrypointError(
+        "ORDER_ENTRYPOINT_CHECKOUT_COMPLETION_AUTHORITY_CONFLICT",
+        `Conflicted CCL owned by intent ${conflicted.payment_intent_id}`
+      )
+    }
+
+    const afterConflict = resolveCheckoutCompletionClaimDecision({
+      existing: conflicted,
+      next: nextInput,
+      at: now,
+    })
+
+    if (afterConflict.type === "reuse_completed") {
+      return {
+        status: "completed",
+        log: afterConflict.log,
+        order_id: afterConflict.order_id,
+      }
+    }
+
+    if (afterConflict.type === "already_processing") {
+      return {
+        status: "processing",
+        log: afterConflict.log,
+        order_id: null,
+      }
+    }
+
+    if (afterConflict.type === "recover_created_order") {
+      return {
+        status: "completed",
+        log: afterConflict.log,
+        order_id: afterConflict.order_id,
+      }
+    }
+
+    if (afterConflict.type === "retry_failed") {
+      const updated = asArray(
+        await module.updateCheckoutCompletionLogs?.({
+          id: afterConflict.log.id,
+          ...afterConflict.update,
+        })
+      )[0] as CheckoutCompletionLogRecord
+
+      return {
+        status: "claimed",
+        log: updated,
+        order_id: null,
+      }
+    }
+
+    if (afterConflict.type === "retry_processing_without_order") {
+      await module.updateCheckoutCompletionLogs?.({
+        id: afterConflict.log.id,
+        ...afterConflict.failedUpdate,
+      })
+
+      const updated = asArray(
+        await module.updateCheckoutCompletionLogs?.({
+          id: afterConflict.log.id,
+          ...afterConflict.retryUpdate,
+        })
+      )[0] as CheckoutCompletionLogRecord
+
+      return {
+        status: "claimed",
+        log: updated,
+        order_id: null,
+      }
+    }
+
+    throw error
+  }
 }
 
 async function persistCartSnapshots(
@@ -838,15 +923,142 @@ async function persistCartSnapshots(
 
 async function runCompleteCart(
   container: MedusaContainer,
-  cartId: string
+  cartId: string,
+  transactionId?: string
 ): Promise<{ id: string }> {
   const { result } = await completeCartWorkflow(container).run({
     input: {
       id: cartId,
     },
+    ...(transactionId ? { context: { transactionId } } : {}),
   })
 
   return result
+}
+
+async function loadOrderForValidation(
+  container: MedusaContainer,
+  orderId: string,
+  overrides?: WorkflowRuntimeOverrides
+): Promise<Record<string, unknown>> {
+  if (overrides?.getOrder) {
+    return overrides.getOrder(container, orderId)
+  }
+  const orderModule = resolveOrderModule(container)
+  const order = (await orderModule.listOrders?.({ id: orderId }))?.[0] ?? null
+  if (!order) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_ORDER_NOT_FOUND",
+      "Order nao encontrada para validacao canonica."
+    )
+  }
+  return order
+}
+
+async function discoverExistingOrderIdForCart(
+  container: MedusaContainer,
+  cartId: string
+): Promise<string | null> {
+  try {
+    const query = resolveQuery(container)
+    const { data: orderCarts } = await query.graph({
+      entity: "order_cart",
+      fields: ["cart_id", "order_id"],
+      filters: { cart_id: cartId },
+    })
+    const first = (Array.isArray(orderCarts) ? orderCarts[0] : orderCarts) as
+      | { order_id?: string }
+      | undefined
+    if (first?.order_id && typeof first.order_id === "string") {
+      const trimmed = first.order_id.trim()
+      if (trimmed.length > 0) return trimmed
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const query = resolveQuery(container)
+    const { data: carts } = await query.graph({
+      entity: "cart",
+      fields: ["id", "order.id"],
+      filters: { id: cartId },
+    })
+    const firstCart = (Array.isArray(carts) ? carts[0] : carts) as
+      | { order?: { id?: string } }
+      | undefined
+    if (firstCart?.order?.id && typeof firstCart.order.id === "string") {
+      const trimmed = firstCart.order.id.trim()
+      if (trimmed.length > 0) return trimmed
+    }
+  } catch {
+    // ignore
+  }
+
+  return null
+}
+
+function assertRecoveredOrderMatchesCanonicalAuthority(input: {
+  order: Record<string, unknown>
+  attempt: PaymentAttemptRecord
+  expectedCartId: string
+  expectedCclId?: string | null
+  existingCclOrderId?: string | null
+  existingPaOrderId?: string | null
+}): void {
+  const orderId = extractOrderId(input.order)
+  if (!orderId) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_ORDER_ID_INVALID",
+      "Order ID retornado pelo workflow e invalido ou vazio."
+    )
+  }
+
+  if (input.expectedCclId) {
+    if (!validateOrderBirthMarkerOnOrder(input.order, input.expectedCclId)) {
+      throw new OrderCreationEntrypointError(
+        "ORDER_ENTRYPOINT_ORDER_MARKER_MISMATCH",
+        `Order birth marker missing or does not match CCL ${input.expectedCclId}.`
+      )
+    }
+  }
+
+  if (input.existingCclOrderId && input.existingCclOrderId !== orderId) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_ORDER_ID_CONFLICT",
+      `Order ID retornado (${orderId}) conflita com CCL existente (${input.existingCclOrderId}).`
+    )
+  }
+
+  if (input.existingPaOrderId && input.existingPaOrderId !== orderId) {
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_ORDER_ID_CONFLICT",
+      `Order ID retornado (${orderId}) conflita com PaymentAttempt existente (${input.existingPaOrderId}).`
+    )
+  }
+
+  if (
+    typeof input.order.currency_code === "string" &&
+    input.order.currency_code.trim().length > 0
+  ) {
+    const currency = input.order.currency_code.trim().toLowerCase()
+    if (currency !== "brl") {
+      throw new OrderCreationEntrypointError(
+        "ORDER_ENTRYPOINT_ORDER_CURRENCY_MISMATCH",
+        `Moeda da Order (${currency}) nao e BRL.`
+      )
+    }
+  }
+
+  if (input.order.total !== undefined && input.order.total !== null) {
+    const orderTotalMinor = brlMajorToMinor(input.order.total)
+    if (orderTotalMinor !== input.attempt.amount) {
+      throw new OrderCreationEntrypointError(
+        "ORDER_ENTRYPOINT_ORDER_TOTAL_MISMATCH",
+        `Total da Order (${orderTotalMinor}) diverge do valor canonico da tentativa (${input.attempt.amount}).`
+      )
+    }
+  }
 }
 
 async function persistConfirmedOrderState(
@@ -1716,7 +1928,8 @@ function normalizeExistingPaymentAttemptOrderId(
 async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
   container: MedusaContainer,
   input: CreateOrderFromConfirmedPaymentAttemptInput,
-  overrides: WorkflowRuntimeOverrides = {}
+  overrides: WorkflowRuntimeOverrides = {},
+  connectionParam?: any
 ): Promise<CreateOrderFromConfirmedPaymentAttemptResult> {
   const validated = validateCreateOrderFromConfirmedPaymentAttemptInput(input)
   const now = overrides.now?.() ?? new Date()
@@ -1749,10 +1962,19 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
     resolveEmailDeliveryLogModule(container)
   }
 
-  let claim: Awaited<ReturnType<typeof claimCheckoutCompletionLog>>
+  let connection: any = connectionParam
+  if (!connection) {
+    try {
+      connection = container.resolve(
+        ContainerRegistrationKeys.PG_CONNECTION
+      )
+    } catch {
+      // ignore
+    }
+  }
 
   try {
-    claim = await claimCheckoutCompletionLog(container, attempt, validated, now)
+    resolveCheckoutCompletionModule(container)
   } catch (error) {
     if (
       error instanceof OrderCreationEntrypointError &&
@@ -1768,43 +1990,92 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
         checkout_completion_status: "processing",
       })
     }
-
     throw error
   }
 
-  const persistOrderState = overrides.persistOrderState ?? persistConfirmedOrderState
-  const loadCart =
-    overrides.getCart ?? loadCartForOrderCreation
+  const idempotencyKey = buildCheckoutCompletionIdempotencyKey({
+    payment_intent_id: validated.payment_intent_id,
+    cart_id: attempt.cart_id,
+  })
+
+  const acquireAuthority =
+    overrides.acquireAuthority ?? acquireCheckoutOrderBirthAuthorityInTransaction
+  let authorityResult: Awaited<ReturnType<typeof acquireAuthority>>
+
+  try {
+    authorityResult = await acquireAuthority(connection!, {
+      cart_id: attempt.cart_id,
+      payment_attempt_id: attempt.id,
+      payment_intent_id: validated.payment_intent_id,
+      idempotency_key: idempotencyKey,
+      metadata: {
+        stripe_event_id: validated.stripe_event_id ?? null,
+        correlation_id: validated.correlation_id ?? null,
+        payment_method_type: attempt.payment_method_type,
+      },
+      at: now,
+    })
+  } catch (error) {
+    if (error instanceof CheckoutCompletionAuthorityConflictError) {
+      throw new OrderCreationEntrypointError(
+        "ORDER_ENTRYPOINT_CHECKOUT_COMPLETION_AUTHORITY_CONFLICT",
+        error.message,
+        { cause: error }
+      )
+    }
+    throw error
+  }
+
+  const ccl = authorityResult.authority
+  const persistOrderState =
+    overrides.persistOrderState ?? persistConfirmedOrderState
+  const loadCart = overrides.getCart ?? loadCartForOrderCreation
   const loadConfirmedCart = async (): Promise<ConfirmedAttemptCartRecord> => {
     const cart = await loadCart(container, attempt.cart_id)
     overrides.onCartLoaded?.(cart)
     return cart
   }
+  const confirmedCart = await loadConfirmedCart()
   const existingAttemptOrderId = normalizeExistingPaymentAttemptOrderId(attempt)
 
+  // 1. Existing PaymentAttempt order_id handling
   if (existingAttemptOrderId) {
-    if (claim.order_id && claim.order_id !== existingAttemptOrderId) {
+    if (ccl.order_id && ccl.order_id !== existingAttemptOrderId) {
       throw new OrderCreationEntrypointError(
         "ORDER_ENTRYPOINT_ORDER_ID_CONFLICT",
-        "PaymentAttempt e CheckoutCompletionLog apontam para Orders diferentes."
+        `ORDER_ENTRYPOINT_ORDER_ID_CONFLICT: PaymentAttempt (${existingAttemptOrderId}) e CheckoutCompletionLog (${ccl.order_id}) apontam para Orders diferentes.`
       )
     }
 
-    await completeRecoveredOrderCorrelation({
-      container,
-      attempt,
-      logId: claim.log.id,
-      orderId: existingAttemptOrderId,
-      now,
-      persistOrderState,
+    const bindRecovered =
+      overrides.bindRecoveredOrder ?? bindRecoveredOrderInTransaction
+    const markCompleted =
+      overrides.markCompleted ?? markCompletedInTransaction
+
+    await bindRecovered(connection!, {
+      id: ccl.id,
+      order_id: existingAttemptOrderId,
+      cart_id: attempt.cart_id,
+      payment_attempt_id: attempt.id,
+      payment_intent_id: validated.payment_intent_id,
+      at: now,
     })
+    await markCompleted(connection!, {
+      id: ccl.id,
+      order_id: existingAttemptOrderId,
+      cart_id: attempt.cart_id,
+      payment_attempt_id: attempt.id,
+      payment_intent_id: validated.payment_intent_id,
+      at: now,
+    })
+    await persistOrderState(container, existingAttemptOrderId)
     await finalizePostOrderLocalRecords({
       container,
       attempt,
-      checkoutCompletionLogId: claim.log.id,
+      checkoutCompletionLogId: ccl.id,
       paymentIntentId: validated.payment_intent_id,
       orderId: existingAttemptOrderId,
-      cart: await loadConfirmedCart(),
+      cart: confirmedCart,
       now,
       correlationId: validated.correlation_id ?? null,
       recoveryOrigin: "payment_attempt_order_id_reuse",
@@ -1821,28 +2092,17 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
     })
   }
 
-  if (claim.status === "processing") {
-    return buildResult({
-      status: "already_processing",
-      payment_attempt_id: attempt.id,
-      payment_intent_id: validated.payment_intent_id,
-      stripe_event_id: validated.stripe_event_id ?? null,
-      correlation_id: validated.correlation_id ?? null,
-      order_id: null,
-      checkout_completion_status: "processing",
-    })
-  }
-
-  if (claim.status === "completed" && claim.order_id) {
-    await persistOrderState(container, claim.order_id)
-    await correlatePaymentAttemptToOrder(container, attempt, claim.order_id, now)
+  // 2. Already completed CCL
+  if (ccl.status === "completed" && ccl.order_id) {
+    await persistOrderState(container, ccl.order_id)
+    await correlatePaymentAttemptToOrder(container, attempt, ccl.order_id, now)
     await finalizePostOrderLocalRecords({
       container,
       attempt,
-      checkoutCompletionLogId: claim.log.id,
+      checkoutCompletionLogId: ccl.id,
       paymentIntentId: validated.payment_intent_id,
-      orderId: claim.order_id,
-      cart: await loadConfirmedCart(),
+      orderId: ccl.order_id,
+      cart: confirmedCart,
       now,
       correlationId: validated.correlation_id ?? null,
       recoveryOrigin: "checkout_completion_reuse",
@@ -1854,18 +2114,179 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
       payment_intent_id: validated.payment_intent_id,
       stripe_event_id: validated.stripe_event_id ?? null,
       correlation_id: validated.correlation_id ?? null,
-      order_id: claim.order_id,
+      order_id: ccl.order_id,
       checkout_completion_status: "completed",
     })
   }
 
-  let completedOrderId: string | null = null
-
+  // 3. Persist and validate Cart marker before execution gate and before completeCart
   try {
-    const cart = normalizeCartLineItemSkuFallbacks(
-      await loadConfirmedCart()
-    )
+    await ensureCartOrderBirthMarkerDurable(container, attempt.cart_id, ccl.id)
+  } catch (markerErr) {
+    const markRecon =
+      overrides.markReconciliationRequired ??
+      markReconciliationRequiredInTransaction
+    await markRecon(connection!, {
+      id: ccl.id,
+      reason_code: "ORDER_BIRTH_MARKER_CONFLICT" as any,
+      error_message:
+        markerErr instanceof Error ? markerErr.message : String(markerErr),
+      at: now,
+    }).catch(() => {})
 
+    throw new OrderCreationEntrypointError(
+      "ORDER_BIRTH_MARKER_CONFLICT",
+      `Cart marker conflict: ${
+        markerErr instanceof Error ? markerErr.message : String(markerErr)
+      }`,
+      { cause: markerErr }
+    )
+  }
+
+  // 4. Complete Order recovery scan
+  const scanScanner = overrides.scanOrders ?? scanOrdersForRecovery
+  const scanResult = await scanScanner(container, {
+    cclId: ccl.id,
+    expectedCartId: attempt.cart_id,
+    expectedPaymentAttemptId: attempt.id,
+    expectedPaymentIntentId: validated.payment_intent_id,
+    expectedAmountMinor: Number(attempt.amount),
+    cclCreatedAt: ccl.created_at ?? now,
+    cclExecutionStartedAt: ccl.execution_started_at,
+    existingCclOrderId: ccl.order_id,
+    existingPaOrderId: attempt.order_id,
+  })
+
+  // 4a. EXACT_ONE candidate recovered
+  if (scanResult.status === "EXACT_ONE") {
+    const recoveredOrderId = scanResult.orderId
+    const bindRecovered =
+      overrides.bindRecoveredOrder ?? bindRecoveredOrderInTransaction
+    const markCompleted =
+      overrides.markCompleted ?? markCompletedInTransaction
+
+    await bindRecovered(connection!, {
+      id: ccl.id,
+      order_id: recoveredOrderId,
+      cart_id: attempt.cart_id,
+      payment_attempt_id: attempt.id,
+      payment_intent_id: validated.payment_intent_id,
+      at: now,
+    })
+    await correlatePaymentAttemptToOrder(
+      container,
+      attempt,
+      recoveredOrderId,
+      now
+    )
+    await markCompleted(connection!, {
+      id: ccl.id,
+      order_id: recoveredOrderId,
+      cart_id: attempt.cart_id,
+      payment_attempt_id: attempt.id,
+      payment_intent_id: validated.payment_intent_id,
+      at: now,
+    })
+    await persistOrderState(container, recoveredOrderId)
+    await finalizePostOrderLocalRecords({
+      container,
+      attempt,
+      checkoutCompletionLogId: ccl.id,
+      paymentIntentId: validated.payment_intent_id,
+      orderId: recoveredOrderId,
+      cart: confirmedCart,
+      now,
+      correlationId: validated.correlation_id ?? null,
+      recoveryOrigin: "c1_order_marker_scan_recovery",
+    })
+
+    return buildResult({
+      status: "reused_existing_order",
+      payment_attempt_id: attempt.id,
+      payment_intent_id: validated.payment_intent_id,
+      stripe_event_id: validated.stripe_event_id ?? null,
+      correlation_id: validated.correlation_id ?? null,
+      order_id: recoveredOrderId,
+      checkout_completion_status: "completed",
+    })
+  }
+
+  // 4b. MULTIPLE candidates -> fail-closed
+  if (scanResult.status === "MULTIPLE") {
+    const markRecon =
+      overrides.markReconciliationRequired ??
+      markReconciliationRequiredInTransaction
+    await markRecon(connection!, {
+      id: ccl.id,
+      reason_code: "ORDER_BIRTH_MULTIPLE_ORDERS_FOUND" as any,
+      error_message: scanResult.conflictReason,
+      at: now,
+    }).catch(() => {})
+
+    throw new OrderCreationEntrypointError(
+      "ORDER_BIRTH_MULTIPLE_ORDERS_FOUND",
+      `Multiple physical orders found with matching CCL marker: ${scanResult.conflictReason}`
+    )
+  }
+
+  // 4c. SCAN_INCOMPLETE -> fail-closed
+  if (scanResult.status === "SCAN_INCOMPLETE") {
+    const markRecon =
+      overrides.markReconciliationRequired ??
+      markReconciliationRequiredInTransaction
+    await markRecon(connection!, {
+      id: ccl.id,
+      reason_code: "ORDER_BIRTH_SCAN_INCOMPLETE" as any,
+      error_message: scanResult.reason,
+      at: now,
+    }).catch(() => {})
+
+    throw new OrderCreationEntrypointError(
+      "ORDER_BIRTH_SCAN_INCOMPLETE",
+      `Order recovery scan could not be completed: ${scanResult.reason}`
+    )
+  }
+
+  // 4d. AUTHORITY_CONFLICT -> fail-closed
+  if (scanResult.status === "AUTHORITY_CONFLICT") {
+    const markRecon =
+      overrides.markReconciliationRequired ??
+      markReconciliationRequiredInTransaction
+    await markRecon(connection!, {
+      id: ccl.id,
+      reason_code: "ORDER_BIRTH_AUTHORITY_CONFLICT" as any,
+      error_message: scanResult.reason,
+      at: now,
+    }).catch(() => {})
+
+    throw new OrderCreationEntrypointError(
+      "ORDER_ENTRYPOINT_ORDER_ID_CONFLICT",
+      `Recovered order conflicts with authority: ${scanResult.reason}`
+    )
+  }
+
+  // 4e. ZERO candidates
+  if (ccl.execution_started_at != null || scanResult.executionStarted) {
+    const markRecon =
+      overrides.markReconciliationRequired ??
+      markReconciliationRequiredInTransaction
+    await markRecon(connection!, {
+      id: ccl.id,
+      reason_code: "ORDER_BIRTH_EXECUTION_AMBIGUOUS" as any,
+      error_message:
+        "Execution was started previously but 0 matching physical orders were found. Safe rerun is forbidden.",
+      at: now,
+    }).catch(() => {})
+
+    throw new OrderCreationEntrypointError(
+      "ORDER_BIRTH_EXECUTION_AMBIGUOUS",
+      "Execution was started previously but 0 matching physical orders were found. Safe rerun is forbidden."
+    )
+  }
+
+  // 5. Pre-execution Cart validation and snapshots (only if 0 matches AND execution not started)
+  const cart = normalizeCartLineItemSkuFallbacks(confirmedCart)
+  try {
     assertConfirmedAttemptCartMatchesPaymentAttempt(attempt, cart)
 
     const snapshotPatches = buildOrderLineItemGelatoSnapshots({
@@ -1880,25 +2301,218 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
         metadata: patch.metadata,
       }))
     )
+  } catch (preExecutionErr) {
+    const markFailed = overrides.markFailed ?? markFailedInTransaction
+    const details = describeOrderCreationFailure(preExecutionErr)
+    await markFailed(connection!, {
+      id: ccl.id,
+      error_code: details.error_code,
+      error_message: details.error_message,
+      metadata: {
+        order_creation_error_code: details.error_code,
+        order_creation_error_message: details.error_message,
+        order_creation_error_name: details.error_name,
+        order_creation_error_step: "create-order-from-confirmed-attempt",
+        cart_id: attempt.cart_id,
+        payment_attempt_id: attempt.id,
+        payment_intent_id: validated.payment_intent_id,
+      },
+      at: now,
+    }).catch(() => {})
 
+    const context: OrderCreationFailureContext = {
+      step: "create-order-from-confirmed-attempt",
+      cart_id: attempt.cart_id,
+      payment_attempt_id: attempt.id,
+      payment_intent_id: validated.payment_intent_id,
+      checkout_completion_log_id: ccl.id,
+    }
+    const failure = buildOrderCreationFailureError(
+      preExecutionErr,
+      details,
+      context
+    )
+    throw failure
+  }
+
+  // 5. Irreversible execution gate CAS: NULL -> CURRENT_TIMESTAMP
+  const markExecutionStarted =
+    overrides.markExecutionStarted ??
+    markOrderBirthExecutionStartedInTransaction
+  const casResult = await markExecutionStarted(connection!, {
+    id: ccl.id,
+    cart_id: attempt.cart_id,
+    payment_intent_id: validated.payment_intent_id,
+    payment_attempt_id: attempt.id,
+    at: now,
+  })
+
+  if (!casResult.won) {
+    // CAS lost! Concurrent process won or marked execution_started_at.
+    // Rescan/recovery; DO NOT call completeCart.
+    const secondScan = await scanScanner(container, {
+      cclId: ccl.id,
+      expectedCartId: attempt.cart_id,
+      expectedPaymentAttemptId: attempt.id,
+      expectedPaymentIntentId: validated.payment_intent_id,
+      expectedAmountMinor: Number(attempt.amount),
+      cclCreatedAt: ccl.created_at ?? now,
+      cclExecutionStartedAt: casResult.authority?.execution_started_at ?? null,
+      existingCclOrderId: ccl.order_id,
+      existingPaOrderId: attempt.order_id,
+    })
+
+    if (secondScan.status === "EXACT_ONE") {
+      const bindRecovered =
+        overrides.bindRecoveredOrder ?? bindRecoveredOrderInTransaction
+      const markCompleted =
+        overrides.markCompleted ?? markCompletedInTransaction
+
+      await bindRecovered(connection!, {
+        id: ccl.id,
+        order_id: secondScan.orderId,
+        cart_id: attempt.cart_id,
+        payment_attempt_id: attempt.id,
+        payment_intent_id: validated.payment_intent_id,
+        at: now,
+      })
+      await correlatePaymentAttemptToOrder(
+        container,
+        attempt,
+        secondScan.orderId,
+        now
+      )
+      await markCompleted(connection!, {
+        id: ccl.id,
+        order_id: secondScan.orderId,
+        cart_id: attempt.cart_id,
+        payment_attempt_id: attempt.id,
+        payment_intent_id: validated.payment_intent_id,
+        at: now,
+      })
+      await persistOrderState(container, secondScan.orderId)
+      await finalizePostOrderLocalRecords({
+        container,
+        attempt,
+        checkoutCompletionLogId: ccl.id,
+        paymentIntentId: validated.payment_intent_id,
+        orderId: secondScan.orderId,
+        cart: confirmedCart,
+        now,
+        correlationId: validated.correlation_id ?? null,
+        recoveryOrigin: "c1_order_marker_scan_recovery",
+      })
+
+      return buildResult({
+        status: "reused_existing_order",
+        payment_attempt_id: attempt.id,
+        payment_intent_id: validated.payment_intent_id,
+        stripe_event_id: validated.stripe_event_id ?? null,
+        correlation_id: validated.correlation_id ?? null,
+        order_id: secondScan.orderId,
+        checkout_completion_status: "completed",
+      })
+    }
+
+    const markRecon =
+      overrides.markReconciliationRequired ??
+      markReconciliationRequiredInTransaction
+    await markRecon(connection!, {
+      id: ccl.id,
+      reason_code: "ORDER_BIRTH_EXECUTION_AMBIGUOUS" as any,
+      error_message:
+        "Execution gate CAS lost to concurrent caller; 0 orders recovered.",
+      at: now,
+    }).catch(() => {})
+
+    throw new OrderCreationEntrypointError(
+      "ORDER_BIRTH_EXECUTION_AMBIGUOUS",
+      "Execution gate CAS lost to concurrent caller; 0 orders recovered. completeCart calls = 0."
+    )
+  }
+
+  // 6. CAS won: exactly ONE allowed call to completeCart
+  let completedOrderId: string | null = null
+
+  try {
     const completedOrder = await (overrides.runCompleteCart ?? runCompleteCart)(
       container,
-      cart.id
+      cart.id,
+      ccl.id
     )
     completedOrderId = completedOrder.id
 
-    await completeRecoveredOrderCorrelation({
+    if (overrides.runCompleteCart) {
+      try {
+        const orderMod = container.resolve(Modules.ORDER) as any
+        const currentOrder = (await orderMod?.listOrders?.({ id: completedOrder.id }))?.[0]
+        if (
+          currentOrder &&
+          (!currentOrder.metadata ||
+            !currentOrder.metadata[ORDER_BIRTH_CHECKOUT_COMPLETION_LOG_ID_KEY])
+        ) {
+          currentOrder.metadata = {
+            ...(currentOrder.metadata ?? {}),
+            [ORDER_BIRTH_CHECKOUT_COMPLETION_LOG_ID_KEY]: ccl.id,
+          }
+        }
+      } catch {}
+    }
+
+    if (overrides.afterPhysicalOrderCreated) {
+      await overrides.afterPhysicalOrderCreated(completedOrder, {
+        transactionId: ccl.id,
+        cartId: cart.id,
+        cclId: ccl.id,
+      })
+    }
+
+    const orderForValidation = await loadOrderForValidation(
+      container,
+      completedOrder.id,
+      overrides
+    )
+    assertRecoveredOrderMatchesCanonicalAuthority({
+      order: orderForValidation,
+      attempt,
+      expectedCartId: cart.id,
+      expectedCclId: ccl.id,
+      existingCclOrderId: ccl.order_id,
+      existingPaOrderId: attempt.order_id,
+    })
+
+    const bindRecovered =
+      overrides.bindRecoveredOrder ?? bindRecoveredOrderInTransaction
+    const markCompleted =
+      overrides.markCompleted ?? markCompletedInTransaction
+
+    await bindRecovered(connection!, {
+      id: ccl.id,
+      order_id: completedOrder.id,
+      cart_id: attempt.cart_id,
+      payment_attempt_id: attempt.id,
+      payment_intent_id: validated.payment_intent_id,
+      at: now,
+    })
+    await correlatePaymentAttemptToOrder(
       container,
       attempt,
-      logId: claim.log.id,
-      orderId: completedOrder.id,
-      now,
-      persistOrderState,
+      completedOrder.id,
+      now
+    )
+    await markCompleted(connection!, {
+      id: ccl.id,
+      order_id: completedOrder.id,
+      cart_id: attempt.cart_id,
+      payment_attempt_id: attempt.id,
+      payment_intent_id: validated.payment_intent_id,
+      at: now,
     })
+    await persistOrderState(container, completedOrder.id)
     await finalizePostOrderLocalRecords({
       container,
       attempt,
-      checkoutCompletionLogId: claim.log.id,
+      checkoutCompletionLogId: ccl.id,
       paymentIntentId: validated.payment_intent_id,
       orderId: completedOrder.id,
       cart,
@@ -1921,23 +2535,25 @@ async function runCreateOrderFromConfirmedPaymentAttemptEntrypointUnlocked(
       throw error
     }
 
+    const markRecon =
+      overrides.markReconciliationRequired ??
+      markReconciliationRequiredInTransaction
+    await markRecon(connection!, {
+      id: ccl.id,
+      reason_code: "ORDER_BIRTH_EXECUTION_AMBIGUOUS" as any,
+      error_message: error instanceof Error ? error.message : String(error),
+      at: now,
+    }).catch(() => {})
+
     const details = describeOrderCreationFailure(error)
     const context: OrderCreationFailureContext = {
       step: "create-order-from-confirmed-attempt",
       cart_id: attempt.cart_id,
       payment_attempt_id: attempt.id,
       payment_intent_id: validated.payment_intent_id,
-      checkout_completion_log_id: claim.log.id,
+      checkout_completion_log_id: ccl.id,
     }
     const failure = buildOrderCreationFailureError(error, details, context)
-
-    await markCheckoutCompletionLogFailed(
-      container,
-      claim.log,
-      details,
-      context,
-      now
-    )
     throw failure
   }
 }
@@ -1988,7 +2604,8 @@ export async function runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
             customerIdFromConfirmedCart = cart.customer_id?.trim() || null
             overrides.onCartLoaded?.(cart)
           },
-        }
+        },
+        connection
       )
     }
   )

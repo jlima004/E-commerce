@@ -52,6 +52,18 @@ export type PaymentAttemptReconcilerDeps = {
   now?: () => Date
   leaseDurationMs?: number
   batchSize?: number
+  container?: any
+  runOrderEntrypoint?: (
+    container: any,
+    input: {
+      payment_attempt_id: string
+      payment_intent_id: string
+      correlation_id?: string | null
+    }
+  ) => Promise<{
+    status: string
+    order_id: string | null
+  }>
 }
 
 export type PaymentAttemptReconcilerResult = {
@@ -417,7 +429,47 @@ export async function runPaymentAttemptReconciliation(
         })
         result.thawed++
       } else if (pi.status === "succeeded") {
-        // Provider succeeded -> record durable reconciliation consequence
+        if (!candidate.order_id && deps.container && deps.runOrderEntrypoint) {
+          try {
+            const orderResult = await deps.runOrderEntrypoint(deps.container, {
+              payment_attempt_id: candidate.id,
+              payment_intent_id: pi.id,
+              correlation_id: candidate.id,
+            })
+
+            if (orderResult.order_id) {
+              candidate.order_id = orderResult.order_id
+              await releasePaymentAttemptReconciliationLease(
+                deps.connection,
+                candidate.id
+              )
+              deps.logger?.info?.(
+                "Payment attempt order created/recovered by reconciler",
+                {
+                  payment_attempt_id: candidate.id,
+                  payment_intent_id: pi.id,
+                  order_id: orderResult.order_id,
+                }
+              )
+              result.reconciled++
+              continue
+            }
+          } catch (orderErr) {
+            deps.logger?.warn?.(
+              "Order entrypoint execution failed during reconciliation",
+              {
+                payment_attempt_id: candidate.id,
+                payment_intent_id: pi.id,
+                error:
+                  orderErr instanceof Error
+                    ? orderErr.message
+                    : String(orderErr),
+              }
+            )
+          }
+        }
+
+        // Provider succeeded but no order recovered -> record durable reconciliation consequence
         await deps.connection.transaction(async (trx: PaymentAttemptSqlTransaction) => {
           await recordDurableReconciliationInTransaction(
             trx,
