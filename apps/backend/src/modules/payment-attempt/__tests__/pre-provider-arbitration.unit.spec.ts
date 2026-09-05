@@ -1,6 +1,9 @@
 import { RECONCILIATION_REASON_CODE } from "../../../reconciliation/reason-codes"
 import { buildPaymentAttemptProviderIdempotencyKey } from "../durable-initiation"
-import { isUnresolvedFinancialFreeze } from "../financial-authority"
+import {
+  isUnresolvedFinancialFreeze,
+  toPaymentAttemptFinancialAuthority,
+} from "../financial-authority"
 import {
   PRE_PROVIDER_ARBITRATION_DECISION,
   arbitratePreProviderPaymentAttempt,
@@ -412,7 +415,9 @@ describe("pre-provider arbitration", () => {
       status: "payment_failed",
       amount: 1100,
     })
-    expect(isUnresolvedFinancialFreeze(frozen)).toBe(true)
+    expect(
+      isUnresolvedFinancialFreeze(toPaymentAttemptFinancialAuthority(frozen))
+    ).toBe(true)
     expect(arbitratePreProviderPaymentAttempt([frozen], requested()).decision).toBe(
       PRE_PROVIDER_ARBITRATION_DECISION.RECONCILIATION_REQUIRED
     )
@@ -473,7 +478,9 @@ describe("listUnresolvedFrozenPaymentAttemptsForCart", () => {
       "cart_r1"
     )
     expect(listed).toHaveLength(1)
-    expect(isUnresolvedFinancialFreeze(listed[0])).toBe(true)
+    expect(
+      isUnresolvedFinancialFreeze(toPaymentAttemptFinancialAuthority(listed[0]))
+    ).toBe(true)
   })
 })
 

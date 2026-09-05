@@ -427,6 +427,11 @@ describe("pre-provider CAS bind / discovery / replay", () => {
     expect(discovery.unresolved).toBe(false)
     expect(discovery.matches).toHaveLength(1)
 
+    const match = discovery.matches[0]
+    if (!match) {
+      throw new Error("test invariant: expected exactly one discovery match")
+    }
+
     const bound = await bindProviderPaymentIntentInTransaction(harness.transaction, {
       payment_attempt_id: "payatt_r1_001",
       cart_id: "cart_r1",
@@ -434,7 +439,7 @@ describe("pre-provider CAS bind / discovery / replay", () => {
       currency_code: "brl",
       payment_method_type: "card",
       provider_payment_intent_id: "pi_A",
-      payment_intent: discovery.matches[0],
+      payment_intent: match,
     })
     expect(bound.outcome).toBe("BOUND")
     expect(rows[0].provider_payment_intent_id).toBe("pi_A")

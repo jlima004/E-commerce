@@ -84,13 +84,8 @@ function buildAuthority(input: {
     cart_resource_version: 3,
     financial_freeze_started_at: CREATED_AT,
     provider_idempotency_key: `payment-attempt:${input.method}:${paymentAttemptId}`,
-    payment_collection_id: "paycol_r1",
-    payment_session_id:
-      input.paymentSessionId === undefined
-        ? input.method === "card"
-          ? "payses_r1"
-          : null
-        : input.paymentSessionId,
+    authority_created_at: CREATED_AT,
+    replay_deadline: REPLAY_DEADLINE,
   }
 }
 
@@ -213,7 +208,10 @@ describe("provider discovery ownership resolve", () => {
               attempt: authority.attempt,
             }),
             rereadAuthority: async () => authority,
-            isReplayEligible: async () => ({ eligible: false }),
+            isReplayEligible: async () => ({
+              eligible: false,
+              reason: "REPLAY_DEADLINE_ELAPSED",
+            }),
           })
         ).rejects.toThrow(
           RECONCILIATION_REASON_CODE.PROVIDER_DISCOVERY_UNRESOLVED

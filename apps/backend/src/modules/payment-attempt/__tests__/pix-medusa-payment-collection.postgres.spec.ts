@@ -273,7 +273,7 @@ if (!requestedDatabaseName) {
             type: string
           }): Promise<{ id: string }>
         }
-        const cartModule = container.resolve(Modules.CART) as {
+        const cartModule = container.resolve(Modules.CART) as unknown as {
           createCarts(input: Record<string, unknown>): Promise<{ id: string }>
         }
         const shippingProfile = await fulfillmentModule.createShippingProfiles({
@@ -342,7 +342,7 @@ if (!requestedDatabaseName) {
 
         const resourceVersionModule = container.resolve(
           STORE_RESOURCE_VERSION_MODULE
-        ) as {
+        ) as unknown as {
           baseRepository_: {
             transaction<T>(
               callback: (transactionManager: unknown) => Promise<T>
@@ -379,7 +379,7 @@ if (!requestedDatabaseName) {
             ...item,
             variant: item.variant ?? {
               id: variant.id,
-              sku: variant.sku,
+              sku: variant.sku ?? undefined,
               metadata: variantMetadata,
               prices: [{ amount: 99, currency_code: "brl" }],
             },
@@ -463,7 +463,13 @@ if (!requestedDatabaseName) {
               [seeded.cartId]
             )
             expect(link.rows).toHaveLength(1)
-            expect(link.rows[0]?.payment_collection_id).toBe(collection.id)
+            const row = link.rows?.[0]
+            if (!row) {
+              throw new Error(
+                "test invariant: expected exactly one payment collection link row"
+              )
+            }
+            expect(row.payment_collection_id).toBe(collection.id)
 
             const prepared = preparePixPaymentAttempt({
               cart: seeded.cartSnapshot,

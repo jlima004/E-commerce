@@ -577,7 +577,10 @@ describe("readDurablePreProviderAuthority local identity seal", () => {
   })
 
   it("U9 — null PaymentCollection on Card durable reread", async () => {
-    const attempt = buildFrozenAttempt({ payment_collection_id: null })
+    // Intentional corrupt fixture for U9: production PaymentAttemptRecord.payment_collection_id is string.
+    const attempt = buildFrozenAttempt({
+      payment_collection_id: null as unknown as string,
+    })
     const harness = createIdentitySealHarness(attempt)
     await expect(
       readDurablePreProviderAuthority(harness.transaction, "payatt_id_seal")
@@ -585,9 +588,10 @@ describe("readDurablePreProviderAuthority local identity seal", () => {
   })
 
   it("U9 — null PaymentCollection on Pix durable reread", async () => {
+    // Intentional corrupt fixture for U9: production PaymentAttemptRecord.payment_collection_id is string.
     const attempt = buildFrozenAttempt({
       payment_method_type: "pix",
-      payment_collection_id: null,
+      payment_collection_id: null as unknown as string,
       payment_session_id: null,
     })
     const harness = createIdentitySealHarness(attempt)

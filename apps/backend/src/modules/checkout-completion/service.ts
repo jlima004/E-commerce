@@ -143,7 +143,7 @@ const CHECKOUT_COMPLETION_AUTHORITY_COLUMNS = [
   "id", "operation", "idempotency_key", "cart_id", "payment_intent_id",
   "payment_attempt_id", "order_id", "status", "execution_started_at",
   "last_reconciliation_at", "reconciliation_reason_code", "deleted_at",
-  "created_at",
+  "created_at", "updated_at",
 ] as const
 
 const CHECKOUT_COMPLETION_FILTER_COLUMNS = {
@@ -170,6 +170,7 @@ function mapOrderBirthAuthority(
     reconciliation_reason_code: row.reconciliation_reason_code == null ? null : String(row.reconciliation_reason_code) as CheckoutCompletionOrderBirthAuthority["reconciliation_reason_code"],
     deleted_at: row.deleted_at instanceof Date || typeof row.deleted_at === "string" ? row.deleted_at : null,
     created_at: row.created_at instanceof Date || typeof row.created_at === "string" ? row.created_at : null,
+    updated_at: row.updated_at instanceof Date || typeof row.updated_at === "string" ? row.updated_at : String(row.updated_at),
   }
 }
 

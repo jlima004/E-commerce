@@ -73,6 +73,7 @@ export type CheckoutCompletionOrderBirthAuthority = {
   reconciliation_reason_code: ReconciliationReasonCode | null
   deleted_at: Date | string | null
   created_at?: Date | string | null
+  updated_at: Date | string
 }
 
 export type BuildCheckoutCompletionIdempotencyKeyInput = {
