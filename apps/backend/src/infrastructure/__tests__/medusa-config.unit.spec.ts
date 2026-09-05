@@ -233,6 +233,7 @@ describe("medusa-config final Redis wiring", () => {
       "./src/modules/store-resource-version",
       "./src/modules/customer-auth/service",
       "./src/modules/guest-cart-capability",
+      "./src/modules/cart-merge",
       "./src/modules/payment-attempt",
       "./src/modules/refund-request",
       "./src/modules/exchange-request",
@@ -249,6 +250,11 @@ describe("medusa-config final Redis wiring", () => {
     expect(storeResourceVersion).toHaveLength(1)
     expect(customerAuth).toHaveLength(1)
     expect(guestCartCapability).toHaveLength(1)
+    expect(
+      config.modules.filter(
+        (module) => module.resolve === "./src/modules/cart-merge"
+      )
+    ).toHaveLength(1)
     expect(redisModules).toHaveLength(4)
     expect(
       config.modules
@@ -263,6 +269,7 @@ describe("medusa-config final Redis wiring", () => {
     expect(serialized.match(/store-resource-version/g)?.length ?? 0).toBe(1)
     expect(serialized.match(/customer-auth\/service/g)?.length ?? 0).toBe(1)
     expect(serialized.match(/guest-cart-capability/g)?.length ?? 0).toBe(1)
+    expect(serialized.match(/src\/modules\/cart-merge/g)?.length ?? 0).toBe(1)
     expect(config.projectConfig.workerMode).toBe("server")
     expect(
       (config.projectConfig.http as { authMethodsPerActor?: unknown })

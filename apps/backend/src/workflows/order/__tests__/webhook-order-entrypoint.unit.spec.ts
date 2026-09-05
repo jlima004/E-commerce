@@ -12,6 +12,7 @@ import {
   runCreateOrderFromConfirmedPaymentAttemptEntrypoint,
   validateCreateOrderFromConfirmedPaymentAttemptInput,
 } from "../webhook-order-entrypoint"
+import { ORDER_BIRTH_CHECKOUT_COMPLETION_LOG_ID_KEY } from "../order-birth-marker"
 
 const entrypointPath = path.join(__dirname, "../webhook-order-entrypoint.ts")
 
@@ -208,6 +209,10 @@ function createOrderModule(
     listOrders: jest.fn(async (selector?: Record<string, unknown>) => {
       return store.filter((record) => !selector?.id || record.id === selector.id)
     }),
+    listAndCountOrders: jest.fn(async (filters?: any, config?: any) => {
+      const rows = store.filter((record) => !filters?.id || record.id === filters.id)
+      return [rows, rows.length]
+    }),
     updateOrders: jest.fn(async (selector: Record<string, unknown>, update: Record<string, unknown>) => {
       const index = store.findIndex((record) => record.id === selector.id)
       if (index >= 0) {
@@ -286,6 +291,8 @@ function createContainer(input: {
   cart?: Record<string, unknown>
 }) {
   const authorityAttempt = () => input.paymentAttemptModule?.store[0] ?? null
+  const cclStore = input.checkoutCompletionModule?.store ?? []
+  const cartData: any = input.cart ?? buildCart()
 
   return {
     resolve: jest.fn((key: string) => {
@@ -312,7 +319,7 @@ function createContainer(input: {
       if (key === ContainerRegistrationKeys.QUERY) {
         return {
           graph: jest.fn(async () => ({
-            data: [input.cart ?? buildCart()],
+            data: [cartData],
           })),
         }
       }
@@ -320,10 +327,10 @@ function createContainer(input: {
       if (key === ContainerRegistrationKeys.PG_CONNECTION) {
         return {
           transaction: async (callback: (transaction: {
-            raw: (sql: string) => Promise<{ rows?: Array<Record<string, unknown>> }>
+            raw: (sql: string, bindings?: any[]) => Promise<{ rows?: Array<Record<string, unknown>> }>
           }) => Promise<unknown>) =>
             callback({
-              raw: async (sql: string) => {
+              raw: async (sql: string, bindings?: any[]) => {
                 if (sql.includes("select cart_id from payment_attempt")) {
                   return { rows: authorityAttempt() ? [{ cart_id: authorityAttempt()?.cart_id }] : [] }
                 }
@@ -332,6 +339,98 @@ function createContainer(input: {
                 }
                 if (sql.includes("from store_resource_version")) {
                   return { rows: [{ version: 1 }] }
+                }
+                if (sql.includes("from checkout_completion_log")) {
+                  if (sql.includes("cart_id = ?")) {
+                    const cartId = bindings?.[1]
+                    const found = cclStore.find((r) => r.cart_id === cartId)
+                    return { rows: found ? [found] : [] }
+                  }
+                  if (sql.includes("idempotency_key = ?")) {
+                    const idemp = bindings?.[1]
+                    const found = cclStore.find((r) => r.idempotency_key === idemp)
+                    return { rows: found ? [found] : [] }
+                  }
+                  if (sql.includes("id = ?")) {
+                    const id = bindings?.[0]
+                    const found = cclStore.find((r) => r.id === id)
+                    return { rows: found ? [found] : [] }
+                  }
+                  return { rows: [] }
+                }
+                if (sql.includes("insert into checkout_completion_log")) {
+                  const newRow = {
+                    id: bindings?.[0] ?? `chkcpl_mock_${cclStore.length + 1}`,
+                    operation: bindings?.[1] ?? "complete_checkout_create_order",
+                    idempotency_key: bindings?.[2],
+                    cart_id: bindings?.[3],
+                    payment_intent_id: bindings?.[4],
+                    payment_attempt_id: bindings?.[5],
+                    status: "processing",
+                    execution_started_at: bindings?.[6] ?? null,
+                    locked_at: bindings?.[7] ?? new Date().toISOString(),
+                    completed_at: null,
+                    created_at: bindings?.[9] ?? new Date().toISOString(),
+                    updated_at: bindings?.[10] ?? new Date().toISOString(),
+                    deleted_at: null,
+                  }
+                  cclStore.push(newRow)
+                  return { rows: [newRow] }
+                }
+                if (sql.includes("update checkout_completion_log")) {
+                  if (sql.includes("execution_started_at = CURRENT_TIMESTAMP")) {
+                    const id = bindings?.[0]
+                    const row = cclStore.find((r) => r.id === id)
+                    if (row && !row.execution_started_at) {
+                      const mockDbNow = new Date().toISOString()
+                      row.execution_started_at = mockDbNow
+                      row.updated_at = mockDbNow
+                      return { rows: [row] }
+                    }
+                    return { rows: [] }
+                  }
+                  if (sql.includes("order_id = ?")) {
+                    const id = bindings?.[3]
+                    const row = cclStore.find((r) => r.id === id)
+                    if (row) {
+                      row.order_id = bindings?.[0]
+                      row.status = "completed"
+                      row.completed_at = bindings?.[1]
+                      row.updated_at = bindings?.[2]
+                      return { rows: [row] }
+                    }
+                    return { rows: [] }
+                  }
+                  if (sql.includes("status = 'failed'")) {
+                    const id = bindings?.[5]
+                    const row = cclStore.find((r) => r.id === id)
+                    if (row && !row.execution_started_at) {
+                      row.status = "failed"
+                      row.failed_at = bindings?.[0]
+                      row.error_code = bindings?.[1]
+                      row.error_message = bindings?.[2]
+                      if (bindings?.[3]) {
+                        try {
+                          row.metadata = JSON.parse(bindings[3])
+                        } catch {
+                          row.metadata = bindings[3]
+                        }
+                      }
+                      return { rows: [row] }
+                    }
+                    return { rows: [] }
+                  }
+                  if (sql.includes("reconciliation_required")) {
+                    const id = bindings?.[4]
+                    const row = cclStore.find((r) => r.id === id)
+                    if (row) {
+                      row.status = "reconciliation_required"
+                      row.reconciliation_reason_code = bindings?.[0]
+                      return { rows: [row] }
+                    }
+                    return { rows: [] }
+                  }
+                  return { rows: [] }
                 }
                 return { rows: [] }
               },
@@ -342,11 +441,18 @@ function createContainer(input: {
       if (key === Modules.CART) {
         return {
           updateLineItems: jest.fn(async (rows) => rows),
+          retrieveCart: jest.fn(async () => cartData),
+          updateCarts: jest.fn(async (update: any) => {
+            if (update?.metadata) {
+              cartData.metadata = { ...(cartData.metadata as any), ...update.metadata }
+            }
+            return cartData
+          }),
         }
       }
 
       if (key === Modules.ORDER) {
-        return input.orderModule
+        return input.orderModule ?? createOrderModule([])
       }
 
       return undefined
@@ -531,20 +637,11 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
         checkout_completion_status: "completed",
       })
     )
-    expect(checkoutCompletionModule.updateCheckoutCompletionLogs).toHaveBeenNthCalledWith(
-      1,
+    expect(checkoutCompletionModule.store[0]).toEqual(
       expect.objectContaining({
         id: "chkcpl_stale_processing",
-        status: "failed",
-        error_code: "CHECKOUT_COMPLETION_STALE_PROCESSING_WITHOUT_ORDER",
-      })
-    )
-    expect(checkoutCompletionModule.updateCheckoutCompletionLogs).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        id: "chkcpl_stale_processing",
-        status: "processing",
-        error_code: null,
+        status: "completed",
+        order_id: "order_entry_existing",
       })
     )
     expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
@@ -575,15 +672,9 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
         checkout_completion_status: "completed",
       })
     )
-    expect(checkoutCompletionModule.createCheckoutCompletionLogs).toHaveBeenCalledWith(
-      expect.not.objectContaining({
-        id: expect.anything(),
-      })
-    )
     expect(checkoutCompletionModule.store).toHaveLength(1)
     expect(checkoutCompletionModule.store[0]).toEqual(
       expect.objectContaining({
-        id: "chkcpl_entry_1",
         idempotency_key: "pi_entry_123",
         payment_intent_id: "pi_entry_123",
         payment_attempt_id: "payatt_entry_01",
@@ -658,14 +749,12 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
 
     expect(checkoutCompletionModule.store).toEqual([
       expect.objectContaining({
-        id: "chkcpl_entry_1",
         idempotency_key: "pi_entry_123",
         payment_intent_id: "pi_entry_123",
         payment_attempt_id: "payatt_entry_01",
         order_id: "order_entry_01",
       }),
       expect.objectContaining({
-        id: "chkcpl_entry_2",
         idempotency_key: "pi_entry_456",
         payment_intent_id: "pi_entry_456",
         payment_attempt_id: "payatt_entry_02",
@@ -715,13 +804,11 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
       })
     )
     expect(checkoutCompletionModule.createCheckoutCompletionLogs).not.toHaveBeenCalled()
-    expect(checkoutCompletionModule.updateCheckoutCompletionLogs).toHaveBeenNthCalledWith(
-      1,
+    expect(checkoutCompletionModule.store[0]).toEqual(
       expect.objectContaining({
         id: "chkcpl_failed_retry",
-        status: "processing",
-        error_code: null,
-        error_message: null,
+        order_id: "order_entry_existing",
+        status: "completed",
       })
     )
     expect(checkoutCompletionModule.store[0]).toEqual(
@@ -734,18 +821,47 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
     expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
   })
 
-  it("valida PaymentAttempt.amount pelo total dos line items quando cart.total nao vem carregado", async () => {
+  it("rejeita Order quando cart.total nao vem carregado", async () => {
     const paymentAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
     const checkoutCompletionModule = createCheckoutCompletionModule([])
     const orderModule = createOrderModule()
     const { total: _missingTotal, ...cartWithoutTotal } = buildCart()
+    const runCompleteCart = jest.fn(async () => ({ id: "order_entry_existing" }))
+
+    await expect(
+      runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+        createContainer({
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          orderModule,
+          cart: cartWithoutTotal,
+        }),
+        buildInput(),
+        {
+          now: () => new Date("2026-07-07T13:00:00.000Z"),
+          runCompleteCart,
+        }
+      )
+    ).rejects.toThrow("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
+
+    expect(runCompleteCart).not.toHaveBeenCalled()
+    expect(paymentAttemptModule.store[0]?.order_id).toBeNull()
+  })
+
+  it("aceita Order quando cart.total major 99 corresponde a PaymentAttempt.amount 9900", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(buildEligibleAttempt())
+    const checkoutCompletionModule = createCheckoutCompletionModule([])
+    const orderModule = createOrderModule()
 
     const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
       createContainer({
         paymentAttemptModule,
         checkoutCompletionModule,
         orderModule,
-        cart: cartWithoutTotal,
+        cart: {
+          ...buildCart(),
+          total: 99,
+        },
       }),
       buildInput(),
       {
@@ -762,5 +878,76 @@ describe("runCreateOrderFromConfirmedPaymentAttemptEntrypoint", () => {
       })
     )
     expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
+    expect(paymentAttemptModule.store[0]?.amount).toBe(9900)
+  })
+
+  it("aceita Order quando PaymentAttempt.amount 11000 segue cart.total e nao a soma dos line items", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(
+      buildEligibleAttempt({ amount: 11000 })
+    )
+    const checkoutCompletionModule = createCheckoutCompletionModule([])
+    const orderModule = createOrderModule()
+    const cart = buildCart()
+
+    const result = await runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+      createContainer({
+        paymentAttemptModule,
+        checkoutCompletionModule,
+        orderModule,
+        cart: {
+          ...cart,
+          total: 110,
+          items: [{ ...cart.items[0], unit_price: 100, quantity: 1 }],
+        },
+      }),
+      buildInput(),
+      {
+        now: () => new Date("2026-07-07T13:00:00.000Z"),
+        runCompleteCart: async () => ({ id: "order_entry_existing" }),
+      }
+    )
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "created",
+        order_id: "order_entry_existing",
+        checkout_completion_status: "completed",
+      })
+    )
+    expect(paymentAttemptModule.store[0]?.amount).toBe(11000)
+    expect(paymentAttemptModule.store[0]?.order_id).toBe("order_entry_existing")
+  })
+
+  it("rejeita Order quando PaymentAttempt.amount 10000 segue line items e nao cart.total 110", async () => {
+    const paymentAttemptModule = createPaymentAttemptModule(
+      buildEligibleAttempt({ amount: 10000 })
+    )
+    const checkoutCompletionModule = createCheckoutCompletionModule([])
+    const orderModule = createOrderModule()
+    const cart = buildCart()
+    const runCompleteCart = jest.fn(async () => ({ id: "order_entry_existing" }))
+
+    await expect(
+      runCreateOrderFromConfirmedPaymentAttemptEntrypoint(
+        createContainer({
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          orderModule,
+          cart: {
+            ...cart,
+            total: 110,
+            items: [{ ...cart.items[0], unit_price: 100, quantity: 1 }],
+          },
+        }),
+        buildInput(),
+        {
+          now: () => new Date("2026-07-07T13:00:00.000Z"),
+          runCompleteCart,
+        }
+      )
+    ).rejects.toThrow("ORDER_ENTRYPOINT_CART_TOTAL_MISMATCH")
+
+    expect(runCompleteCart).not.toHaveBeenCalled()
+    expect(paymentAttemptModule.store[0]?.order_id).toBeNull()
   })
 })

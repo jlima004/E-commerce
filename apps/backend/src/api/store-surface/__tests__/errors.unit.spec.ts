@@ -157,6 +157,46 @@ describe("Store error contract (FND-03 / 13-03 / R1)", () => {
       expectClosedEnvelope(result.body)
     })
 
+    it("maps internal payment replay conflicts to public CONFLICT", () => {
+      const result = toStoreErrorResponse(
+        new MedusaError(
+          MedusaError.Types.CONFLICT,
+          "same-operation replay ineligible"
+        ),
+        { correlationId: "corr_payment_replay_01" }
+      )
+      expect(result.body.code).toBe(STORE_ERROR_CODES.CONFLICT)
+    })
+
+    it("maps internal cart review conflicts to public CONFLICT without leaking codes", () => {
+      const reviewRequired = Object.assign(
+        new MedusaError(
+          MedusaError.Types.CONFLICT,
+          "Cart review must be acknowledged before this operation"
+        ),
+        { code: "REVIEW_REQUIRED", statusCode: 409, status: 409 }
+      )
+      const reviewStateConflict = Object.assign(
+        new MedusaError(MedusaError.Types.CONFLICT, "Cart review state conflict"),
+        { code: "CART_REVIEW_STATE_CONFLICT", statusCode: 409, status: 409 }
+      )
+
+      for (const error of [reviewRequired, reviewStateConflict]) {
+        const result = toStoreErrorResponse(error, {
+          correlationId: "corr_review_conflict_01",
+        })
+
+        expect(result.statusCode).toBe(409)
+        expect(result.body.code).toBe(STORE_ERROR_CODES.CONFLICT)
+        expect(result.body.retryable).toBe(false)
+        expectClosedEnvelope(result.body)
+        expect(JSON.stringify(result.body)).not.toContain("REVIEW_REQUIRED")
+        expect(JSON.stringify(result.body)).not.toContain(
+          "CART_REVIEW_STATE_CONFLICT"
+        )
+      }
+    })
+
     it("maps generic precondition failed 412 without Cart contract", () => {
       const result = toStoreErrorResponse(
         {

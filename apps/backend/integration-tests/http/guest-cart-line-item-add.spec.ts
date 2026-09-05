@@ -251,34 +251,51 @@ function createHarness() {
       delete headers["idempotency-key"]
     }
 
+    const parentResolve = (keyToResolve: unknown) => {
+      if (keyToResolve === GUEST_CART_CAPABILITY_MODULE) return guestCapability
+      if (keyToResolve === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
+      if (keyToResolve === STORE_IDEMPOTENCY_MODULE) return idempotency
+      if (keyToResolve === STORE_RESOURCE_VERSION_MODULE) return versionService
+      if (keyToResolve === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
+      if (keyToResolve === ContainerRegistrationKeys.PG_CONNECTION) return pg
+      if (keyToResolve === Modules.CART) {
+        return {
+          retrieveCart: async (id: string) =>
+            JSON.parse(JSON.stringify(carts.get(id))),
+          baseRepository_: {
+            transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
+              callback({
+                getTransactionContext: () => ({ raw: pg.raw }),
+              }),
+          },
+        }
+      }
+      throw new Error(`unrecognized scope key ${String(keyToResolve)}`)
+    }
+    const scope = {
+      createScope() {
+        const overrides = new Map<unknown, { resolve(): unknown }>()
+        const child = {
+          register(keyToRegister: unknown, override: { resolve(): unknown }) {
+            overrides.set(keyToRegister, override)
+            return child
+          },
+          resolve(keyToResolve: unknown) {
+            const override = overrides.get(keyToResolve)
+            return override ? override.resolve() : parentResolve(keyToResolve)
+          },
+        }
+        return child
+      },
+      resolve: parentResolve,
+    }
+
     return {
       method: "POST",
       params: { id: options.cartId ?? cart.id },
       body: options.body ?? { variant_id: "variant_guest_add_01", quantity },
       headers,
-      scope: {
-        resolve(key: unknown) {
-          if (key === GUEST_CART_CAPABILITY_MODULE) return guestCapability
-          if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
-          if (key === STORE_IDEMPOTENCY_MODULE) return idempotency
-          if (key === STORE_RESOURCE_VERSION_MODULE) return versionService
-          if (key === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
-          if (key === ContainerRegistrationKeys.PG_CONNECTION) return pg
-          if (key === Modules.CART) {
-            return {
-              retrieveCart: async (id: string) =>
-                JSON.parse(JSON.stringify(carts.get(id))),
-              baseRepository_: {
-                transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
-                  callback({
-                    getTransactionContext: () => ({ raw: pg.raw }),
-                  }),
-              },
-            }
-          }
-          throw new Error(`unrecognized scope key ${String(key)}`)
-        },
-      },
+      scope,
     }
   }
 
@@ -369,7 +386,7 @@ describe("Guest cart line-item add M1", () => {
     expect(harness.cart.items).toHaveLength(0)
   })
 
-  it("prioriza ownership sobre body inválido e não cria claim para cart de outro ator", async () => {
+  it("valida body inválido antes de ownership e não cria claim para cart de outro ator", async () => {
     const harness = createHarness()
     harness.setCartCustomer("cus_other")
 
@@ -378,13 +395,13 @@ describe("Guest cart line-item add M1", () => {
         harness.request("guest-add-wrong-owner-body", 1.5) as never,
         response() as never
       )
-    ).rejects.toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+    ).rejects.toMatchObject({ type: MedusaError.Types.INVALID_DATA })
 
     expect(harness.claimCount).toBe(0)
     expect(harness.mutationCount).toBe(0)
   })
 
-  it("prioriza ownership sobre Idempotency-Key ausente", async () => {
+  it("valida Idempotency-Key ausente antes de ownership", async () => {
     const harness = createHarness()
     harness.setCartCustomer("cus_other")
 
@@ -395,7 +412,7 @@ describe("Guest cart line-item add M1", () => {
         }) as never,
         response() as never
       )
-    ).rejects.toMatchObject({ type: MedusaError.Types.NOT_FOUND })
+    ).rejects.toMatchObject({ type: MedusaError.Types.INVALID_DATA })
 
     expect(harness.claimCount).toBe(0)
     expect(harness.mutationCount).toBe(0)

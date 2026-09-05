@@ -3,17 +3,24 @@ import {
   deleteLineItemsWorkflow,
   updateLineItemInCartWorkflow,
 } from "@medusajs/core-flows"
+import { asValue } from "@medusajs/framework/awilix"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import {
   ContainerRegistrationKeys,
   MedusaError,
+  MedusaContext,
   Modules,
-  remoteQueryObjectFromString,
 } from "@medusajs/framework/utils"
 import {
   applyStructuralCartInvalidation,
 } from "../../../modules/checkout/shipping-invalidation"
-import { lockCartOrderAuthority } from "../../../modules/payment-attempt/transactional-authority"
+import {
+  lockCartOrderAuthority,
+  type PaymentAttemptSqlTransaction,
+} from "../../../modules/payment-attempt/transactional-authority"
+import {
+  assertNoUnresolvedFinancialFreezeInTransaction,
+} from "../../../modules/payment-attempt/financial-authority"
 import {
   assertNoPaymentOrOrderFields,
   resolveM1CartActor,
@@ -46,6 +53,7 @@ import {
   type StoreResourceVersionModuleService,
   type StoreResourceVersionMutationContext,
 } from "../../../modules/store-resource-version"
+import { assertNoPendingCartReview } from "../../../modules/cart-merge/review-guard"
 import {
   cartResourceScope,
   customerActorScope,
@@ -64,8 +72,11 @@ import {
   type AddCartLineItemBody,
   type UpdateCartLineItemBody,
 } from "./line-items/validators"
-import { storeCartPreOrderFields } from "./query-config"
 import type { StoreCartPreOrderRecord } from "./serializers"
+import type {
+  KnexLike,
+  TransactionalManagerLike,
+} from "../../../infrastructure/store-foundation-transaction-compatibility"
 
 export type LineItemMutationKind = "add" | "update" | "delete" | "clear"
 
@@ -73,14 +84,7 @@ type RequestWithCustomerAuth = MedusaRequest & {
   customerAuth?: CustomerAuthAccessContext
 }
 
-type TransactionManager = {
-  getTransactionContext?: () => {
-    raw(
-      sql: string,
-      bindings?: unknown[]
-    ): Promise<{ rows?: Array<Record<string, unknown>> }>
-  } | null
-}
+type TransactionManager = TransactionalManagerLike
 
 type CartModuleForTransactionalMutation = {
   baseRepository_?: {
@@ -100,6 +104,19 @@ type CartMutationRequest = MedusaRequest & {
     line_id?: string
   }
 }
+
+type LineItemMutationExecution =
+  | {
+      type: "completed"
+      snapshot: CartMutationSnapshot
+    }
+  | {
+      type: "failed"
+      error: unknown
+    }
+  | {
+      type: "not_found"
+    }
 
 function notFound(): never {
   throw new MedusaError(MedusaError.Types.NOT_FOUND, "Not Found")
@@ -182,24 +199,6 @@ function throwActorError(actor: M1CartActorDecision): void {
   }
 }
 
-async function refetchCart(
-  req: MedusaRequest,
-  cartId: string
-): Promise<StoreCartPreOrderRecord> {
-  const remoteQuery = req.scope.resolve(ContainerRegistrationKeys.REMOTE_QUERY)
-  const queryObject = remoteQueryObjectFromString({
-    entryPoint: "cart",
-    variables: { filters: { id: cartId } },
-    fields: [...storeCartPreOrderFields],
-  })
-  const [cart] = (await remoteQuery(queryObject)) as StoreCartPreOrderRecord[]
-  if (!cart || !isActiveCart(cart)) {
-    notFound()
-  }
-  assertNoPaymentOrOrderFields(cart)
-  return cart
-}
-
 function assertActorOwnsCart(
   actor: Extract<M1CartActorDecision, { actorType: "guest" | "customer" }>,
   cart: StoreCartPreOrderRecord
@@ -220,6 +219,28 @@ function assertActorOwnsCart(
 
   if (cart.customer?.id !== actor.customerId) {
     notFound()
+  }
+}
+
+function projectCartCustomer(
+  cart: StoreCartPreOrderRecord
+): StoreCartPreOrderRecord {
+  const customerId =
+    typeof cart.customer_id === "string" && cart.customer_id.length > 0
+      ? cart.customer_id
+      : undefined
+
+  if (cart.customer?.id && customerId && cart.customer.id !== customerId) {
+    notFound()
+  }
+
+  if (cart.customer?.id || !customerId) {
+    return cart
+  }
+
+  return {
+    ...cart,
+    customer: { id: customerId },
   }
 }
 
@@ -277,21 +298,15 @@ function currentActorScope(
     : customerActorScope({ customerId: actor.customerId })
 }
 
-function currentVersionContext(trx: {
-  raw(
-    sql: string,
-    bindings?: unknown[]
-  ): Promise<{ rows?: Array<Record<string, unknown>> }>
-}): StoreResourceVersionMutationContext {
-  const transactionManager = {
-    getTransactionContext: () => trx as never,
-  }
-
+function currentVersionContext(
+  transactionManager: TransactionManager
+): StoreResourceVersionMutationContext {
   return {
     __type: "MedusaContext",
-    // Medusa's resource-version service verifies that both context aliases
-    // identify the exact same transaction manager. Keeping two wrapper
-    // objects here would silently turn this into a cross-manager operation.
+    // Keep the exact MikroORM manager supplied by the repository callback in
+    // both aliases. The native Cart repository needs its manager methods
+    // (including getDriver), while SQL modules obtain the Knex transaction via
+    // manager.getTransactionContext().
     transactionManager,
     manager: transactionManager,
   }
@@ -301,32 +316,30 @@ function createTransactionalCartModule(
   cartModule: CartModuleForTransactionalMutation,
   sharedContext: StoreResourceVersionMutationContext
 ): CartModuleForTransactionalMutation {
-  const contextAwareMethods = new Set([
-    "addLineItems",
-    "updateLineItems",
-    "softDeleteLineItems",
-    "restoreLineItems",
-    "deleteLineItems",
-    "listLineItems",
-    "retrieveCart",
-    "listCarts",
-    "retrieveLineItem",
-  ])
+  const facade = Object.create(null) as object
+  return new Proxy(facade, {
+    get(_target, property) {
+      if (property === "constructor") {
+        return Object
+      }
 
-  return new Proxy(cartModule, {
-    get(target, property, receiver) {
-      const value = Reflect.get(target, property, receiver)
-      if (
-        typeof property !== "string" ||
-        !contextAwareMethods.has(property) ||
-        typeof value !== "function"
-      ) {
+      const value = Reflect.get(cartModule as object, property)
+      if (typeof property !== "string" || typeof value !== "function") {
         return value
       }
 
-      return (...args: unknown[]) => value.apply(target, [...args, sharedContext])
+      return (...args: unknown[]) => {
+        const contextIndex = MedusaContext.getIndex(cartModule, property)
+        if (!Number.isInteger(contextIndex)) {
+          return value.apply(cartModule, args)
+        }
+
+        const contextArgs = [...args]
+        contextArgs[contextIndex as number] = sharedContext
+        return value.apply(cartModule, contextArgs)
+      }
     },
-  })
+  }) as CartModuleForTransactionalMutation
 }
 
 function createTransactionalWorkflowScope(
@@ -338,15 +351,10 @@ function createTransactionalWorkflowScope(
     cartModule,
     sharedContext
   )
+  const transactionalScope = req.scope.createScope()
+  transactionalScope.register(Modules.CART, asValue(transactionalCartModule))
 
-  return {
-    resolve(key: unknown) {
-      if (key === Modules.CART) {
-        return transactionalCartModule
-      }
-      return req.scope.resolve(key as never)
-    },
-  }
+  return transactionalScope
 }
 
 const transactionalCartSnapshotConfig = {
@@ -362,6 +370,7 @@ const transactionalCartSnapshotConfig = {
     "tax_total",
     "discount_total",
     "region_id",
+    "customer_id",
     "created_at",
     "updated_at",
     "completed_at",
@@ -377,12 +386,11 @@ const transactionalCartSnapshotConfig = {
   ],
 }
 
-async function retrieveCartSnapshotInTransaction(
+async function retrieveCartInTransaction(
   cartModule: CartModuleForTransactionalMutation,
   cartId: string,
-  version: number,
   sharedContext: StoreResourceVersionMutationContext
-): Promise<CartMutationSnapshot> {
+): Promise<StoreCartPreOrderRecord> {
   const transactionalCartModule = createTransactionalCartModule(
     cartModule,
     sharedContext
@@ -390,7 +398,7 @@ async function retrieveCartSnapshotInTransaction(
   const retrieveCart = transactionalCartModule.retrieveCart
 
   if (typeof retrieveCart !== "function") {
-    throw new Error("CART_TRANSACTIONAL_SNAPSHOT_UNAVAILABLE")
+    throw new Error("CART_TRANSACTIONAL_RETRIEVE_UNAVAILABLE")
   }
 
   const cart = (await (retrieveCart as Function).call(
@@ -398,23 +406,49 @@ async function retrieveCartSnapshotInTransaction(
     cartId,
     transactionalCartSnapshotConfig
   )) as StoreCartPreOrderRecord
+  const projectedCart = cart ? projectCartCustomer(cart) : cart
 
-  if (!cart || !isActiveCart(cart)) {
+  if (!projectedCart || !isActiveCart(projectedCart)) {
     notFound()
   }
-  assertNoPaymentOrOrderFields(cart)
+  assertNoPaymentOrOrderFields(projectedCart)
+  return projectedCart
+}
 
+async function retrieveCartSnapshotInTransaction(
+  cartModule: CartModuleForTransactionalMutation,
+  cartId: string,
+  version: number,
+  sharedContext: StoreResourceVersionMutationContext
+): Promise<CartMutationSnapshot> {
+  const cart = await retrieveCartInTransaction(cartModule, cartId, sharedContext)
   return { cart, version }
 }
 
 async function readCartSnapshotWithVersion(
   req: CartMutationRequest,
-  cartId: string
+  cartId: string,
+  sharedContext?: StoreResourceVersionMutationContext
 ): Promise<CartMutationSnapshot> {
   const versionService = req.scope.resolve<StoreResourceVersionModuleService>(
     STORE_RESOURCE_VERSION_MODULE
   )
   const cartModule = req.scope.resolve(Modules.CART) as unknown as CartModuleForTransactionalMutation
+
+  if (sharedContext) {
+    const versionRow = await versionService.initialize(
+      "cart",
+      cartId,
+      sharedContext
+    )
+    return retrieveCartSnapshotInTransaction(
+      cartModule,
+      cartId,
+      versionRow.version,
+      sharedContext
+    )
+  }
+
   const transaction = cartModule.baseRepository_?.transaction
 
   if (typeof transaction !== "function") {
@@ -427,8 +461,11 @@ async function readCartSnapshotWithVersion(
       throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
     }
 
-    await lockCartOrderAuthority(transactionContext, cartId)
-    const context = currentVersionContext(transactionContext)
+    await lockCartOrderAuthority(
+      asPaymentAttemptSqlTransaction(transactionContext),
+      cartId
+    )
+    const context = currentVersionContext(transactionManager)
     const versionRow = await versionService.initialize("cart", cartId, context)
     return retrieveCartSnapshotInTransaction(
       cartModule,
@@ -446,7 +483,8 @@ async function markRetryable(
     state_version: number
     retry_attempt_count: number
   },
-  failureCode: string
+  failureCode: string,
+  sharedContext?: StoreResourceVersionMutationContext
 ): Promise<LifecycleClaimResult> {
   return service.markFailedRetryable({
     id: record.id,
@@ -457,6 +495,7 @@ async function markRetryable(
     retry_attempt_count: record.retry_attempt_count + 1,
     retry_started_at: new Date(),
     state_deadline_at: new Date(Date.now() + 5 * 60 * 1000),
+    sharedContext,
   })
 }
 
@@ -478,13 +517,15 @@ function throwIdempotencyOwnershipLost(): never {
 async function markTerminal(
   service: StoreIdempotencyModuleService,
   record: { id: string; state_version: number },
-  failureCode: string
+  failureCode: string,
+  sharedContext?: StoreResourceVersionMutationContext
 ): Promise<LifecycleClaimResult> {
   return service.markFailedTerminal({
     id: record.id,
     expectedState: "processing",
     expectedStateVersion: record.state_version,
     failure_code: failureCode,
+    sharedContext,
   })
 }
 
@@ -494,7 +535,8 @@ async function replayTerminalFailure(
     state: string
     failure_code: string | null
     result_id: string | null
-  }
+  },
+  sharedContext?: StoreResourceVersionMutationContext
 ): Promise<never> {
   if (record.failure_code !== "CART_VERSION_MISMATCH" || !record.result_id) {
     throw Object.assign(
@@ -506,8 +548,21 @@ async function replayTerminalFailure(
     )
   }
 
-  const snapshot = await readCartSnapshotWithVersion(req, record.result_id)
+  const snapshot = await readCartSnapshotWithVersion(
+    req,
+    record.result_id,
+    sharedContext
+  )
   throw new CartVersionMismatchError(snapshot.cart, snapshot.version)
+}
+
+function asPaymentAttemptSqlTransaction(
+  transactionContext: KnexLike
+): PaymentAttemptSqlTransaction {
+  return {
+    raw: async (sql, bindings) =>
+      await transactionContext.raw(sql, bindings),
+  }
 }
 
 async function runWorkflowWithinCas(
@@ -517,117 +572,95 @@ async function runWorkflowWithinCas(
   expectedVersion: number,
   body: AddCartLineItemBody | UpdateCartLineItemBody | undefined,
   lineItemIds: string[] | undefined,
-  actor: Extract<M1CartActorDecision, { actorType: "guest" | "customer" }>
+  actor: Extract<M1CartActorDecision, { actorType: "guest" | "customer" }>,
+  cartModule: CartModuleForTransactionalMutation,
+  versionService: StoreResourceVersionModuleService,
+  transactionContext: KnexLike,
+  context: StoreResourceVersionMutationContext
 ) {
-  const versionService = req.scope.resolve<StoreResourceVersionModuleService>(
-    STORE_RESOURCE_VERSION_MODULE
-  )
-  const cartModule = req.scope.resolve(Modules.CART) as unknown as CartModuleForTransactionalMutation
-  const transaction = cartModule.baseRepository_?.transaction
-
-  if (typeof transaction !== "function") {
-    throw new Error("CART_TRANSACTION_AUTHORITY_UNAVAILABLE")
-  }
-
-  return transaction.call(cartModule.baseRepository_, async (transactionManager) => {
-    const transactionContext = transactionManager.getTransactionContext?.()
-    if (!transactionContext) {
-      throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
+  // This is the final authority check. It re-locks and conditionally touches
+  // the capability in the same PostgreSQL transaction that will CAS the cart
+  // and run the native mutation.
+  if (actor.actorType === "guest") {
+    const presentedToken = readHeaderString(
+      req.headers[GUEST_CART_CAPABILITY_HEADER]
+    )
+    if (!presentedToken) {
+      throw new Error(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
     }
 
-    // Serialize the entire native Cart workflow, resource-version CAS and
-    // PaymentAttempt invalidation against webhook and Order authority.
-    await lockCartOrderAuthority(transactionContext, cartId)
-
-    const context = currentVersionContext(transactionContext)
-
-    if (actor.actorType === "guest") {
-      const presentedToken = readHeaderString(
-        req.headers[GUEST_CART_CAPABILITY_HEADER]
-      )
-      if (!presentedToken) {
-        throw new Error(GUEST_CART_CAPABILITY_LOOKUP_INVALID)
-      }
-
-      const guestCapabilityService = req.scope.resolve<GuestCartCapabilityModuleService>(
-        GUEST_CART_CAPABILITY_MODULE
-      )
-      // This is the final authority check. It re-locks and conditionally
-      // touches the capability in the same PostgreSQL transaction that will
-      // CAS the cart and run the native mutation.
-      await guestCapabilityService.authorizeGuestCartCapabilityForMutation(
-        presentedToken,
-        cartId,
-        { now: new Date() },
-        context
-      )
-    }
-
-    const workflowScope = createTransactionalWorkflowScope(
-      req,
-      cartModule,
+    const guestCapabilityService = req.scope.resolve<GuestCartCapabilityModuleService>(
+      GUEST_CART_CAPABILITY_MODULE
+    )
+    await guestCapabilityService.authorizeGuestCartCapabilityForMutation(
+      presentedToken,
+      cartId,
+      { now: new Date() },
       context
     )
-    const casResult = await versionService.compareAndSwapWithMutation({
-      resourceType: "cart",
-      resourceId: cartId,
-      expectedVersion,
-      sharedContext: context,
-      mutate: async (sharedContext) => {
-        if (kind === "add") {
-          return addToCartWorkflow(workflowScope as never).run({
-            input: {
-              cart_id: cartId,
-              items: [body as AddCartLineItemBody],
-            },
-            context: sharedContext,
-          })
-        }
+  }
 
-        if (kind === "delete" || kind === "clear") {
-          return deleteLineItemsWorkflow(workflowScope as never).run({
-            input: {
-              cart_id: cartId,
-              ids: lineItemIds ?? [],
-            },
-            context: sharedContext,
-          })
-        }
-
-        return updateLineItemInCartWorkflow(workflowScope as never).run({
+  const workflowScope = createTransactionalWorkflowScope(req, cartModule, context)
+  const casResult = await versionService.compareAndSwapWithMutation({
+    resourceType: "cart",
+    resourceId: cartId,
+    expectedVersion,
+    sharedContext: context,
+    mutate: async (sharedContext) => {
+      if (kind === "add") {
+        return addToCartWorkflow(workflowScope as never).run({
           input: {
             cart_id: cartId,
-            item_id: req.params.line_id as string,
-            update: body as UpdateCartLineItemBody,
+            items: [body as AddCartLineItemBody],
           },
           context: sharedContext,
         })
-      },
-    })
+      }
 
-    if (casResult.type === "updated") {
-      await applyStructuralCartInvalidation(cartId, new Date(), {
-        transaction: transactionContext,
+      if (kind === "delete" || kind === "clear") {
+        return deleteLineItemsWorkflow(workflowScope as never).run({
+          input: {
+            cart_id: cartId,
+            ids: lineItemIds ?? [],
+          },
+          context: sharedContext,
+        })
+      }
+
+      return updateLineItemInCartWorkflow(workflowScope as never).run({
+        input: {
+          cart_id: cartId,
+          item_id: req.params.line_id as string,
+          update: body as UpdateCartLineItemBody,
+        },
+        context: sharedContext,
       })
-    }
-
-    const snapshot = await retrieveCartSnapshotInTransaction(
-      cartModule,
-      cartId,
-      casResult.type === "updated" ? casResult.version : casResult.actualVersion,
-      context
-    )
-
-    return { casResult, snapshot }
+    },
   })
+
+  if (casResult.type === "updated") {
+    await applyStructuralCartInvalidation(cartId, new Date(), {
+      transaction: asPaymentAttemptSqlTransaction(transactionContext),
+    })
+  }
+
+  const snapshot = await retrieveCartSnapshotInTransaction(
+    cartModule,
+    cartId,
+    casResult.type === "updated" ? casResult.version : casResult.actualVersion,
+    context
+  )
+
+  return { casResult, snapshot }
 }
 
 /**
  * Shared M1 mutation pipeline. The ordering is contractual:
- * actor -> cart ownership -> input validation -> Idempotency-Key claim ->
- * replay short-circuit -> If-Match ->
- * PostgreSQL CAS wrapping the native Medusa workflow -> CART-09 invalidation ->
- * terminalize claim -> canonical refetch/DTO/current ETag.
+ * actor/input validation -> Cart/order lock -> authoritative cart reread and
+ * ownership revalidation -> review guard -> Idempotency-Key claim -> replay
+ * short-circuit -> If-Match -> final capability authority -> PostgreSQL CAS
+ * wrapping the native Medusa workflow -> CART-09 invalidation -> terminalize
+ * claim -> canonical snapshot/current ETag.
  */
 export async function executeLineItemMutation(
   req: CartMutationRequest,
@@ -655,9 +688,6 @@ export async function executeLineItemMutation(
       notFound()
     }
   }
-  const cart = await refetchCart(req, cartId)
-  assertActorOwnsCart(actorWithOwnership, cart)
-
   const lineId =
     kind === "update" || kind === "delete" ? requireLineId(req) : undefined
   const body = parseMutationBody(kind, req.body)
@@ -667,233 +697,306 @@ export async function executeLineItemMutation(
   const idempotencyService = req.scope.resolve<StoreIdempotencyModuleService>(
     STORE_IDEMPOTENCY_MODULE
   )
-  const claimResult = await idempotencyService.claim({
-    operation,
-    actorScope: currentActorScope(actorWithOwnership),
-    resourceScope: cartResourceScope({ cartId, operation }),
-    rawIdempotencyKey,
-    canonicalSemanticObject: {
-      operation,
-      cart_id: cartId,
-      ...(lineId ? { line_id: lineId } : {}),
-      ...(body ?? {}),
-    },
-  })
 
-  if (claimResult.type === "conflict") {
-    throw Object.assign(
-      new MedusaError(MedusaError.Types.CONFLICT, "Idempotency key reuse conflict"),
-      { code: "IDEMPOTENCY_KEY_REUSE_CONFLICT", statusCode: 409, status: 409 }
-    )
+  const cartModule = req.scope.resolve(Modules.CART) as unknown as CartModuleForTransactionalMutation
+  const transaction = cartModule.baseRepository_?.transaction
+  if (typeof transaction !== "function") {
+    throw new Error("CART_TRANSACTION_AUTHORITY_UNAVAILABLE")
   }
 
-  if (claimResult.type === "in_progress") {
-    throw Object.assign(
-      new MedusaError(
-        MedusaError.Types.CONFLICT,
-        "Operation currently in progress for this idempotency key"
-      ),
-      { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
-    )
-  }
+  const versionService = req.scope.resolve<StoreResourceVersionModuleService>(
+    STORE_RESOURCE_VERSION_MODULE
+  )
 
-  if (claimResult.type === "replay") {
-    if (claimResult.record.state === "completed" && claimResult.record.result_id) {
-      const snapshot = await readCartSnapshotWithVersion(
-        req,
-        claimResult.record.result_id
+  const execution = await transaction.call(
+    cartModule.baseRepository_,
+    async (transactionManager): Promise<LineItemMutationExecution> => {
+      const transactionContext = transactionManager.getTransactionContext?.()
+      if (!transactionContext) {
+        throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
+      }
+
+      const sharedContext = currentVersionContext(transactionManager)
+
+      // The Cart/order lock is the authority boundary for the entire mutation.
+      // Re-read ownership under that lock without initializing/bumping the
+      // resource version, so a pending review still produces zero writes.
+      await lockCartOrderAuthority(
+        asPaymentAttemptSqlTransaction(transactionContext),
+        cartId
       )
-      res.setHeader("ETag", formatCartEtag(snapshot.version))
-      res.status(200).json({ cart: snapshot.cart })
-      return
-    }
-    await replayTerminalFailure(req, claimResult.record)
-  }
-
-  let expectedVersion: number
-  try {
-    expectedVersion = requireIfMatch(req)
-  } catch (error) {
-    const terminal = await markTerminal(
-      idempotencyService,
-      claimResult.record,
-      "VALIDATION_ERROR"
-    )
-    if (terminal.type !== "claimed") {
-      throwIdempotencyOwnershipLost()
-    }
-    throw error
-  }
-
-  let lineItemIds: string[] | undefined
-  if (kind === "delete") {
-    lineItemIds = [lineId as string]
-  } else if (kind === "clear") {
-    const currentCart = await refetchCart(req, cartId)
-    assertActorOwnsCart(actorWithOwnership, currentCart)
-    const items = currentCart.items ?? []
-    lineItemIds = items.map((item) => item.id).filter((id): id is string => Boolean(id))
-
-    if (lineItemIds.length !== items.length) {
-      throw new MedusaError(
-        MedusaError.Types.UNEXPECTED_STATE,
-        "Cart line-item identity is unavailable"
+      await assertNoUnresolvedFinancialFreezeInTransaction(
+        asPaymentAttemptSqlTransaction(transactionContext),
+        cartId
       )
-    }
+      const lockedCart = await retrieveCartInTransaction(
+        cartModule,
+        cartId,
+        sharedContext
+      )
+      assertActorOwnsCart(actorWithOwnership, lockedCart)
+      await assertNoPendingCartReview(cartId, sharedContext)
 
-    if (lineItemIds.length === 0) {
-      const currentSnapshot = await readCartSnapshotWithVersion(req, cartId)
-      if (currentSnapshot.version !== expectedVersion) {
+      const claimResult = await idempotencyService.claim({
+        operation,
+        actorScope: currentActorScope(actorWithOwnership),
+        resourceScope: cartResourceScope({ cartId, operation }),
+        rawIdempotencyKey,
+        canonicalSemanticObject: {
+          operation,
+          cart_id: cartId,
+          ...(lineId ? { line_id: lineId } : {}),
+          ...(body ?? {}),
+        },
+        sharedContext,
+      })
+
+      if (claimResult.type === "conflict") {
+        return {
+          type: "failed",
+          error: Object.assign(
+            new MedusaError(
+              MedusaError.Types.CONFLICT,
+              "Idempotency key reuse conflict"
+            ),
+            {
+              code: "IDEMPOTENCY_KEY_REUSE_CONFLICT",
+              statusCode: 409,
+              status: 409,
+            }
+          ),
+        }
+      }
+
+      if (claimResult.type === "in_progress") {
+        return {
+          type: "failed",
+          error: Object.assign(
+            new MedusaError(
+              MedusaError.Types.CONFLICT,
+              "Operation currently in progress for this idempotency key"
+            ),
+            {
+              code: "IDEMPOTENCY_KEY_IN_PROGRESS",
+              statusCode: 409,
+              status: 409,
+              retryable: true,
+            }
+          ),
+        }
+      }
+
+      if (claimResult.type === "replay") {
+        if (claimResult.record.state === "completed" && claimResult.record.result_id) {
+          const snapshot = await readCartSnapshotWithVersion(
+            req,
+            claimResult.record.result_id,
+            sharedContext
+          )
+          return { type: "completed", snapshot }
+        }
+
+        await replayTerminalFailure(req, claimResult.record, sharedContext)
+      }
+
+      const terminalize = async (
+        error: unknown,
+        failureCode: string,
+        record = claimResult.record
+      ): Promise<LineItemMutationExecution> => {
+        const terminal = await markTerminal(
+          idempotencyService,
+          record,
+          failureCode,
+          sharedContext
+        )
+        if (terminal.type !== "claimed") {
+          throwIdempotencyOwnershipLost()
+        }
+        return { type: "failed", error }
+      }
+
+      let expectedVersion: number
+      try {
+        expectedVersion = requireIfMatch(req)
+      } catch (error) {
+        return terminalize(error, "VALIDATION_ERROR")
+      }
+
+      let lineItemIds: string[] | undefined
+      if (kind === "delete") {
+        lineItemIds = [lineId as string]
+      } else if (kind === "clear") {
+        const items = lockedCart.items ?? []
+        lineItemIds = items
+          .map((item) => item.id)
+          .filter((id): id is string => Boolean(id))
+
+        if (lineItemIds.length !== items.length) {
+          return terminalize(
+            new MedusaError(
+              MedusaError.Types.UNEXPECTED_STATE,
+              "Cart line-item identity is unavailable"
+            ),
+            "VALIDATION_ERROR"
+          )
+        }
+
+        if (lineItemIds.length === 0) {
+          const versionRow = await versionService.initialize(
+            "cart",
+            cartId,
+            sharedContext
+          )
+          const currentSnapshot = {
+            cart: lockedCart,
+            version: versionRow.version,
+          }
+
+          if (currentSnapshot.version !== expectedVersion) {
+            const partialResult = await idempotencyService.recordProcessingResult({
+              id: claimResult.record.id,
+              expectedStateVersion: claimResult.record.state_version,
+              result_type: "cart",
+              result_id: cartId,
+              sharedContext,
+            })
+            if (partialResult.type !== "claimed") {
+              throwIdempotencyOwnershipLost()
+            }
+            return terminalize(
+              new CartVersionMismatchError(
+                currentSnapshot.cart,
+                currentSnapshot.version
+              ),
+              "CART_VERSION_MISMATCH",
+              partialResult.record
+            )
+          }
+
+          const completion = await idempotencyService.markCompleted({
+            id: claimResult.record.id,
+            expectedState: "processing",
+            expectedStateVersion: claimResult.record.state_version,
+            result_type: "cart",
+            result_id: cartId,
+            response_status: 200,
+            result_safe_metadata: {
+              operation,
+              result_type: "cart",
+              result_id: cartId,
+              response_status: 200,
+            },
+            sharedContext,
+          })
+          if (completion.type !== "claimed") {
+            throwIdempotencyOwnershipLost()
+          }
+          return { type: "completed", snapshot: currentSnapshot }
+        }
+      }
+
+      let mutationExecution: Awaited<ReturnType<typeof runWorkflowWithinCas>>
+      try {
+        mutationExecution = await runWorkflowWithinCas(
+          req,
+          kind,
+          cartId,
+          expectedVersion,
+          body,
+          lineItemIds,
+          actorWithOwnership,
+          cartModule,
+          versionService,
+          transactionContext,
+          sharedContext
+        )
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === GUEST_CART_CAPABILITY_LOOKUP_INVALID
+        ) {
+          return terminalize(
+            new MedusaError(MedusaError.Types.NOT_FOUND, "Not Found"),
+            "VALIDATION_ERROR"
+          )
+        }
+
+        const retryable = await markRetryable(
+          idempotencyService,
+          claimResult.record,
+          "CART_MUTATION_FAILED",
+          sharedContext
+        )
+        if (retryable.type !== "claimed") {
+          throwIdempotencyOwnershipLost()
+        }
+        return { type: "failed", error }
+      }
+
+      if (mutationExecution.casResult.type === "stale") {
         const partialResult = await idempotencyService.recordProcessingResult({
           id: claimResult.record.id,
           expectedStateVersion: claimResult.record.state_version,
           result_type: "cart",
           result_id: cartId,
+          sharedContext,
         })
         if (partialResult.type !== "claimed") {
           throwIdempotencyOwnershipLost()
         }
-        const terminal = await markTerminal(
-          idempotencyService,
-          partialResult.record,
-          "CART_VERSION_MISMATCH"
-        )
-        if (terminal.type !== "claimed") {
-          throwIdempotencyOwnershipLost()
-        }
-        throw new CartVersionMismatchError(
-          currentSnapshot.cart,
-          currentSnapshot.version
+
+        return terminalize(
+          new CartVersionMismatchError(
+            mutationExecution.snapshot.cart,
+            mutationExecution.snapshot.version
+          ),
+          "CART_VERSION_MISMATCH",
+          partialResult.record
         )
       }
 
-      const completion = await idempotencyService.markCompleted({
-        id: claimResult.record.id,
-        expectedState: "processing",
-        expectedStateVersion: claimResult.record.state_version,
-        result_type: "cart",
-        result_id: cartId,
-        response_status: 200,
-        result_safe_metadata: {
-          operation,
+      try {
+        const completion = await idempotencyService.markCompleted({
+          id: claimResult.record.id,
+          expectedState: "processing",
+          expectedStateVersion: claimResult.record.state_version,
           result_type: "cart",
           result_id: cartId,
           response_status: 200,
-        },
-      })
-      if (completion.type !== "claimed") {
-        throwIdempotencyOwnershipLost()
+          result_safe_metadata: {
+            operation,
+            result_type: "cart",
+            result_id: cartId,
+            response_status: 200,
+          },
+          sharedContext,
+        })
+        if (completion.type !== "claimed") {
+          throwIdempotencyOwnershipLost()
+        }
+      } catch (error) {
+        const reconciliation = await idempotencyService.markReconciliationRequired({
+          id: claimResult.record.id,
+          expectedState: "processing",
+          expectedStateVersion: claimResult.record.state_version,
+          result_type: "cart",
+          result_id: cartId,
+          failure_code: "MARK_COMPLETED_FAILED",
+          sharedContext,
+        })
+        if (reconciliation.type !== "claimed") {
+          throwIdempotencyOwnershipLost()
+        }
+        return { type: "failed", error }
       }
 
-      res.setHeader("ETag", formatCartEtag(currentSnapshot.version))
-      res.status(200).json({ cart: currentSnapshot.cart })
-      return
+      return { type: "completed", snapshot: mutationExecution.snapshot }
     }
-  }
+  )
 
-  let execution
-  try {
-    execution = await runWorkflowWithinCas(
-      req,
-      kind,
-      cartId,
-      expectedVersion,
-      body,
-      lineItemIds,
-      actorWithOwnership
-    )
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === GUEST_CART_CAPABILITY_LOOKUP_INVALID
-    ) {
-      const terminal = await markTerminal(
-        idempotencyService,
-        claimResult.record,
-        "VALIDATION_ERROR"
-      )
-      if (terminal.type !== "claimed") {
-        throwIdempotencyOwnershipLost()
-      }
-      notFound()
-    }
-
-    const retryable = await markRetryable(
-      idempotencyService,
-      claimResult.record,
-      "CART_MUTATION_FAILED"
-    )
-    if (retryable.type !== "claimed") {
-      throwIdempotencyOwnershipLost()
-    }
-    throw error
-  }
-
-  if (execution.casResult.type === "stale") {
-    const partialResult = await idempotencyService.recordProcessingResult({
-      id: claimResult.record.id,
-      expectedStateVersion: claimResult.record.state_version,
-      result_type: "cart",
-      result_id: cartId,
-    })
-
-    if (partialResult.type !== "claimed") {
-      throw Object.assign(
-        new MedusaError(
-          MedusaError.Types.CONFLICT,
-          "Operation currently in progress or ownership lost for this idempotency key"
-        ),
-        { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
-      )
-    }
-
-    const terminal = await markTerminal(
-      idempotencyService,
-      partialResult.record,
-      "CART_VERSION_MISMATCH"
-    )
-    if (terminal.type !== "claimed") {
-      throwIdempotencyOwnershipLost()
-    }
-    throw new CartVersionMismatchError(
-      execution.snapshot.cart,
-      execution.snapshot.version
-    )
-  }
-
-  let completion: LifecycleClaimResult
-  try {
-    completion = await idempotencyService.markCompleted({
-      id: claimResult.record.id,
-      expectedState: "processing",
-      expectedStateVersion: claimResult.record.state_version,
-      result_type: "cart",
-      result_id: cartId,
-      response_status: 200,
-      result_safe_metadata: {
-        operation,
-        result_type: "cart",
-        result_id: cartId,
-        response_status: 200,
-      },
-    })
-  } catch (error) {
-    const reconciliation = await idempotencyService.markReconciliationRequired({
-      id: claimResult.record.id,
-      expectedState: "processing",
-      expectedStateVersion: claimResult.record.state_version,
-      result_type: "cart",
-      result_id: cartId,
-      failure_code: "MARK_COMPLETED_FAILED",
-    })
-    if (reconciliation.type !== "claimed") {
-      throwIdempotencyOwnershipLost()
-    }
-    throw error
-  }
-
-  if (completion.type !== "claimed") {
-    throwIdempotencyOwnershipLost()
+  if (execution.type === "failed") {
+    throw execution.error
   }
 
   res.setHeader("ETag", formatCartEtag(execution.snapshot.version))

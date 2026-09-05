@@ -6,11 +6,16 @@ import {
   markPixFailed,
   startPixPaymentAttempt,
   type PixPaymentAttemptResponse,
+  type PreparePixPaymentAttemptResult,
   type StripePixInitiationLayer,
 } from "../pix"
 import PaymentAttemptModuleService from "../service"
 import type { PaymentAttemptRecord } from "../types"
 import { buildCompleteGuestCart } from "./fixtures/payment-start-cart"
+import { buildCompleteStripePaymentIntentCreateAuthorityV1 } from "../provider-request-authority"
+import { buildStripeCanonicalPaymentIntentCreateRequest } from "../provider-request-authority"
+import type { DurablePreProviderAuthority } from "../pre-provider-arbitration"
+import { PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE } from "../provider-request-authority"
 
 function mockRawStripePixPaymentIntent(
   overrides: Record<string, unknown> = {}
@@ -24,7 +29,6 @@ function mockRawStripePixPaymentIntent(
     client_secret: "pi_pix_init_mock_secret_synthetic",
     metadata: {
       cart_id: "cart_guest_01",
-      session_id: "payses_pix_init_mock",
     },
     next_action: {
       type: "pix_display_qr_code",
@@ -44,7 +48,16 @@ function createStripePixLayer(
   rawIntent: Record<string, unknown> = mockRawStripePixPaymentIntent()
 ): StripePixInitiationLayer {
   return {
-    createPixPaymentIntent: jest.fn(async () => rawIntent),
+    createPixPaymentIntent: jest.fn(async (request) => ({
+      ...rawIntent,
+      metadata: {
+        ...((rawIntent.metadata as Record<string, unknown> | undefined) ?? {}),
+        ...(request.payment_session_id
+          ? { session_id: request.payment_session_id }
+          : {}),
+        payment_attempt_id: request.payment_attempt_id,
+      },
+    })),
   }
 }
 
@@ -62,7 +75,7 @@ function createSyntheticStripePixLayer(): StripePixInitiationLayer {
         client_secret: `pi_pix_synthetic_${suffix}_secret_synthetic`,
         metadata: {
           cart_id: request.cart_id,
-          session_id: `payses_pix_synthetic_${suffix}`,
+          payment_attempt_id: request.payment_attempt_id,
         },
         next_action: {
           type: "pix_display_qr_code",
@@ -106,6 +119,52 @@ function existingActivePixAttempt(
     created_at: "2026-06-29T10:00:00.000Z",
     updated_at: "2026-06-29T10:00:00.000Z",
     ...overrides,
+  }
+}
+
+function createCommitAndRereadPixAuthorityStub(
+  trace: string[] = [],
+  cartResourceVersion = 1
+) {
+  return async (
+    prepared: PreparePixPaymentAttemptResult
+  ): Promise<DurablePreProviderAuthority> => {
+    trace.push("authority_tx_commit")
+    const v1 = buildCompleteStripePaymentIntentCreateAuthorityV1({
+      payment_method_type: "pix",
+      amount_minor: prepared.attempt.amount,
+      cart_id: prepared.attempt.cart_id,
+      cart_resource_version: cartResourceVersion,
+      payment_attempt_id: prepared.attempt.id,
+      payment_collection_id: prepared.attempt.payment_collection_id,
+      payment_session_id: prepared.attempt.payment_session_id,
+      idempotency_key: prepared.idempotencyKey,
+      authority_created_at: "2026-09-02T12:00:00.000Z",
+      replay_deadline: "2026-09-03T11:00:00.000Z",
+    })
+    const attempt: PaymentAttemptRecord = {
+      ...prepared.attempt,
+      financial_freeze_started_at: "2026-09-02T12:00:00.000Z",
+      provider_canceled_confirmed_at: null,
+      metadata: {
+        ...(prepared.attempt.metadata ?? {}),
+        cart_resource_version: cartResourceVersion,
+        provider_idempotency_key: prepared.idempotencyKey,
+        stripe_payment_intent_create: v1,
+      },
+    }
+    trace.push("durable_reread")
+    return {
+      attempt,
+      cart_resource_version: cartResourceVersion,
+      amount_minor: attempt.amount,
+      currency_code: "brl",
+      payment_method_type: "pix",
+      provider_idempotency_key: prepared.idempotencyKey,
+      financial_freeze_started_at: "2026-09-02T12:00:00.000Z",
+      authority_created_at: v1.authority_created_at,
+      replay_deadline: v1.replay_deadline,
+    }
   }
 }
 
@@ -164,7 +223,8 @@ describe("04-05 startPixPaymentAttempt", () => {
       existingAttempts: [],
       stripeLayer,
       generateId: () => "payatt_pix_new_01",
-      generatePaymentCollectionId: () => "paycol_pix_new_01",
+      paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+      commitAndRereadAuthority: createCommitAndRereadPixAuthorityStub(),
       at: new Date("2026-06-29T12:00:00.000Z"),
     })
 
@@ -172,14 +232,205 @@ describe("04-05 startPixPaymentAttempt", () => {
     expect(result.response.amount).toBe(9900)
     expect(result.response.currency_code).toBe("BRL")
     expect(result.response.status).toBe("awaiting_pix_payment")
+    expect(result.attempt.payment_collection_id).toBe("paycol_pix_new_01")
+    expect(result.attempt.payment_session_id).toBeNull()
     expect(stripeLayer.createPixPaymentIntent).toHaveBeenCalledWith(
       expect.objectContaining({
         amount_minor: 9900,
         currency_code: "brl",
         cart_id: completeCart.id,
+        canonical_request: expect.objectContaining({
+          metadata: expect.not.objectContaining({
+            session_id: expect.anything(),
+          }),
+        }),
       })
     )
   })
+
+  it("persiste PaymentAttempt.amount 9000 a partir de cart.total 90 com credito extra e line item 100", async () => {
+    const cart = {
+      ...buildCompleteGuestCart({
+        id: "cart_guest_01",
+        total: 90,
+        shipping_total: 15,
+        discount_total: 10,
+        tax_total: 5,
+        items: [
+          {
+            ...buildCompleteGuestCart().items![0],
+            unit_price: 100,
+            quantity: 1,
+          },
+        ],
+      }),
+      credit_total: 20,
+    }
+    const stripeLayer = createStripePixLayer(
+      mockRawStripePixPaymentIntent({ amount: 9000 })
+    )
+
+    const result = await startPixPaymentAttempt({
+      cart,
+      actor: { actorType: "guest", actorId: "sess_guest_01" },
+      sessionActiveCartId: cart.id,
+      existingAttempts: [],
+      stripeLayer,
+      generateId: () => "payatt_pix_new_01",
+      paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+      commitAndRereadAuthority: createCommitAndRereadPixAuthorityStub(),
+      at: new Date("2026-06-29T12:00:00.000Z"),
+    })
+
+    expect(result.response.amount).toBe(9000)
+    expect(result.attempt.amount).toBe(9000)
+    expect(result.response.amount).not.toBe(10000)
+    expect(result.response.amount).not.toBe(11000)
+    expect(stripeLayer.createPixPaymentIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount_minor: 9000,
+        currency_code: "brl",
+        cart_id: cart.id,
+      })
+    )
+    expect(stripeLayer.createPixPaymentIntent).toHaveBeenCalledTimes(1)
+  })
+
+  it("persiste PaymentAttempt.amount 11000 a partir de cart.total 110 mesmo com line item 100", async () => {
+    const cart = buildCompleteGuestCart({
+      id: "cart_guest_01",
+      total: 110,
+      shipping_total: 15,
+      discount_total: 10,
+      tax_total: 5,
+      items: [
+        {
+          ...buildCompleteGuestCart().items![0],
+          unit_price: 100,
+          quantity: 1,
+        },
+      ],
+    })
+    const stripeLayer = createStripePixLayer(
+      mockRawStripePixPaymentIntent({ amount: 11000 })
+    )
+
+    const result = await startPixPaymentAttempt({
+      cart,
+      actor: { actorType: "guest", actorId: "sess_guest_01" },
+      sessionActiveCartId: cart.id,
+      existingAttempts: [],
+      stripeLayer,
+      generateId: () => "payatt_pix_new_01",
+      paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+      commitAndRereadAuthority: createCommitAndRereadPixAuthorityStub(),
+      at: new Date("2026-06-29T12:00:00.000Z"),
+    })
+
+    expect(result.response.amount).toBe(11000)
+    expect(result.attempt.amount).toBe(11000)
+    expect(result.response.amount).not.toBe(10000)
+    expect(stripeLayer.createPixPaymentIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount_minor: 11000,
+        currency_code: "brl",
+        cart_id: cart.id,
+      })
+    )
+    expect(stripeLayer.createPixPaymentIntent).toHaveBeenCalledTimes(1)
+  })
+
+  it("nao chama Stripe quando cart.total esta ausente mesmo com line items somaveis", async () => {
+    const stripeLayer = createStripePixLayer()
+    const cart = buildCompleteGuestCart({
+      id: "cart_guest_01",
+      total: undefined,
+      shipping_total: 15,
+      tax_total: 5,
+      discount_total: 10,
+      items: [
+        {
+          ...buildCompleteGuestCart().items![0],
+          unit_price: 50,
+          quantity: 2,
+        },
+      ],
+    })
+
+    await expect(
+      startPixPaymentAttempt({
+        cart,
+        actor: { actorType: "guest", actorId: "sess_guest_01" },
+        sessionActiveCartId: cart.id,
+        existingAttempts: [],
+        stripeLayer,
+        generateId: () => "payatt_pix_new_01",
+        paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+      })
+    ).rejects.toThrow(MedusaError)
+
+    expect(stripeLayer.createPixPaymentIntent).toHaveBeenCalledTimes(0)
+  })
+
+  it("nao chama Stripe quando cart.total ausente mesmo com credito extra reconstruivel", async () => {
+    const stripeLayer = createStripePixLayer()
+    const cart = {
+      ...buildCompleteGuestCart({
+        id: "cart_guest_01",
+        total: undefined,
+        shipping_total: 15,
+        tax_total: 5,
+        discount_total: 10,
+        items: [
+          {
+            ...buildCompleteGuestCart().items![0],
+            unit_price: 100,
+            quantity: 1,
+          },
+        ],
+      }),
+      credit_total: 20,
+    }
+
+    await expect(
+      startPixPaymentAttempt({
+        cart,
+        actor: { actorType: "guest", actorId: "sess_guest_01" },
+        sessionActiveCartId: cart.id,
+        existingAttempts: [],
+        stripeLayer,
+        generateId: () => "payatt_pix_new_01",
+        paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+      })
+    ).rejects.toThrow(MedusaError)
+
+    expect(stripeLayer.createPixPaymentIntent).toHaveBeenCalledTimes(0)
+  })
+
+  it.each([null, 0, -1, 99.999, NaN])(
+    "nao chama Stripe quando cart.total e invalido (%p)",
+    async (total) => {
+      const stripeLayer = createStripePixLayer()
+      const cart = buildCompleteGuestCart({
+        id: "cart_guest_01",
+        total: total as number | null,
+      })
+
+      await expect(
+        startPixPaymentAttempt({
+          cart,
+          actor: { actorType: "guest", actorId: "sess_guest_01" },
+          sessionActiveCartId: cart.id,
+          existingAttempts: [],
+          stripeLayer,
+          generateId: () => "payatt_pix_new_01",
+          paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+        })
+      ).rejects.toThrow(MedusaError)
+
+      expect(stripeLayer.createPixPaymentIntent).toHaveBeenCalledTimes(0)
+    }
+  )
 
   it("PaymentAttempt persiste expires_at e IDs seguros — sem QR/copia-e-cola integral", async () => {
     const stripeLayer = createStripePixLayer()
@@ -190,7 +441,8 @@ describe("04-05 startPixPaymentAttempt", () => {
       existingAttempts: [],
       stripeLayer,
       generateId: () => "payatt_pix_new_01",
-      generatePaymentCollectionId: () => "paycol_pix_new_01",
+      paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+      commitAndRereadAuthority: createCommitAndRereadPixAuthorityStub(),
     })
 
     expect(result.attempt.order_id).toBeNull()
@@ -216,7 +468,8 @@ describe("04-05 startPixPaymentAttempt", () => {
       existingAttempts: [],
       stripeLayer,
       generateId: () => "payatt_pix_new_01",
-      generatePaymentCollectionId: () => "paycol_pix_new_01",
+      paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+      commitAndRereadAuthority: createCommitAndRereadPixAuthorityStub(),
     })
 
     expect(result.paymentSessionData).not.toHaveProperty("client_secret")
@@ -241,7 +494,8 @@ describe("04-05 startPixPaymentAttempt", () => {
       existingAttempts: [existingActivePixAttempt()],
       stripeLayer,
       generateId: () => "payatt_pix_new_01",
-      generatePaymentCollectionId: () => "paycol_pix_new_01",
+      paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+      commitAndRereadAuthority: createCommitAndRereadPixAuthorityStub(),
     })
 
     expect(result.supersededAttempts).toHaveLength(1)
@@ -264,7 +518,7 @@ describe("04-05 startPixPaymentAttempt", () => {
         existingAttempts: [],
         stripeLayer: createStripePixLayer(),
         generateId: () => "payatt_pix_new_01",
-        generatePaymentCollectionId: () => "paycol_pix_new_01",
+        paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
       })
     ).rejects.toThrow(MedusaError)
   })
@@ -288,7 +542,8 @@ describe("04-05 startPixPaymentAttempt", () => {
         existingAttempts: [],
         stripeLayer,
         generateId: () => "payatt_pix_new_01",
-        generatePaymentCollectionId: () => "paycol_pix_new_01",
+        paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+        commitAndRereadAuthority: createCommitAndRereadPixAuthorityStub(),
       })
     } catch (error) {
       caught = error
@@ -315,9 +570,58 @@ describe("04-05 startPixPaymentAttempt", () => {
         existingAttempts: [],
         stripeLayer,
         generateId: () => "payatt_pix_new_01",
-        generatePaymentCollectionId: () => "paycol_pix_new_01",
+        paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+        commitAndRereadAuthority: createCommitAndRereadPixAuthorityStub(),
       })
     ).rejects.toThrow("Stripe retornou dados de pagamento divergentes do carrinho.")
+  })
+
+  it("nao chama Stripe sem freeze+v1 quando commitAndRereadAuthority esta ausente", async () => {
+    const stripeLayer = createStripePixLayer()
+
+    await expect(
+      startPixPaymentAttempt({
+        cart: completeCart,
+        actor: { actorType: "guest", actorId: "sess_guest_01" },
+        sessionActiveCartId: completeCart.id,
+        existingAttempts: [],
+        stripeLayer,
+        generateId: () => "payatt_pix_new_01",
+        paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+      })
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
+
+    expect(stripeLayer.createPixPaymentIntent).toHaveBeenCalledTimes(0)
+  })
+
+  it("nao chama Stripe quando a autoridade relida esta incompleta", async () => {
+    const stripeLayer = createStripePixLayer()
+
+    await expect(
+      startPixPaymentAttempt({
+        cart: completeCart,
+        actor: { actorType: "guest", actorId: "sess_guest_01" },
+        sessionActiveCartId: completeCart.id,
+        existingAttempts: [],
+        stripeLayer,
+        generateId: () => "payatt_pix_new_01",
+        paymentCollection: { payment_collection_id: "paycol_pix_new_01" },
+        commitAndRereadAuthority: async (prepared) =>
+          ({
+            attempt: prepared.attempt,
+            cart_resource_version: 1,
+            amount_minor: prepared.attempt.amount,
+            currency_code: "brl",
+            payment_method_type: "pix",
+            provider_idempotency_key: prepared.idempotencyKey,
+            financial_freeze_started_at: null as unknown as string,
+            authority_created_at: "2026-09-02T12:00:00.000Z",
+            replay_deadline: "2026-09-03T11:00:00.000Z",
+          }) as DurablePreProviderAuthority,
+      })
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
+
+    expect(stripeLayer.createPixPaymentIntent).toHaveBeenCalledTimes(0)
   })
 
   it("createSyntheticStripePixLayer retorna PI mock sem config Stripe", async () => {
@@ -327,6 +631,14 @@ describe("04-05 startPixPaymentAttempt", () => {
       currency_code: "brl",
       cart_id: "cart_synthetic",
       idempotency_key: "idem_pix_01",
+      payment_attempt_id: "payatt_synthetic",
+      canonical_request: buildStripeCanonicalPaymentIntentCreateRequest({
+        payment_method_type: "pix",
+        amount_minor: 5000,
+        cart_id: "cart_synthetic",
+        payment_attempt_id: "payatt_synthetic",
+        payment_session_id: null,
+      }),
     })
 
     expect(raw.id).toMatch(/^pi_pix_synthetic_/)

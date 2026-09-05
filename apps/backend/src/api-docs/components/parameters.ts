@@ -38,7 +38,7 @@ export function registerStoreRequestParameters(
     required: true,
     schema: { type: "string", minLength: 1 },
     description:
-      "Opaque server-issued resource version precondition. Cart enforcement and stale 412 behavior belong to Phase 15.",
+      "Opaque server-issued resource version precondition. Each cart operation defines the authoritative resource; stale values return 412 CART_VERSION_MISMATCH.",
   })
 
   registry.registerComponent(
@@ -46,6 +46,12 @@ export function registerStoreRequestParameters(
     "parameters",
     "XIndicioGuestCartToken",
     STORE_GUEST_CART_TOKEN_HEADER_PARAMETER
+  )
+  registry.registerComponent(
+    "store",
+    "parameters",
+    "XIndicioGuestCartMergeCapability",
+    STORE_GUEST_CART_MERGE_CAPABILITY_HEADER_PARAMETER
   )
 
   registry.registerComponent("store", "parameters", "XCorrelationId", {
@@ -81,6 +87,17 @@ export const STORE_GUEST_CART_TOKEN_HEADER_PARAMETER = {
 
 export const STORE_GUEST_CART_TOKEN_HEADER_REF = {
   $ref: "#/components/parameters/XIndicioGuestCartToken",
+} as const
+
+export const STORE_GUEST_CART_MERGE_CAPABILITY_HEADER_PARAMETER = {
+  ...STORE_GUEST_CART_TOKEN_HEADER_PARAMETER,
+  required: true,
+  description:
+    "Required guest cart capability for the authenticated cart merge operation. It is presented only on the same-origin BFF to Medusa, is never a browser credential, never appears in examples, and is not a security scheme. Swagger remains non-interactive.",
+} as const
+
+export const STORE_GUEST_CART_MERGE_CAPABILITY_HEADER_REF = {
+  $ref: "#/components/parameters/XIndicioGuestCartMergeCapability",
 } as const
 
 export const CORRELATION_ID_HEADER = {

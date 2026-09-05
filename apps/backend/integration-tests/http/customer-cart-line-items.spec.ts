@@ -13,6 +13,7 @@ import {
 } from "@medusajs/core-flows"
 import { ContainerRegistrationKeys, MedusaError, Modules } from "@medusajs/framework/utils"
 import { GUEST_CART_CAPABILITY_MODULE } from "../../src/modules/guest-cart-capability/types"
+import { CART_MERGE_MODULE } from "../../src/modules/cart-merge/module-id"
 import { PAYMENT_ATTEMPT_MODULE } from "../../src/modules/payment-attempt"
 import { STORE_IDEMPOTENCY_MODULE } from "../../src/modules/store-idempotency"
 import { STORE_RESOURCE_VERSION_MODULE } from "../../src/modules/store-resource-version"
@@ -70,6 +71,7 @@ function createHarness() {
   const cart = {
     id: "cart_customer_line_items_01",
     customer: { id: "cus_line_items_01", email: "customer@example.test" },
+    customer_id: "cus_line_items_01",
     items: [
       {
         id: "li_customer_line_items_01",
@@ -100,6 +102,15 @@ function createHarness() {
   let authorityQueryCount = 0
   const lineages = new Map<string, SyntheticLineageRow>()
   const credentials = new Map<string, SyntheticCredentialRow>()
+  const authorities = new Map<
+    string,
+    {
+      id: string
+      customer_id: string
+      cart_id: string
+      state: "active" | "superseded"
+    }
+  >()
 
   const idempotency = {
     async claim(input: any) {
@@ -182,11 +193,35 @@ function createHarness() {
   }
   const pg = {
     async transaction(callback: (trx: unknown) => Promise<unknown>) {
-      return callback({ raw: async () => ({ rows: [] }) })
+      return callback({ raw: (sql: string, bindings?: unknown[]) => pg.raw(sql, bindings) })
     },
     async raw(sql: string, bindings: unknown[] = []) {
       if (isDbUnavailable) {
         throw new Error("PG_CONNECTION_UNAVAILABLE")
+      }
+
+      if (sql.includes("pg_advisory_xact_lock")) {
+        return { rows: [] }
+      }
+
+      if (sql.includes("customer_cart_authority")) {
+        if (sql.trimStart().startsWith("insert into")) {
+          const [id, customerId, cartId] = bindings
+          authorities.set(String(customerId), {
+            id: String(id),
+            customer_id: String(customerId),
+            cart_id: String(cartId),
+            state: "active",
+          })
+          return { rows: [] }
+        }
+        const customerId = String(bindings[0])
+        const authority = authorities.get(customerId)
+        return {
+          rows: authority
+            ? [{ ...authority, state: "active" }]
+            : [],
+        }
       }
 
       if (!sql.includes("auth_session_lineage")) {
@@ -273,12 +308,69 @@ function createHarness() {
     async retrieveCart(id: string) {
       return carts.get(id) ?? null
     },
+    async listCarts(filters?: Record<string, unknown>) {
+      return Array.from(carts.values())
+        .filter((candidate) => {
+          const cartCustomerId =
+            candidate.customer_id ?? candidate.customer?.id
+          return (
+            (!filters?.customer_id ||
+              cartCustomerId === filters.customer_id) &&
+            !candidate.completed_at &&
+            candidate.deleted_at == null &&
+            candidate.metadata?.active_for_checkout !== false
+          )
+        })
+        .map((candidate) => ({
+          id: candidate.id,
+          customer_id: candidate.customer_id ?? candidate.customer?.id,
+          completed_at: candidate.completed_at ?? null,
+          deleted_at: candidate.deleted_at ?? null,
+          metadata: candidate.metadata ?? null,
+        }))
+    },
     async addLineItems() {},
     async updateLineItems() {},
     async softDeleteLineItems() {},
     async deleteLineItems() {},
     async listLineItems() {
       return []
+    },
+  }
+  const cartMergeAuthority = {
+    async listCustomerCartAuthoritiesForUpdate(customerId: string) {
+      const authority = authorities.get(customerId)
+      return authority && authority.state === "active"
+        ? [{ ...authority }]
+        : []
+    },
+    async createCustomerCartAuthority(input: {
+      customer_id: string
+      cart_id: string
+    }) {
+      const authority = {
+        id: `ccauth_${input.cart_id}`,
+        customer_id: input.customer_id,
+        cart_id: input.cart_id,
+        state: "active" as const,
+      }
+      authorities.set(input.customer_id, authority)
+      return { ...authority }
+    },
+    async supersedeCustomerCartAuthority(input: {
+      authority_id: string
+      customer_id: string
+      cart_id: string
+    }) {
+      const authority = authorities.get(input.customer_id)
+      if (
+        authority &&
+        authority.id === input.authority_id &&
+        authority.cart_id === input.cart_id
+      ) {
+        authority.state = "superseded"
+      }
+      return authority ? { ...authority } : undefined
     },
   }
   const addWorkflow = addToCartWorkflow as unknown as jest.Mock
@@ -432,18 +524,39 @@ function createHarness() {
       ...(!options.omitIdempotencyKey ? { "idempotency-key": key } : {}),
       "if-match": ifMatch,
     },
-    scope: {
-      resolve(key: unknown) {
-        if (key === GUEST_CART_CAPABILITY_MODULE) return guestCapability
-        if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
-        if (key === STORE_IDEMPOTENCY_MODULE) return idempotency
-        if (key === STORE_RESOURCE_VERSION_MODULE) return versionService
-        if (key === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
-        if (key === ContainerRegistrationKeys.PG_CONNECTION) return pg
-        if (key === Modules.CART) return cartModule
-        throw new Error(`unrecognized scope key ${String(key)}`)
-      },
-    },
+    scope: (() => {
+      const parentResolve = (keyToResolve: unknown) => {
+        if (keyToResolve === GUEST_CART_CAPABILITY_MODULE) return guestCapability
+        if (keyToResolve === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
+        if (keyToResolve === STORE_IDEMPOTENCY_MODULE) return idempotency
+        if (keyToResolve === STORE_RESOURCE_VERSION_MODULE) return versionService
+        if (keyToResolve === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
+        if (keyToResolve === ContainerRegistrationKeys.PG_CONNECTION) return pg
+        if (keyToResolve === ContainerRegistrationKeys.LINK) {
+          return { create: async () => undefined }
+        }
+        if (keyToResolve === Modules.CART) return cartModule
+        if (keyToResolve === CART_MERGE_MODULE) return cartMergeAuthority
+        throw new Error(`unrecognized scope key ${String(keyToResolve)}`)
+      }
+      return {
+        createScope() {
+          const overrides = new Map<unknown, { resolve(): unknown }>()
+          const child = {
+            register(keyToRegister: unknown, override: { resolve(): unknown }) {
+              overrides.set(keyToRegister, override)
+              return child
+            },
+            resolve(keyToResolve: unknown) {
+              const override = overrides.get(keyToResolve)
+              return override ? override.resolve() : parentResolve(keyToResolve)
+            },
+          }
+          return child
+        },
+        resolve: parentResolve,
+      }
+    })(),
     }
   }
 
@@ -452,9 +565,11 @@ function createHarness() {
     updatedAt: string
     lineId?: string
   }) {
+    const customerId = cart.customer_id ?? cart.customer?.id
     const customerCart = {
       id: input.id,
-      customer: { id: cart.customer.id, email: cart.customer.email },
+      customer: { id: customerId, email: cart.customer?.email },
+      customer_id: customerId,
       items: [
         {
           id: input.lineId ?? `${input.id}_line_01`,
@@ -473,6 +588,12 @@ function createHarness() {
     }
     carts.set(customerCart.id, customerCart)
     versions.set(customerCart.id, 1)
+    authorities.set(customerId, {
+      id: `ccauth_${input.id}`,
+      customer_id: customerId,
+      cart_id: input.id,
+      state: "active",
+    })
     return customerCart
   }
 
@@ -513,6 +634,7 @@ function createHarness() {
     },
     setCartCustomer(customerId: string | null) {
       cart.customer = customerId ? { id: customerId } : null
+      cart.customer_id = customerId
     },
     setCartUpdatedAt(updatedAt: string) {
       cart.updated_at = updatedAt

@@ -8,6 +8,10 @@ import {
   paymentClientConfirmedIsNonFinancial,
 } from "../state-machine"
 import {
+  isUnresolvedFinancialFreeze,
+  projectPaymentAttemptFinancialAuthority,
+} from "../financial-authority"
+import {
   PAYMENT_ATTEMPT_STATUSES,
   PROHIBITED_PAYMENT_ATTEMPT_STATUSES,
   type PaymentAttemptRecord,
@@ -39,9 +43,51 @@ function buildAttempt(
     canceled_at: null,
     failed_at: null,
     expired_at: null,
+    financial_freeze_started_at: null,
+    provider_canceled_confirmed_at: null,
     ...overrides,
   }
 }
+
+describe("PaymentAttempt financial authority", () => {
+  it("uses only freeze, provider cancellation and order binding", () => {
+    expect(
+      isUnresolvedFinancialFreeze({
+        id: "payatt_01",
+        cart_id: "cart_01",
+        financial_freeze_started_at: "2026-09-01T00:00:00.000Z",
+        provider_canceled_confirmed_at: null,
+        order_id: null,
+      })
+    ).toBe(true)
+    expect(
+      isUnresolvedFinancialFreeze({
+        id: "payatt_01",
+        cart_id: "cart_01",
+        financial_freeze_started_at: "2026-09-01T00:00:00.000Z",
+        provider_canceled_confirmed_at: null,
+        order_id: null,
+        status: "payment_canceled",
+      } as never)
+    ).toBe(true)
+    expect(
+      isUnresolvedFinancialFreeze({
+        id: "payatt_01",
+        cart_id: "cart_01",
+        financial_freeze_started_at: null,
+        provider_canceled_confirmed_at: null,
+        order_id: null,
+      })
+    ).toBe(false)
+    expect(
+      projectPaymentAttemptFinancialAuthority({
+        ...buildAttempt(),
+        financial_freeze_started_at: "2026-09-01T00:00:00.000Z",
+        provider_canceled_confirmed_at: null,
+      })
+    ).toMatchObject({ unresolved_financial_freeze: true })
+  })
+})
 
 describe("PaymentAttempt status vocabulary", () => {
   it("nao inclui labels financeiros finais proibidos", () => {

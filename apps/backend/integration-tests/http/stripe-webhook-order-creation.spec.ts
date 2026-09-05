@@ -360,18 +360,23 @@ function createPaymentAttemptModule(attempts: PaymentAttemptRecord[] = []) {
 function createPaymentAttemptAuthorityConnection(
   paymentAttemptModule: ReturnType<typeof createPaymentAttemptModule>
 ) {
+  const nullableString = (value: unknown): string | null =>
+    value == null ? null : String(value)
+
   return {
     transaction: jest.fn(async (callback: (transaction: {
       raw: (sql: string, bindings?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>
     }) => Promise<unknown>) =>
       callback({
         raw: jest.fn(async (sql: string, bindings: unknown[] = []) => {
-          const attemptFor = (value: unknown) =>
-            paymentAttemptModule.attempts.find(
+          const attemptFor = (value: unknown) => {
+            const normalizedValue = nullableString(value)
+            return paymentAttemptModule.attempts.find(
               (attempt) =>
-                attempt.id === value ||
-                attempt.provider_payment_intent_id === value
+                attempt.id === normalizedValue ||
+                attempt.provider_payment_intent_id === normalizedValue
             )
+          }
 
           if (sql.includes("pg_advisory_xact_lock")) {
             return { rows: [] }
@@ -383,21 +388,81 @@ function createPaymentAttemptAuthorityConnection(
           }
 
           if (sql.includes("update payment_attempt")) {
-            const hasTerminalTimestamp =
-              sql.includes("failed_at =") || sql.includes("canceled_at =")
-            const attempt = attemptFor(bindings[hasTerminalTimestamp ? 3 : 2])
-            if (!attempt) return { rows: [] }
+            const normalizedSql = sql.replace(/\s+/g, " ").trim()
+            const setAndWhere = normalizedSql.match(
+              /\bset\s+(.+?)\s+\bwhere\b(.+)$/i
+            )
+            if (!setAndWhere) {
+              throw new Error(`Unexpected PaymentAttempt update SQL: ${sql}`)
+            }
 
-            const updated = {
+            const setColumns = [
+              ...setAndWhere[1].matchAll(
+                /\b(provider_payment_intent_id|provider_payment_session_id|status|failed_at|canceled_at|updated_at)\s*=/gi
+              ),
+            ].map((match) => match[1].toLowerCase())
+            let bindingIndex = 0
+            const setValues: Record<string, unknown> = {}
+            for (const column of setColumns) {
+              setValues[column] = bindings[bindingIndex++]
+            }
+
+            const whereBindings = [
+              { column: "id", pattern: /\bid\s*=\s*\?/gi },
+              { column: "cart_id", pattern: /\bcart_id\s*=\s*\?/gi },
+              {
+                column: "provider_payment_intent_id",
+                pattern: /\bprovider_payment_intent_id\s*=\s*\?/gi,
+              },
+              { column: "status", pattern: /\bstatus\s*=\s*\?/gi },
+            ]
+              .flatMap(({ column, pattern }) =>
+                [...setAndWhere[2].matchAll(pattern)].map((match) => ({
+                  column,
+                  index: match.index ?? 0,
+                }))
+              )
+              .sort((left, right) => left.index - right.index)
+
+            if (whereBindings.length !== 4) {
+              throw new Error(`Unexpected PaymentAttempt WHERE SQL: ${sql}`)
+            }
+
+            const whereValues: Record<string, unknown> = {}
+            for (const { column } of whereBindings) {
+              whereValues[column] = bindings[bindingIndex++]
+            }
+
+            const attempt = attemptFor(whereValues.id)
+            if (
+              !attempt ||
+              attempt.cart_id !== String(whereValues.cart_id) ||
+              attempt.order_id != null ||
+              attempt.status !== whereValues.status ||
+              (attempt.provider_payment_intent_id != null &&
+                attempt.provider_payment_intent_id !==
+                  String(whereValues.provider_payment_intent_id))
+            ) {
+              return { rows: [] }
+            }
+
+            const updated: PaymentAttemptRecord = {
               ...attempt,
-              status: String(bindings[0]) as PaymentAttemptRecord["status"],
-              order_id: null,
-              updated_at: String(bindings[hasTerminalTimestamp ? 2 : 1]),
-              ...(sql.includes("failed_at =")
-                ? { failed_at: String(bindings[1]) }
+              provider_payment_intent_id: nullableString(
+                setValues.provider_payment_intent_id
+              ),
+              provider_payment_session_id:
+                setValues.provider_payment_session_id == null
+                  ? attempt.provider_payment_session_id
+                  : String(setValues.provider_payment_session_id),
+              status: String(setValues.status) as PaymentAttemptRecord["status"],
+              updated_at:
+                nullableString(setValues.updated_at) ?? attempt.updated_at,
+              ...(Object.prototype.hasOwnProperty.call(setValues, "failed_at")
+                ? { failed_at: nullableString(setValues.failed_at) }
                 : {}),
-              ...(sql.includes("canceled_at =")
-                ? { canceled_at: String(bindings[1]) }
+              ...(Object.prototype.hasOwnProperty.call(setValues, "canceled_at")
+                ? { canceled_at: nullableString(setValues.canceled_at) }
                 : {}),
             }
             await paymentAttemptModule.updatePaymentAttempts(updated)
@@ -1133,6 +1198,402 @@ describe("stripe webhook order creation integration", () => {
     )
   })
 
+  it("payment_intent.succeeded aceita Stripe 11000 quando PaymentAttempt.amount e 11000 independente de line items", async () => {
+    const cart = buildOrderCart({
+      id: "cart_order_http_110",
+      total: 110,
+      items: [
+        {
+          id: "line_item_decorative_01",
+          quantity: 1,
+          metadata: { note: "decorative" },
+          variant: {
+            id: "variant_decorative_01",
+            sku: "SKU-DECORATIVE",
+            metadata: {
+              gelato_product_uid: "gelato_prod_decorative",
+              gelato_template_id: "tmpl_decorative",
+              gelato_variant_options: { size: "M", color: "Preto" },
+              template_mode: "fixed",
+            },
+            prices: [{ amount: 49, currency_code: "brl" }],
+          },
+        },
+      ],
+    })
+    const attempt = buildAttempt({
+      id: "payatt_order_http_110",
+      cart_id: "cart_order_http_110",
+      provider_payment_intent_id: "pi_order_http_110",
+      amount: 11000,
+    })
+    const webhookService = createStatefulWebhookService()
+    const paymentAttemptModule = createPaymentAttemptModule([attempt])
+    const checkoutCompletionModule = createCheckoutCompletionModule()
+    const cartModule = createCartModule(cart)
+    const orderModule = createOrderModule()
+    const queryGraph = createQueryGraph(cart)
+    const runCompleteCart = jest.fn(async (_container, cartId: string) => {
+      const order = {
+        id: "order_http_confirmable_110",
+        cart_id: cartId,
+        total: cart.total,
+        email: ORDER_EMAIL,
+        display_id: 2110,
+        metadata: null,
+      }
+      orderModule.store.push(order)
+
+      return { id: order.id }
+    })
+    const handler = createHandler(
+      {
+        id: "evt_order_confirmable_110",
+        type: "payment_intent.succeeded",
+        livemode: false,
+        data: {
+          object: {
+            id: "pi_order_http_110",
+            object: "payment_intent",
+            amount: 11000,
+            amount_received: 11000,
+            currency: "brl",
+            metadata: {
+              cart_id: "cart_order_http_110",
+            },
+            payment_method_types: ["card"],
+          },
+        },
+      },
+      (scope, input) =>
+        runCreateOrderFromConfirmedPaymentAttemptEntrypoint(scope as never, input, {
+          now: () => new Date("2026-06-30T12:00:00.000Z"),
+          runCompleteCart,
+        })
+    )
+    const res = createResponse()
+
+    expect(cart.total).toBe(110)
+    expect(paymentAttemptModule.attempts[0]?.amount).toBe(11000)
+    expect(orderModule.store).toHaveLength(0)
+
+    await handler(
+      createRequest(
+        createScopeResolve({
+          webhookService,
+          paymentAttemptModule,
+          checkoutCompletionModule,
+          cartModule,
+          orderModule,
+          queryGraph,
+        }),
+        {
+          rawBody: Buffer.from(
+            '{"id":"evt_order_confirmable_110","type":"payment_intent.succeeded"}'
+          ),
+        }
+      ),
+      res
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "processed",
+      })
+    )
+    expect(runCompleteCart).toHaveBeenCalledTimes(1)
+    expect(runCompleteCart).toHaveBeenCalledWith(
+      expect.anything(),
+      "cart_order_http_110"
+    )
+    expect(orderModule.store).toHaveLength(1)
+    expect(orderModule.store[0]?.total).toBe(110)
+    expect(paymentAttemptModule.attempts[0]).toEqual(
+      expect.objectContaining({
+        status: "payment_confirmed_by_webhook",
+        order_id: "order_http_confirmable_110",
+        amount: 11000,
+      })
+    )
+  })
+
+  it("payment_intent.succeeded rejeita divergencia entre PaymentAttempt.amount e Stripe amount", async () => {
+    const attempt = buildAttempt({
+      id: "payatt_order_http_mismatch",
+      cart_id: "cart_order_http_mismatch",
+      provider_payment_intent_id: "pi_order_http_mismatch",
+      amount: 11000,
+    })
+    const webhookService = createStatefulWebhookService()
+    const paymentAttemptModule = createPaymentAttemptModule([attempt])
+    const runOrderEntrypoint = jest.fn()
+    const handler = createHandler(
+      {
+        id: "evt_order_amount_mismatch",
+        type: "payment_intent.succeeded",
+        livemode: false,
+        data: {
+          object: {
+            id: "pi_order_http_mismatch",
+            object: "payment_intent",
+            amount: 9900,
+            amount_received: 9900,
+            currency: "brl",
+            metadata: {
+              cart_id: "cart_order_http_mismatch",
+            },
+            payment_method_types: ["card"],
+          },
+        },
+      },
+      runOrderEntrypoint
+    )
+    const res = createResponse()
+
+    expect(paymentAttemptModule.attempts[0]?.amount).toBe(11000)
+
+    await handler(
+      createRequest(
+        createScopeResolve({
+          webhookService,
+          paymentAttemptModule,
+        }),
+        {
+          rawBody: Buffer.from(
+            '{"id":"evt_order_amount_mismatch","type":"payment_intent.succeeded"}'
+          ),
+        }
+      ),
+      res
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+      })
+    )
+    expect(runOrderEntrypoint).not.toHaveBeenCalled()
+    expect(webhookService.records[0]).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error_code: "PAYMENT_ATTEMPT_AMOUNT_MISMATCH",
+      })
+    )
+    expect(paymentAttemptModule.attempts[0]?.order_id).toBeNull()
+    expect(paymentAttemptModule.attempts[0]?.status).toBe(
+      "awaiting_webhook_confirmation"
+    )
+  })
+
+  it("payment_intent.succeeded rejeita amount_received 10999 quando amount e PaymentAttempt sao 11000", async () => {
+    const attempt = buildAttempt({
+      id: "payatt_order_http_received_short",
+      cart_id: "cart_order_http_received_short",
+      provider_payment_intent_id: "pi_order_http_received_short",
+      amount: 11000,
+    })
+    const webhookService = createStatefulWebhookService()
+    const paymentAttemptModule = createPaymentAttemptModule([attempt])
+    const runOrderEntrypoint = jest.fn()
+    const handler = createHandler(
+      {
+        id: "evt_order_received_short",
+        type: "payment_intent.succeeded",
+        livemode: false,
+        data: {
+          object: {
+            id: "pi_order_http_received_short",
+            object: "payment_intent",
+            amount: 11000,
+            amount_received: 10999,
+            currency: "brl",
+            metadata: {
+              cart_id: "cart_order_http_received_short",
+            },
+            payment_method_types: ["card"],
+          },
+        },
+      },
+      runOrderEntrypoint
+    )
+    const res = createResponse()
+
+    expect(paymentAttemptModule.attempts[0]?.amount).toBe(11000)
+
+    await handler(
+      createRequest(
+        createScopeResolve({
+          webhookService,
+          paymentAttemptModule,
+        }),
+        {
+          rawBody: Buffer.from(
+            '{"id":"evt_order_received_short","type":"payment_intent.succeeded"}'
+          ),
+        }
+      ),
+      res
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+      })
+    )
+    expect(runOrderEntrypoint).not.toHaveBeenCalled()
+    expect(webhookService.records[0]).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error_code: "PAYMENT_ATTEMPT_AMOUNT_MISMATCH",
+      })
+    )
+    expect(paymentAttemptModule.attempts[0]?.order_id).toBeNull()
+    expect(paymentAttemptModule.attempts[0]?.status).toBe(
+      "awaiting_webhook_confirmation"
+    )
+  })
+
+  it("payment_intent.succeeded rejeita amount_received zero quando amount e PaymentAttempt sao 11000", async () => {
+    const attempt = buildAttempt({
+      id: "payatt_order_http_received_zero",
+      cart_id: "cart_order_http_received_zero",
+      provider_payment_intent_id: "pi_order_http_received_zero",
+      amount: 11000,
+    })
+    const webhookService = createStatefulWebhookService()
+    const paymentAttemptModule = createPaymentAttemptModule([attempt])
+    const runOrderEntrypoint = jest.fn()
+    const handler = createHandler(
+      {
+        id: "evt_order_received_zero",
+        type: "payment_intent.succeeded",
+        livemode: false,
+        data: {
+          object: {
+            id: "pi_order_http_received_zero",
+            object: "payment_intent",
+            amount: 11000,
+            amount_received: 0,
+            currency: "brl",
+            metadata: {
+              cart_id: "cart_order_http_received_zero",
+            },
+            payment_method_types: ["card"],
+          },
+        },
+      },
+      runOrderEntrypoint
+    )
+    const res = createResponse()
+
+    expect(paymentAttemptModule.attempts[0]?.amount).toBe(11000)
+
+    await handler(
+      createRequest(
+        createScopeResolve({
+          webhookService,
+          paymentAttemptModule,
+        }),
+        {
+          rawBody: Buffer.from(
+            '{"id":"evt_order_received_zero","type":"payment_intent.succeeded"}'
+          ),
+        }
+      ),
+      res
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+      })
+    )
+    expect(runOrderEntrypoint).not.toHaveBeenCalled()
+    expect(webhookService.records[0]).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error_code: "PAYMENT_ATTEMPT_AMOUNT_MISMATCH",
+      })
+    )
+    expect(paymentAttemptModule.attempts[0]?.order_id).toBeNull()
+    expect(paymentAttemptModule.attempts[0]?.status).toBe(
+      "awaiting_webhook_confirmation"
+    )
+  })
+
+  it("payment_intent.succeeded rejeita amount divergente mesmo com amount_received igual ao PaymentAttempt", async () => {
+    const attempt = buildAttempt({
+      id: "payatt_order_http_amount_short",
+      cart_id: "cart_order_http_amount_short",
+      provider_payment_intent_id: "pi_order_http_amount_short",
+      amount: 11000,
+    })
+    const webhookService = createStatefulWebhookService()
+    const paymentAttemptModule = createPaymentAttemptModule([attempt])
+    const runOrderEntrypoint = jest.fn()
+    const handler = createHandler(
+      {
+        id: "evt_order_amount_short",
+        type: "payment_intent.succeeded",
+        livemode: false,
+        data: {
+          object: {
+            id: "pi_order_http_amount_short",
+            object: "payment_intent",
+            amount: 10999,
+            amount_received: 11000,
+            currency: "brl",
+            metadata: {
+              cart_id: "cart_order_http_amount_short",
+            },
+            payment_method_types: ["card"],
+          },
+        },
+      },
+      runOrderEntrypoint
+    )
+    const res = createResponse()
+
+    expect(paymentAttemptModule.attempts[0]?.amount).toBe(11000)
+
+    await handler(
+      createRequest(
+        createScopeResolve({
+          webhookService,
+          paymentAttemptModule,
+        }),
+        {
+          rawBody: Buffer.from(
+            '{"id":"evt_order_amount_short","type":"payment_intent.succeeded"}'
+          ),
+        }
+      ),
+      res
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+      })
+    )
+    expect(runOrderEntrypoint).not.toHaveBeenCalled()
+    expect(webhookService.records[0]).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error_code: "PAYMENT_ATTEMPT_AMOUNT_MISMATCH",
+      })
+    )
+    expect(paymentAttemptModule.attempts[0]?.order_id).toBeNull()
+    expect(paymentAttemptModule.attempts[0]?.status).toBe(
+      "awaiting_webhook_confirmation"
+    )
+  })
+
   it("payment_intent.succeeded com PaymentAttempt.order_id existente nao cria Order duplicada", async () => {
     const cart = buildOrderCart({ completed_at: "2026-07-01T11:59:00.000Z" })
     const webhookService = createStatefulWebhookService()
@@ -1331,6 +1792,120 @@ describe("stripe webhook order creation integration", () => {
     expect(res.statusCode).toBe(200)
     expect(paymentAttemptModule.attempts[0]?.status).toBe("payment_failed")
     expect(runOrderEntrypoint).not.toHaveBeenCalled()
+  })
+
+  it("payment_intent.payment_failed aceita amount_received zero sem rejeitar por divergencia monetaria", async () => {
+    const webhookService = createStatefulWebhookService()
+    const paymentAttemptModule = createPaymentAttemptModule([
+      buildAttempt({
+        id: "payatt_order_http_failed_zero_received",
+        cart_id: "cart_order_http_failed_zero_received",
+        provider_payment_intent_id: "pi_order_http_failed_zero_received",
+        amount: 11000,
+      }),
+    ])
+    const runOrderEntrypoint = jest.fn()
+    const handler = createHandler(
+      {
+        id: "evt_order_failed_zero_received",
+        type: "payment_intent.payment_failed",
+        livemode: false,
+        data: {
+          object: {
+            id: "pi_order_http_failed_zero_received",
+            object: "payment_intent",
+            amount: 11000,
+            amount_received: 0,
+            currency: "brl",
+            metadata: {
+              cart_id: "cart_order_http_failed_zero_received",
+            },
+            payment_method_types: ["card"],
+          },
+        },
+      },
+      runOrderEntrypoint
+    )
+    const res = createResponse()
+
+    await handler(
+      createRequest(
+        createScopeResolve({
+          webhookService,
+          paymentAttemptModule,
+        }),
+        {
+          rawBody: Buffer.from(
+            '{"id":"evt_order_failed_zero_received","type":"payment_intent.payment_failed"}'
+          ),
+        }
+      ),
+      res
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(paymentAttemptModule.attempts[0]?.status).toBe("payment_failed")
+    expect(runOrderEntrypoint).not.toHaveBeenCalled()
+    expect(webhookService.records[0]?.error_code).not.toBe(
+      "PAYMENT_ATTEMPT_AMOUNT_MISMATCH"
+    )
+  })
+
+  it("payment_intent.canceled aceita amount_received zero sem rejeitar por divergencia monetaria", async () => {
+    const webhookService = createStatefulWebhookService()
+    const paymentAttemptModule = createPaymentAttemptModule([
+      buildAttempt({
+        id: "payatt_order_http_canceled_zero_received",
+        cart_id: "cart_order_http_canceled_zero_received",
+        provider_payment_intent_id: "pi_order_http_canceled_zero_received",
+        amount: 9900,
+      }),
+    ])
+    const runOrderEntrypoint = jest.fn()
+    const handler = createHandler(
+      {
+        id: "evt_order_canceled_zero_received",
+        type: "payment_intent.canceled",
+        livemode: false,
+        data: {
+          object: {
+            id: "pi_order_http_canceled_zero_received",
+            object: "payment_intent",
+            amount: 9900,
+            amount_received: 0,
+            currency: "brl",
+            metadata: {
+              cart_id: "cart_order_http_canceled_zero_received",
+            },
+            payment_method_types: ["card"],
+          },
+        },
+      },
+      runOrderEntrypoint
+    )
+    const res = createResponse()
+
+    await handler(
+      createRequest(
+        createScopeResolve({
+          webhookService,
+          paymentAttemptModule,
+        }),
+        {
+          rawBody: Buffer.from(
+            '{"id":"evt_order_canceled_zero_received","type":"payment_intent.canceled"}'
+          ),
+        }
+      ),
+      res
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(paymentAttemptModule.attempts[0]?.status).toBe("payment_canceled")
+    expect(runOrderEntrypoint).not.toHaveBeenCalled()
+    expect(webhookService.records[0]?.error_code).not.toBe(
+      "PAYMENT_ATTEMPT_AMOUNT_MISMATCH"
+    )
   })
 
   it("gelato_snapshot edge multi-line mantem shape v1 e imutabilidade apos ProductVariant mudar", async () => {

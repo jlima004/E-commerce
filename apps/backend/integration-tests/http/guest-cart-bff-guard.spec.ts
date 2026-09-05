@@ -62,8 +62,8 @@ describe("Guest Cart BFF Guard Matrix (Task 15-03-03)", () => {
     expectedSecret: VALID_TEST_BFF_SECRET,
   })
 
-  it("registra exatamente as 6 operacoes de cart no middleware BFF", () => {
-    expect(STORE_CART_BFF_PROTECTED_OPERATIONS).toHaveLength(6)
+  it("registra exatamente as 8 operacoes de cart no middleware BFF", () => {
+    expect(STORE_CART_BFF_PROTECTED_OPERATIONS).toHaveLength(8)
     const routes = (defaultMiddlewares.routes ?? []) as Array<{
       matcher: unknown
       method?: unknown
@@ -88,7 +88,7 @@ describe("Guest Cart BFF Guard Matrix (Task 15-03-03)", () => {
     }
   })
 
-  it("nega com 404 uniforme quando x-indicio-bff-auth esta ausente em todas as 6 operacoes", () => {
+  it("nega com 404 uniforme quando x-indicio-bff-auth esta ausente em todas as 8 operacoes", () => {
     for (const operation of STORE_CART_BFF_PROTECTED_OPERATIONS) {
       const [method, path] = operation.split(" ")
       const req = createMockRequest({

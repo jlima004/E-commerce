@@ -2,7 +2,10 @@ import {
   CORRELATION_ID_HEADER,
   storeErrorResponse,
 } from "../../components"
-import { STORE_CART_M1_BFF_OPTIONAL_CUSTOMER } from "../../components/security-schemes"
+import {
+  STORE_AUTH_ACCESS_BEARER,
+  STORE_CART_M1_BFF_OPTIONAL_CUSTOMER,
+} from "../../components/security-schemes"
 import {
   STORE_ETAG_RESPONSE_HEADERS,
   STORE_GUEST_CART_TOKEN_RESPONSE_HEADERS,
@@ -11,6 +14,7 @@ import {
 import {
   STORE_CART_ID_PATH,
   STORE_CART_LINE_ID_PATH,
+  STORE_GUEST_CART_MERGE_CAPABILITY_HEADER_REF,
   STORE_GUEST_CART_TOKEN_HEADER_REF,
 } from "../../components/parameters"
 import type { ContractRegistryBundle } from "../../registry"
@@ -42,6 +46,91 @@ function cartJsonResponse(
   }
 }
 
+const STORE_CACHE_CONTROL_NO_STORE_RESPONSE_HEADERS = {
+  "Cache-Control": {
+    schema: {
+      type: "string",
+      const: "no-store",
+    },
+    description: "The cart merge or review response must not be cached.",
+  },
+} as const
+
+function cartMergeReviewJsonResponse(
+  description: string,
+  schemaName: string
+) {
+  const response = storeJsonResponse(description, schemaName)
+  return {
+    ...response,
+    headers: {
+      ...STORE_X_CORRELATION_ID_RESPONSE_HEADERS,
+      ...STORE_ETAG_RESPONSE_HEADERS,
+      ...STORE_CACHE_CONTROL_NO_STORE_RESPONSE_HEADERS,
+    },
+  }
+}
+
+function cartMergeErrorResponses() {
+  return {
+    "400": storeErrorResponse(
+      "Invalid cart merge body or required header."
+    ),
+    "401": storeErrorResponse("Customer authentication is required."),
+    "404": storeErrorResponse(
+      "Guest capability or cart is not available for the current customer."
+    ),
+    "409": storeErrorResponse(
+      "Cart authority, state, or idempotency conflict; payment in progress (financial freeze on the cart); a pending review also returns REVIEW_REQUIRED."
+    ),
+    "412": {
+      ...storeErrorResponse(
+        "CART_VERSION_MISMATCH: the guest-source If-Match precondition is stale; the response includes the current safe cart snapshot and ETag when available."
+      ),
+      headers: {
+        ...STORE_X_CORRELATION_ID_RESPONSE_HEADERS,
+        ...STORE_ETAG_RESPONSE_HEADERS,
+      },
+    },
+    "500": storeErrorResponse(
+      "Unexpected cart merge failure; changes are rolled back."
+    ),
+    "503": storeErrorResponse(
+      "Cart authority or persistence service is temporarily unavailable."
+    ),
+  }
+}
+
+function cartReviewAcknowledgeErrorResponses() {
+  return {
+    "400": storeErrorResponse(
+      "Invalid cart review acknowledge body or required header."
+    ),
+    "401": storeErrorResponse("Customer authentication is required."),
+    "404": storeErrorResponse(
+      "Cart or review is not available for the current customer."
+    ),
+    "409": storeErrorResponse(
+      "Cart authority, state, or review conflict; a pending review uses REVIEW_REQUIRED."
+    ),
+    "412": {
+      ...storeErrorResponse(
+        "CART_VERSION_MISMATCH: the If-Match precondition for the cart review is stale; the response includes the current safe cart snapshot and ETag when available."
+      ),
+      headers: {
+        ...STORE_X_CORRELATION_ID_RESPONSE_HEADERS,
+        ...STORE_ETAG_RESPONSE_HEADERS,
+      },
+    },
+    "500": storeErrorResponse(
+      "Unexpected cart review acknowledge failure; changes are rolled back."
+    ),
+    "503": storeErrorResponse(
+      "Cart authority or persistence service is temporarily unavailable."
+    ),
+  }
+}
+
 function cartMutationErrorResponses() {
   return {
     "400": storeErrorResponse(
@@ -52,7 +141,7 @@ function cartMutationErrorResponses() {
       "Cart or line item was not found for the current actor."
     ),
     "409": storeErrorResponse(
-      "Idempotency key conflict or operation currently in progress."
+      "Idempotency key conflict, operation currently in progress, or payment in progress (financial freeze on the cart)."
     ),
     "412": {
       ...storeErrorResponse(
@@ -293,5 +382,102 @@ export function registerStoreCartOperations(
     requestBody: null,
     inclusionReason:
       "Phase 15 guest/customer Cart M1 clear-all wrapper with capability, idempotency, If-Match and CAS contracts.",
+  })
+
+  registry.registerOperation({
+    surface: "store",
+    method: "POST",
+    path: "/store/customers/me/cart/merge",
+    operationId: "mergeCustomerCart",
+    summary: "Merge a guest cart into the customer cart",
+    tags: ["Cart"],
+    security: [...STORE_AUTH_ACCESS_BEARER],
+    parameters: [
+      CORRELATION_ID_HEADER,
+      STORE_GUEST_CART_MERGE_CAPABILITY_HEADER_REF,
+      STORE_IDEMPOTENCY_KEY_REF,
+      STORE_IF_MATCH_REF,
+    ],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            $ref: "#/components/schemas/CartMergeRequest",
+          },
+        },
+      },
+    },
+    responses: {
+      "200": cartMergeReviewJsonResponse(
+        "Cart merge completed with a canonical cart and review state.",
+        "CartMergeResponse"
+      ),
+      ...cartMergeErrorResponses(),
+    },
+    sourceClassification: "project-custom",
+    sourceFiles: [
+      "apps/backend/src/api/store/customers/me/cart/merge/route.ts",
+      "apps/backend/src/api/store/carts/merge-review-validators.ts",
+      "apps/backend/src/modules/cart-merge/service.ts",
+      "apps/backend/src/api/store/carts/serializers.ts",
+      "apps/backend/src/api/middlewares.ts",
+    ],
+    testEvidence: [
+      "apps/backend/integration-tests/http/cart-merge-review.spec.ts",
+      "apps/backend/src/api-docs/__tests__/store-contract.unit.spec.ts",
+    ],
+    officialReference:
+      "https://github.com/jlima004/E-commerce/blob/main/apps/backend/src/api/store/customers/me/cart/merge/route.ts",
+    inclusionReason:
+      "Phase 16 canonical Customer cart merge with guest capability, idempotency, guest-source version precondition, and review projection.",
+    interactiveCandidate: false,
+    nonInteractive: true,
+  })
+
+  registry.registerOperation({
+    surface: "store",
+    method: "POST",
+    path: "/store/carts/{id}/review/acknowledge",
+    operationId: "acknowledgeCartReview",
+    summary: "Acknowledge a Store cart review",
+    tags: ["Cart"],
+    security: [...STORE_AUTH_ACCESS_BEARER],
+    parameters: [CORRELATION_ID_HEADER, STORE_CART_ID_PATH, STORE_IF_MATCH_REF],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            $ref: "#/components/schemas/CartReviewAcknowledgeRequest",
+          },
+        },
+      },
+    },
+    responses: {
+      "200": cartMergeReviewJsonResponse(
+        "Cart review acknowledged or replayed without a structural version bump.",
+        "CartReviewAcknowledgeResponse"
+      ),
+      ...cartReviewAcknowledgeErrorResponses(),
+    },
+    sourceClassification: "project-custom",
+    sourceFiles: [
+      "apps/backend/src/api/store/carts/[id]/review/acknowledge/route.ts",
+      "apps/backend/src/api/store/carts/merge-review-validators.ts",
+      "apps/backend/src/modules/cart-merge/service.ts",
+      "apps/backend/src/api/store/carts/serializers.ts",
+      "apps/backend/src/api/middlewares.ts",
+    ],
+    testEvidence: [
+      "apps/backend/integration-tests/http/cart-merge-review.spec.ts",
+      "apps/backend/src/api-docs/__tests__/store-contract.unit.spec.ts",
+    ],
+    officialReference:
+      "https://github.com/jlima004/E-commerce/blob/main/apps/backend/src/api/store/carts/%5Bid%5D/review/acknowledge/route.ts",
+    inclusionReason:
+      "Phase 16 versioned cart-review acknowledge boundary that clears or replays review state without a structural version bump.",
+    interactiveCandidate: false,
+    nonInteractive: true,
   })
 }

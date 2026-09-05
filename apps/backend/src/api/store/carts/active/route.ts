@@ -42,9 +42,18 @@ import {
   initializeCartResourceVersion,
 } from "../concurrency"
 import {
+  CUSTOMER_CART_AUTHORITY_CONFLICT,
   isActiveCartForCheckout,
   resolveCanonicalCustomerActiveCart,
+  resolveCanonicalCustomerCartAuthority,
+  withCustomerCartAuthorityTransaction,
 } from "../customer-active-cart"
+import type {
+  CustomerCartAuthorityRegistration,
+  CustomerCartAuthoritySharedContext,
+} from "../customer-active-cart"
+import { lockCartOrderAuthority } from "../../../../modules/payment-attempt/transactional-authority"
+import type { CartTransactionSql } from "../../../../workflows/cart/cart-transaction-boundary"
 
 type StoreCartRecord = StoreCartPreOrderRecord
 
@@ -62,8 +71,41 @@ const ACTIVE_CART_QUERY_FIELDS = storeCartPreOrderFields
 
 async function refetchActiveCart(
   req: MedusaRequest,
-  cartId: string
+  cartId: string,
+  sharedContext?: CustomerCartAuthoritySharedContext
 ): Promise<StoreCartRecord> {
+  if (sharedContext) {
+    const cartModule = req.scope.resolve(Modules.CART) as unknown as {
+      retrieveCart?: (
+        id: string,
+        config?: { relations?: string[] },
+        context?: CustomerCartAuthoritySharedContext
+      ) => Promise<StoreCartRecord | null>
+    }
+    if (typeof cartModule.retrieveCart !== "function") {
+      throw new Error("CART_RETRIEVAL_AUTHORITY_UNAVAILABLE")
+    }
+
+    const cart = await cartModule.retrieveCart(
+      cartId,
+      {
+        relations: [
+          "items",
+          "shipping_address",
+          "billing_address",
+        ],
+      },
+      sharedContext
+    )
+    if (!cart) {
+      throw new MedusaError(
+        MedusaError.Types.NOT_FOUND,
+        `Cart with id '${cartId}' not found`
+      )
+    }
+    return cart
+  }
+
   const remoteQuery = req.scope.resolve(ContainerRegistrationKeys.REMOTE_QUERY)
 
   const queryObject = remoteQueryObjectFromString({
@@ -165,10 +207,11 @@ async function compensateGuestCartCreation(
 async function retrieveCartById(
   req: MedusaRequest,
   cartId: string,
-  onCompleted?: () => Promise<void>
+  onCompleted?: () => Promise<void>,
+  sharedContext?: CustomerCartAuthoritySharedContext
 ): Promise<StoreCartRecord | null> {
   try {
-    const cart = await refetchActiveCart(req, cartId)
+    const cart = await refetchActiveCart(req, cartId, sharedContext)
 
     if (cart.completed_at) {
       if (onCompleted) {
@@ -216,6 +259,318 @@ async function resolveActor(req: MedusaRequest): Promise<M1CartActorDecision> {
         { jwtSecret: env.JWT_SECRET }
       ),
   })
+}
+
+type CustomerActiveCartResult = {
+  statusCode: 200 | 201
+  cart: StoreCartRecord
+}
+
+function throwCustomerAuthorityConflict(): never {
+  throw Object.assign(
+    new MedusaError(
+      MedusaError.Types.CONFLICT,
+      "Customer cart state conflict"
+    ),
+    {
+      code: CUSTOMER_CART_AUTHORITY_CONFLICT,
+      statusCode: 409,
+      status: 409,
+    }
+  )
+}
+
+/** Test-only loopback barrier used by the real multiprocess PostgreSQL proof. */
+async function awaitCartMergeCustomerLockBarrier(
+  sharedContext: CustomerCartAuthoritySharedContext,
+  customerId: string
+): Promise<void> {
+  const runId = process.env.P16_CART_MERGE_BARRIER_RUN_ID
+  const role = process.env.P16_CART_MERGE_BARRIER_ROLE
+  if (!runId || !/^[a-f0-9]{16}$/.test(runId) || !/^[AB]$/.test(role ?? "")) {
+    return
+  }
+  if (typeof process.send !== "function") {
+    throw new Error("P16_CART_MERGE_LOCK_BARRIER_IPC_UNAVAILABLE")
+  }
+  const transaction = sharedContext.transactionManager?.getTransactionContext?.()
+  if (!transaction) {
+    throw new Error("P16_CART_MERGE_LOCK_BARRIER_TRANSACTION_UNAVAILABLE")
+  }
+  const result = await transaction.raw("select txid_current()::text as txid")
+  const txid = String(result.rows?.[0]?.txid ?? "")
+  if (!/^\d+$/.test(txid)) {
+    throw new Error("P16_CART_MERGE_LOCK_BARRIER_TXID_INVALID")
+  }
+  process.send({
+    type: "lock-acquired",
+    runId,
+    role,
+    customerId: customerId.replace(/[^a-zA-Z0-9_-]/g, "_"),
+    txid,
+  })
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      process.removeListener("message", onMessage)
+      reject(new Error("P16_CART_MERGE_LOCK_BARRIER_TIMEOUT"))
+    }, 30_000)
+    const onMessage = (message: unknown) => {
+      if (
+        !message ||
+        typeof message !== "object" ||
+        (message as { type?: unknown }).type !== "cart-merge-release" ||
+        (message as { runId?: unknown }).runId !== runId ||
+        (message as { role?: unknown }).role !== role
+      ) {
+        return
+      }
+      clearTimeout(timeout)
+      process.removeListener("message", onMessage)
+      resolve()
+    }
+    process.on("message", onMessage)
+  })
+}
+
+async function createOrReuseCustomerCartUnderAuthority(
+  req: MedusaRequest,
+  customerId: string,
+  rawIdempotencyKey: string,
+  authority: Awaited<
+    ReturnType<typeof resolveCanonicalCustomerCartAuthority>
+  >,
+  sharedContext: CustomerCartAuthoritySharedContext,
+  registerAuthority: CustomerCartAuthorityRegistration
+): Promise<CustomerActiveCartResult> {
+  await awaitCartMergeCustomerLockBarrier(sharedContext, customerId)
+
+  if (authority.type === "ambiguous" || authority.type === "conflict") {
+    throwCustomerAuthorityConflict()
+  }
+
+  if (authority.type === "single") {
+    const transaction = sharedContext.transactionManager
+      .getTransactionContext?.() as CartTransactionSql | null | undefined
+    if (!transaction || typeof transaction.raw !== "function") {
+      throw new Error("CART_TRANSACTION_CONTEXT_UNAVAILABLE")
+    }
+    await lockCartOrderAuthority(transaction, authority.cartId)
+    const existingCart = await retrieveCartById(
+      req,
+      authority.cartId,
+      undefined,
+      sharedContext
+    )
+    if (!existingCart || existingCart.customer_id !== customerId) {
+      throwCustomerAuthorityConflict()
+    }
+    assertNoPaymentOrOrderFields(existingCart)
+    return { statusCode: 200, cart: existingCart }
+  }
+
+  const storeIdempotencyService = req.scope.resolve<StoreIdempotencyModuleService>(
+    STORE_IDEMPOTENCY_MODULE
+  )
+  const actorScope = customerActorScope({ customerId })
+  const canonicalSemanticObject = {
+    customer_id: customerId,
+    currency_code: "brl",
+  }
+  const transactionContext = sharedContext as never
+  const claimResult = await storeIdempotencyService.claim({
+    operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
+    actorScope,
+    rawIdempotencyKey,
+    canonicalSemanticObject,
+    sharedContext: transactionContext,
+  })
+
+  if (claimResult.type === "conflict") {
+    throw Object.assign(
+      new MedusaError(
+        MedusaError.Types.CONFLICT,
+        "Idempotency key reuse conflict"
+      ),
+      { code: "IDEMPOTENCY_KEY_REUSE_CONFLICT", statusCode: 409, status: 409 }
+    )
+  }
+
+  if (claimResult.type === "in_progress") {
+    throw Object.assign(
+      new MedusaError(
+        MedusaError.Types.CONFLICT,
+        "Operation currently in progress for this idempotency key"
+      ),
+      {
+        code: "IDEMPOTENCY_KEY_IN_PROGRESS",
+        statusCode: 409,
+        status: 409,
+        retryable: true,
+      }
+    )
+  }
+
+  if (claimResult.type === "replay") {
+    const record = claimResult.record
+    if (record.state === "completed" && record.result_id) {
+      const cart = await refetchActiveCart(req, record.result_id)
+      if (cart.customer_id !== customerId) {
+        throwCustomerAuthorityConflict()
+      }
+      assertNoPaymentOrOrderFields(cart)
+      return { statusCode: 200, cart }
+    }
+    throw Object.assign(
+      new MedusaError(
+        MedusaError.Types.CONFLICT,
+        "Idempotency key previously terminated with failure or requires reconciliation"
+      ),
+      { code: "IDEMPOTENCY_KEY_REUSE_CONFLICT", statusCode: 409, status: 409 }
+    )
+  }
+
+  let currentStateVersion = claimResult.record.state_version
+  let cartId: string | null = null
+  try {
+    const { result } = await createCartWorkflow(req.scope).run({
+      input: {
+        customer_id: customerId,
+        currency_code: "brl",
+      },
+      context: transactionContext,
+    } as never)
+    cartId = result.id
+  } catch (error) {
+    try {
+      await storeIdempotencyService.markFailedRetryable({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: currentStateVersion,
+        failure_code: "CART_CREATION_FAILED",
+        next_retry_at: new Date(Date.now() + 5000),
+        retry_attempt_count: 1,
+        retry_started_at: new Date(),
+        state_deadline_at: new Date(Date.now() + 5 * 60 * 1000),
+        sharedContext: transactionContext,
+      })
+    } catch {}
+    throw error
+  }
+
+  const partialResult = await storeIdempotencyService.recordProcessingResult({
+    id: claimResult.record.id,
+    expectedStateVersion: currentStateVersion,
+    result_type: "cart",
+    result_id: cartId,
+    response_status: 201,
+    result_safe_metadata: {
+      operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
+      result_type: "cart",
+      result_id: cartId,
+      response_status: 201,
+    },
+    sharedContext: transactionContext,
+  })
+
+  if (partialResult.type !== "claimed") {
+    throw Object.assign(
+      new MedusaError(
+        MedusaError.Types.CONFLICT,
+        "Operation currently in progress or ownership lost for this idempotency key"
+      ),
+      {
+        code: "IDEMPOTENCY_KEY_IN_PROGRESS",
+        statusCode: 409,
+        status: 409,
+        retryable: true,
+      }
+    )
+  }
+  currentStateVersion = partialResult.record.state_version
+
+  let cart: StoreCartRecord
+  try {
+    cart = await refetchActiveCart(req, cartId, sharedContext)
+    if (cart.customer_id !== customerId) {
+      throwCustomerAuthorityConflict()
+    }
+    assertNoPaymentOrOrderFields(cart)
+  } catch (error) {
+    try {
+      await storeIdempotencyService.markReconciliationRequired({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: currentStateVersion,
+        result_type: "cart",
+        result_id: cartId,
+        failure_code: "CART_REFETCH_FAILED",
+        sharedContext: transactionContext,
+      })
+    } catch {}
+    throw error
+  }
+
+  const materializedAuthority = await resolveCanonicalCustomerCartAuthority(
+    req.scope,
+    sharedContext,
+    customerId
+  )
+  if (
+    materializedAuthority.type !== "single" ||
+    materializedAuthority.cartId !== cart.id
+  ) {
+    throwCustomerAuthorityConflict()
+  }
+  registerAuthority(materializedAuthority)
+
+  let completion: LifecycleClaimResult
+  try {
+    completion = await storeIdempotencyService.markCompleted({
+      id: claimResult.record.id,
+      expectedState: "processing",
+      expectedStateVersion: currentStateVersion,
+      result_type: "cart",
+      result_id: cart.id,
+      response_status: 201,
+      result_safe_metadata: {
+        operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
+        result_type: "cart",
+        result_id: cart.id,
+        response_status: 201,
+      },
+      sharedContext: transactionContext,
+    })
+  } catch (error) {
+    try {
+      await storeIdempotencyService.markReconciliationRequired({
+        id: claimResult.record.id,
+        expectedState: "processing",
+        expectedStateVersion: currentStateVersion,
+        result_type: "cart",
+        result_id: cart.id,
+        failure_code: "MARK_COMPLETED_FAILED",
+        sharedContext: transactionContext,
+      })
+    } catch {}
+    throw error
+  }
+
+  if (completion.type !== "claimed") {
+    throw Object.assign(
+      new MedusaError(
+        MedusaError.Types.CONFLICT,
+        "Operation currently in progress or ownership lost for this idempotency key"
+      ),
+      {
+        code: "IDEMPOTENCY_KEY_IN_PROGRESS",
+        statusCode: 409,
+        status: 409,
+        retryable: true,
+      }
+    )
+  }
+
+  return { statusCode: 201, cart }
 }
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
@@ -350,189 +705,31 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 
   if (actor.actorType === "customer") {
-    // Valid Customer context -> find existing active cart or create new cart
-    const existingCart = await resolveCanonicalCustomerActiveCart(req, actor.customerId)
-
-    if (existingCart) {
-      assertNoPaymentOrOrderFields(existingCart)
-      const version = await initializeCartResourceVersion(req, existingCart.id)
-      res.setHeader("ETag", formatCartEtag(version))
-      res.status(200).json({ cart: existingCart })
-      return
-    }
-
-    // Customer creation path with Idempotency claim
-    const storeIdempotencyService = req.scope.resolve<StoreIdempotencyModuleService>(
-      STORE_IDEMPOTENCY_MODULE
+    const result = await withCustomerCartAuthorityTransaction(
+      req,
+      actor.customerId,
+      ({ authority, sharedContext, registerAuthority }) =>
+        createOrReuseCustomerCartUnderAuthority(
+          req,
+          actor.customerId,
+          rawIdempotencyKey,
+          authority,
+          sharedContext,
+          registerAuthority
+        )
     )
-    const actorScope = customerActorScope({
-      customerId: actor.customerId,
-    })
-    const canonicalSemanticObject = {
-      customer_id: actor.customerId,
-      currency_code: "brl",
+    // A newly created Cart is intentionally read with the shared Cart manager
+    // while the transaction is open. Refetch the committed public projection
+    // after commit so linked Customer/catalog fields are serialized normally.
+    const cart = await refetchActiveCart(req, result.cart.id)
+    if (cart.customer_id !== actor.customerId) {
+      throwCustomerAuthorityConflict()
     }
-    const claimResult = await storeIdempotencyService.claim({
-      operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
-      actorScope,
-      rawIdempotencyKey,
-      canonicalSemanticObject,
-    })
-
-    if (claimResult.type === "conflict") {
-      throw Object.assign(
-        new MedusaError(
-          MedusaError.Types.CONFLICT,
-          "Idempotency key reuse conflict"
-        ),
-        { code: "IDEMPOTENCY_KEY_REUSE_CONFLICT", statusCode: 409, status: 409 }
-      )
-    }
-
-    if (claimResult.type === "in_progress") {
-      throw Object.assign(
-        new MedusaError(
-          MedusaError.Types.CONFLICT,
-          "Operation currently in progress for this idempotency key"
-        ),
-        { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
-      )
-    }
-
-    if (claimResult.type === "replay") {
-      const record = claimResult.record
-      if (record.state === "completed" && record.result_id) {
-        const cart = await refetchActiveCart(req, record.result_id)
-        assertNoPaymentOrOrderFields(cart)
-        const version = await initializeCartResourceVersion(req, cart.id)
-        res.setHeader("ETag", formatCartEtag(version))
-        res.status(200).json({ cart })
-        return
-      }
-      throw Object.assign(
-        new MedusaError(
-          MedusaError.Types.CONFLICT,
-          "Idempotency key previously terminated with failure or requires reconciliation"
-        ),
-        { code: "IDEMPOTENCY_KEY_REUSE_CONFLICT", statusCode: 409, status: 409 }
-      )
-    }
-
-    let currentStateVersion = claimResult.record.state_version
-    let cartId: string | null = null
-    try {
-      const { result } = await createCartWorkflow(req.scope).run({
-        input: {
-          customer_id: actor.customerId,
-          currency_code: "brl",
-        },
-      })
-      cartId = result.id
-    } catch (error) {
-      try {
-        await storeIdempotencyService.markFailedRetryable({
-          id: claimResult.record.id,
-          expectedState: "processing",
-          expectedStateVersion: currentStateVersion,
-          failure_code: "CART_CREATION_FAILED",
-          next_retry_at: new Date(Date.now() + 5000),
-          retry_attempt_count: 1,
-          retry_started_at: new Date(),
-          state_deadline_at: new Date(Date.now() + 5 * 60 * 1000),
-        })
-      } catch {}
-      throw error
-    }
-
-    // Immediately record confirmed result pointer before refetch
-    const partialResult = await storeIdempotencyService.recordProcessingResult({
-      id: claimResult.record.id,
-      expectedStateVersion: currentStateVersion,
-      result_type: "cart",
-      result_id: cartId,
-      response_status: 201,
-      result_safe_metadata: {
-        operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
-        result_type: "cart",
-        result_id: cartId,
-        response_status: 201,
-      },
-    })
-
-    if (partialResult.type !== "claimed") {
-      throw Object.assign(
-        new MedusaError(
-          MedusaError.Types.CONFLICT,
-          "Operation currently in progress or ownership lost for this idempotency key"
-        ),
-        { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
-      )
-    }
-
-    currentStateVersion = partialResult.record.state_version
-
-    let cart: StoreCartRecord
-    try {
-      cart = await refetchActiveCart(req, cartId)
-      assertNoPaymentOrOrderFields(cart)
-    } catch (error) {
-      try {
-        await storeIdempotencyService.markReconciliationRequired({
-          id: claimResult.record.id,
-          expectedState: "processing",
-          expectedStateVersion: currentStateVersion,
-          result_type: "cart",
-          result_id: cartId,
-          failure_code: "CART_REFETCH_FAILED",
-        })
-      } catch {}
-      throw error
-    }
-
-    let completion: LifecycleClaimResult
-    try {
-      completion = await storeIdempotencyService.markCompleted({
-        id: claimResult.record.id,
-        expectedState: "processing",
-        expectedStateVersion: currentStateVersion,
-        result_type: "cart",
-        result_id: cart.id,
-        response_status: 201,
-        result_safe_metadata: {
-          operation: STORE_IDEMPOTENCY_STORE_CART_ACTIVE_CREATE,
-          result_type: "cart",
-          result_id: cart.id,
-          response_status: 201,
-        },
-      })
-    } catch (error) {
-      try {
-        await storeIdempotencyService.markReconciliationRequired({
-          id: claimResult.record.id,
-          expectedState: "processing",
-          expectedStateVersion: currentStateVersion,
-          result_type: "cart",
-          result_id: cart.id,
-          failure_code: "MARK_COMPLETED_FAILED",
-        })
-      } catch {}
-      throw error
-    }
-
-    if (completion.type !== "claimed") {
-      throw Object.assign(
-        new MedusaError(
-          MedusaError.Types.CONFLICT,
-          "Operation currently in progress or ownership lost for this idempotency key"
-        ),
-        { code: "IDEMPOTENCY_KEY_IN_PROGRESS", statusCode: 409, status: 409, retryable: true }
-      )
-    }
-
-    const version = await initializeCartResourceVersion(req, cart.id)
+    result.cart = cart
+    const version = await initializeCartResourceVersion(req, result.cart.id)
     res.setHeader("ETag", formatCartEtag(version))
     // Customer path never emits guest capability header
-    res.status(201).json({ cart })
+    res.status(result.statusCode).json({ cart: result.cart })
     return
   }
 

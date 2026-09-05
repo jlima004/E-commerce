@@ -181,39 +181,57 @@ function createHarness() {
   })
   deleteWorkflow.mockReturnValue({ run: deleteRun })
 
-  const request = (key: string, ifMatch = '"1"') => ({
-    method: "DELETE",
-    params: { id: cart.id },
-    body: undefined,
-    headers: {
-      [GUEST_CART_CAPABILITY_HEADER]: "guest-token-not-persisted",
-      "idempotency-key": key,
-      "if-match": ifMatch,
-    },
-    scope: {
-      resolve(key: unknown) {
-        if (key === GUEST_CART_CAPABILITY_MODULE) return guestCapability
-        if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
-        if (key === STORE_IDEMPOTENCY_MODULE) return idempotency
-        if (key === STORE_RESOURCE_VERSION_MODULE) return versionService
-        if (key === ContainerRegistrationKeys.REMOTE_QUERY) return jest.fn(async () => [carts.get(cart.id)])
-        if (key === ContainerRegistrationKeys.PG_CONNECTION) return pg
-        if (key === Modules.CART) {
-          return {
-            retrieveCart: async (id: string) =>
-              JSON.parse(JSON.stringify(carts.get(id))),
-            baseRepository_: {
-              transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
-                callback({
-                  getTransactionContext: () => ({ raw: pg.raw }),
-                }),
-            },
-          }
+  const request = (key: string, ifMatch = '"1"') => {
+    const parentResolve = (keyToResolve: unknown) => {
+      if (keyToResolve === GUEST_CART_CAPABILITY_MODULE) return guestCapability
+      if (keyToResolve === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
+      if (keyToResolve === STORE_IDEMPOTENCY_MODULE) return idempotency
+      if (keyToResolve === STORE_RESOURCE_VERSION_MODULE) return versionService
+      if (keyToResolve === ContainerRegistrationKeys.REMOTE_QUERY) return jest.fn(async () => [carts.get(cart.id)])
+      if (keyToResolve === ContainerRegistrationKeys.PG_CONNECTION) return pg
+      if (keyToResolve === Modules.CART) {
+        return {
+          retrieveCart: async (id: string) =>
+            JSON.parse(JSON.stringify(carts.get(id))),
+          baseRepository_: {
+            transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
+              callback({
+                getTransactionContext: () => ({ raw: pg.raw }),
+              }),
+          },
         }
-        throw new Error(`unrecognized scope key ${String(key)}`)
+      }
+      throw new Error(`unrecognized scope key ${String(keyToResolve)}`)
+    }
+    const scope = {
+      createScope() {
+        const overrides = new Map<unknown, { resolve(): unknown }>()
+        const child = {
+          register(keyToRegister: unknown, override: { resolve(): unknown }) {
+            overrides.set(keyToRegister, override)
+            return child
+          },
+          resolve(keyToResolve: unknown) {
+            const override = overrides.get(keyToResolve)
+            return override ? override.resolve() : parentResolve(keyToResolve)
+          },
+        }
+        return child
       },
-    },
-  })
+      resolve: parentResolve,
+    }
+    return {
+      method: "DELETE",
+      params: { id: cart.id },
+      body: undefined,
+      headers: {
+        [GUEST_CART_CAPABILITY_HEADER]: "guest-token-not-persisted",
+        "idempotency-key": key,
+        "if-match": ifMatch,
+      },
+      scope,
+    }
+  }
 
   return { cart, attempts, records, request, response, deleteWorkflow, deleteRun, versions, get claimCount() { return claimCount }, get casCount() { return casCount } }
 }

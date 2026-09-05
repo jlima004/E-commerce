@@ -4,11 +4,16 @@ import {
   markCardClientConfirmed,
   startCardPaymentAttempt,
   type CardPaymentAttemptResponse,
+  type PrepareCardPaymentAttemptResult,
   type StripeCardInitiationLayer,
 } from "../card"
 import PaymentAttemptModuleService from "../service"
 import type { PaymentAttemptRecord } from "../types"
 import { buildCompleteGuestCart } from "./fixtures/payment-start-cart"
+import { buildCompleteStripePaymentIntentCreateAuthorityV1 } from "../provider-request-authority"
+import { buildStripeCanonicalPaymentIntentCreateRequest } from "../provider-request-authority"
+import type { DurablePreProviderAuthority } from "../pre-provider-arbitration"
+import { PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE } from "../provider-request-authority"
 
 function mockRawStripeCardPaymentIntent(
   overrides: Record<string, unknown> = {}
@@ -39,6 +44,7 @@ function createStripeLayer(
       metadata: {
         ...((rawIntent.metadata as Record<string, unknown> | undefined) ?? {}),
         session_id: request.payment_session_id,
+        payment_attempt_id: request.payment_attempt_id,
       },
     })),
   }
@@ -59,6 +65,7 @@ function createSyntheticStripeCardLayer(): StripeCardInitiationLayer {
         metadata: {
           cart_id: request.cart_id,
           session_id: request.payment_session_id ?? `payses_synthetic_${suffix}`,
+          payment_attempt_id: request.payment_attempt_id,
         },
       }
     },
@@ -119,6 +126,52 @@ const MEDUSA_PAYMENT_SESSION = {
   payment_session_id: "payses_real_01",
 }
 
+function createCommitAndRereadAuthorityStub(
+  trace: string[] = [],
+  cartResourceVersion = 1
+) {
+  return async (
+    prepared: PrepareCardPaymentAttemptResult
+  ): Promise<DurablePreProviderAuthority> => {
+    trace.push("authority_tx_commit")
+    const v1 = buildCompleteStripePaymentIntentCreateAuthorityV1({
+      payment_method_type: "card",
+      amount_minor: prepared.attempt.amount,
+      cart_id: prepared.attempt.cart_id,
+      cart_resource_version: cartResourceVersion,
+      payment_attempt_id: prepared.attempt.id,
+      payment_collection_id: prepared.attempt.payment_collection_id,
+      payment_session_id: prepared.attempt.payment_session_id,
+      idempotency_key: prepared.idempotencyKey,
+      authority_created_at: "2026-09-02T12:00:00.000Z",
+      replay_deadline: "2026-09-03T11:00:00.000Z",
+    })
+    const attempt: PaymentAttemptRecord = {
+      ...prepared.attempt,
+      financial_freeze_started_at: "2026-09-02T12:00:00.000Z",
+      provider_canceled_confirmed_at: null,
+      metadata: {
+        ...(prepared.attempt.metadata ?? {}),
+        cart_resource_version: cartResourceVersion,
+        provider_idempotency_key: prepared.idempotencyKey,
+        stripe_payment_intent_create: v1,
+      },
+    }
+    trace.push("durable_reread")
+    return {
+      attempt,
+      cart_resource_version: cartResourceVersion,
+      amount_minor: attempt.amount,
+      currency_code: "brl",
+      payment_method_type: "card",
+      provider_idempotency_key: prepared.idempotencyKey,
+      financial_freeze_started_at: "2026-09-02T12:00:00.000Z",
+      authority_created_at: v1.authority_created_at,
+      replay_deadline: v1.replay_deadline,
+    }
+  }
+}
+
 describe("PaymentAttempt Stripe card resolver", () => {
   it("returns the injected layer asynchronously with service context preserved", async () => {
     const stripeLayer = createStripeLayer()
@@ -149,6 +202,7 @@ describe("04-04 startCardPaymentAttempt", () => {
       stripeLayer,
       generateId: () => "payatt_new_01",
       paymentSession: MEDUSA_PAYMENT_SESSION,
+      commitAndRereadAuthority: createCommitAndRereadAuthorityStub(),
       at: new Date("2026-06-29T12:00:00.000Z"),
     })
 
@@ -165,6 +219,190 @@ describe("04-04 startCardPaymentAttempt", () => {
     )
   })
 
+  it("persiste PaymentAttempt.amount 9000 a partir de cart.total 90 com credito extra e line item 100", async () => {
+    const cart = {
+      ...buildCompleteGuestCart({
+        id: "cart_guest_01",
+        total: 90,
+        shipping_total: 15,
+        discount_total: 10,
+        tax_total: 5,
+        items: [
+          {
+            ...buildCompleteGuestCart().items![0],
+            unit_price: 100,
+            quantity: 1,
+          },
+        ],
+      }),
+      credit_total: 20,
+    }
+    const stripeLayer = createStripeLayer(
+      mockRawStripeCardPaymentIntent({ amount: 9000 })
+    )
+
+    const result = await startCardPaymentAttempt({
+      cart,
+      actor: { actorType: "guest", actorId: "sess_guest_01" },
+      sessionActiveCartId: cart.id,
+      existingAttempts: [],
+      stripeLayer,
+      generateId: () => "payatt_new_01",
+      paymentSession: MEDUSA_PAYMENT_SESSION,
+      commitAndRereadAuthority: createCommitAndRereadAuthorityStub(),
+      at: new Date("2026-06-29T12:00:00.000Z"),
+    })
+
+    expect(result.response.amount).toBe(9000)
+    expect(result.attempt.amount).toBe(9000)
+    expect(result.response.amount).not.toBe(10000)
+    expect(result.response.amount).not.toBe(11000)
+    expect(stripeLayer.createCardPaymentIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount_minor: 9000,
+        currency_code: "brl",
+        cart_id: cart.id,
+      })
+    )
+    expect(stripeLayer.createCardPaymentIntent).toHaveBeenCalledTimes(1)
+  })
+
+  it("persiste PaymentAttempt.amount 11000 a partir de cart.total 110 mesmo com line item 100", async () => {
+    const cart = buildCompleteGuestCart({
+      id: "cart_guest_01",
+      total: 110,
+      shipping_total: 15,
+      discount_total: 10,
+      tax_total: 5,
+      items: [
+        {
+          ...buildCompleteGuestCart().items![0],
+          unit_price: 100,
+          quantity: 1,
+        },
+      ],
+    })
+    const stripeLayer = createStripeLayer(
+      mockRawStripeCardPaymentIntent({ amount: 11000 })
+    )
+
+    const result = await startCardPaymentAttempt({
+      cart,
+      actor: { actorType: "guest", actorId: "sess_guest_01" },
+      sessionActiveCartId: cart.id,
+      existingAttempts: [],
+      stripeLayer,
+      generateId: () => "payatt_new_01",
+      paymentSession: MEDUSA_PAYMENT_SESSION,
+      commitAndRereadAuthority: createCommitAndRereadAuthorityStub(),
+      at: new Date("2026-06-29T12:00:00.000Z"),
+    })
+
+    expect(result.response.amount).toBe(11000)
+    expect(result.attempt.amount).toBe(11000)
+    expect(result.response.amount).not.toBe(10000)
+    expect(stripeLayer.createCardPaymentIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount_minor: 11000,
+        currency_code: "brl",
+        cart_id: cart.id,
+      })
+    )
+    expect(stripeLayer.createCardPaymentIntent).toHaveBeenCalledTimes(1)
+  })
+
+  it("nao chama Stripe quando cart.total esta ausente mesmo com line items somaveis", async () => {
+    const stripeLayer = createStripeLayer()
+    const cart = buildCompleteGuestCart({
+      id: "cart_guest_01",
+      total: undefined,
+      shipping_total: 15,
+      tax_total: 5,
+      discount_total: 10,
+      items: [
+        {
+          ...buildCompleteGuestCart().items![0],
+          unit_price: 50,
+          quantity: 2,
+        },
+      ],
+    })
+
+    await expect(
+      startCardPaymentAttempt({
+        cart,
+        actor: { actorType: "guest", actorId: "sess_guest_01" },
+        sessionActiveCartId: cart.id,
+        existingAttempts: [],
+        stripeLayer,
+        generateId: () => "payatt_new_01",
+        paymentSession: MEDUSA_PAYMENT_SESSION,
+      })
+    ).rejects.toThrow(MedusaError)
+
+    expect(stripeLayer.createCardPaymentIntent).toHaveBeenCalledTimes(0)
+  })
+
+  it("nao chama Stripe quando cart.total ausente mesmo com credito extra reconstruivel", async () => {
+    const stripeLayer = createStripeLayer()
+    const cart = {
+      ...buildCompleteGuestCart({
+        id: "cart_guest_01",
+        total: undefined,
+        shipping_total: 15,
+        tax_total: 5,
+        discount_total: 10,
+        items: [
+          {
+            ...buildCompleteGuestCart().items![0],
+            unit_price: 100,
+            quantity: 1,
+          },
+        ],
+      }),
+      credit_total: 20,
+    }
+
+    await expect(
+      startCardPaymentAttempt({
+        cart,
+        actor: { actorType: "guest", actorId: "sess_guest_01" },
+        sessionActiveCartId: cart.id,
+        existingAttempts: [],
+        stripeLayer,
+        generateId: () => "payatt_new_01",
+        paymentSession: MEDUSA_PAYMENT_SESSION,
+      })
+    ).rejects.toThrow(MedusaError)
+
+    expect(stripeLayer.createCardPaymentIntent).toHaveBeenCalledTimes(0)
+  })
+
+  it.each([null, 0, -1, 99.999, NaN])(
+    "nao chama Stripe quando cart.total e invalido (%p)",
+    async (total) => {
+      const stripeLayer = createStripeLayer()
+      const cart = buildCompleteGuestCart({
+        id: "cart_guest_01",
+        total: total as number | null,
+      })
+
+      await expect(
+        startCardPaymentAttempt({
+          cart,
+          actor: { actorType: "guest", actorId: "sess_guest_01" },
+          sessionActiveCartId: cart.id,
+          existingAttempts: [],
+          stripeLayer,
+          generateId: () => "payatt_new_01",
+          paymentSession: MEDUSA_PAYMENT_SESSION,
+        })
+      ).rejects.toThrow(MedusaError)
+
+      expect(stripeLayer.createCardPaymentIntent).toHaveBeenCalledTimes(0)
+    }
+  )
+
   it("PaymentAttempt persiste apenas IDs seguros e metadata saneada — sem client_secret", async () => {
     const stripeLayer = createStripeLayer()
     const result = await startCardPaymentAttempt({
@@ -175,6 +413,7 @@ describe("04-04 startCardPaymentAttempt", () => {
       stripeLayer,
       generateId: () => "payatt_new_01",
       paymentSession: MEDUSA_PAYMENT_SESSION,
+      commitAndRereadAuthority: createCommitAndRereadAuthorityStub(),
     })
 
     expect(result.attempt.order_id).toBeNull()
@@ -202,6 +441,7 @@ describe("04-04 startCardPaymentAttempt", () => {
       stripeLayer,
       generateId: () => "payatt_new_01",
       paymentSession: MEDUSA_PAYMENT_SESSION,
+      commitAndRereadAuthority: createCommitAndRereadAuthorityStub(),
     })
 
     expect(result.paymentSessionData).not.toHaveProperty("client_secret")
@@ -226,6 +466,7 @@ describe("04-04 startCardPaymentAttempt", () => {
       stripeLayer,
       generateId: () => "payatt_new_01",
       paymentSession: MEDUSA_PAYMENT_SESSION,
+      commitAndRereadAuthority: createCommitAndRereadAuthorityStub(),
     })
 
     expect(result.supersededAttempts).toHaveLength(1)
@@ -273,6 +514,7 @@ describe("04-04 startCardPaymentAttempt", () => {
         stripeLayer,
         generateId: () => "payatt_new_01",
         paymentSession: MEDUSA_PAYMENT_SESSION,
+        commitAndRereadAuthority: createCommitAndRereadAuthorityStub(),
       })
     } catch (error) {
       caught = error
@@ -299,6 +541,7 @@ describe("04-04 startCardPaymentAttempt", () => {
         stripeLayer,
         generateId: () => "payatt_new_01",
         paymentSession: MEDUSA_PAYMENT_SESSION,
+        commitAndRereadAuthority: createCommitAndRereadAuthorityStub(),
       })
     ).rejects.toThrow("Stripe retornou dados de pagamento divergentes do carrinho.")
   })
@@ -317,8 +560,57 @@ describe("04-04 startCardPaymentAttempt", () => {
         stripeLayer,
         generateId: () => "payatt_new_01",
         paymentSession: MEDUSA_PAYMENT_SESSION,
+        commitAndRereadAuthority: createCommitAndRereadAuthorityStub(),
       })
     ).rejects.toThrow("Stripe retornou dados de pagamento divergentes do carrinho.")
+  })
+
+  it("nao chama Stripe sem freeze+v1 quando commitAndRereadAuthority esta ausente", async () => {
+    const stripeLayer = createStripeLayer()
+
+    await expect(
+      startCardPaymentAttempt({
+        cart: completeCart,
+        actor: { actorType: "guest", actorId: "sess_guest_01" },
+        sessionActiveCartId: completeCart.id,
+        existingAttempts: [],
+        stripeLayer,
+        generateId: () => "payatt_new_01",
+        paymentSession: MEDUSA_PAYMENT_SESSION,
+      })
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
+
+    expect(stripeLayer.createCardPaymentIntent).toHaveBeenCalledTimes(0)
+  })
+
+  it("nao chama Stripe quando a autoridade relida esta incompleta", async () => {
+    const stripeLayer = createStripeLayer()
+
+    await expect(
+      startCardPaymentAttempt({
+        cart: completeCart,
+        actor: { actorType: "guest", actorId: "sess_guest_01" },
+        sessionActiveCartId: completeCart.id,
+        existingAttempts: [],
+        stripeLayer,
+        generateId: () => "payatt_new_01",
+        paymentSession: MEDUSA_PAYMENT_SESSION,
+        commitAndRereadAuthority: async (prepared) =>
+          ({
+            attempt: prepared.attempt,
+            cart_resource_version: 1,
+            amount_minor: prepared.attempt.amount,
+            currency_code: "brl",
+            payment_method_type: "card",
+            provider_idempotency_key: prepared.idempotencyKey,
+            financial_freeze_started_at: null as unknown as string,
+            authority_created_at: "2026-09-02T12:00:00.000Z",
+            replay_deadline: "2026-09-03T11:00:00.000Z",
+          }) as DurablePreProviderAuthority,
+      })
+    ).rejects.toThrow(PAYMENT_ATTEMPT_PRE_PROVIDER_AUTHORITY_INCOMPLETE)
+
+    expect(stripeLayer.createCardPaymentIntent).toHaveBeenCalledTimes(0)
   })
 
   it("createSyntheticStripeCardLayer retorna PI mock sem config Stripe", async () => {
@@ -328,6 +620,15 @@ describe("04-04 startCardPaymentAttempt", () => {
       currency_code: "brl",
       cart_id: "cart_synthetic",
       idempotency_key: "idem_01",
+      payment_attempt_id: "payatt_synthetic",
+      payment_session_id: "payses_synthetic",
+      canonical_request: buildStripeCanonicalPaymentIntentCreateRequest({
+        payment_method_type: "card",
+        amount_minor: 5000,
+        cart_id: "cart_synthetic",
+        payment_attempt_id: "payatt_synthetic",
+        payment_session_id: "payses_synthetic",
+      }),
     })
 
     expect(raw.id).toMatch(/^pi_synthetic_/)

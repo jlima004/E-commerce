@@ -1,6 +1,9 @@
 import { POST as addLineItem } from "../../src/api/store/carts/[id]/line-items/route"
+import { POST as mergeCart } from "../../src/api/store/customers/me/cart/merge/route"
+import { CartVersionMismatchError } from "../../src/api/store/carts/concurrency"
 import { addToCartWorkflow } from "@medusajs/core-flows"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
+import { CART_MERGE_MODULE } from "../../src/modules/cart-merge"
 import {
   GUEST_CART_CAPABILITY_HEADER,
   GUEST_CART_CAPABILITY_MODULE,
@@ -124,6 +127,7 @@ function createHarness() {
       },
     },
   }
+  ;(cartModule as any).MedusaContextIndex_ = { retrieveCart: 2 }
 
   const guestCapability = {
     async lookupGuestCartCapabilityByPresentedToken() {
@@ -243,6 +247,36 @@ function createHarness() {
   }
 
   function request(key: string, variantId: string) {
+    const parentResolve = (keyToResolve: unknown) => {
+      if (keyToResolve === GUEST_CART_CAPABILITY_MODULE) return guestCapability
+      if (keyToResolve === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
+      if (keyToResolve === STORE_IDEMPOTENCY_MODULE) return idempotency
+      if (keyToResolve === STORE_RESOURCE_VERSION_MODULE) return versionService
+      if (keyToResolve === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
+      if (keyToResolve === ContainerRegistrationKeys.PG_CONNECTION) {
+        return { raw: async (sql: string, bindings?: unknown[]) => pgRaw({}, sql) }
+      }
+      if (keyToResolve === Modules.CART) return cartModule
+      throw new Error(`unrecognized scope key ${String(keyToResolve)}`)
+    }
+    const scope = {
+      createScope() {
+        const overrides = new Map<unknown, { resolve(): unknown }>()
+        const child = {
+          register(keyToRegister: unknown, override: { resolve(): unknown }) {
+            overrides.set(keyToRegister, override)
+            return child
+          },
+          resolve(keyToResolve: unknown) {
+            const override = overrides.get(keyToResolve)
+            return override ? override.resolve() : parentResolve(keyToResolve)
+          },
+        }
+        return child
+      },
+      resolve: parentResolve,
+    }
+
     return {
       method: "POST",
       params: { id: cart.id },
@@ -252,20 +286,7 @@ function createHarness() {
         "idempotency-key": key,
         "if-match": `"${versions.get(cart.id)}"`,
       },
-      scope: {
-        resolve(keyToResolve: unknown) {
-          if (keyToResolve === GUEST_CART_CAPABILITY_MODULE) return guestCapability
-          if (keyToResolve === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
-          if (keyToResolve === STORE_IDEMPOTENCY_MODULE) return idempotency
-          if (keyToResolve === STORE_RESOURCE_VERSION_MODULE) return versionService
-          if (keyToResolve === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
-          if (keyToResolve === ContainerRegistrationKeys.PG_CONNECTION) {
-            return { raw: async (sql: string, bindings?: unknown[]) => pgRaw({}, sql) }
-          }
-          if (keyToResolve === Modules.CART) return cartModule
-          throw new Error(`unrecognized scope key ${String(keyToResolve)}`)
-        },
-      },
+      scope,
     }
   }
 
@@ -297,12 +318,18 @@ describe("HR-03 Cart mutation snapshot/ETag concurrency", () => {
     await harness.aSnapshotCaptured.promise
 
     let bCompleted = false
+    let bError: unknown
     const promiseB = addLineItem(
       harness.request("snapshot-b", "variant_b") as never,
       responseB as never
-    ).then(() => {
-      bCompleted = true
-    })
+    ).then(
+      () => {
+        bCompleted = true
+      },
+      (error) => {
+        bError = error
+      }
+    )
     await harness.bWaitingForLock.promise
     expect(bCompleted).toBe(false)
 
@@ -313,13 +340,116 @@ describe("HR-03 Cart mutation snapshot/ETag concurrency", () => {
     expect((responseA.body as any).cart.items.map((item: any) => item.variant_id)).toEqual([
       "variant_a",
     ])
-    expect(responseB.headers.etag).toBe('"3"')
-    expect((responseB.body as any).cart.items.map((item: any) => item.variant_id)).toEqual([
-      "variant_a",
-      "variant_b",
+    expect(bError).toBeInstanceOf(CartVersionMismatchError)
+    expect(bError).toMatchObject({
+      currentVersion: 2,
+      currentEtag: '"2"',
+      cart: expect.objectContaining({
+        items: expect.arrayContaining([
+          expect.objectContaining({ variant_id: "variant_a" }),
+        ]),
+      }),
+    })
+    expect(harness.snapshotCount).toBe(4)
+    expect(harness.snapshotTransactions).toHaveLength(4)
+    expect(harness.snapshotTransactions[0]).toBe(harness.casTransactions[0])
+    expect(harness.snapshotTransactions[1]).toBe(harness.casTransactions[0])
+    expect(harness.snapshotTransactions[2]).toBe(harness.casTransactions[1])
+    expect(harness.snapshotTransactions[3]).toBe(harness.casTransactions[1])
+  })
+
+  it("projeta o snapshot do CartMergeExecutionResult sem refetch remoto", async () => {
+    const cart = {
+      id: "cart_merge_snapshot_01",
+      email: "customer@example.com",
+      currency_code: "brl",
+      created_at: "2026-08-25T10:00:00.000Z",
+      updated_at: "2026-08-25T10:00:01.000Z",
+      customer: { id: "cus_snapshot_01" },
+      items: [
+        {
+          id: "li_merge_snapshot_01",
+          quantity: 99,
+          title: "Camiseta",
+          variant_id: "variant_snapshot",
+          variant_title: "M",
+          unit_price: 9900,
+        },
+      ],
+      metadata: { internal_canary: "must-not-cross-boundary" },
+    }
+    const result = {
+      outcome: "MERGED_PARTIAL",
+      cart,
+      version: 7,
+      review: {
+        requiresReview: true,
+        reviewRef: "review_snapshot_01",
+        rejectedItems: [
+          {
+            variantId: "variant_rejected",
+            requestedQuantity: 30,
+            acceptedQuantity: 19,
+            rejectedQuantity: 11,
+            reason: "QUANTITY_LIMIT_EXCEEDED",
+          },
+        ],
+        internalMetadata: "must-not-cross-boundary",
+      },
+    }
+    const service = {
+      executeCartMerge: jest.fn(async () => result),
+    }
+    const request = {
+      method: "POST",
+      url: "/store/customers/me/cart/merge",
+      originalUrl: "/store/customers/me/cart/merge",
+      auth_context: { actor_type: "customer", actor_id: "cus_snapshot_01" },
+      customerAuthBff: { authorized: true },
+      customerAuth: { customerId: "cus_snapshot_01" },
+      body: { guestCartId: "cart_guest_snapshot_01" },
+      headers: {
+        [GUEST_CART_CAPABILITY_HEADER]: "guest-token-not-persisted",
+        "idempotency-key": "merge-snapshot-01",
+        "if-match": '"1"',
+      },
+      scope: {
+        resolve(key: unknown) {
+          if (key === CART_MERGE_MODULE) return service
+          if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
+            throw new Error("REMOTE_QUERY_MUST_NOT_BE_USED_FOR_MERGE_RESPONSE")
+          }
+          throw new Error(`unexpected scope resolution: ${String(key)}`)
+        },
+      },
+    }
+    const res = response()
+
+    await mergeCart(request as never, res as never)
+
+    expect(service.executeCartMerge).toHaveBeenCalledTimes(1)
+    expect(res.statusCode).toBe(200)
+    expect(res.headers.etag).toBe('"7"')
+    expect(res.headers["cache-control"]).toBe("no-store")
+    expect(Object.keys(res.body as any).sort()).toEqual([
+      "cart",
+      "outcome",
+      "review",
     ])
-    expect(harness.snapshotCount).toBe(2)
-    expect(harness.snapshotTransactions).toHaveLength(2)
-    expect(harness.snapshotTransactions).toEqual(harness.casTransactions)
+    expect((res.body as any).cart.items[0].quantity).toBe(99)
+    expect((res.body as any).review).toEqual({
+      requiresReview: true,
+      reviewRef: "review_snapshot_01",
+      rejectedItems: [
+        {
+          variantId: "variant_rejected",
+          requestedQuantity: 30,
+          acceptedQuantity: 19,
+          rejectedQuantity: 11,
+          reason: "QUANTITY_LIMIT_EXCEEDED",
+        },
+      ],
+    })
+    expect(JSON.stringify(res.body)).not.toContain("must-not-cross-boundary")
   })
 })

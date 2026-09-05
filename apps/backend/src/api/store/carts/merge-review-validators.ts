@@ -1,0 +1,319 @@
+import { MedusaError } from "@medusajs/framework/utils"
+import { z } from "zod"
+import { GUEST_CART_CAPABILITY_HEADER } from "../../../modules/guest-cart-capability/types"
+import { assertValidRawIdempotencyKey } from "../../../modules/store-idempotency"
+import {
+  CART_MERGE_OUTCOMES,
+  CART_MERGE_REJECTION_REASONS,
+  type RejectedItem,
+} from "../../../modules/cart-merge/types"
+import type { PublicStoreCartPreOrder } from "./serializers"
+
+export const CartReviewAcknowledgeParamsSchema = z
+  .object({
+    id: z.string().min(1),
+  })
+  .strict()
+
+export const CartMergeRequestSchema = z
+  .object({
+    guestCartId: z
+      .string()
+      .min(1)
+      .refine((value) => value.trim().length > 0),
+  })
+  .strict()
+
+const cartMergeRejectedItemShape = {
+  variantId: z.string().min(1),
+  requestedQuantity: z.number().int().min(1),
+  acceptedQuantity: z.number().int().min(0).max(99),
+  rejectedQuantity: z.number().int().min(0),
+  reason: z.enum(CART_MERGE_REJECTION_REASONS),
+}
+
+export const CartMergeRejectedItemSchema = z
+  .object(cartMergeRejectedItemShape)
+  .strict()
+  .superRefine((item, context) => {
+    if (item.acceptedQuantity > item.requestedQuantity) {
+      context.addIssue({
+        code: "custom",
+        path: ["acceptedQuantity"],
+        message: "acceptedQuantity cannot exceed requestedQuantity",
+      })
+    }
+
+    if (
+      item.acceptedQuantity + item.rejectedQuantity !==
+      item.requestedQuantity
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["rejectedQuantity"],
+        message:
+          "acceptedQuantity plus rejectedQuantity must equal requestedQuantity",
+      })
+    }
+  })
+
+const cartReviewPendingStateSchema = z
+  .object({
+    requiresReview: z.literal(true),
+    reviewRef: z.string().min(1),
+    rejectedItems: z.array(CartMergeRejectedItemSchema),
+  })
+  .strict()
+
+const cartReviewClearStateSchema = z
+  .object({
+    requiresReview: z.literal(false),
+    reviewRef: z.null(),
+    rejectedItems: z.array(CartMergeRejectedItemSchema),
+  })
+  .strict()
+
+export const CartReviewStateSchema = z.discriminatedUnion("requiresReview", [
+  cartReviewPendingStateSchema,
+  cartReviewClearStateSchema,
+])
+
+const publicStoreCartCustomerSchema = z
+  .object({
+    id: z.string().nullable(),
+    email: z.string().nullable(),
+  })
+  .strict()
+
+const publicStoreCartItemSchema = z
+  .object({
+    id: z.string().nullable(),
+    quantity: z.number(),
+    title: z.string().nullable(),
+    variant_id: z.string().nullable(),
+    variant_title: z.string().nullable(),
+    unit_price: z.number().nullable(),
+  })
+  .strict()
+
+const publicStoreCartShippingAddressSchema = z
+  .object({
+    first_name: z.string().nullable(),
+    last_name: z.string().nullable(),
+    company: z.string().nullable(),
+    address_1: z.string().nullable(),
+    address_2: z.string().nullable(),
+    city: z.string().nullable(),
+    postal_code: z.string().nullable(),
+    country_code: z.string().nullable(),
+    province: z.string().nullable(),
+    phone: z.string().nullable(),
+    masked_federal_tax_id: z.string().nullable(),
+  })
+  .strict()
+
+const publicStoreCartSchema: z.ZodType<PublicStoreCartPreOrder> = z
+  .object({
+    id: z.string(),
+    email: z.string().nullable(),
+    currency_code: z.string().nullable(),
+    locale: z.string().nullable(),
+    total: z.number().nullable(),
+    subtotal: z.number().nullable(),
+    item_total: z.number().nullable(),
+    shipping_total: z.number().nullable(),
+    tax_total: z.number().nullable(),
+    discount_total: z.number().nullable(),
+    region_id: z.string().nullable(),
+    created_at: z.string().nullable(),
+    updated_at: z.string().nullable(),
+    checkout_data_complete: z.boolean(),
+    customer: publicStoreCartCustomerSchema.nullable(),
+    items: z.array(publicStoreCartItemSchema),
+    shipping_address: publicStoreCartShippingAddressSchema.nullable(),
+  })
+  .strict()
+
+const cartMergePartialResponseSchema = z
+  .object({
+    outcome: z.literal("MERGED_PARTIAL"),
+    cart: publicStoreCartSchema.nullable(),
+    review: cartReviewPendingStateSchema,
+  })
+  .strict()
+
+const CART_MERGE_CLEAR_OUTCOMES = [
+  "MERGED",
+  "GUEST_CART_ATTACHED",
+  "CUSTOMER_CART_PRESERVED",
+  "NO_ITEMS",
+] as const
+
+const cartMergeClearResponseSchema = z
+  .object({
+    outcome: z.enum(CART_MERGE_CLEAR_OUTCOMES),
+    cart: publicStoreCartSchema.nullable(),
+    review: cartReviewClearStateSchema,
+  })
+  .strict()
+
+export const CartMergeResponseSchema = z.union([
+  cartMergePartialResponseSchema,
+  cartMergeClearResponseSchema,
+])
+
+export const CartReviewAcknowledgeBodySchema = z
+  .object({
+    reviewRef: z.string().min(1).nullable(),
+  })
+  .strict()
+
+export const CartReviewAcknowledgeResponseSchema = z
+  .object({
+    cart: publicStoreCartSchema.nullable(),
+    review: cartReviewClearStateSchema,
+  })
+  .strict()
+
+export type CartMergeRequest = z.infer<typeof CartMergeRequestSchema>
+export type CartReviewAcknowledgeParams = z.infer<
+  typeof CartReviewAcknowledgeParamsSchema
+>
+
+export type CartReviewAcknowledgeBody = z.infer<
+  typeof CartReviewAcknowledgeBodySchema
+>
+
+export type CartMergeRequestLike = {
+  auth_context?: {
+    actor_id?: unknown
+    actor_type?: unknown
+  }
+  customerAuth?: { customerId?: string }
+  customerAuthBff?: { authorized?: boolean }
+  body?: Record<string, unknown>
+  headers: Record<string, unknown>
+  session?: {
+    id?: string
+    active_cart_id?: string
+  }
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined
+}
+
+function headerValue(req: CartMergeRequestLike, name: string): string | undefined {
+  const value = req.headers[name] ?? req.headers[name.toLowerCase()]
+  if (Array.isArray(value)) return nonEmptyString(value[0])
+  return nonEmptyString(value)
+}
+
+export function isAttachNewContractPresent(req: CartMergeRequestLike): boolean {
+  if (!CartMergeRequestSchema.safeParse(req.body).success) {
+    return false
+  }
+
+  if (req.customerAuthBff?.authorized !== true) {
+    return false
+  }
+
+  if (!headerValue(req, GUEST_CART_CAPABILITY_HEADER)) {
+    return false
+  }
+
+  if (!headerValue(req, "idempotency-key")) {
+    return false
+  }
+
+  if (!headerValue(req, "if-match")) {
+    return false
+  }
+
+  return true
+}
+
+export function parseCartMergeCustomerId(req: CartMergeRequestLike): string {
+  const customerId =
+    nonEmptyString(req.customerAuth?.customerId) ??
+    (req.auth_context?.actor_type === "customer"
+      ? nonEmptyString(req.auth_context.actor_id)
+      : undefined)
+  if (!customerId) {
+    throw new MedusaError(
+      MedusaError.Types.UNAUTHORIZED,
+      "Customer authentication is required"
+    )
+  }
+  return customerId
+}
+
+export function requireCustomerId(req: CartMergeRequestLike): string {
+  return parseCartMergeCustomerId(req)
+}
+
+export function parseCartMergeBody(req: CartMergeRequestLike): string {
+  return requireGuestCartId(req)
+}
+
+export function requireGuestCartId(req: CartMergeRequestLike): string {
+  const parsed = CartMergeRequestSchema.safeParse(req.body)
+  if (!parsed.success) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Invalid cart merge request"
+    )
+  }
+  return parsed.data.guestCartId.trim()
+}
+
+export function parseCartMergePresentedHeaders(req: CartMergeRequestLike): {
+  presentedCapability: string
+  rawIdempotencyKey: string
+} {
+  const presentedCapability = headerValue(req, GUEST_CART_CAPABILITY_HEADER)
+  if (!presentedCapability) {
+    throw new MedusaError(
+      MedusaError.Types.NOT_FOUND,
+      "Presented guest capability is invalid"
+    )
+  }
+  const rawIdempotencyKey = headerValue(req, "idempotency-key")
+  if (!rawIdempotencyKey) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "Idempotency-Key header is required"
+    )
+  }
+  assertValidRawIdempotencyKey(rawIdempotencyKey)
+  return { presentedCapability, rawIdempotencyKey }
+}
+
+function invalidAcknowledgeRequest(): MedusaError {
+  return new MedusaError(
+    MedusaError.Types.INVALID_DATA,
+    "Invalid cart review acknowledge request"
+  )
+}
+
+export function parseCartReviewAcknowledgeParams(
+  value: unknown
+): CartReviewAcknowledgeParams {
+  const parsed = CartReviewAcknowledgeParamsSchema.safeParse(value)
+  if (!parsed.success) {
+    throw invalidAcknowledgeRequest()
+  }
+  return parsed.data
+}
+
+export function parseCartReviewAcknowledgeBody(
+  value: unknown
+): CartReviewAcknowledgeBody {
+  const parsed = CartReviewAcknowledgeBodySchema.safeParse(value)
+  if (!parsed.success) {
+    throw invalidAcknowledgeRequest()
+  }
+  return parsed.data
+}

@@ -5,6 +5,10 @@ import {
   generateEntityId,
 } from "@medusajs/framework/utils"
 import { env } from "../../config/env"
+import {
+  resolveTransactionalKnex,
+  type SharedTransactionContext,
+} from "../../infrastructure/store-foundation-transaction-compatibility"
 import StoreIdempotencyRecord, {
   STORE_IDEMPOTENCY_HASH_VERSION,
   STORE_IDEMPOTENCY_PEPPER_VERSION,
@@ -150,6 +154,60 @@ export type ClaimInput = {
   resourceScope?: unknown
   rawIdempotencyKey: string
   canonicalSemanticObject: Record<string, unknown>
+  sharedContext?: SharedTransactionContext
+  at?: Date
+}
+
+export type StoreIdempotencyMutationContext = SharedTransactionContext
+
+export type StoreIdempotencyResultBinding = {
+  idempotencyRecordId: string
+  resultId: string
+  resultType: string
+  expiresAt?: string | Date
+}
+
+export type StoreIdempotencyCommittedResult = {
+  record: StoreIdempotencyRecordRow
+  resultBinding: StoreIdempotencyResultBinding & { expiresAt: string }
+}
+
+export type LoadCommittedStoreIdempotencyResultInput = {
+  idempotencyRecordId: string
+  operation: string
+  actorScope: unknown
+  resourceScope?: unknown
+  rawIdempotencyKey: string
+  canonicalSemanticObject: Record<string, unknown>
+  resultBinding: StoreIdempotencyResultBinding
+  sharedContext?: StoreIdempotencyMutationContext
+  at?: Date
+}
+
+export type CompleteStoreIdempotencyInput = {
+  id: string
+  expectedState: StoreIdempotencyState
+  expectedStateVersion: number
+  resultBinding: StoreIdempotencyResultBinding
+  responseStatus?: number | null
+  resultSafeMetadata?: StoreIdempotencySafeMetadata | null
+  sharedContext?: StoreIdempotencyMutationContext
+  retentionMs?: number
+  at?: Date
+}
+
+export type FailStoreIdempotencyInput = {
+  id: string
+  expectedState: StoreIdempotencyState
+  expectedStateVersion: number
+  failureCode: string
+  terminal?: boolean
+  nextRetryAt?: Date
+  retryAttemptCount?: number
+  retryStartedAt?: Date
+  stateDeadlineAt?: Date
+  sharedContext?: StoreIdempotencyMutationContext
+  retentionMs?: number
   at?: Date
 }
 
@@ -672,12 +730,169 @@ function requireOperation(operation: string): string {
   return operation
 }
 
+const CART_MERGE_SEMANTIC_KEYS = [
+  "customerCartId",
+  "customerId",
+  "customerVersion",
+  "guestCartId",
+  "guestVersion",
+  "normalizedGuestIntent",
+  "operation",
+] as const
+
+function assertCartMergeSemanticObject(
+  operation: string,
+  semantic: Record<string, unknown>
+): void {
+  if (operation !== "cart_merge") {
+    return
+  }
+
+  const keys = Object.keys(semantic).sort()
+  if (
+    keys.length !== CART_MERGE_SEMANTIC_KEYS.length ||
+    keys.some((key, index) => key !== CART_MERGE_SEMANTIC_KEYS[index])
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "STORE_IDEMPOTENCY_CART_MERGE_FINGERPRINT_INVALID"
+    )
+  }
+
+  assertNoSensitiveStoreIdempotencyPersistence(semantic)
+
+  if (
+    semantic.operation !== "CART_MERGE" ||
+    typeof semantic.customerId !== "string" ||
+    semantic.customerId.length === 0 ||
+    typeof semantic.guestCartId !== "string" ||
+    semantic.guestCartId.length === 0 ||
+    (semantic.customerCartId !== null &&
+      typeof semantic.customerCartId !== "string") ||
+    !Number.isInteger(semantic.guestVersion) ||
+    Number(semantic.guestVersion) < 0 ||
+    (semantic.customerVersion !== null &&
+      (!Number.isInteger(semantic.customerVersion) ||
+        Number(semantic.customerVersion) < 0)) ||
+    !Array.isArray(semantic.normalizedGuestIntent)
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "STORE_IDEMPOTENCY_CART_MERGE_FINGERPRINT_INVALID"
+    )
+  }
+
+  let previousVariantId: string | null = null
+  const seenVariantIds = new Set<string>()
+  for (const item of semantic.normalizedGuestIntent) {
+    if (!isPlainObject(item)) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "STORE_IDEMPOTENCY_CART_MERGE_FINGERPRINT_INVALID"
+      )
+    }
+    const itemKeys = Object.keys(item).sort()
+    if (
+      itemKeys.length !== 2 ||
+      itemKeys[0] !== "quantity" ||
+      itemKeys[1] !== "variantId" ||
+      typeof item.variantId !== "string" ||
+      item.variantId.length === 0 ||
+      !Number.isInteger(item.quantity) ||
+      Number(item.quantity) <= 0 ||
+      seenVariantIds.has(item.variantId) ||
+      (previousVariantId !== null &&
+        previousVariantId.localeCompare(item.variantId) >= 0)
+    ) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "STORE_IDEMPOTENCY_CART_MERGE_FINGERPRINT_INVALID"
+      )
+    }
+    seenVariantIds.add(item.variantId)
+    previousVariantId = item.variantId
+  }
+}
+
+function assertResultBinding(
+  id: string,
+  binding: StoreIdempotencyResultBinding
+): void {
+  if (
+    binding.idempotencyRecordId !== id ||
+    !SAFE_REF_PATTERN.test(binding.idempotencyRecordId) ||
+    !SAFE_REF_PATTERN.test(binding.resultId) ||
+    !SAFE_LABEL_PATTERN.test(binding.resultType)
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "STORE_IDEMPOTENCY_RESULT_BINDING_INVALID"
+    )
+  }
+
+  if (binding.expiresAt !== undefined) {
+    const expiresAt =
+      typeof binding.expiresAt === "string"
+        ? new Date(binding.expiresAt)
+        : binding.expiresAt
+    if (Number.isNaN(expiresAt.getTime())) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "STORE_IDEMPOTENCY_RESULT_BINDING_INVALID"
+      )
+    }
+  }
+}
+
+function assertResultMetadataCoherent(
+  metadata: StoreIdempotencySafeMetadata | null,
+  binding: StoreIdempotencyResultBinding,
+  responseStatus: number | null | undefined
+): void {
+  if (!metadata) {
+    return
+  }
+  if (
+    metadata.result_id !== undefined &&
+    metadata.result_id !== binding.resultId
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "STORE_IDEMPOTENCY_RESULT_BINDING_INVALID"
+    )
+  }
+  if (
+    metadata.result_type !== undefined &&
+    metadata.result_type !== binding.resultType
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "STORE_IDEMPOTENCY_RESULT_BINDING_INVALID"
+    )
+  }
+  if (
+    responseStatus !== undefined &&
+    metadata.response_status !== undefined &&
+    metadata.response_status !== responseStatus
+  ) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      "STORE_IDEMPOTENCY_RESULT_BINDING_INVALID"
+    )
+  }
+}
+
 const BaseStoreIdempotencyService = MedusaService({ StoreIdempotencyRecord })
 
 export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
   protected declare readonly baseRepository_: BaseRepositoryLike
 
-  private knex(): KnexLike {
+  private knex(sharedContext?: StoreIdempotencyMutationContext): KnexLike {
+    if (sharedContext) {
+      return resolveTransactionalKnex(
+        sharedContext.transactionManager
+      ) as unknown as KnexLike
+    }
     return this.baseRepository_.getActiveManager().getKnex()
   }
 
@@ -692,6 +907,10 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
   async claim(input: ClaimInput): Promise<ClaimResult> {
     const at = input.at ?? new Date()
     const operation = requireOperation(input.operation)
+    assertCartMergeSemanticObject(
+      operation,
+      input.canonicalSemanticObject
+    )
     const keyHash = hashStoreIdempotencyKey(
       input.rawIdempotencyKey,
       this.pepper()
@@ -711,7 +930,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     const id = generateEntityId(undefined, "stidem")
     const timestamp = at.toISOString()
 
-    return this.knex().transaction(async (trx) => {
+    const claimInTransaction = async (trx: KnexLike): Promise<ClaimResult> => {
       const insert = await trx.raw(
         `
           insert into store_idempotency_record (
@@ -793,6 +1012,203 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       }
 
       return { type: "in_progress" as const, record }
+    }
+
+    if (input.sharedContext) {
+      return claimInTransaction(this.knex(input.sharedContext))
+    }
+
+    return this.knex().transaction(claimInTransaction)
+  }
+
+  /** Canonical Phase 16 facade; preserves claim's transactional semantics. */
+  async claimStoreIdempotency(input: ClaimInput): Promise<ClaimResult> {
+    return this.claim(input)
+  }
+
+  /**
+   * Transaction-bound owner read used by CartMerge replay orchestration. The
+   * caller supplies the already-open transaction; no sibling table is joined
+   * here and no independent manager is created.
+   */
+  async retrieveStoreIdempotencyRecordForReplay(
+    id: string,
+    sharedContext?: StoreIdempotencyMutationContext
+  ): Promise<StoreIdempotencyRecordRow | null> {
+    if (!sharedContext || typeof id !== "string" || id.trim().length === 0) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "STORE_IDEMPOTENCY_REPLAY_LOOKUP_INVALID"
+      )
+    }
+
+    const result = await this.knex(sharedContext).raw(
+      "select * from store_idempotency_record where id = ? and deleted_at is null",
+      [id]
+    )
+    const row = result.rows?.[0]
+    return row ? mapRow(row) : null
+  }
+
+  /**
+   * Load an immutable committed receipt only after all request and result
+   * bindings match. This is read-only and uses the caller's transaction when
+   * supplied; it never starts a nested manager or reconstructs a response.
+   */
+  async loadCommittedStoreIdempotencyResult(
+    input: LoadCommittedStoreIdempotencyResultInput
+  ): Promise<StoreIdempotencyCommittedResult | null> {
+    const operation = requireOperation(input.operation)
+    assertCartMergeSemanticObject(operation, input.canonicalSemanticObject)
+    assertResultBinding(input.idempotencyRecordId, input.resultBinding)
+
+    const keyHash = hashStoreIdempotencyKey(
+      input.rawIdempotencyKey,
+      this.pepper()
+    )
+    const actorScopeHash = hashStoreIdempotencyScope(input.actorScope)
+    const resourceScopeHash = hashStoreIdempotencyScope(
+      input.resourceScope ?? null
+    )
+    const fingerprint = buildStoreIdempotencyRequestFingerprint(
+      input.canonicalSemanticObject
+    )
+    const at = input.at ?? new Date()
+    const result = await this.knex(input.sharedContext).raw(
+      `select * from store_idempotency_record where id = ?`,
+      [input.idempotencyRecordId]
+    )
+    const row = result.rows?.[0]
+    if (!row) {
+      return null
+    }
+
+    const record = mapRow(row)
+    if (
+      record.operation !== operation ||
+      record.state !== "completed" ||
+      record.result_id !== input.resultBinding.resultId ||
+      record.result_type !== input.resultBinding.resultType ||
+      !fingerprintsMatch(record.actor_scope_hash, actorScopeHash) ||
+      !fingerprintsMatch(record.resource_scope_hash, resourceScopeHash) ||
+      !fingerprintsMatch(record.idempotency_key_hash, keyHash) ||
+      !fingerprintsMatch(record.request_fingerprint, fingerprint) ||
+      !record.expires_at ||
+      new Date(record.expires_at).getTime() <= at.getTime()
+    ) {
+      return null
+    }
+
+    const expectedBindingExpiry = input.resultBinding.expiresAt
+      ? iso(input.resultBinding.expiresAt)
+      : record.expires_at
+    if (expectedBindingExpiry !== record.expires_at) {
+      return null
+    }
+
+    return {
+      record,
+      resultBinding: {
+        ...input.resultBinding,
+        expiresAt: record.expires_at,
+      },
+    }
+  }
+
+  /** Complete a claim with the immutable CartMergeResult 1:1 binding. */
+  async completeStoreIdempotency(
+    input: CompleteStoreIdempotencyInput
+  ): Promise<LifecycleClaimResult> {
+    const at = input.at ?? new Date()
+    const retention = resolveTerminalRetentionMs({
+      retentionMs: input.retentionMs,
+    })
+    const expectedExpiry = addMs(at, retention).toISOString()
+    assertResultBinding(input.id, input.resultBinding)
+    if (
+      input.resultBinding.expiresAt !== undefined &&
+      iso(input.resultBinding.expiresAt) !== expectedExpiry
+    ) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "STORE_IDEMPOTENCY_RESULT_EXPIRY_MISMATCH"
+      )
+    }
+
+    const metadata = sanitizeStoreIdempotencySafeMetadata(
+      input.resultSafeMetadata ?? null
+    )
+    assertResultMetadataCoherent(
+      metadata,
+      input.resultBinding,
+      input.responseStatus
+    )
+
+    return this.markCompleted({
+      id: input.id,
+      expectedState: input.expectedState,
+      expectedStateVersion: input.expectedStateVersion,
+      result_type: input.resultBinding.resultType,
+      result_id: input.resultBinding.resultId,
+      response_status: input.responseStatus ?? null,
+      result_safe_metadata: metadata,
+      sharedContext: input.sharedContext,
+      retentionMs: input.retentionMs,
+      at,
+    })
+  }
+
+  /** Fail a claim through the existing retryable/terminal lifecycle APIs. */
+  async failStoreIdempotency(
+    input: FailStoreIdempotencyInput
+  ): Promise<LifecycleClaimResult> {
+    const terminal = input.terminal ?? !input.nextRetryAt
+    if (terminal) {
+      if (
+        input.nextRetryAt ||
+        input.retryAttemptCount !== undefined ||
+        input.retryStartedAt ||
+        input.stateDeadlineAt
+      ) {
+        throw new MedusaError(
+          MedusaError.Types.INVALID_DATA,
+          "STORE_IDEMPOTENCY_FAILURE_LIFECYCLE_INVALID"
+        )
+      }
+      return this.markFailedTerminal({
+        id: input.id,
+        expectedState: input.expectedState,
+        expectedStateVersion: input.expectedStateVersion,
+        failure_code: input.failureCode,
+        sharedContext: input.sharedContext,
+        retentionMs: input.retentionMs,
+        at: input.at,
+      })
+    }
+
+    if (
+      !input.nextRetryAt ||
+      input.retryAttemptCount === undefined ||
+      !input.retryStartedAt ||
+      !input.stateDeadlineAt
+    ) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "STORE_IDEMPOTENCY_FAILURE_LIFECYCLE_INVALID"
+      )
+    }
+
+    return this.markFailedRetryable({
+      id: input.id,
+      expectedState: input.expectedState,
+      expectedStateVersion: input.expectedStateVersion,
+      failure_code: input.failureCode,
+      next_retry_at: input.nextRetryAt,
+      retry_attempt_count: input.retryAttemptCount,
+      retry_started_at: input.retryStartedAt,
+      state_deadline_at: input.stateDeadlineAt,
+      sharedContext: input.sharedContext,
+      at: input.at,
     })
   }
 
@@ -816,6 +1232,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       terminalized_at?: Date | null
       expires_at?: Date | null
     }
+    sharedContext?: StoreIdempotencyMutationContext
     at?: Date
   }): Promise<LifecycleClaimResult> {
     const at = input.at ?? new Date()
@@ -867,7 +1284,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       )
     }
 
-    const result = await this.knex().raw(
+    const result = await this.knex(input.sharedContext).raw(
       `
         update store_idempotency_record
         set
@@ -926,7 +1343,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
 
     const row = result.rows?.[0]
     if (!row) {
-      const current = await this.knex().raw(
+      const current = await this.knex(input.sharedContext).raw(
         `select * from store_idempotency_record where id = ?`,
         [input.id]
       )
@@ -946,6 +1363,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     result_id?: string | null
     response_status?: number | null
     result_safe_metadata?: StoreIdempotencySafeMetadata | null
+    sharedContext?: StoreIdempotencyMutationContext
     at?: Date
   }): Promise<LifecycleClaimResult> {
     const at = input.at ?? new Date()
@@ -960,7 +1378,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       input.response_status
     )
 
-    const result = await this.knex().raw(
+    const result = await this.knex(input.sharedContext).raw(
       `
         update store_idempotency_record
         set
@@ -988,7 +1406,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
 
     const row = result.rows?.[0]
     if (!row) {
-      const current = await this.knex().raw(
+      const current = await this.knex(input.sharedContext).raw(
         `select * from store_idempotency_record where id = ?`,
         [input.id]
       )
@@ -1009,6 +1427,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     result_id?: string | null
     response_status?: number | null
     result_safe_metadata?: StoreIdempotencySafeMetadata | null
+    sharedContext?: StoreIdempotencyMutationContext
     retentionMs?: number
     at?: Date
   }): Promise<LifecycleClaimResult> {
@@ -1020,6 +1439,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       id: input.id,
       expectedState: input.expectedState,
       expectedStateVersion: input.expectedStateVersion,
+      sharedContext: input.sharedContext,
       at,
       next: {
         state: "completed",
@@ -1046,12 +1466,14 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     retry_attempt_count: number
     retry_started_at: Date
     state_deadline_at: Date
+    sharedContext?: StoreIdempotencyMutationContext
     at?: Date
   }): Promise<LifecycleClaimResult> {
     return this.transitionWithPredicate({
       id: input.id,
       expectedState: input.expectedState,
       expectedStateVersion: input.expectedStateVersion,
+      sharedContext: input.sharedContext,
       at: input.at,
       next: {
         state: "failed_retryable",
@@ -1070,6 +1492,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     expectedState: StoreIdempotencyState
     expectedStateVersion: number
     failure_code: string
+    sharedContext?: StoreIdempotencyMutationContext
     retentionMs?: number
     at?: Date
   }): Promise<LifecycleClaimResult> {
@@ -1081,6 +1504,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       id: input.id,
       expectedState: input.expectedState,
       expectedStateVersion: input.expectedStateVersion,
+      sharedContext: input.sharedContext,
       at,
       next: {
         state: "failed_terminal",
@@ -1102,6 +1526,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     result_id?: string | null
     result_safe_metadata?: StoreIdempotencySafeMetadata | null
     failure_code?: string | null
+    sharedContext?: StoreIdempotencyMutationContext
     at?: Date
   }): Promise<LifecycleClaimResult> {
     const at = input.at ?? new Date()
@@ -1109,6 +1534,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       id: input.id,
       expectedState: input.expectedState,
       expectedStateVersion: input.expectedStateVersion,
+      sharedContext: input.sharedContext,
       at,
       next: {
         state: "reconciliation_required",
@@ -1130,6 +1556,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
     id: string
     expectedState: StoreIdempotencyState
     expectedStateVersion: number
+    sharedContext?: StoreIdempotencyMutationContext
     at?: Date
   }): Promise<LifecycleClaimResult> {
     const at = input.at ?? new Date()
@@ -1137,6 +1564,7 @@ export class StoreIdempotencyModuleService extends BaseStoreIdempotencyService {
       id: input.id,
       expectedState: input.expectedState,
       expectedStateVersion: input.expectedStateVersion,
+      sharedContext: input.sharedContext,
       at,
       next: {
         state: "reconciliation_unresolved",

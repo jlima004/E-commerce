@@ -1,7 +1,7 @@
 # Requirements: Milestone v1.1 — Backend Storefront Readiness
 
 **Definido:** 2026-08-06
-**Status:** aberto; **26 requisitos concluídos** (FND-01..FND-08, AUTH-01..AUTH-09, CART-01..CART-09); **65 abertos**
+**Status:** aberto; **34 requisitos concluídos** (FND-01..FND-08, AUTH-01..AUTH-09, CART-01..CART-09, MRG-01..MRG-08); **57 abertos**
 **Escopo:** somente backend; o Frontend Milestone 1 permanece bloqueado
 
 > Decisões existentes em PRD/SRS/rastreabilidade não equivalem a implementação. Requisitos só podem ser concluídos com a evidência prevista no roadmap e gate de closure da phase correspondente.
@@ -72,22 +72,28 @@ B15-PR27-HR-01..HR-06. Human re-review accepted the remediation: all six finding
 are `CLOSED — PASS`; CART-01..CART-09 remain 9/9 COMPLETE and no requirement
 count changes.
 
-Phase 16 CONTEXT and RESEARCH: **HUMAN APPROVED — PASS**. `R16-HR-01..R16-HR-08` are **CLOSED — APPROVED**. Phase-16 PLAN is **TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED** (14 plans / 14 serial waves); EXECUTION and subsequent gates remain separately human-gated and unauthorized. `MRG-01..MRG-08` are planned 8/8 but remain unchanged / OPEN.
-
-Research review authority: `.planning/phases/16-cart-merge-review/16-RESEARCH-REVIEW.md`.
-
 ### Phase 16 — Cart Merge & Review
 
-| ID | Classe | Requisito verificável |
-|---|---|---|
-| MRG-01 | Runtime | Substituir attach simples como contrato principal por merge autenticado, transacional e idempotente. |
-| MRG-02 | Contrato | Retornar exatamente `MERGED`, `MERGED_PARTIAL`, `GUEST_CART_ATTACHED`, `CUSTOMER_CART_PRESERVED` ou `NO_ITEMS`. |
-| MRG-03 | Runtime | Somar quantidades por variante até 99 sem duplicar itens em retry. |
-| MRG-04 | Runtime | Rejeitar individualmente variantes inválidas/indisponíveis e preservar itens válidos no merge parcial. |
-| MRG-05 | Persistência | Garantir rollback completo em falha e consumir/revogar capability somente após commit bem-sucedido. |
-| MRG-06 | Persistência | Persistir `requiresReview`, itens rejeitados e reconhecimento versionado. |
-| MRG-07 | Runtime | Bloquear checkout enquanto `requiresReview=true` e permitir acknowledge idempotente. |
-| MRG-08 | Contrato | Deprecar controladamente `/store/customers/me/cart/attach`, sem remoção silenciosa ou bypass do merge. |
+| ID | Classe | Requisito verificável | Status |
+|---|---|---|---|
+| MRG-01 | Runtime | Substituir attach simples como contrato principal por merge autenticado, transacional e idempotente. | COMPLETE |
+| MRG-02 | Contrato | Retornar exatamente `MERGED`, `MERGED_PARTIAL`, `GUEST_CART_ATTACHED`, `CUSTOMER_CART_PRESERVED` ou `NO_ITEMS`. | COMPLETE |
+| MRG-03 | Runtime | Somar quantidades por variante até 99 sem duplicar itens em retry. | COMPLETE |
+| MRG-04 | Runtime | Rejeitar individualmente variantes inválidas/indisponíveis e preservar itens válidos no merge parcial. | COMPLETE |
+| MRG-05 | Persistência | Garantir rollback completo em falha e consumir/revogar capability somente após commit bem-sucedido. | COMPLETE |
+| MRG-06 | Persistência | Persistir `requiresReview`, itens rejeitados e reconhecimento versionado. | COMPLETE |
+| MRG-07 | Runtime | Bloquear checkout enquanto `requiresReview=true` e permitir acknowledge idempotente. | COMPLETE |
+| MRG-08 | Contrato | Deprecar controladamente `/store/customers/me/cart/attach`, sem remoção silenciosa ou bypass do merge. | COMPLETE |
+
+`requirements-completed:` `[MRG-01, MRG-02, MRG-03, MRG-04, MRG-05, MRG-06, MRG-07, MRG-08]`
+
+Phase 16: **CLOSED — HUMAN APPROVED**.
+MRG: 8/8 COMPLETE.
+Phase 17: NOT AUTHORIZED.
+
+Phase 16 closure artifact: `.planning/phases/16-cart-merge-review/16-CLOSURE.md` — CLOSED — HUMAN APPROVED.
+
+Phase 17 CONTEXT, PLAN, and EXECUTION: **NOT AUTHORIZED**.
 
 ### Phase 17 — Authenticated BR Checkout & Privacy
 
@@ -267,12 +273,13 @@ Research review authority: `.planning/phases/16-cart-merge-review/16-RESEARCH-RE
 
 ## Coverage
 
-- Requisitos v1.1: **65 abertos, 26 concluídos** (FND-01..FND-08, AUTH-01..AUTH-09, CART-01..CART-09).
+- Requisitos v1.1: **57 abertos, 34 concluídos** (FND-01..FND-08, AUTH-01..AUTH-09, CART-01..CART-09, MRG-01..MRG-08).
 - Mapeados a exatamente uma phase: 91.
 - FE requirements com responsabilidade explícita: 54/54.
 - Phases: 13–22, lineares.
 - Phase 13: 8/8 COMPLETE; CLOSED — HUMAN APPROVED.
 - Phase 14: 9/9 COMPLETE; CLOSED — HUMAN APPROVED.
 - Phase 15: **CLOSED — HUMAN APPROVED**.
-- Phase 16: **CONTEXT HUMAN APPROVED — PASS; RESEARCH HUMAN APPROVED — PASS; PLAN TECHNICAL DRAFT — CHECKER PASS; HUMAN REVIEW REQUIRED**; 14 plans / 14 serial waves; `D16-01..D16-42` 42/42 and `R16-HR-01..R16-HR-08` 8/8 covered; `MRG-01..MRG-08` 8/8 planned and OPEN; EXECUTION and later Phase-16 gates remain not authorized. Phase 17..22 remain not started / not authorized.
+- Phase 16: 8/8 COMPLETE; CLOSED — HUMAN APPROVED. MRG: 8/8 COMPLETE. Phase 17: NOT AUTHORIZED.
+- Phase 17 CONTEXT, PLAN, and EXECUTION are not authorized. Phase 17..22 remain not started / not authorized.
 - Frontend Milestone 1: BLOCKED.

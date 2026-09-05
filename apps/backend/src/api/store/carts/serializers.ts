@@ -15,6 +15,19 @@ import {
   type PaymentAttemptCartFingerprintSource,
 } from "../../../modules/payment-attempt/cart-invalidation"
 import type { CheckoutCartLike } from "../../../modules/checkout/active-cart"
+import type {
+  CartMergeOutcome,
+  CartMergeResponse,
+  CartReviewAcknowledgeResponse,
+  CartReviewState,
+  RejectedItem,
+} from "../../../modules/cart-merge/types"
+import {
+  CartMergeRejectedItemSchema,
+  CartMergeResponseSchema,
+  CartReviewAcknowledgeResponseSchema,
+  CartReviewStateSchema,
+} from "./merge-review-validators"
 
 type StoreCartShippingAddress = {
   first_name?: string | null
@@ -48,8 +61,8 @@ export type StoreCartPreOrderRecord = CheckoutCartLike & {
   shipping_total?: number | null
   tax_total?: number | null
   discount_total?: number | null
-  created_at?: string
-  updated_at?: string
+  created_at?: string | Date | null
+  updated_at?: string | Date | null
   region_id?: string | null
   locale?: string | null
   customer?: {
@@ -123,6 +136,24 @@ function asTrimmedString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined
+}
+
+function serializeStoreCartTimestamp(
+  value: string | Date | null | undefined
+): string | null {
+  if (value == null) {
+    return null
+  }
+
+  if (typeof value === "string") {
+    return value
+  }
+
+  if (Number.isNaN(value.getTime())) {
+    throw new Error("STORE_CART_TIMESTAMP_INVALID")
+  }
+
+  return value.toISOString()
 }
 
 function readFederalTaxId(metadata: Record<string, unknown> | null | undefined): string | undefined {
@@ -219,10 +250,14 @@ function serializeShippingAddress(
 }
 
 export function serializeStoreCartPreOrder(
-  cart: StoreCartPreOrderRecord | null
+  cart: StoreCartPreOrderRecord | PublicStoreCartPreOrder | null
 ): PublicStoreCartPreOrder | null {
   if (!cart) {
     return null
+  }
+
+  if (isPublicStoreCartPreOrder(cart)) {
+    return serializePublicCartSnapshot(cart)
   }
 
   return {
@@ -237,8 +272,8 @@ export function serializeStoreCartPreOrder(
     tax_total: cart.tax_total ?? null,
     discount_total: cart.discount_total ?? null,
     region_id: cart.region_id ?? null,
-    created_at: cart.created_at ?? null,
-    updated_at: cart.updated_at ?? null,
+    created_at: serializeStoreCartTimestamp(cart.created_at),
+    updated_at: serializeStoreCartTimestamp(cart.updated_at),
     checkout_data_complete: withCheckoutDataComplete(cart),
     customer: cart.customer
       ? {
@@ -309,4 +344,158 @@ export function resolvePaymentAttemptCartFingerprintFromStoreCart(
   }
 
   return resolvePaymentAttemptCartFingerprint(source)
+}
+
+type CartReviewRecordInput = {
+  status: "pending" | "acknowledged"
+  review_ref: string | null
+  rejected_items: readonly RejectedItem[]
+}
+
+type CartMergeResponseInput = {
+  outcome: CartMergeOutcome
+  cart: StoreCartPreOrderRecord | PublicStoreCartPreOrder | null
+  review: CartReviewState | CartReviewRecordInput
+}
+
+function serializeRejectedItems(
+  items: readonly RejectedItem[]
+): RejectedItem[] {
+  return items.map((item) => serializeCartMergeRejectedItem(item))
+}
+
+export function serializeCartMergeRejectedItem(
+  item: RejectedItem
+): RejectedItem {
+  const serialized = {
+    variantId: item.variantId,
+    requestedQuantity: item.requestedQuantity,
+    acceptedQuantity: item.acceptedQuantity,
+    rejectedQuantity: item.rejectedQuantity,
+    reason: item.reason,
+  }
+
+  return CartMergeRejectedItemSchema.parse(serialized)
+}
+
+export function serializeCartReviewState(
+  review: CartReviewState | CartReviewRecordInput
+): CartReviewState {
+  if ("requiresReview" in review) {
+    const serialized = {
+      requiresReview: review.requiresReview,
+      reviewRef: review.requiresReview ? review.reviewRef : null,
+      rejectedItems: serializeRejectedItems(review.rejectedItems),
+    }
+
+    return CartReviewStateSchema.parse(serialized)
+  }
+
+  const pending = review.status === "pending"
+  const serialized = {
+    requiresReview: pending,
+    reviewRef: pending ? review.review_ref : null,
+    rejectedItems: pending ? serializeRejectedItems(review.rejected_items) : [],
+  }
+
+  return CartReviewStateSchema.parse(serialized)
+}
+
+function serializePublicCartSnapshot(
+  cart: PublicStoreCartPreOrder
+): PublicStoreCartPreOrder {
+  return {
+    id: cart.id,
+    email: cart.email,
+    currency_code: cart.currency_code,
+    locale: cart.locale,
+    total: cart.total,
+    subtotal: cart.subtotal,
+    item_total: cart.item_total,
+    shipping_total: cart.shipping_total,
+    tax_total: cart.tax_total,
+    discount_total: cart.discount_total,
+    region_id: cart.region_id,
+    created_at: cart.created_at,
+    updated_at: cart.updated_at,
+    checkout_data_complete: cart.checkout_data_complete,
+    customer: cart.customer
+      ? {
+          id: cart.customer.id,
+          email: cart.customer.email,
+        }
+      : null,
+    items: cart.items.map((item) => ({
+      id: item.id,
+      quantity: item.quantity,
+      title: item.title,
+      variant_id: item.variant_id,
+      variant_title: item.variant_title,
+      unit_price: item.unit_price,
+    })),
+    shipping_address: cart.shipping_address
+      ? {
+          first_name: cart.shipping_address.first_name,
+          last_name: cart.shipping_address.last_name,
+          company: cart.shipping_address.company,
+          address_1: cart.shipping_address.address_1,
+          address_2: cart.shipping_address.address_2,
+          city: cart.shipping_address.city,
+          postal_code: cart.shipping_address.postal_code,
+          country_code: cart.shipping_address.country_code,
+          province: cart.shipping_address.province,
+          phone: cart.shipping_address.phone,
+          masked_federal_tax_id:
+            cart.shipping_address.masked_federal_tax_id,
+        }
+      : null,
+  }
+}
+
+export function isPublicStoreCartPreOrder(
+  cart: unknown
+): cart is PublicStoreCartPreOrder {
+  return (
+    typeof cart === "object" &&
+    cart !== null &&
+    !Array.isArray(cart) &&
+    "checkout_data_complete" in cart
+  )
+}
+
+function serializeCartMergeCart(
+  cart: StoreCartPreOrderRecord | PublicStoreCartPreOrder | null
+): PublicStoreCartPreOrder | null {
+  if (!cart) {
+    return null
+  }
+
+  if (isPublicStoreCartPreOrder(cart)) {
+    return serializePublicCartSnapshot(cart)
+  }
+
+  return serializeStoreCartPreOrder(cart)
+}
+
+export function serializeCartMergeResponse(
+  response: CartMergeResponseInput
+): CartMergeResponse {
+  const serialized = {
+    outcome: response.outcome,
+    cart: serializeCartMergeCart(response.cart),
+    review: serializeCartReviewState(response.review),
+  }
+
+  return CartMergeResponseSchema.parse(serialized)
+}
+
+export function serializeCartReviewAcknowledgeResponse(
+  response: Omit<CartMergeResponseInput, "outcome">
+): CartReviewAcknowledgeResponse {
+  const serialized = {
+    cart: serializeCartMergeCart(response.cart),
+    review: serializeCartReviewState(response.review),
+  }
+
+  return CartReviewAcknowledgeResponseSchema.parse(serialized)
 }

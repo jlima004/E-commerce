@@ -25,6 +25,11 @@ const ALLOWED_TRANSITIONS: Record<
   created: [
     "provider_session_created",
     "client_action_required",
+    "card_client_secret_created",
+    "awaiting_pix_payment",
+    "payment_confirmed_by_webhook",
+    "payment_failed",
+    "payment_canceled",
     "superseded",
     "invalidated_by_cart_change",
   ],

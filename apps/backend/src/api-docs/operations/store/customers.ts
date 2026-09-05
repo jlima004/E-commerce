@@ -5,8 +5,9 @@ import { registerStoreAuthContractOperation } from "./auth"
  * Store customer operations registry.
  *
  * POST /store/customers/me/cart/attach is intentionally NOT registered as a
- * public/executable Store OpenAPI operation during Phase 13 fail-closed
- * lockdown (BLOCKED→DENY). Handler + attach schemas remain as internal/
+ * public/executable Store OpenAPI operation: excluded deprecated compatibility
+ * facade (OUTSIDE_FRONTEND_M1 + PRESERVE_LEGACY), not M1; removal requires a
+ * future explicit HUMAN GATE. Handler + attach schemas remain as internal/
  * domain support knowledge; see ROUTE_EXCLUSIONS.
  */
 export function registerStoreCustomerOperations(

@@ -112,7 +112,7 @@ describe("OpenAPI Store security contract and surface isolation", () => {
   })
 
   it("registers populated and isolated Store, Admin, and Webhooks surfaces", () => {
-    expect(storeOperations).toHaveLength(25)
+    expect(storeOperations).toHaveLength(27)
     expect(registry.getOperations("admin")).toHaveLength(9)
     expect(registry.getOperations("webhooks")).toHaveLength(2)
 

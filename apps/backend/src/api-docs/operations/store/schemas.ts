@@ -9,6 +9,10 @@ import type {
   ComponentTypeOf,
   ContractRegistryBundle,
 } from "../../registry"
+import {
+  CART_MERGE_OUTCOMES,
+  CART_MERGE_REJECTION_REASONS,
+} from "../../../modules/cart-merge/types"
 
 const nullableString = {
   type: ["string", "null"],
@@ -35,8 +39,10 @@ function jsonSchemaRef(name: string) {
 }
 
 /**
- * Attach schema support knowledge retained for Phase 16 merge-owner flow.
- * Not registered into public Store OpenAPI while attach remains BLOCKED→DENY.
+ * Legacy attach support shapes retained for the Phase 16 merge-owner adapter.
+ * Attach is OUTSIDE_FRONTEND_M1 with PRESERVE_LEGACY runtime policy and is not
+ * registered in the executable Store M1 contract. It delegates to canonical
+ * merge; session-only state never authorizes mutation.
  */
 export const STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS = {
   StoreCustomerCartAttachRequest: {
@@ -45,7 +51,7 @@ export const STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS = {
       cart_id: {
         type: "string",
         description:
-          "Optional guest cart id. When supplied, it must match the guest cart owned by the current session.",
+          "Optional legacy adapter guest cart id. When supplied, it must match the guest cart authorized by the canonical merge contract; session-only state never authorizes mutation.",
       },
     },
   },
@@ -817,6 +823,241 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
     },
   })
 
+  registry.registerComponent("store", "schemas", "CartMergeRequest", {
+    type: "object",
+    additionalProperties: false,
+    required: ["guestCartId"],
+    description:
+      "Guest cart source identifier. The Customer destination is resolved server-side.",
+    properties: {
+      guestCartId: {
+        type: "string",
+        minLength: 1,
+        pattern: ".*\\S.*",
+      },
+    },
+  })
+
+  registry.registerComponent("store", "schemas", "CartMergeOutcome", {
+    type: "string",
+    enum: [...CART_MERGE_OUTCOMES],
+    description:
+      "Closed merge outcome. CUSTOMER_CART_PRESERVED is reserved and has no positive branch until a future deterministic rule is approved.",
+  })
+
+  registry.registerComponent("store", "schemas", "CartMergeRejectedItem", {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "variantId",
+      "requestedQuantity",
+      "acceptedQuantity",
+      "rejectedQuantity",
+      "reason",
+    ],
+    description:
+      "Rejected guest intent grouped by public variant. requestedQuantity equals acceptedQuantity plus rejectedQuantity.",
+    properties: {
+      variantId: {
+        type: "string",
+        minLength: 1,
+      },
+      requestedQuantity: {
+        type: "integer",
+        minimum: 1,
+        description: "Original normalized guest quantity for the variant.",
+      },
+      acceptedQuantity: {
+        type: "integer",
+        minimum: 0,
+        maximum: 99,
+        description: "Quantity incorporated into the canonical cart.",
+      },
+      rejectedQuantity: {
+        type: "integer",
+        minimum: 0,
+        description:
+          "Quantity not incorporated; acceptedQuantity plus rejectedQuantity equals requestedQuantity.",
+      },
+      reason: {
+        type: "string",
+        enum: [...CART_MERGE_REJECTION_REASONS],
+      },
+    },
+  })
+
+  registry.registerComponent("store", "schemas", "CartReviewPendingState", {
+    type: "object",
+    additionalProperties: false,
+    required: ["requiresReview", "reviewRef", "rejectedItems"],
+    properties: {
+      requiresReview: {
+        type: "boolean",
+        const: true,
+      },
+      reviewRef: {
+        type: "string",
+        minLength: 1,
+      },
+      rejectedItems: {
+        type: "array",
+        items: {
+          $ref: "#/components/schemas/CartMergeRejectedItem",
+        },
+      },
+    },
+  })
+
+  registry.registerComponent("store", "schemas", "CartReviewClearState", {
+    type: "object",
+    additionalProperties: false,
+    required: ["requiresReview", "reviewRef", "rejectedItems"],
+    properties: {
+      requiresReview: {
+        type: "boolean",
+        const: false,
+      },
+      reviewRef: {
+        type: "null",
+      },
+      rejectedItems: {
+        type: "array",
+        items: {
+          $ref: "#/components/schemas/CartMergeRejectedItem",
+        },
+      },
+    },
+  })
+
+  registry.registerComponent("store", "schemas", "CartReviewState", {
+    type: "object",
+    additionalProperties: false,
+    required: ["requiresReview", "reviewRef", "rejectedItems"],
+    description:
+      "Closed public review state: pending requires a non-empty reviewRef; clear requires reviewRef null.",
+    properties: {
+      requiresReview: {
+        type: "boolean",
+      },
+      reviewRef: {
+        type: ["string", "null"],
+        minLength: 1,
+      },
+      rejectedItems: {
+        type: "array",
+        items: {
+          $ref: "#/components/schemas/CartMergeRejectedItem",
+        },
+      },
+    },
+    oneOf: [
+      { $ref: "#/components/schemas/CartReviewPendingState" },
+      { $ref: "#/components/schemas/CartReviewClearState" },
+    ],
+  })
+
+  const nullablePublicStoreCart = {
+    oneOf: [
+      { $ref: "#/components/schemas/PublicStoreCartPreOrder" },
+      { type: "null" },
+    ],
+  } satisfies ComponentTypeOf<"schemas">
+
+  registry.registerComponent(
+    "store",
+    "schemas",
+    "CartMergePartialResponse",
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["outcome", "cart", "review"],
+      properties: {
+        outcome: {
+          type: "string",
+          const: "MERGED_PARTIAL",
+        },
+        cart: nullablePublicStoreCart,
+        review: {
+          $ref: "#/components/schemas/CartReviewPendingState",
+        },
+      },
+    }
+  )
+
+  registry.registerComponent("store", "schemas", "CartMergeClearResponse", {
+    type: "object",
+    additionalProperties: false,
+    required: ["outcome", "cart", "review"],
+    properties: {
+      outcome: {
+        type: "string",
+        enum: [
+          "MERGED",
+          "GUEST_CART_ATTACHED",
+          "CUSTOMER_CART_PRESERVED",
+          "NO_ITEMS",
+        ],
+      },
+      cart: nullablePublicStoreCart,
+      review: {
+        $ref: "#/components/schemas/CartReviewClearState",
+      },
+    },
+  })
+
+  registry.registerComponent("store", "schemas", "CartMergeResponse", {
+    type: "object",
+    additionalProperties: false,
+    required: ["outcome", "cart", "review"],
+    properties: {
+      outcome: {
+        $ref: "#/components/schemas/CartMergeOutcome",
+      },
+      cart: nullablePublicStoreCart,
+      review: {
+        $ref: "#/components/schemas/CartReviewState",
+      },
+    },
+    oneOf: [
+      { $ref: "#/components/schemas/CartMergePartialResponse" },
+      { $ref: "#/components/schemas/CartMergeClearResponse" },
+    ],
+  })
+
+  registry.registerComponent(
+    "store",
+    "schemas",
+    "CartReviewAcknowledgeRequest",
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["reviewRef"],
+      properties: {
+        reviewRef: {
+          type: ["string", "null"],
+          minLength: 1,
+        },
+      },
+    }
+  )
+
+  registry.registerComponent(
+    "store",
+    "schemas",
+    "CartReviewAcknowledgeResponse",
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["cart", "review"],
+      properties: {
+        cart: nullablePublicStoreCart,
+        review: {
+          $ref: "#/components/schemas/CartReviewClearState",
+        },
+      },
+    }
+  )
+
   // Attach schemas: see STORE_CUSTOMER_CART_ATTACH_SUPPORT_SCHEMAS (not public).
 
   registry.registerComponent(
@@ -826,10 +1067,17 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
     {
       type: "object",
       description:
-        "Optional JSON body for card/Pix payment-attempt start. Body may be omitted or `{}`. Payment method is defined by the path (`/card` or `/pix`), not by a body field. Matches runtime rejectClientMoneyFields: CLIENT_MONEY_BODY_FIELDS are structurally forbidden via propertyNames; unknown non-money keys are ignored (additionalProperties is intentionally true).",
+        "Optional JSON body for card/Pix payment-attempt start. Body may be omitted or `{}`. Payment method is defined by the path (`/card` or `/pix`), not by a body field. CLIENT_MONEY_BODY_FIELDS are structurally forbidden via propertyNames.",
       propertyNames: {
         not: {
           enum: [...CLIENT_MONEY_BODY_FIELDS],
+        },
+      },
+      properties: {
+        payment_attempt_id: {
+          type: "string",
+          description:
+            "Optional same-operation replay identity for an existing PaymentAttempt.",
         },
       },
       additionalProperties: true,

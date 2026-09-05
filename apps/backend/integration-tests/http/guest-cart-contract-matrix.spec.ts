@@ -27,6 +27,7 @@ import {
   GUEST_CART_CAPABILITY_HEADER,
   GUEST_CART_CAPABILITY_MODULE,
 } from "../../src/modules/guest-cart-capability/types"
+import { CART_MERGE_MODULE } from "../../src/modules/cart-merge/module-id"
 import {
   PAYMENT_ATTEMPT_MODULE,
 } from "../../src/modules/payment-attempt"
@@ -142,6 +143,15 @@ function createHarness() {
   let mintedToken = capabilityToken
   let sequence = 1
   let requestedCartId = guestCart.id
+  const authorities = new Map<
+    string,
+    {
+      id: string
+      customer_id: string
+      cart_id: string
+      state: "active" | "superseded"
+    }
+  >()
 
   const guestCapability = {
     async mintGuestCartCapability(input: { cart_id: string }) {
@@ -282,7 +292,29 @@ function createHarness() {
     async transaction(callback: (trx: unknown) => Promise<unknown>) {
       return callback({ raw: this.raw.bind(this) })
     },
-    async raw(sql: string) {
+    async raw(sql: string, bindings: unknown[] = []) {
+      if (sql.includes("pg_advisory_xact_lock")) {
+        return { rows: [] }
+      }
+      if (sql.includes("customer_cart_authority")) {
+        if (sql.trimStart().startsWith("insert into")) {
+          const [id, customerId, cartId] = bindings
+          authorities.set(String(customerId), {
+            id: String(id),
+            customer_id: String(customerId),
+            cart_id: String(cartId),
+            state: "active",
+          })
+          return { rows: [] }
+        }
+        const customerId = String(bindings[0])
+        const authority = authorities.get(customerId)
+        return {
+          rows: authority
+            ? [{ ...authority, state: "active" }]
+            : [],
+        }
+      }
       if (sql.includes("from payment_attempt")) {
         return {
           rows: (attempts.get(requestedCartId) ?? []).map((attempt) => ({
@@ -302,6 +334,27 @@ function createHarness() {
   }
 
   const cartModule = {
+    listCarts: async (filters?: Record<string, unknown>) => {
+      const customerId = filters?.customer_id
+      return [...carts.values()]
+        .filter((cart) => {
+          const cartCustomerId = cart.customer_id ?? cart.customer?.id
+          return (
+            (!customerId || cartCustomerId === customerId) &&
+            !cart.completed_at &&
+            (cart as Cart & { deleted_at?: unknown }).deleted_at == null &&
+            cart.metadata?.active_for_checkout !== false
+          )
+        })
+        .map((cart) => ({
+          id: cart.id,
+          customer_id: cart.customer_id ?? cart.customer?.id,
+          completed_at: cart.completed_at ?? null,
+          deleted_at:
+            (cart as Cart & { deleted_at?: unknown }).deleted_at ?? null,
+          metadata: cart.metadata ?? null,
+        }))
+    },
     retrieveCart: async (id: string) => {
       const cart = carts.get(id)
       return cart ? JSON.parse(JSON.stringify(cart)) : null
@@ -310,7 +363,44 @@ function createHarness() {
       transaction: async (callback: (manager: unknown) => Promise<unknown>) =>
         callback({
           getTransactionContext: () => ({ raw: pgConnection.raw }),
-        }),
+      }),
+    },
+  }
+
+  const cartMergeAuthority = {
+    listCustomerCartAuthoritiesForUpdate: async (customerId: string) => {
+      const authority = authorities.get(customerId)
+      return authority && authority.state === "active"
+        ? [{ ...authority }]
+        : []
+    },
+    createCustomerCartAuthority: async (input: {
+      customer_id: string
+      cart_id: string
+    }) => {
+      const authority = {
+        id: `ccauth_${input.cart_id}`,
+        customer_id: input.customer_id,
+        cart_id: input.cart_id,
+        state: "active" as const,
+      }
+      authorities.set(input.customer_id, authority)
+      return { ...authority }
+    },
+    supersedeCustomerCartAuthority: async (input: {
+      authority_id: string
+      customer_id: string
+      cart_id: string
+    }) => {
+      const authority = authorities.get(input.customer_id)
+      if (
+        authority &&
+        authority.id === input.authority_id &&
+        authority.cart_id === input.cart_id
+      ) {
+        authority.state = "superseded"
+      }
+      return authority ? { ...authority } : undefined
     },
   }
 
@@ -409,19 +499,37 @@ function createHarness() {
             absoluteExpiresAt: new Date("2026-09-20T12:00:00.000Z"),
           }
         : undefined,
-      scope: {
-        resolve(key: unknown) {
-          if (key === GUEST_CART_CAPABILITY_MODULE) return guestCapability
-          if (key === STORE_IDEMPOTENCY_MODULE) return idempotency
-          if (key === STORE_RESOURCE_VERSION_MODULE) return resourceVersion
-          if (key === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
-          if (key === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
-          if (key === ContainerRegistrationKeys.PG_CONNECTION) return pgConnection
-          if (key === ContainerRegistrationKeys.LINK) return { create: async () => undefined }
-          if (key === Modules.CART) return cartModule
-          throw new Error(`unrecognized scope key ${String(key)}`)
-        },
-      },
+      scope: (() => {
+        const parentResolve = (keyToResolve: unknown) => {
+          if (keyToResolve === GUEST_CART_CAPABILITY_MODULE) return guestCapability
+          if (keyToResolve === STORE_IDEMPOTENCY_MODULE) return idempotency
+          if (keyToResolve === STORE_RESOURCE_VERSION_MODULE) return resourceVersion
+          if (keyToResolve === PAYMENT_ATTEMPT_MODULE) return paymentAttempt
+          if (keyToResolve === ContainerRegistrationKeys.REMOTE_QUERY) return remoteQuery
+          if (keyToResolve === ContainerRegistrationKeys.PG_CONNECTION) return pgConnection
+          if (keyToResolve === ContainerRegistrationKeys.LINK) return { create: async () => undefined }
+          if (keyToResolve === Modules.CART) return cartModule
+          if (keyToResolve === CART_MERGE_MODULE) return cartMergeAuthority
+          throw new Error(`unrecognized scope key ${String(keyToResolve)}`)
+        }
+        return {
+          createScope() {
+            const overrides = new Map<unknown, { resolve(): unknown }>()
+            const child = {
+              register(keyToRegister: unknown, override: { resolve(): unknown }) {
+                overrides.set(keyToRegister, override)
+                return child
+              },
+              resolve(keyToResolve: unknown) {
+                const override = overrides.get(keyToResolve)
+                return override ? override.resolve() : parentResolve(keyToResolve)
+              },
+            }
+            return child
+          },
+          resolve: parentResolve,
+        }
+      })(),
     }
   }
 
@@ -442,29 +550,32 @@ describe("Phase 15 guest cart final HTTP contract matrix", () => {
   it("preserves the final exact-set, Auth M1, Cart M1 and native DENY policy", () => {
     const counts = summarizeStoreSurfaceManifest()
     expect(counts).toMatchObject({
-      total: 64,
+      total: 66,
       native: 46,
-      local: 13,
-      extended: 16,
-      deny: 47,
-      preserveLegacy: 5,
-      m1EnabledPolicy: 12,
+      local: 15,
+      extended: 18,
+      deny: 46,
+      preserveLegacy: 6,
+      m1EnabledPolicy: 14,
     })
     expect(STORE_SURFACE_MANIFEST.filter((entry) => entry.runtime_policy === "M1_ENABLED"))
-      .toHaveLength(12)
+      .toHaveLength(14)
     expect(STORE_SURFACE_PHASE14_ENABLED_OPERATIONS).toHaveLength(6)
     expect(STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS).toHaveLength(6)
-    expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toHaveLength(12)
+    expect(STORE_SURFACE_M1_ENABLED_OPERATIONS).toHaveLength(14)
 
     for (const [method, path] of [
       ["GET", "/store/carts/cart_matrix_01"],
       ["POST", "/store/carts/cart_matrix_01/complete"],
-      ["POST", "/store/customers/me/cart/attach"],
       ["POST", "/store/carts/cart_matrix_01/shipping-methods"],
       ["POST", "/store/carts/cart_matrix_01/line-items/../complete"],
     ] as const) {
       expect(decideStoreSurfaceAccess(method, path).action).toBe("deny")
     }
+
+    expect(
+      decideStoreSurfaceAccess("POST", "/store/customers/me/cart/attach")
+    ).toMatchObject({ action: "allow", mode: "preserve_legacy" })
 
     for (const operation of STORE_SURFACE_PHASE15_CART_ENABLED_OPERATIONS) {
       const [method, path] = operation.split(" ")

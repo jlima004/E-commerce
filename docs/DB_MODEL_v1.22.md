@@ -7,7 +7,7 @@
 | Data | 2026-08-08 |
 | Status | Revisado |
 | Base funcional | SRS v1.5 e PRD Backend v1.1 + Phase 13 Store foundation |
-| Escopo desta versão | Fundação Store de idempotência transversal (`StoreIdempotencyRecord`) e contrato documental de `StoreResourceVersion` (runtime do resource-version permanece no plano 13-05). Define hashing HMAC-SHA-256 com pepper dedicado, lifecycle finito, driver scheduled, PostgreSQL como verdade e negativas de segurança. |
+| Escopo desta versão | Fundação Store de idempotência transversal (`StoreIdempotencyRecord`) e contrato documental de `StoreResourceVersion` (runtime do resource-version permanece no plano 13-05), acrescidos dos modelos locais de cart merge/review (`CustomerCartAuthority`, `CartMergeResult` e `CartReview`). Define hashing HMAC-SHA-256 com pepper dedicado, lifecycle finito, retenção coordenada, PostgreSQL como verdade e negativas de segurança. |
 
 > Versionamento: major.minor sequencial. A versão 1.22 representa a vigésima segunda revisão minor da versão 1, não um número decimal.
 
@@ -17,7 +17,7 @@
 
 | Versão | Data | Alterações |
 |---|---:|---|
-| 1.22 | 2026-08-08 | Adicionadas as entidades foundation Store `StoreIdempotencyRecord` (persistência transversal de claim/replay/conflito) e `StoreResourceVersion` (contrato documental; runtime no 13-05). Inclui UNIQUE composta por operação+ator+recurso+key hash, estados finitos com deadlines, retention terminal, driver Medusa scheduled `* * * * *`, hashing HMAC-SHA-256 com `STORE_IDEMPOTENCY_KEY_PEPPER`, e negativas de plaintext. `CheckoutCompletionLog` permanece exclusivo do nascimento de Order. Regras `DATA-123` a `DATA-132`. Em 2026-08-09, `P13-13-05-HCD-01` supersede somente o target físico de `StoreResourceVersion`: `bigint` + UNIQUE não parcial passam a `integer` + UNIQUE parcial `WHERE deleted_at IS NULL`; invariantes comportamentais permanecem. Adicionada a entidade customizada `GuestCartCapability` (módulo `guest_cart_capability`, prefixo `gccap`, `token_hash` SHA-256 hex UNIQUE, status `active|expired|revoked|consumed`, TTL `7d` rolling / `30d` cap, UNIQUE parcial `active` por `cart_id`, link sem FK, negativas de plaintext/nonce/HKDF). |
+| 1.22 | 2026-08-08 | Adicionadas as entidades foundation Store `StoreIdempotencyRecord` (persistência transversal de claim/replay/conflito) e `StoreResourceVersion` (contrato documental; runtime no 13-05). Inclui UNIQUE composta por operação+ator+recurso+key hash, estados finitos com deadlines, retention terminal, driver Medusa scheduled `* * * * *`, hashing HMAC-SHA-256 com `STORE_IDEMPOTENCY_KEY_PEPPER`, e negativas de plaintext. `CheckoutCompletionLog` permanece exclusivo do nascimento de Order. Regras `DATA-123` a `DATA-132`. Em 2026-08-09, `P13-13-05-HCD-01` supersede somente o target físico de `StoreResourceVersion`: `bigint` + UNIQUE não parcial passam a `integer` + UNIQUE parcial `WHERE deleted_at IS NULL`; invariantes comportamentais permanecem. Adicionada a entidade customizada `GuestCartCapability` (módulo `guest_cart_capability`, prefixo `gccap`, `token_hash` SHA-256 hex UNIQUE, status `active|expired|revoked|consumed`, TTL `7d` rolling / `30d` cap, UNIQUE parcial `active` por `cart_id`, link sem FK, negativas de plaintext/nonce/HKDF). Em 2026-08-24, adicionados os modelos `CustomerCartAuthority`, `CartMergeResult` e `CartReview` da Phase 16, com outcomes/reasons fechados, constraints de autoridade, receipt/review versionados e retenção coordenada com `StoreIdempotencyRecord`; `CUSTOMER_CART_PRESERVED` permanece reservado sem branch positivo. |
 | 1.21 | 2026-06-22 | Corrigido o achado 4: adicionadas constraints monetárias explícitas para `Payment` e `Refund`. `Payment.amount` e `Payment.captured_amount` devem ser inteiros não negativos na menor unidade monetária; `Payment.captured_amount` não pode exceder `Payment.amount`; `Refund.amount` deve ser inteiro positivo; `Refund.currency_code` deve ser igual a `Payment.currency_code`; no MVP, `Payment.currency_code` e `Refund.currency_code` devem ser `BRL`; e o valor de reembolso deve respeitar o saldo capturado disponível considerando refunds confirmados e bloqueados. Atualizadas seções 2.10, 4.8, 4.9, 5.12, 5.13, regras `DATA-106`, `DATA-117` a `DATA-122` e constraints recomendadas. |
 | 1.20 | 2026-06-21 | Corrigido o achado 3: definida a fonte de verdade financeira para reembolsos. `Refund.status = succeeded` passa a ser a fonte de verdade para valores reembolsados confirmados; `Payment.status` e `Order.payment_status` são campos derivados/denormalizados que devem ser recalculados na mesma transação lógica que confirma reembolso via webhook Stripe. Proibida alteração manual isolada desses status sem recomputação a partir de `Payment.captured_amount` e `Refund.status = succeeded`. Atualizadas as seções 2.10, 4.8, 4.9, 5.12, relações, regras `DATA-053`, `DATA-054`, `DATA-107` e adicionadas `DATA-114` a `DATA-116`. |
 | 1.19 | 2026-06-21 | Corrigido o achado 2: adicionada `WebhookEventLog.deduplication_key` como chave canônica de deduplicação. A deduplicação passa a ser garantida por `unique(provider, deduplication_key)`. Quando `external_event_id` existir e for confiável, a chave deve derivar dele; quando não existir, deve derivar de `payload_hash` normalizado ou de chave determinística equivalente validada na integração. `payload_hash` isolado passa a ser índice diagnóstico, não garantia de unicidade. Atualizadas `DATA-005`, `DATA-030`, `DATA-031`, seção 4.5, seção 5.8 e índices recomendados. |
@@ -397,6 +397,14 @@ Premissas vinculantes:
 | `StoreIdempotencyRecord` | Custom | ver §4.17 | Idempotência Store transversal; lifecycle job `* * * * *`. |
 | `StoreResourceVersion` | Custom | `resource_type`, `resource_id`, `version`, timestamps | Contrato físico DML-native aprovado por `P13-13-05-HCD-01`: PostgreSQL `integer`; UNIQUE parcial (`resource_type`,`resource_id`) `WHERE deleted_at IS NULL`; `CHECK(version > 0)`; bootstrap lazy `version=1`. |
 | `GuestCartCapability` | Custom | `id` (prefix `gccap`), `cart_id`, `token_hash`, `status` (`active`, `expired`, `revoked`, `consumed`), `expires_at`, `consumed_at`, `revoked_at`, `last_used_at` | Posse de carrinho anônimo via capability hash-only (módulo `guest_cart_capability`). TTL `7d` rolling / `30d` cap. UNIQUE parcial uma linha `active` por `cart_id`. Module link Cart sem FK. |
+
+### 3.9 Cart Merge & Review (Phase 16)
+
+| Entidade | Origem | Campos Relevantes | Observações |
+|---|---|---|---|
+| `CustomerCartAuthority` | Custom / `cart_merge` | `id`, `customer_id`, `cart_id`, `state` | Pointer durável da autoridade Customer. Estados `active` e `superseded`; índices UNIQUE parciais garantem no máximo uma autoridade ativa por Customer e por cart. |
+| `CartMergeResult` | Custom / `cart_merge` | `id`, `idempotency_record_id`, `customer_id`, `guest_cart_id`, `customer_cart_id`, `canonical_cart_id`, `capability_id`, `capability_hash`, versões antes/depois, `outcome`, `rejected_items`, review, receipt público original, `expires_at` | Receipt imutável e allowlisted para replay. A retenção segue a política do `StoreIdempotencyRecord` associado. |
+| `CartReview` | Custom / `cart_merge` | `id`, `cart_id`, `review_ref`, `merge_result_id`, `produced_cart_version`, `status`, `rejected_items`, `acknowledged_at` | Estado de revisão vinculado ao merge partial e à versão produzida. No máximo uma revisão `pending` por cart. |
 
 ---
 
@@ -1671,6 +1679,129 @@ Entidade customizada do módulo `guest_cart_capability` para posse segura de car
 - Status permitidos: `active`, `expired`, `revoked`, `consumed`.
 - Negativas de segurança: nunca persistir token puro, nonce, pepper HMAC ou HKDF; Redis não concede autoridade de posse.
 
+### 4.20 CustomerCartAuthority — Autoridade do Carrinho Customer (Phase 16)
+
+Entidade customizada do módulo `cart_merge` que materializa, sob autoridade
+transacional do Customer, qual cart ativo/incompleto é canônico para merge.
+
+#### Campos mínimos
+
+```json
+{
+  "id": "string",
+  "customer_id": "string",
+  "cart_id": "string",
+  "state": "active | superseded",
+  "created_at": "datetime",
+  "updated_at": "datetime",
+  "deleted_at": "datetime | null"
+}
+```
+
+#### Constraints e semântica
+
+- `customer_id` é identidade interna e não é serializado na superfície pública.
+- `cart_id` referencia o cart por identidade de módulo; não criar FK SQL entre módulos.
+- `state = active` é a autoridade corrente. `state = superseded` preserva a linhagem interna sem ser candidato ativo.
+- UNIQUE parcial em `customer_id` para `state = 'active' AND deleted_at IS NULL`.
+- UNIQUE parcial em `cart_id` para `state = 'active' AND deleted_at IS NULL`.
+- A autoridade Customer deve ser resolvida sob lock transacional de escopo Customer. Mais de um candidato sem autoridade inequívoca falha fechado; nunca escolher por `updated_at`.
+
+### 4.21 CartMergeResult — Receipt Original Imutável (Phase 16)
+
+Entidade customizada do módulo `cart_merge` que conserva a identidade da
+operação concluída e o mínimo de projeção pública necessário ao replay.
+
+#### Campos mínimos
+
+```json
+{
+  "id": "string",
+  "idempotency_record_id": "string",
+  "customer_id": "string",
+  "guest_cart_id": "string",
+  "customer_cart_id": "string | null",
+  "canonical_cart_id": "string",
+  "capability_id": "string",
+  "capability_hash": "string | null",
+  "request_fingerprint": "string",
+  "guest_version_before": 0,
+  "customer_version_before": "number | null",
+  "guest_version_after": 0,
+  "customer_version_after": "number | null",
+  "outcome": "MERGED | MERGED_PARTIAL | GUEST_CART_ATTACHED | CUSTOMER_CART_PRESERVED | NO_ITEMS",
+  "rejected_items": [],
+  "review_id": "string | null",
+  "review_ref": "string | null",
+  "original_public_cart_snapshot": {},
+  "original_review_snapshot": {},
+  "original_etag": "string",
+  "expires_at": "datetime",
+  "created_at": "datetime",
+  "updated_at": "datetime",
+  "deleted_at": "datetime | null"
+}
+```
+
+#### Enums, constraints e retenção
+
+- `outcome` contém exatamente `MERGED`, `MERGED_PARTIAL`, `GUEST_CART_ATTACHED`, `CUSTOMER_CART_PRESERVED` e `NO_ITEMS`.
+- `CUSTOMER_CART_PRESERVED` permanece reservado: não há branch positivo, fixture positiva ou regra implícita para emiti-lo.
+- `rejected_items` é JSON fechado por variante, com apenas `variantId`, `requestedQuantity`, `acceptedQuantity`, `rejectedQuantity` e `reason`.
+- `reason` contém somente `VARIANT_INVALID`, `VARIANT_UNAVAILABLE` ou `QUANTITY_LIMIT_EXCEEDED`.
+- `acceptedQuantity + rejectedQuantity = requestedQuantity`; a intenção é normalizada por `variantId` antes do fingerprint.
+- `idempotency_record_id` é UNIQUE e vincula o receipt exatamente a um `StoreIdempotencyRecord`.
+- `request_fingerprint` é digest da intenção canônica; não contém segredo bruto nem o raw `Idempotency-Key`.
+- `capability_id` e `capability_hash` são referências internas seguras; capability plaintext nunca é persistida.
+- `original_public_cart_snapshot`, `original_review_snapshot` e `original_etag` formam o replay original imutável. Não reconstruir replay pelo cart atual.
+- `expires_at` deve seguir a mesma política de retenção do `StoreIdempotencyRecord` associado. Não criar TTL arbitrário novo; a purga deve ser coordenada e só pode remover o receipt junto da retenção permitida do claim associado.
+
+#### Proibições de armazenamento e exposição
+
+Não armazenar nem serializar raw `Idempotency-Key`, capability/JWT, headers de
+autenticação, PII, entidade Cart crua, catálogo ou payload técnico.
+
+### 4.22 CartReview — Revisão Versionada (Phase 16)
+
+Entidade customizada do módulo `cart_merge` para persistir a divergência
+aplicada por `MERGED_PARTIAL` e seu acknowledge versionado.
+
+#### Campos mínimos
+
+```json
+{
+  "id": "string",
+  "cart_id": "string",
+  "review_ref": "string",
+  "merge_result_id": "string",
+  "produced_cart_version": 0,
+  "status": "pending | acknowledged",
+  "rejected_items": [],
+  "acknowledged_at": "datetime | null",
+  "created_at": "datetime",
+  "updated_at": "datetime",
+  "deleted_at": "datetime | null"
+}
+```
+
+#### Enums, constraints e retenção
+
+- `status` contém somente `pending` e `acknowledged`; `requiresReview` é derivado de `status = pending`.
+- `review_ref` é opaco, público, específico da revisão e UNIQUE; não é derivado de cart, Customer ou versão.
+- `merge_result_id` é UNIQUE e aponta para o receipt original do merge.
+- `cart_id` é identidade interna; UNIQUE parcial em `cart_id` para `status = 'pending' AND deleted_at IS NULL`.
+- `produced_cart_version` é a versão estrutural exata produzida pelo `MERGED_PARTIAL`; `If-Match`/ETag continua sendo a autoridade de concorrência.
+- `rejected_items` mantém a mesma projeção fechada do `CartMergeResult` e nunca inclui catálogo, PII, hashes internos ou IDs de registro.
+- Uma review `pending` bloqueia mutações estruturais posteriores com `409 REVIEW_REQUIRED`; somente ACK válido pode limpá-la. ACK não cria bump estrutural.
+- Review `pending` permanece enquanto pendente. Após `acknowledged`, deve ser preservada ao menos enquanto o receipt associado puder ser reexecutado/reconhecido; a purga posterior é coordenada com a retenção do `CartMergeResult`/`StoreIdempotencyRecord` associado.
+
+#### Proibições públicas
+
+O serializer público expõe somente `requiresReview`, `reviewRef` e
+`rejectedItems`. Não expor timestamps, actor IDs, hashes/fingerprints,
+identificadores internos, histórico, detalhes de workflow, histórico de ETag,
+capability/JWT, raw `Idempotency-Key`, PII ou provider ID.
+
 ---
 
 ## 5. Metadados Obrigatórios e Espelhos Complementares
@@ -2027,6 +2158,56 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 
 `OperationalAlert` deve existir como entidade persistida para alertas críticos operacionais.
 
+### 5.20 CustomerCartAuthority
+
+```json
+{
+  "customer_id": "string",
+  "cart_id": "string",
+  "state": "active | superseded"
+}
+```
+
+Uma única autoridade ativa por Customer e por cart é permitida. A seleção é
+server-authoritative sob lock PostgreSQL; ausência de autoridade inequívoca não
+deve ser resolvida por timestamp.
+
+### 5.21 CartMergeResult
+
+```json
+{
+  "outcome": "MERGED | MERGED_PARTIAL | GUEST_CART_ATTACHED | CUSTOMER_CART_PRESERVED | NO_ITEMS",
+  "rejected_items": [],
+  "review_id": "string | null",
+  "review_ref": "string | null",
+  "original_public_cart_snapshot": {},
+  "original_review_snapshot": {},
+  "original_etag": "string",
+  "expires_at": "datetime"
+}
+```
+
+O receipt é imutável, mínimo e allowlisted. A retenção de `expires_at` é a
+retenção coordenada do `StoreIdempotencyRecord` associado; não há TTL novo ou
+replay reconstruído do estado atual.
+
+### 5.22 CartReview
+
+```json
+{
+  "review_ref": "string",
+  "produced_cart_version": 0,
+  "status": "pending | acknowledged",
+  "rejected_items": [],
+  "acknowledged_at": "datetime | null"
+}
+```
+
+`status = pending` é a única origem de `requiresReview=true` e possui UNIQUE
+parcial por cart. O estado público é fechado em `requiresReview`, `reviewRef`
+e `rejectedItems`; a retenção pós-ack acompanha o receipt associado até a
+purga coordenada.
+
 ## 6. Relações e Cardinalidade
 
 | Relação | Cardinalidade | Observação |
@@ -2035,6 +2216,11 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `ProductVariant` → `LineItem` | 1:N lógico | O `LineItem` nasce de uma variante, mas deve preservar snapshot Gelato para que pedidos confirmados não dependam dos metadados atuais da variante. |
 | `Order` → `LineItem` | 1:N | Um pedido confirmado contém itens com snapshot Gelato consolidado para fulfillment. |
 | `Cart` → `PaymentCollection` | 1:1 ou 1:N | Recomenda-se uma coleção ativa por checkout; múltiplas podem existir por histórico, se necessário. |
+| `Customer` → `CustomerCartAuthority` | 1:0..N lógico | A autoridade ativa do Customer aponta para no máximo um cart canônico; registros superseded preservam linhagem interna. |
+| `Cart` → `CustomerCartAuthority` | 1:0..N lógico | Um cart pode ter no máximo uma autoridade ativa; a referência é por identidade de módulo, sem FK SQL cross-module. |
+| `StoreIdempotencyRecord` → `CartMergeResult` | 1:0..1 | Cada claim de merge concluído pode possuir um receipt imutável por `idempotency_record_id` UNIQUE. |
+| `CartMergeResult` → `CartReview` | 0:1 | Somente `MERGED_PARTIAL` produz review associada; a referência é `merge_result_id` UNIQUE. |
+| `Cart` → `CartReview` | 1:N lógico | Um cart pode manter histórico de reviews, mas no máximo uma review `pending` ativa. |
 | `PaymentCollection` → `PaymentSession` | 1:N | Permite recriar sessão ou trocar método de pagamento. |
 | `Cart` → `PaymentAttempt` | 1:N | Um checkout pode ter múltiplas tentativas de pagamento. |
 | `PaymentSession` → `PaymentAttempt` | 1:N | Uma sessão pode gerar uma ou mais tentativas conforme estratégia de implementação. |
@@ -2226,6 +2412,15 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `DATA-130` | PostgreSQL é a fonte de verdade de claim/lifecycle; Redis não decide correctness. |
 | `DATA-131` | `StoreResourceVersion` usa PostgreSQL `integer`, `UNIQUE(resource_type, resource_id) WHERE deleted_at IS NULL` e `CHECK(version > 0)` com bootstrap lazy `version=1`, conforme `P13-13-05-HCD-01`. |
 | `DATA-132` | `StoreIdempotencyRecord.state_version` protege transições de lifecycle; `StoreResourceVersion.version` protege mutação de recurso — conceitos distintos. |
+| `DATA-133` | `CustomerCartAuthority` deve possuir no máximo uma autoridade `active` por `customer_id` e por `cart_id`, com UNIQUE parcial `WHERE state = 'active' AND deleted_at IS NULL`; canonicalidade ambígua falha fechado e nunca escolhe por timestamp. |
+| `DATA-134` | `CartMergeResult` deve possuir exatamente um vínculo UNIQUE com `StoreIdempotencyRecord`, preservar o receipt público original e usar `expires_at` coordenado com a retenção do claim associado. |
+| `DATA-135` | `CartMergeResult.outcome` contém exatamente `MERGED`, `MERGED_PARTIAL`, `GUEST_CART_ATTACHED`, `CUSTOMER_CART_PRESERVED` e `NO_ITEMS`; `CUSTOMER_CART_PRESERVED` permanece enum-only, sem branch ou fixture positiva aprovada. |
+| `DATA-136` | `CartMergeResult.rejected_items` e `CartReview.rejected_items` são projeções fechadas por variante, com `variantId`, quantidades invariantes e reason code somente `VARIANT_INVALID`, `VARIANT_UNAVAILABLE` ou `QUANTITY_LIMIT_EXCEEDED`. |
+| `DATA-137` | `CartReview` possui estados exatamente `pending` e `acknowledged`, UNIQUE `review_ref` e `merge_result_id`, e no máximo uma linha `pending` por cart via UNIQUE parcial `WHERE status = 'pending' AND deleted_at IS NULL`. |
+| `DATA-138` | `CartReview.requiresReview` é derivado de `status = pending`; review pending bloqueia mutação estrutural com `409 REVIEW_REQUIRED`, e ACK válido não produz bump estrutural. |
+| `DATA-139` | `CartMergeResult` e `CartReview` não podem persistir ou expor raw `Idempotency-Key`, capability/JWT, headers de autenticação, PII, entidade Cart crua, catálogo, provider ID, hashes/fingerprints internos ou payload técnico. |
+| `DATA-140` | Replay same-key/same-fingerprint reproduz o receipt original imutável, inclusive snapshot público, review, outcome e ETag originais; não refaz merge nem reconstrói a resposta pelo cart atual. |
+| `DATA-141` | Review `pending` permanece até ACK válido; review `acknowledged` permanece ao menos enquanto o receipt associado puder ser reexecutado/reconhecido, e a purga posterior é coordenada com `CartMergeResult` e `StoreIdempotencyRecord`, sem TTL arbitrário novo. |
 
 ---
 
@@ -2316,6 +2511,18 @@ Constraints complementares: `amount` deve ser inteiro positivo na menor unidade 
 | `StoreIdempotencyRecord` | índice `(next_retry_at)` | Scan de retries due. |
 | `StoreIdempotencyRecord` | índice `(expires_at)` | Cleanup de terminais expirados. |
 | `StoreResourceVersion` | unique parcial `(resource_type, resource_id) WHERE deleted_at IS NULL` | Uma versão ativa por recurso. |
+| `CustomerCartAuthority` | unique parcial em `customer_id` para `state = 'active' AND deleted_at IS NULL` | Uma autoridade Customer ativa por identidade. |
+| `CustomerCartAuthority` | unique parcial em `cart_id` para `state = 'active' AND deleted_at IS NULL` | Um cart não pode possuir duas autoridades ativas. |
+| `CustomerCartAuthority` | índice em `state` | Auditar autoridades ativas e superseded. |
+| `CartMergeResult` | unique em `idempotency_record_id` | Um receipt imutável por claim de idempotência. |
+| `CartMergeResult` | índice em `customer_id` | Consultar receipts por Customer interno. |
+| `CartMergeResult` | índice em `guest_cart_id` | Consultar receipts por cart de origem. |
+| `CartMergeResult` | índice em `canonical_cart_id` | Consultar receipts por cart canônico. |
+| `CartMergeResult` | índice em `expires_at` | Purga coordenada com a retenção do claim associado. |
+| `CartReview` | unique em `review_ref` | Referência pública opaca sem ambiguidade. |
+| `CartReview` | unique em `merge_result_id` | Uma review por receipt de merge. |
+| `CartReview` | unique parcial em `cart_id` para `status = 'pending' AND deleted_at IS NULL` | No máximo uma revisão pending por cart. |
+| `CartReview` | índice composto em `cart_id, status` | Consultar estado de revisão do cart. |
 | `OperationalAlert` | índice composto em `status, severity` | Filtrar alertas abertos por severidade. |
 | `OperationalAlert` | índice composto em `entity_type, entity_id` | Consultar alertas associados a pedidos, fulfillments ou outras entidades. |
 | `OperationalAlert` | índice composto em `type, created_at` | Investigar frequência e histórico de alertas por tipo. |

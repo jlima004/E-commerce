@@ -498,6 +498,29 @@ export class GuestCartCapabilityModuleService extends MedusaService({
   }
 
   /**
+   * Owner-only transaction-bound read used to validate a CartMerge receipt.
+   * It returns lifecycle state without exposing or re-deriving the presented
+   * capability token and never joins another module's private table.
+   */
+  async retrieveGuestCartCapabilityForReplay(
+    id: string,
+    sharedContext: GuestCartCapabilityMutationContext
+  ): Promise<GuestCartCapabilityRecord | null> {
+    if (!sharedContext || typeof id !== "string" || id.trim().length === 0) {
+      throw new Error(GUEST_CART_CAPABILITY_TRANSACTION_REQUIRED)
+    }
+
+    const rows = await capabilityRows(
+      requireCapabilityTransaction(sharedContext),
+      `select ${capabilityColumns()}
+         from guest_cart_capability
+        where id = ? and deleted_at is null`,
+      [id]
+    )
+    return rows[0] ? mapCapabilityRow(rows[0]) : null
+  }
+
+  /**
    * Final Guest authorization for a cart mutation. The caller must provide
    * the mutation transaction; this prevents a preflight lookup from being
    * mistaken for authority after a concurrent revoke/consume/expire.

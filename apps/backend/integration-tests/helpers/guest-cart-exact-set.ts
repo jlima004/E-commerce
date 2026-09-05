@@ -13,7 +13,6 @@ export const GUEST_CART_DENIED_NATIVE_OPERATIONS = [
   "POST /store/carts",
   "GET /store/carts/{id}",
   "POST /store/carts/{id}/complete",
-  "POST /store/customers/me/cart/attach",
   "POST /store/carts/{id}/shipping-methods",
   "GET /store/shipping-options",
   "POST /store/shipping-options/{id}/calculate",

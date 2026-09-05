@@ -7,8 +7,8 @@ import {
 } from "../../../../modules/customer-auth/bff-service-auth"
 
 describe("STORE_CART_BFF_PROTECTED_OPERATIONS", () => {
-  it("tem exatamente as 6 operacoes fechadas de cart P15-D03", () => {
-    expect(STORE_CART_BFF_PROTECTED_OPERATIONS).toHaveLength(6)
+  it("tem exatamente as 8 operacoes fechadas de cart P15-D03 + Phase 16 merge/ACK", () => {
+    expect(STORE_CART_BFF_PROTECTED_OPERATIONS).toHaveLength(8)
     expect(STORE_CART_BFF_PROTECTED_OPERATIONS).toEqual([
       "GET /store/carts/active",
       "POST /store/carts/active",
@@ -16,6 +16,8 @@ describe("STORE_CART_BFF_PROTECTED_OPERATIONS", () => {
       "POST /store/carts/:id/line-items/:line_id",
       "DELETE /store/carts/:id/line-items/:line_id",
       "DELETE /store/carts/:id/line-items",
+      "POST /store/customers/me/cart/merge",
+      "POST /store/carts/:id/review/acknowledge",
     ])
   })
 
@@ -39,7 +41,7 @@ describe("STORE_CART_BFF_PROTECTED_OPERATIONS", () => {
       const parts = op.split(" ")
       expect(parts).toHaveLength(2)
       expect(["GET", "POST", "DELETE"]).toContain(parts[0])
-      expect(parts[1].startsWith("/store/carts")).toBe(true)
+      expect(parts[1].startsWith("/store/")).toBe(true)
     }
   })
 })

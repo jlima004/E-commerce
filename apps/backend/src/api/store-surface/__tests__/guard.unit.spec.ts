@@ -314,7 +314,7 @@ describe("Store surface guard (FND-02)", () => {
           origin: "https://bff.example.com",
           accessControlRequestMethod: "POST",
         }).action
-      ).toBe("deny")
+      ).toBe("options_preflight")
 
       expect(
         decideStoreSurfaceAccess("OPTIONS", "/store/customers/me", {
@@ -332,8 +332,8 @@ describe("Store surface guard (FND-02)", () => {
     })
 
     it("denies every runtime_policy DENY and BLOCKED entry", () => {
-      expect(counts.deny).toBe(47)
-      expect(counts.blocked).toBe(17)
+      expect(counts.deny).toBe(46)
+      expect(counts.blocked).toBe(16)
 
       for (const entry of STORE_SURFACE_MANIFEST) {
         if (entry.runtime_policy !== "DENY" && entry.classification !== "BLOCKED") {
@@ -347,7 +347,7 @@ describe("Store surface guard (FND-02)", () => {
     })
 
     it("allows PRESERVE_LEGACY only as inherited v1.0 pass-through without M1 enablement", () => {
-      expect(counts.preserveLegacy).toBe(5)
+      expect(counts.preserveLegacy).toBe(6)
 
       for (const entry of STORE_SURFACE_MANIFEST) {
         if (entry.runtime_policy !== "PRESERVE_LEGACY") {
@@ -366,7 +366,7 @@ describe("Store surface guard (FND-02)", () => {
     })
 
     it("allows exactly the final Store M1_ENABLED exact-set as m1_enabled", () => {
-      expect(counts.m1EnabledPolicy).toBe(12)
+      expect(counts.m1EnabledPolicy).toBe(14)
       expect(counts.m1EnabledPolicy).toBe(
         STORE_SURFACE_M1_ENABLED_OPERATIONS.length
       )
@@ -391,7 +391,7 @@ describe("Store surface guard (FND-02)", () => {
       const m1EnabledKeys = m1EnabledEntries.map((entry) =>
         storeSurfaceOperationKey(entry.method, entry.pathTemplate)
       )
-      expect(m1EnabledEntries).toHaveLength(12)
+      expect(m1EnabledEntries).toHaveLength(14)
       expect(m1EnabledKeys).toEqual([...STORE_SURFACE_M1_ENABLED_OPERATIONS])
 
       for (const entry of m1EnabledEntries) {

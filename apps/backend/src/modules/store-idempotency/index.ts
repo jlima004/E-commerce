@@ -8,8 +8,12 @@ export {
   STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_UPDATE,
   STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_DELETE,
   STORE_IDEMPOTENCY_STORE_CART_LINE_ITEM_CLEAR,
+  STORE_IDEMPOTENCY_CART_MERGE,
 } from "./operations"
-export type { StoreCartLineItemIdempotencyOperation } from "./operations"
+export type {
+  StoreCartLineItemIdempotencyOperation,
+  StoreIdempotencyOperation,
+} from "./operations"
 
 export {
   STORE_IDEMPOTENCY_CLAIM_STALE_AFTER_MS,

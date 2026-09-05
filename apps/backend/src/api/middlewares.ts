@@ -657,15 +657,27 @@ function customerAuthBffProtectedRouteEntries(): Array<{
 function storeCartBffProtectedRouteEntries(): Array<{
   method: Array<"GET" | "POST" | "DELETE">
   matcher: string
-  middlewares: Array<typeof customerAuthBffServiceGuardMiddleware>
+  middlewares: Array<
+    | typeof customerAuthBffServiceGuardMiddleware
+    | ReturnType<typeof authenticate>
+  >
 }> {
   return STORE_CART_BFF_PROTECTED_OPERATIONS.map((operation) => {
     const [rawMethod, path] = operation.split(" ")
     const method = rawMethod as "GET" | "POST" | "DELETE"
+    const requiresCustomerBearer =
+      path === "/store/customers/me/cart/merge" ||
+      path === "/store/carts/:id/review/acknowledge"
+
     return {
       method: [method],
       matcher: path,
-      middlewares: [customerAuthBffServiceGuardMiddleware],
+      middlewares: requiresCustomerBearer
+        ? [
+            customerAuthBffServiceGuardMiddleware,
+            authenticate("customer", ["bearer"]),
+          ]
+        : [customerAuthBffServiceGuardMiddleware],
     }
   })
 }
@@ -741,7 +753,8 @@ export default defineMiddlewares({
       method: ["POST"],
       matcher: "/store/customers/me/cart/attach",
       middlewares: [
-        authenticate("customer", ["session", "bearer"]),
+        customerAuthBffServiceGuardMiddleware,
+        authenticate("customer", ["bearer"]),
         storeCartPreOrderQueryConfigMiddleware,
         storeCartPreOrderResponseMiddleware,
       ],

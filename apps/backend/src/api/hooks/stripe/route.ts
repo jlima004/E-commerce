@@ -16,8 +16,10 @@ import {
 } from "../../../modules/payment-attempt/service"
 import {
   applyStripePaymentIntentWebhookInTransaction,
+  recordDurableReconciliationInTransaction,
   type PaymentAttemptSqlConnection,
 } from "../../../modules/payment-attempt/transactional-authority"
+import { RECONCILIATION_REASON_CODE } from "../../../reconciliation/reason-codes"
 import type {
   CreateWebhookEventLogInput,
   WebhookEntityType,
@@ -530,7 +532,60 @@ async function processStripePaymentIntentEvent(input: {
     updatedAttempt.status === "payment_confirmed_by_webhook" &&
     updatedAttempt.order_id == null
 
-  if (shouldInvokeOrderEntrypoint && input.runOrderEntrypoint) {
+  if (shouldInvokeOrderEntrypoint) {
+    if (!input.runOrderEntrypoint) {
+      try {
+        await authorityConnection.transaction(async (trx) => {
+          await recordDurableReconciliationInTransaction(
+            trx,
+            {
+              paymentAttemptId: updatedAttempt.id,
+              cartId: updatedAttempt.cart_id,
+              paymentIntentId: paymentIntent.id,
+              reasonCode:
+                RECONCILIATION_REASON_CODE.ORDER_BIRTH_EXECUTION_AMBIGUOUS,
+              errorCode: "CHECKOUT_COMPLETION_ENTRYPOINT_UNAVAILABLE",
+              errorMessage:
+                "Entrypoint de criacao de Order indisponivel para webhook Stripe confirmado.",
+            },
+            input.now
+          )
+        })
+      } catch (recErr) {
+        throw new PaymentAttemptWebhookError(
+          "RECONCILIATION_PERSISTENCE_FAILED",
+          `Order entrypoint unavailable and durable reconciliation write also failed: ${recErr instanceof Error ? recErr.message : String(recErr)}`,
+          "failed"
+        )
+      }
+
+      await updateWebhookRecord(input.webhooksModule, {
+        id: input.record.id,
+        status: "processed",
+        entity_type: "payment_attempt",
+        entity_id: updatedAttempt.id,
+        error_code: "CHECKOUT_COMPLETION_ENTRYPOINT_UNAVAILABLE",
+        error_message:
+          "Entrypoint de criacao de Order indisponivel para webhook Stripe confirmado.",
+        processed_at: input.now.toISOString(),
+        failed_at: null,
+        ignored_at: null,
+        metadata: {
+          ...buildProcessedMetadata({
+            record: input.record,
+            paymentIntentId: paymentIntent.id,
+            paymentAttemptId: updatedAttempt.id,
+          }),
+          reconciliation_required: true,
+          reconciliation_reason_code:
+            RECONCILIATION_REASON_CODE.ORDER_BIRTH_EXECUTION_AMBIGUOUS,
+          status: "processed",
+        },
+      })
+
+      return "processed"
+    }
+
     let orderEntrypointResult: CreateOrderFromConfirmedPaymentAttemptResult
 
     try {
@@ -540,6 +595,7 @@ async function processStripePaymentIntentEvent(input: {
         stripe_event_id: input.event.id,
         correlation_id: input.req.correlationId,
       })
+      assertTerminalOrderEntrypointResult(orderEntrypointResult)
     } catch (error) {
       const diagnostic = readOrderCreationEntrypointFailureDiagnostic(error)
       const sanitized = sanitizeWebhookError(error)
@@ -558,15 +614,79 @@ async function processStripePaymentIntentEvent(input: {
         error_chain: error,
       })
 
-      throw error
-    }
+      // S7: Order entrypoint rejects due to material local ambiguity or failure.
+      // Succeeded payment MUST have a durable consequence:
+      // Persist durable reconciliation consequence so the succeeded payment is never orphaned.
+      try {
+        await authorityConnection.transaction(async (trx) => {
+          await recordDurableReconciliationInTransaction(
+            trx,
+            {
+              paymentAttemptId: updatedAttempt.id,
+              cartId: updatedAttempt.cart_id,
+              paymentIntentId: paymentIntent.id,
+              reasonCode:
+                RECONCILIATION_REASON_CODE.ORDER_BIRTH_EXECUTION_AMBIGUOUS,
+              errorCode: "ORDER_BIRTH_EXECUTION_AMBIGUOUS",
+              errorMessage:
+                (diagnostic?.details.error_message ??
+                  sanitized.error_message) ??
+                undefined,
+            },
+            input.now
+          )
+        })
+      } catch (reconciliationError) {
+        // Both order creation and durable reconciliation failed!
+        // Do NOT swallow reconciliation error!
+        throw new PaymentAttemptWebhookError(
+          "RECONCILIATION_PERSISTENCE_FAILED",
+          `Order entrypoint failed and durable reconciliation write also failed: ${reconciliationError instanceof Error ? reconciliationError.message : String(reconciliationError)}`,
+          "failed"
+        )
+      }
 
-    assertTerminalOrderEntrypointResult(orderEntrypointResult)
-  } else if (shouldInvokeOrderEntrypoint) {
-    throw new PaymentAttemptWebhookError(
-      "CHECKOUT_COMPLETION_ENTRYPOINT_UNAVAILABLE",
-      "Entrypoint de criacao de Order indisponivel para webhook Stripe confirmado."
-    )
+      // Durable reconciliation succeeded!
+      // A durable consequence exists -> WEL becomes processed per contract.
+      await updateWebhookRecord(input.webhooksModule, {
+        id: input.record.id,
+        status: "processed",
+        entity_type: "payment_attempt",
+        entity_id: updatedAttempt.id,
+        error_code: diagnostic?.details.error_code ?? sanitized.error_code,
+        error_message: diagnostic?.details.error_message ?? sanitized.error_message,
+        processed_at: input.now.toISOString(),
+        failed_at: null,
+        ignored_at: null,
+        metadata: {
+          ...buildProcessedMetadata({
+            record: input.record,
+            paymentIntentId: paymentIntent.id,
+            paymentAttemptId: updatedAttempt.id,
+          }),
+          reconciliation_required: true,
+          reconciliation_reason_code:
+            RECONCILIATION_REASON_CODE.ORDER_BIRTH_EXECUTION_AMBIGUOUS,
+          order_creation_failed: true,
+          order_creation_error_name:
+            diagnostic?.details.error_name ?? sanitized.error_code ?? "Error",
+          order_creation_error_code:
+            diagnostic?.details.error_code ?? sanitized.error_code,
+          order_creation_error_message:
+            diagnostic?.details.error_message ?? sanitized.error_message,
+          order_creation_error_cause_message:
+            diagnostic?.details.error_cause_message ?? null,
+          order_creation_error_step:
+            diagnostic?.context.step ?? "create-order-from-confirmed-attempt",
+          cart_id: updatedAttempt.cart_id,
+          checkout_completion_log_id:
+            diagnostic?.context.checkout_completion_log_id ?? null,
+          status: "processed",
+        },
+      })
+
+      return "processed"
+    }
   }
 
   await updateWebhookRecord(input.webhooksModule, {
@@ -667,7 +787,12 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
       ? event.data.object.id
       : null
 
-    if (duplicate && isFinalWebhookStatus(record.status)) {
+    const isTerminalDuplicate =
+      record.status === "processed" ||
+      record.status === "ignored" ||
+      (record.status === "failed" && event.type !== "payment_intent.succeeded")
+
+    if (duplicate && isTerminalDuplicate) {
       return respond(res, 200, {
         ok: true,
         duplicate: true,
@@ -758,6 +883,19 @@ export function createStripeWebhookPostHandler(deps: RouteDeps = {}) {
       })
 
       finalStatus = disposition
+    }
+
+    const isFailure =
+      finalStatus === "failed" && event.type === "payment_intent.succeeded"
+
+    if (isFailure) {
+      return respond(res, 500, {
+        ok: false,
+        duplicate,
+        event_id: record.external_event_id ?? input.external_event_id ?? null,
+        event_type: record.event_type,
+        status: finalStatus,
+      })
     }
 
     return respond(res, 200, {

@@ -12,6 +12,7 @@ import {
 import {
   ContainerRegistrationKeys,
   MedusaError,
+  Modules,
 } from "@medusajs/framework/utils"
 import {
   assertNoPaymentOrOrderFields,
@@ -27,6 +28,7 @@ import {
   createSentryErrorHandler,
 } from "../../src/api/middlewares"
 import { env } from "../../src/config/env"
+import { CART_MERGE_MODULE } from "../../src/modules/cart-merge/module-id"
 
 jest.mock("@medusajs/core-flows", () => ({
   createCartWorkflow: jest.fn(),
@@ -127,6 +129,15 @@ type SyntheticCredentialRow = {
 
 type SyntheticCustomerHarness = {
   carts: Map<string, any>
+  authorities: Map<
+    string,
+    {
+      id: string
+      customer_id: string
+      cart_id: string
+      state?: "active" | "superseded"
+    }
+  >
   lineages: Map<string, SyntheticLineageRow>
   credentials: Map<string, SyntheticCredentialRow>
   setDbUnavailable: (unavailable: boolean) => void
@@ -157,6 +168,15 @@ type SyntheticCustomerHarness = {
 
 function createCustomerHarness(): SyntheticCustomerHarness {
   const carts = new Map<string, any>()
+  const authorities = new Map<
+    string,
+    {
+      id: string
+      customer_id: string
+      cart_id: string
+      state?: "active" | "superseded"
+    }
+  >()
   const lineages = new Map<string, SyntheticLineageRow>()
   const credentials = new Map<string, SyntheticCredentialRow>()
   let cartSequence = 1
@@ -196,6 +216,58 @@ function createCustomerHarness(): SyntheticCustomerHarness {
     async initialize(type: string, id: string) {
       return { id: `strver_${id}`, resource_type: type, resource_id: id, version: 1 }
     },
+  }
+
+  const mockCartModule = {
+    async listCarts(filters: Record<string, unknown> = {}) {
+      return Array.from(carts.values()).filter(
+        (cart) =>
+          cart.customer_id === filters.customer_id &&
+          cart.completed_at == null &&
+          cart.deleted_at == null &&
+          cart.metadata?.active_for_checkout !== false
+      )
+    },
+    async retrieveCart(cartId: string) {
+      return carts.get(cartId) ?? null
+    },
+  }
+
+  const mockCartMergeModule = {
+    async listCustomerCartAuthoritiesForUpdate(customerId: string) {
+      const authority = authorities.get(customerId)
+      if (!authority || authority.state === "superseded") {
+        return []
+      }
+      return [{ ...authority, state: "active" as const }]
+    },
+    async createCustomerCartAuthority(input: {
+      customer_id: string
+      cart_id: string
+    }) {
+      const authority = {
+        id: `ccauth_${input.cart_id}`,
+        customer_id: input.customer_id,
+        cart_id: input.cart_id,
+        state: "active" as const,
+      }
+      authorities.set(input.customer_id, authority)
+      return authority
+    },
+    async supersedeCustomerCartAuthority(input: {
+      authority_id: string
+      customer_id: string
+      cart_id: string
+    }) {
+      const authority = authorities.get(input.customer_id)
+      if (authority) {
+        authority.state = "superseded"
+      }
+      return { type: "superseded" as const }
+    },
+  }
+  const mockLinkService = {
+    create: jest.fn(async () => []),
   }
 
   const mockPgConnection = {
@@ -239,7 +311,55 @@ function createCustomerHarness(): SyntheticCustomerHarness {
           ],
         }
       }
+      if (sql.includes("pg_advisory_xact_lock")) {
+        return { rows: [] }
+      }
+      if (sql.includes("customer_cart_authority")) {
+        if (sql.trimStart().startsWith("insert into")) {
+          const [id, customerId, cartId] = bindings
+          authorities.set(String(customerId), {
+            id: String(id),
+            customer_id: String(customerId),
+            cart_id: String(cartId),
+            state: "active",
+          })
+          return { rows: [] }
+        }
+        const customerId = String(bindings[0])
+        const authority = authorities.get(customerId)
+        return {
+          rows: authority
+            ? [{ ...authority, state: "active" }]
+            : [],
+        }
+      }
+      if (sql.includes("from cart") && sql.includes("customer_id")) {
+        const customerId = String(bindings[0])
+        return {
+          rows: Array.from(carts.values())
+            .filter(
+              (cart) =>
+                cart.customer_id === customerId &&
+                !cart.completed_at &&
+                cart.deleted_at == null &&
+                cart.metadata?.active_for_checkout !== false
+            )
+            .map((cart) => ({
+              id: cart.id,
+              customer_id: cart.customer_id,
+              completed_at: cart.completed_at ?? null,
+              deleted_at: cart.deleted_at ?? null,
+              metadata: cart.metadata ?? null,
+            })),
+        }
+      }
       return { rows: [] }
+    },
+  }
+
+  ;(mockCartModule as any).baseRepository_ = {
+    async transaction(callback: (manager: unknown) => Promise<unknown>) {
+      return callback({ getTransactionContext: () => mockPgConnection })
     },
   }
 
@@ -389,6 +509,15 @@ function createCustomerHarness(): SyntheticCustomerHarness {
           if (key === "store_idempotency") {
             return mockStoreIdempotencyService
           }
+          if (key === Modules.CART) {
+            return mockCartModule
+          }
+          if (key === CART_MERGE_MODULE) {
+            return mockCartMergeModule
+          }
+          if (key === ContainerRegistrationKeys.LINK) {
+            return mockLinkService
+          }
           if (key === ContainerRegistrationKeys.REMOTE_QUERY) {
             return mockRemoteQuery
           }
@@ -403,6 +532,7 @@ function createCustomerHarness(): SyntheticCustomerHarness {
 
   return {
     carts,
+    authorities,
     lineages,
     credentials,
     setDbUnavailable: (val: boolean) => {
@@ -410,6 +540,7 @@ function createCustomerHarness(): SyntheticCustomerHarness {
     },
     createCustomerSession,
     createRequest,
+    mockLinkService,
   }
 }
 
@@ -670,11 +801,11 @@ describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — Real Author
     expect(harness.carts.size).toBe(0)
   })
 
-  it("PROVA 7.1: GET Customer escolhe o cart ativo incompleto mais novo entre dois carts do mesmo Customer", async () => {
+  it("PROVA 7.1: Customer com dois carts ativos sem authority retorna 409 estável e zero alteração", async () => {
     const harness = createCustomerHarness()
     const customerId = "cus_same_01"
-    const olderCart = {
-      id: "cart_same_older",
+    const firstCart = {
+      id: "cart_same_first",
       customer_id: customerId,
       customer: { id: customerId },
       metadata: { active_for_checkout: true },
@@ -682,8 +813,8 @@ describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — Real Author
       updated_at: "2026-08-20T00:00:00.000Z",
       items: [],
     }
-    const newerCart = {
-      id: "cart_same_newer",
+    const secondCart = {
+      id: "cart_same_second",
       customer_id: customerId,
       customer: { id: customerId },
       metadata: { active_for_checkout: true },
@@ -691,8 +822,8 @@ describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — Real Author
       updated_at: "2026-08-21T00:00:00.000Z",
       items: [],
     }
-    harness.carts.set(olderCart.id, olderCart)
-    harness.carts.set(newerCart.id, newerCart)
+    harness.carts.set(firstCart.id, firstCart)
+    harness.carts.set(secondCart.id, secondCart)
 
     const session = harness.createCustomerSession(customerId)
     const req = harness.createRequest({
@@ -701,11 +832,102 @@ describe("Customer Cart Active HTTP Tracer Matrix (Task 15-03-03 — Real Author
     })
     const res = createMockResponse()
 
-    await getActiveCart(req as never, res as never)
+    const ambiguityError = await getActiveCart(req as never, res as never).catch(
+      (error) => error
+    )
+    expect(ambiguityError).toMatchObject({
+      code: "CUSTOMER_CART_AUTHORITY_CONFLICT",
+      statusCode: 409,
+    })
+    expect(ambiguityError.message).toBe("CUSTOMER_CART_AUTHORITY_CONFLICT")
+    expect(JSON.stringify(ambiguityError)).not.toContain("cart_same_first")
+    expect(JSON.stringify(ambiguityError)).not.toContain("cart_same_second")
 
     expect(res.statusCode).toBe(200)
-    expect((res.body as any).cart.id).toBe(newerCart.id)
-    expect((res.body as any).cart.id).not.toBe(olderCart.id)
+    expect(res.body).toBeNull()
+    expect(harness.authorities.size).toBe(0)
+    expect(harness.carts.has(firstCart.id)).toBe(true)
+    expect(harness.carts.has(secondCart.id)).toBe(true)
+    expect(JSON.stringify(res)).not.toContain("cart_same_first")
+    expect(JSON.stringify(res)).not.toContain("cart_same_second")
+  })
+
+  it("PROVA 7.2: POST ambíguo retorna 409 sanitizado sem criar ou reivindicar efeito", async () => {
+    const harness = createCustomerHarness()
+    const customerId = "cus_post_ambiguous"
+    harness.carts.set("cart_post_first", {
+      id: "cart_post_first",
+      customer_id: customerId,
+      customer: { id: customerId },
+      metadata: { active_for_checkout: true },
+      completed_at: null,
+      items: [],
+    })
+    harness.carts.set("cart_post_second", {
+      id: "cart_post_second",
+      customer_id: customerId,
+      customer: { id: customerId },
+      metadata: { active_for_checkout: true },
+      completed_at: null,
+      items: [],
+    })
+
+    const beforeCartIds = [...harness.carts.keys()].sort()
+    const session = harness.createCustomerSession(customerId)
+    const req = harness.createRequest({
+      method: "POST",
+      headers: { authorization: `Bearer ${session.token}` },
+    })
+    const res = createMockResponse()
+
+    const ambiguityError = await postActiveCart(req as never, res as never).catch(
+      (error) => error
+    )
+    expect(ambiguityError).toMatchObject({
+      code: "CUSTOMER_CART_AUTHORITY_CONFLICT",
+      statusCode: 409,
+    })
+    expect(ambiguityError.message).toBe("Customer cart state conflict")
+    expect(JSON.stringify(ambiguityError)).not.toContain("cart_post_first")
+    expect(JSON.stringify(ambiguityError)).not.toContain("cart_post_second")
+    expect([...harness.carts.keys()].sort()).toEqual(beforeCartIds)
+    expect(harness.authorities.size).toBe(0)
+    expect(res.body).toBeNull()
+  })
+
+  it("PROVA 7.3: authority stale não faz fallback temporal e retorna 409 sem mutação", async () => {
+    const harness = createCustomerHarness()
+    const customerId = "cus_stale_authority"
+    const cart = {
+      id: "cart_stale_candidate",
+      customer_id: customerId,
+      customer: { id: customerId },
+      metadata: { active_for_checkout: true },
+      completed_at: null,
+      items: [],
+    }
+    harness.carts.set(cart.id, cart)
+    harness.authorities.set(customerId, {
+      id: "ccauth_stale",
+      customer_id: customerId,
+      cart_id: "cart_missing_or_foreign",
+    })
+
+    const session = harness.createCustomerSession(customerId)
+    const req = harness.createRequest({
+      method: "GET",
+      headers: { authorization: `Bearer ${session.token}` },
+    })
+    const res = createMockResponse()
+
+    await expect(getActiveCart(req as never, res as never)).rejects.toMatchObject({
+      code: "CUSTOMER_CART_AUTHORITY_CONFLICT",
+      statusCode: 409,
+    })
+    expect(harness.authorities.get(customerId)?.cart_id).toBe(
+      "cart_missing_or_foreign"
+    )
+    expect(harness.carts.get(cart.id)).toBe(cart)
   })
 
   it("PROVA 8: BFF Pipeline Integration — requisicao sem credencial BFF e barrada no middleware antes do handler de active cart", () => {

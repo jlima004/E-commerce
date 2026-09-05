@@ -18,6 +18,14 @@ import type {
   PaymentMethodType,
   PaymentAttemptStatus,
 } from "./types"
+import { readDurablePaymentAttemptIdentity } from "./durable-initiation"
+import type {
+  PaymentAttemptFinancialAuthorityProjection,
+} from "./types"
+import {
+  assertCompletePaymentAttemptFinancialAuthority,
+  projectPaymentAttemptFinancialAuthority,
+} from "./financial-authority"
 
 const STRIPE_CARD_INITIATION_LAYER_TOKEN = "stripeCardInitiationLayer"
 const STRIPE_PIX_INITIATION_LAYER_TOKEN = "stripePixInitiationLayer"
@@ -79,6 +87,18 @@ class PaymentAttemptModuleService extends MedusaService({
       STRIPE_PIX_INITIATION_LAYER_TOKEN,
       isStripePixInitiationLayer
     )
+  }
+
+  async readPaymentAttemptFinancialAuthority(
+    attemptId: string
+  ): Promise<PaymentAttemptFinancialAuthorityProjection | null> {
+    const attempts = await this.listPaymentAttempts({ id: attemptId })
+    const attempt = attempts[0] as PaymentAttemptRecord | undefined
+    if (!attempt) {
+      return null
+    }
+    assertCompletePaymentAttemptFinancialAuthority(attempt)
+    return projectPaymentAttemptFinancialAuthority(attempt)
   }
 }
 
@@ -158,6 +178,12 @@ export function buildNewPaymentAttemptRecord(
     canceled_at: null,
     failed_at: null,
     expired_at: null,
+    financial_freeze_started_at: null,
+    provider_canceled_confirmed_at: null,
+    provider_discovery_started_at: null,
+    reconciliation_reason_code: null,
+    reconciliation_locked_at: null,
+    last_reconciliation_at: null,
     created_at: at.toISOString(),
     updated_at: at.toISOString(),
   }
@@ -189,12 +215,12 @@ export type StripePaymentIntentWebhookObject = {
 
 export class PaymentAttemptWebhookError extends Error {
   readonly code: string
-  readonly webhookDisposition: "failed" | "ignored"
+  readonly webhookDisposition: "failed" | "ignored" | "processed"
 
   constructor(
     code: string,
     message: string,
-    webhookDisposition: "failed" | "ignored" = "failed"
+    webhookDisposition: "failed" | "ignored" | "processed" = "failed"
   ) {
     super(message)
     this.name = code
@@ -268,6 +294,15 @@ function readPaymentIntentCartId(
     : null
 }
 
+function readPaymentIntentSessionId(
+  metadata: Record<string, unknown> | null | undefined
+): string | null {
+  const sessionId = metadata?.session_id
+  return typeof sessionId === "string" && sessionId.trim().length > 0
+    ? sessionId.trim()
+    : null
+}
+
 function matchesExpectedPaymentMethodType(
   attemptPaymentMethodType: PaymentMethodType,
   paymentMethodTypes: string[]
@@ -275,38 +310,45 @@ function matchesExpectedPaymentMethodType(
   return paymentMethodTypes.includes(attemptPaymentMethodType)
 }
 
+const MAX_SAFE_MINOR = BigInt(Number.MAX_SAFE_INTEGER)
+
 function toCanonicalPaymentAmount(value: unknown): bigint | null {
+  let parsed: bigint
+
   if (typeof value === "bigint") {
-    return value >= 0n ? value : null
-  }
-
-  if (typeof value === "number") {
-    if (!Number.isInteger(value) || value < 0) {
+    parsed = value
+  } else if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
       return null
     }
-
-    return BigInt(value)
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim()
-    if (trimmed.length === 0) {
+    parsed = BigInt(value)
+  } else if (typeof value === "string") {
+    const normalized = value.trim()
+    if (!/^\d+$/.test(normalized)) {
       return null
     }
-
     try {
-      const parsed = BigInt(trimmed)
-      return parsed >= 0n ? parsed : null
+      parsed = BigInt(normalized)
     } catch {
       return null
     }
+  } else {
+    return null
   }
 
-  return null
+  if (parsed <= 0n || parsed > MAX_SAFE_MINOR) {
+    return null
+  }
+
+  return parsed
 }
 
 function paymentIntentAmountToBigInt(value: unknown): bigint | null {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value <= 0
+  ) {
     return null
   }
 
@@ -330,6 +372,13 @@ function isTargetStatusAlreadyApplied(
   attempt: PaymentAttemptRecord,
   eventType: SupportedStripePaymentIntentEventType
 ): boolean {
+  if (
+    eventType === "payment_intent.succeeded" &&
+    (attempt.status === "payment_confirmed_by_webhook" ||
+      attempt.order_id != null)
+  ) {
+    return true
+  }
   return attempt.status === resolveTargetStatusForStripeEvent(eventType)
 }
 
@@ -345,12 +394,59 @@ export function validatePaymentIntentForAttempt(
     )
   }
 
+  if (attempt.provider !== "stripe" && attempt.provider !== "stripe_safe_layer") {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_PROVIDER_MISMATCH",
+      "Provider da tentativa incompativel com Stripe."
+    )
+  }
+
+  const paymentAttemptId = readDurablePaymentAttemptIdentity(
+    paymentIntent.metadata
+  )
+  if (paymentAttemptId && paymentAttemptId !== attempt.id) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+      "Identidade da tentativa divergente do PaymentIntent."
+    )
+  }
+
+  if (
+    attempt.provider_payment_intent_id &&
+    attempt.provider_payment_intent_id !== paymentIntent.id
+  ) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+      "PaymentIntent divergente da tentativa duravel."
+    )
+  }
+
+  const paymentSessionId = readPaymentIntentSessionId(paymentIntent.metadata)
+  if (
+    paymentSessionId &&
+    attempt.payment_session_id &&
+    paymentSessionId !== attempt.payment_session_id &&
+    paymentSessionId !== attempt.provider_payment_session_id
+  ) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_SESSION_MISMATCH",
+      "PaymentSession divergente da tentativa."
+    )
+  }
+
   const targetStatus = resolveTargetStatusForStripeEvent(eventType)
 
   if (!isTargetStatusAlreadyApplied(attempt, eventType)) {
     try {
       assertPaymentAttemptTransition(attempt.status, targetStatus)
     } catch {
+      if (eventType === "payment_intent.succeeded") {
+        throw new PaymentAttemptWebhookError(
+          "PAYMENT_ATTEMPT_LATE_SUCCEEDED_CONFLICT",
+          "Pagamento succeeded recebido para tentativa em estado conflitante.",
+          "processed"
+        )
+      }
       throw new PaymentAttemptWebhookError(
         "PAYMENT_ATTEMPT_WEBHOOK_STALE",
         "Tentativa nao pode ser atualizada pelo webhook atual.",
@@ -360,18 +456,30 @@ export function validatePaymentIntentForAttempt(
   }
 
   const attemptAmount = toCanonicalPaymentAmount(attempt.amount)
-  const comparableAmounts = [paymentIntent.amount_received, paymentIntent.amount]
-    .map(paymentIntentAmountToBigInt)
-    .filter((value): value is bigint => value !== null)
-  const amountMatches =
-    attemptAmount !== null &&
-    comparableAmounts.some((value) => value === attemptAmount)
+  const intentAmount = paymentIntentAmountToBigInt(paymentIntent.amount)
 
-  if (!amountMatches) {
+  if (
+    attemptAmount === null ||
+    intentAmount === null ||
+    intentAmount !== attemptAmount
+  ) {
     throw new PaymentAttemptWebhookError(
       "PAYMENT_ATTEMPT_AMOUNT_MISMATCH",
       "Amount do PaymentIntent divergente da tentativa."
     )
+  }
+
+  if (eventType === "payment_intent.succeeded") {
+    const receivedAmount = paymentIntentAmountToBigInt(
+      paymentIntent.amount_received
+    )
+
+    if (receivedAmount === null || receivedAmount !== attemptAmount) {
+      throw new PaymentAttemptWebhookError(
+        "PAYMENT_ATTEMPT_AMOUNT_MISMATCH",
+        "Amount do PaymentIntent divergente da tentativa."
+      )
+    }
   }
 
   const normalizedCurrency = normalizeCurrencyCode(paymentIntent.currency)
@@ -409,11 +517,52 @@ export function validatePaymentIntentForAttempt(
 
 export function findPaymentAttemptForWebhook(
   attempts: PaymentAttemptRecord[],
-  paymentIntentId: string
+  paymentIntentId: string,
+  paymentIntentMetadata?: Record<string, unknown> | null
 ): PaymentAttemptRecord {
-  const attempt = attempts.find(
+  const providerMatches = attempts.filter(
     (entry) => entry.provider_payment_intent_id === paymentIntentId
   )
+  if (providerMatches.length > 1) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_CONFLICT",
+      "Mais de uma tentativa corresponde ao PaymentIntent."
+    )
+  }
+
+  const durableAttemptId = readDurablePaymentAttemptIdentity(
+    paymentIntentMetadata
+  )
+  const durableMatches = durableAttemptId
+    ? attempts.filter((entry) => entry.id === durableAttemptId)
+    : []
+  if (durableMatches.length > 1) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_CONFLICT",
+      "Mais de uma tentativa corresponde à identidade duravel."
+    )
+  }
+
+  const providerAttempt = providerMatches[0]
+  const durableAttempt = durableMatches[0]
+  if (durableAttemptId && !durableAttempt) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+      "Identidade da tentativa nao encontrada."
+    )
+  }
+  if (
+    providerAttempt &&
+    durableAttempt &&
+    providerAttempt.id !== durableAttempt.id
+  ) {
+    throw new PaymentAttemptWebhookError(
+      "PAYMENT_ATTEMPT_CORRELATION_MISMATCH",
+      "As identidades do PaymentIntent nao correspondem à mesma tentativa."
+    )
+  }
+
+  const attempt = durableAttempt ?? providerAttempt
 
   if (!attempt) {
     throw new PaymentAttemptWebhookError(

@@ -27,6 +27,12 @@ const PaymentAttempt = model
     canceled_at: model.dateTime().nullable(),
     failed_at: model.dateTime().nullable(),
     expired_at: model.dateTime().nullable(),
+    financial_freeze_started_at: model.dateTime().nullable(),
+    provider_canceled_confirmed_at: model.dateTime().nullable(),
+    provider_discovery_started_at: model.dateTime().nullable(),
+    reconciliation_reason_code: model.text().nullable(),
+    reconciliation_locked_at: model.dateTime().nullable(),
+    last_reconciliation_at: model.dateTime().nullable(),
   })
   .indexes([
     {

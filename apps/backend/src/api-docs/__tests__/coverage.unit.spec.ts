@@ -37,8 +37,26 @@ import { scanInstalledStoreSurface } from "../../../scripts/store-surface/scan-i
 import {
   STORE_SURFACE_MANIFEST,
   STORE_SURFACE_M1_ENABLED_OPERATIONS,
+  storeSurfaceOperationKey,
+  summarizeStoreSurfaceManifest,
+  validateStoreSurfaceManifest,
   type StoreSurfaceEntry,
 } from "../../api/store-surface/manifest"
+
+const PHASE16_REGISTERED_OPENAPI_ROUTES = [
+  {
+    method: "POST" as const,
+    path: "/store/customers/me/cart/merge",
+    discoverPath:
+      "apps/backend/src/api/store/customers/me/cart/merge/route.ts",
+  },
+  {
+    method: "POST" as const,
+    path: "/store/carts/{id}/review/acknowledge",
+    discoverPath:
+      "apps/backend/src/api/store/carts/[id]/review/acknowledge/route.ts",
+  },
+] as const
 
 function fixtureRoot(): { repositoryRoot: string; apiRoot: string } {
   const repositoryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "api-docs-routes-"))
@@ -186,12 +204,22 @@ const UNSUPPORTED_AUTH_ROUTES: DiscoveredRoute[] = [
 describe("OpenAPI route coverage foundation", () => {
   it("discovers all current route files and bracket segments through the TypeScript AST", () => {
     const routes = discoverRoutes()
-    expect(routes).toHaveLength(39)
+    expect(routes).toHaveLength(41)
     expect(routes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           method: "POST",
           path: "/store/carts/{id}/payment-attempts/card",
+          exportKind: "function",
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/store/customers/me/cart/merge",
+          exportKind: "function",
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/store/carts/{id}/review/acknowledge",
           exportKind: "function",
         }),
         expect.objectContaining({
@@ -330,13 +358,52 @@ describe("OpenAPI route coverage foundation", () => {
     expect(() => verifyCoverage("webhooks", registry)).not.toThrow()
   })
 
-  it("requires the Phase-14 Store documentation exact-set for store and global coverage", () => {
+  it("passes store and global coverage with registered Phase 16 merge/ACK routes", () => {
     const registry = createFoundationRegistry()
-    expect(() => verifyCoverage("store", registry)).not.toThrow()
-    expect(() => verifyCoverage("global", registry)).not.toThrow()
+    const discoveredRoutes = discoverRoutes()
+
+    expect(() => verifyCoverage("store", registry, discoveredRoutes)).not.toThrow()
+    expect(() => verifyCoverage("global", registry, discoveredRoutes)).not.toThrow()
+
+    for (const registered of PHASE16_REGISTERED_OPENAPI_ROUTES) {
+      const discovered = discoveredRoutes.find(
+        (route) =>
+          route.method === registered.method && route.path === registered.path
+      )
+      expect(discovered).toBeDefined()
+      expect(discovered?.sourceFile).toContain(registered.discoverPath)
+
+      const manifestEntry = STORE_SURFACE_MANIFEST.find(
+        (entry) =>
+          entry.method === registered.method &&
+          entry.pathTemplate === registered.path
+      )
+      expect(manifestEntry).toBeDefined()
+      expect(manifestEntry?.runtime_policy).toBe("M1_ENABLED")
+      expect(manifestEntry?.m1_enablement).toBe("enabled")
+      expect(
+        ROUTE_EXCLUSIONS.some(
+          (exclusion) =>
+            exclusion.method === registered.method &&
+            exclusion.path === registered.path
+        )
+      ).toBe(false)
+
+      const registryKey = storeSurfaceOperationKey(
+        registered.method,
+        registered.path
+      )
+      expect(
+        registry
+          .getOperations("store")
+          .map((operation) =>
+            storeSurfaceOperationKey(operation.method, operation.path)
+          )
+      ).toContain(registryKey)
+    }
   })
 
-  it("locks installed Store runtime inventory at 64 = 51 native + 13 local", () => {
+  it("locks installed Store runtime inventory at 66 = 51 native + 15 local", () => {
     const scan = scanInstalledStoreSurface()
     const native = scan.discovered.filter(
       (operation) => operation.source === "native"
@@ -356,42 +423,92 @@ describe("OpenAPI route coverage foundation", () => {
     const store = buildContracts(registry).find(
       (contract) => contract.surface === "store"
     )
-    const evidence = verifyStoreSurfaceExactSets(
-      registry,
-      store?.document,
-      scan.discovered
-    )
+    const counts = summarizeStoreSurfaceManifest()
 
-    expect(evidence.runtime).toEqual({ ...STORE_RUNTIME_EXACT_SET })
-    expect(evidence.manifest).toEqual({
-      total: 64,
+    const native = scan.discovered.filter(
+      (operation) => operation.source === "native"
+    ).length
+    const local = scan.discovered.filter(
+      (operation) => operation.source === "local"
+    ).length
+
+    expect(scan.discovered).toHaveLength(STORE_RUNTIME_EXACT_SET.total)
+    expect(native).toBe(STORE_RUNTIME_EXACT_SET.native)
+    expect(local).toBe(STORE_RUNTIME_EXACT_SET.local)
+    expect(counts).toMatchObject({
+      total: 66,
       authorized: 0,
-      extended: 16,
-      blocked: 17,
-      outsideFrontendM1: 31,
-      m1Enabled: 12,
+      extended: 18,
+      blocked: 16,
+      outsideFrontendM1: 32,
+      m1EnabledPolicy: 14,
+      m1EnablementEnabled: 14,
     })
-    expect(evidence.executableStoreBusinessKeys).toEqual(
+    expect(validateStoreSurfaceManifest()).toEqual([])
+
+    const executableM1Keys = STORE_SURFACE_MANIFEST.filter(
+      (entry) =>
+        entry.m1_enablement === "enabled" &&
+        entry.runtime_policy === "M1_ENABLED" &&
+        entry.openapi_m1_expectation === "include_executable_m1" &&
+        (entry.classification === "AUTHORIZED" ||
+          entry.classification === "EXTENDED")
+    ).map((entry) => storeSurfaceOperationKey(entry.method, entry.pathTemplate))
+
+    expect(executableM1Keys.sort()).toEqual(
       [...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()
     )
-    expect(evidence.documentStoreBusinessKeys).toEqual(
-      [...STORE_SURFACE_M1_ENABLED_OPERATIONS].sort()
-    )
-    expect(evidence.healthSupportKeys).toEqual([
-      "GET /health/live",
-      "GET /health/ready",
-    ])
+    expect(executableM1Keys).toHaveLength(14)
+    expect(executableM1Keys).not.toContain("POST /store/customers/me/cart/attach")
+
+    const documentStoreKeys = Object.entries(store?.document.paths ?? {})
+      .flatMap(([routePath, pathItem]) =>
+        routePath.startsWith("/store/")
+          ? Object.keys(pathItem)
+              .filter((method) =>
+                ["get", "post", "put", "patch", "delete", "options", "head"].includes(
+                  method
+                )
+              )
+              .map((method) => storeSurfaceOperationKey(method, routePath))
+          : []
+      )
+    const registryStoreKeys = registry
+      .getOperations("store")
+      .filter((operation) => operation.path.startsWith("/store/"))
+      .map((operation) => storeSurfaceOperationKey(operation.method, operation.path))
+
+    const attachKey = "POST /store/customers/me/cart/attach"
+    expect(documentStoreKeys).not.toContain(attachKey)
+    expect(registryStoreKeys).not.toContain(attachKey)
+
+    for (const registered of PHASE16_REGISTERED_OPENAPI_ROUTES) {
+      const registeredKey = storeSurfaceOperationKey(
+        registered.method,
+        registered.path
+      )
+      expect(documentStoreKeys).toContain(registeredKey)
+      expect(registryStoreKeys).toContain(registeredKey)
+    }
+
     expect(
-      evidence.executableStoreBusinessKeys.every((key) =>
+      Object.keys(store?.document.paths ?? {})
+        .filter((key) => key.startsWith("/health/"))
+        .flatMap((routePath) =>
+          Object.keys(store!.document.paths[routePath]).map((method) =>
+            storeSurfaceOperationKey(method, routePath)
+          )
+        )
+    ).toEqual(["GET /health/live", "GET /health/ready"])
+    expect(
+      executableM1Keys.every((key) =>
         key.startsWith("GET /store/") ||
         key.startsWith("POST /store/") ||
         key.startsWith("DELETE /store/")
       )
     ).toBe(true)
     expect(
-      evidence.executableStoreBusinessKeys.some((key) =>
-        key.includes("/auth/")
-      )
+      executableM1Keys.some((key) => key.includes("/auth/"))
     ).toBe(false)
   })
 
