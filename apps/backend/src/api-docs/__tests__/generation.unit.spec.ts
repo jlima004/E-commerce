@@ -22,7 +22,7 @@ import {
 } from "../components"
 
 const GENERATED_STORE_SHA256 =
-  "7b28ac8b3b8174b2e546f504fd1d9ee725c02d2aa2dbbe53e1dfecf3afc5329c"
+  "d8cb44f3e5aafeaf6be51deb11e3e32e0230436e6a4b611cf637ef117135afd9"
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex")

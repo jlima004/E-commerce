@@ -1629,7 +1629,13 @@
       },
       "StorePaymentAttemptStartRequest": {
         "additionalProperties": true,
-        "description": "Optional JSON body for card/Pix payment-attempt start. Body may be omitted or `{}`. Payment method is defined by the path (`/card` or `/pix`), not by a body field. Matches runtime rejectClientMoneyFields: CLIENT_MONEY_BODY_FIELDS are structurally forbidden via propertyNames; unknown non-money keys are ignored (additionalProperties is intentionally true).",
+        "description": "Optional JSON body for card/Pix payment-attempt start. Body may be omitted or `{}`. Payment method is defined by the path (`/card` or `/pix`), not by a body field. CLIENT_MONEY_BODY_FIELDS are structurally forbidden via propertyNames.",
+        "properties": {
+          "payment_attempt_id": {
+            "description": "Optional same-operation replay identity for an existing PaymentAttempt.",
+            "type": "string"
+          }
+        },
         "propertyNames": {
           "not": {
             "enum": [
@@ -2698,7 +2704,7 @@
                 }
               }
             },
-            "description": "Idempotency key conflict or operation currently in progress.",
+            "description": "Idempotency key conflict, operation currently in progress, or payment in progress (financial freeze on the cart).",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"
@@ -2879,7 +2885,7 @@
                 }
               }
             },
-            "description": "Idempotency key conflict or operation currently in progress.",
+            "description": "Idempotency key conflict, operation currently in progress, or payment in progress (financial freeze on the cart).",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"
@@ -3081,7 +3087,7 @@
                 }
               }
             },
-            "description": "Idempotency key conflict or operation currently in progress.",
+            "description": "Idempotency key conflict, operation currently in progress, or payment in progress (financial freeze on the cart).",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"
@@ -3271,7 +3277,7 @@
                 }
               }
             },
-            "description": "Idempotency key conflict or operation currently in progress.",
+            "description": "Idempotency key conflict, operation currently in progress, or payment in progress (financial freeze on the cart).",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"
@@ -4014,7 +4020,7 @@
                 }
               }
             },
-            "description": "Cart authority, state, or idempotency conflict; a pending review also returns REVIEW_REQUIRED.",
+            "description": "Cart authority, state, or idempotency conflict; payment in progress (financial freeze on the cart); a pending review also returns REVIEW_REQUIRED.",
             "headers": {
               "x-correlation-id": {
                 "$ref": "#/components/headers/XCorrelationId"

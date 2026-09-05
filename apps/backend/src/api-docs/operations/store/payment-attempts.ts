@@ -7,6 +7,9 @@ import {
 import type { ContractRegistryBundle } from "../../registry"
 import { storeJsonResponse } from "./schemas"
 
+const PAYMENT_ATTEMPT_START_CONFLICT_DESCRIPTION =
+  "Public CONFLICT: same-operation replay is ineligible, provider discovery or reconciliation is required, the PaymentAttempt is no longer active, or the cart has a pending or conflicting review authority."
+
 export function registerStorePaymentAttemptOperations(
   registry: ContractRegistryBundle
 ): void {
@@ -41,6 +44,7 @@ export function registerStorePaymentAttemptOperations(
         "Missing or invalid publishable API key."
       ),
       "404": storeErrorResponse("Cart was not found."),
+      "409": storeErrorResponse(PAYMENT_ATTEMPT_START_CONFLICT_DESCRIPTION),
       "500": storeErrorResponse(
         "Stripe, module, or persistence failure."
       ),
@@ -94,6 +98,7 @@ export function registerStorePaymentAttemptOperations(
         "Missing or invalid publishable API key."
       ),
       "404": storeErrorResponse("Cart was not found."),
+      "409": storeErrorResponse(PAYMENT_ATTEMPT_START_CONFLICT_DESCRIPTION),
       "500": storeErrorResponse(
         "Stripe, module, or persistence failure."
       ),

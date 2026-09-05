@@ -14,6 +14,7 @@ import {
 } from "../../src/modules/payment-attempt/transactional-authority"
 import { createStructuralCartInvalidationRunner } from "../../src/modules/checkout/shipping-invalidation"
 import type { StripePaymentIntentWebhookObject } from "../../src/modules/payment-attempt/service"
+import { RECONCILIATION_REASON_CODE } from "../../src/reconciliation/reason-codes"
 
 const requestedDatabaseName = process.env.DB_TEMP_NAME
 
@@ -166,7 +167,7 @@ if (!requestedDatabaseName) {
           [cartId]
         )
         const attempt = await dbConnection.raw(
-          "select status, order_id from payment_attempt where cart_id = ? and deleted_at is null",
+          "select status, order_id, reconciliation_reason_code from payment_attempt where cart_id = ? and deleted_at is null",
           [cartId]
         )
         return {
@@ -174,6 +175,8 @@ if (!requestedDatabaseName) {
           version: Number(version.rows[0]?.version ?? 0),
           status: attempt.rows[0]?.status ?? null,
           orderId: attempt.rows[0]?.order_id ?? null,
+          reconciliationReasonCode:
+            attempt.rows[0]?.reconciliation_reason_code ?? null,
         }
       }
 
@@ -216,6 +219,7 @@ if (!requestedDatabaseName) {
           version: 1,
           status: "awaiting_webhook_confirmation",
           orderId: null,
+          reconciliationReasonCode: null,
         })
       })
 
@@ -296,13 +300,12 @@ if (!requestedDatabaseName) {
 
         await staleReadCompleted
         releaseMutation()
-        await expect(webhook).rejects.toMatchObject({
-          code: "PAYMENT_ATTEMPT_WEBHOOK_STALE",
-          webhookDisposition: "ignored",
-        })
+        await expect(webhook).resolves.toBeDefined()
         await expect(readState(cartId)).resolves.toMatchObject({
           status: "invalidated_by_cart_change",
           orderId: null,
+          reconciliationReasonCode:
+            RECONCILIATION_REASON_CODE.LATE_SUCCEEDED_AUTHORITY_CONFLICT,
         })
       })
     },

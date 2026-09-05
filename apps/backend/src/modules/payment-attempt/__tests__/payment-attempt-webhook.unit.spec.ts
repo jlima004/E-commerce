@@ -205,7 +205,7 @@ describe("payment attempt webhook validation", () => {
     ).toThrow("As identidades do PaymentIntent nao correspondem à mesma tentativa.")
   })
 
-  it("nao reativa tentativa terminal", () => {
+  it("nao reativa tentativa terminal — succeeded lanca LATE_SUCCEEDED_CONFLICT", () => {
     expect(() =>
       applyStripePaymentIntentWebhookToAttempt(
         buildAttempt({ status: "payment_failed" }),
@@ -223,10 +223,13 @@ describe("payment attempt webhook validation", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(PaymentAttemptWebhookError)
       expect((error as PaymentAttemptWebhookError).code).toBe(
-        "PAYMENT_ATTEMPT_WEBHOOK_STALE"
+        "PAYMENT_ATTEMPT_LATE_SUCCEEDED_CONFLICT"
+      )
+      expect((error as PaymentAttemptWebhookError).message).toBe(
+        "Pagamento succeeded recebido para tentativa em estado conflitante."
       )
       expect((error as PaymentAttemptWebhookError).webhookDisposition).toBe(
-        "ignored"
+        "processed"
       )
     }
   })
@@ -538,8 +541,24 @@ describe("payment attempt webhook validation", () => {
       applyStripePaymentIntentWebhookToAttempt(
         buildAttempt({ status: "payment_failed" }),
         buildPaymentIntent(),
-        "payment_intent.succeeded"
+        "payment_intent.canceled"
       )
     ).toThrow("Tentativa nao pode ser atualizada pelo webhook atual.")
+
+    try {
+      applyStripePaymentIntentWebhookToAttempt(
+        buildAttempt({ status: "payment_failed" }),
+        buildPaymentIntent(),
+        "payment_intent.canceled"
+      )
+    } catch (error) {
+      expect(error).toBeInstanceOf(PaymentAttemptWebhookError)
+      expect((error as PaymentAttemptWebhookError).code).toBe(
+        "PAYMENT_ATTEMPT_WEBHOOK_STALE"
+      )
+      expect((error as PaymentAttemptWebhookError).webhookDisposition).toBe(
+        "ignored"
+      )
+    }
   })
 })

@@ -81,7 +81,7 @@ function cartMergeErrorResponses() {
       "Guest capability or cart is not available for the current customer."
     ),
     "409": storeErrorResponse(
-      "Cart authority, state, or idempotency conflict; a pending review also returns REVIEW_REQUIRED."
+      "Cart authority, state, or idempotency conflict; payment in progress (financial freeze on the cart); a pending review also returns REVIEW_REQUIRED."
     ),
     "412": {
       ...storeErrorResponse(
@@ -141,7 +141,7 @@ function cartMutationErrorResponses() {
       "Cart or line item was not found for the current actor."
     ),
     "409": storeErrorResponse(
-      "Idempotency key conflict or operation currently in progress."
+      "Idempotency key conflict, operation currently in progress, or payment in progress (financial freeze on the cart)."
     ),
     "412": {
       ...storeErrorResponse(

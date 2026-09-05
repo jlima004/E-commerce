@@ -1067,10 +1067,17 @@ export function registerStoreSchemas(registry: ContractRegistryBundle): void {
     {
       type: "object",
       description:
-        "Optional JSON body for card/Pix payment-attempt start. Body may be omitted or `{}`. Payment method is defined by the path (`/card` or `/pix`), not by a body field. Matches runtime rejectClientMoneyFields: CLIENT_MONEY_BODY_FIELDS are structurally forbidden via propertyNames; unknown non-money keys are ignored (additionalProperties is intentionally true).",
+        "Optional JSON body for card/Pix payment-attempt start. Body may be omitted or `{}`. Payment method is defined by the path (`/card` or `/pix`), not by a body field. CLIENT_MONEY_BODY_FIELDS are structurally forbidden via propertyNames.",
       propertyNames: {
         not: {
           enum: [...CLIENT_MONEY_BODY_FIELDS],
+        },
+      },
+      properties: {
+        payment_attempt_id: {
+          type: "string",
+          description:
+            "Optional same-operation replay identity for an existing PaymentAttempt.",
         },
       },
       additionalProperties: true,

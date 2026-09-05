@@ -989,10 +989,16 @@ describe("OpenAPI Store contract wave", () => {
     expect(startSchema?.type).toBe("object")
     expect(startSchema?.additionalProperties).toBe(true)
     expect(startSchema?.required).toBeUndefined()
-    expect(startSchema?.properties).toBeUndefined()
-    expect(startSchema?.description).toMatch(
-      /client money|rejectClientMoneyFields/i
+    expect(startSchema?.properties?.payment_attempt_id).toEqual(
+      expect.objectContaining({
+        type: "string",
+        description: expect.stringMatching(/same-operation replay identity/i),
+      })
     )
+    expect(startSchema?.description).toMatch(
+      /client money|CLIENT_MONEY_BODY_FIELDS/i
+    )
+    expect(startSchema?.description).not.toMatch(/unknown.*ignored/i)
     expect(startSchema?.propertyNames?.not?.enum).toEqual([
       ...CLIENT_MONEY_BODY_FIELDS,
     ])
@@ -1267,7 +1273,14 @@ describe("OpenAPI Store contract wave", () => {
 
       const responseKeys = Object.keys(operation?.responses ?? {})
       expect(responseKeys).toEqual(
-        expect.arrayContaining(["201", "400", "401", "404", "500"])
+        expect.arrayContaining(["201", "400", "401", "404", "409", "500"])
+      )
+      expect(operation?.responses["409"]).toEqual(
+        expect.objectContaining({
+          description: expect.stringMatching(
+            /CONFLICT.*same-operation replay|provider discovery|no longer active/i
+          ),
+        })
       )
       expect(responseKeys).not.toContain("403")
       expect(operation?.responses["400"]).toBeDefined()
@@ -1279,6 +1292,47 @@ describe("OpenAPI Store contract wave", () => {
       expect(registered400?.description).toMatch(
         /access denied|ownership|access/i
       )
+
+      expect(store?.document.paths?.[path]).toBeUndefined()
+    }
+  })
+
+  it("documents payment-start 409 CONFLICT including cart review authority", () => {
+    const paymentAttemptPaths = [
+      "/store/carts/{id}/payment-attempts/card",
+      "/store/carts/{id}/payment-attempts/pix",
+    ] as const
+
+    const forbiddenInternalCodes = [
+      "REVIEW_REQUIRED",
+      "CART_REVIEW_STATE_CONFLICT",
+      "FROZEN_PAYMENT_AUTHORITY_MISMATCH",
+      "REPLAY_DEADLINE_ELAPSED",
+      "PAYMENT_ATTEMPT_LATE_SUCCEEDED_CONFLICT",
+    ] as const
+
+    for (const path of paymentAttemptPaths) {
+      const operation = storeOperations.find(
+        (candidate) =>
+          candidate.method === "POST" && candidate.path === path
+      )
+      expect(operation).toBeDefined()
+
+      const conflict = operation?.responses["409"]
+      expect(conflict).toBeDefined()
+
+      const description = (conflict as { description?: string }).description ?? ""
+      expect(description).toMatch(/Public CONFLICT/i)
+      expect(description).toMatch(/same-operation replay/i)
+      expect(description).toMatch(/provider discovery|reconciliation/i)
+      expect(description).toMatch(/no longer active/i)
+      expect(description).toMatch(
+        /pending or conflicting review authority|review authority/i
+      )
+
+      for (const internalCode of forbiddenInternalCodes) {
+        expect(description).not.toMatch(new RegExp(internalCode))
+      }
 
       expect(store?.document.paths?.[path]).toBeUndefined()
     }
