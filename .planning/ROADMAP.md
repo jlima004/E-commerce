@@ -27,9 +27,9 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 15 RESEARCH está **HUMAN APPROVED — PASS**
 - Phase 15 PLAN está **HUMAN APPROVED — PASS** (8 plans / 8 serial waves)
 - Phase 15 está **CLOSED — HUMAN APPROVED**; Plans `15-01`..`15-08` estão **8/8 HUMAN APPROVED — PASS**, `15-07` e `15-08` estão documentally closed, e CART-01..CART-09 estão **9/9 COMPLETE**
-- Phase 16 está **CLOSED — HUMAN APPROVED**; Plans `16-01`..`16-14` estão **14/14 COMPLETE**; `MRG-01..MRG-08` estão **8/8 COMPLETE**; Phase 17 permanece **NOT STARTED — NOT AUTHORIZED**; Phase 18+ permanecem não autorizadas
+- Phase 16 está **CLOSED — HUMAN APPROVED**; Plans `16-01`..`16-14` estão **14/14 COMPLETE**; `MRG-01..MRG-08` estão **8/8 COMPLETE**; Phase 17 CONTEXT está **TECHNICAL DRAFT — HUMAN REVIEW REQUIRED**; Phase 17 RESEARCH, PLAN e EXECUTION permanecem **NOT AUTHORIZED**; Phase 18+ permanecem não autorizadas
 - A remediação pós-closure do PR #27 recebeu PASS humano; B15-PR27-HR-01..HR-06 estão CLOSED — PASS. Phase 16 CONTEXT, RESEARCH, PLAN e EXECUTION são HUMAN APPROVED — PASS; Phase 16 está **CLOSED — HUMAN APPROVED**; remediações `16-11-R1`, `16-11-R2` e `16-13-R1` são artefatos históricos de suporte, não planos seriais adicionais
-- A remediação pós-closure do PR #28 recebeu aprovação humana (HUMAN APPROVED — PASS) e foi mergeada (MERGED — CLOSED). A remediação pós-closure não reabriu a Phase 16 e não alterou a conclusão de MRG-01..MRG-08. Phase 16 permanece CLOSED — HUMAN APPROVED. Phase 17 permanece NOT STARTED — NOT AUTHORIZED. Evidência aditiva em `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md`
+- A remediação pós-closure do PR #28 recebeu aprovação humana (HUMAN APPROVED — PASS) e foi mergeada (MERGED — CLOSED). A remediação pós-closure não reabriu a Phase 16 e não alterou a conclusão de MRG-01..MRG-08. Phase 16 permanece CLOSED — HUMAN APPROVED. Phase 17 CONTEXT está TECHNICAL DRAFT — HUMAN REVIEW REQUIRED; Phase 17 RESEARCH, PLAN e EXECUTION permanecem NOT AUTHORIZED. Evidência aditiva em `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md`
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
 ## Milestones
@@ -49,7 +49,7 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | 14 | Customer Auth & Verification | 13 | 9 | **CLOSED — HUMAN APPROVED; 21/21 plans; 63/63 tasks; 9/9 requirements** |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CLOSED — HUMAN APPROVED; 8/8 plans; CART-01..CART-09 = 9/9 COMPLETE** |
 | 16 | Cart Merge & Review | 15 | 8 | **CLOSED — HUMAN APPROVED; 14/14 plans COMPLETE; MRG-01..MRG-08 = 8/8 COMPLETE** |
-| 17 | Authenticated BR Checkout & Privacy | 16 | 10 | **NOT STARTED — NOT AUTHORIZED** |
+| 17 | Authenticated BR Checkout & Privacy | 16 | 10 | **CONTEXT — TECHNICAL DRAFT — HUMAN REVIEW REQUIRED; RESEARCH / PLAN / EXECUTION NOT AUTHORIZED** |
 | 18 | Gelato Shipping Quote & Selection | 17 | 8 | Not started |
 | 19 | Storefront PaymentAttempt Hardening | 18 | 9 | Not started |
 | 20 | Async Payment Confirmation | 19 | 10 | Not started |
@@ -248,7 +248,9 @@ authority, and capability leakage is ZERO. No deploy, provider or remote
 infrastructure action is authorized. Phase 16 está **CLOSED — HUMAN APPROVED**;
 Plans `16-01`..`16-14` estão **14/14 COMPLETE**; `MRG-01..MRG-08` estão **8/8 COMPLETE**.
 Closure authority: `.planning/phases/16-cart-merge-review/16-CLOSURE.md`.
-Phase 17 permanece **NOT STARTED — NOT AUTHORIZED**; deploy, real providers, remote infra e frontend permanecem não autorizados.
+Phase 17 CONTEXT está **TECHNICAL DRAFT — HUMAN REVIEW REQUIRED**; Phase 17
+RESEARCH, PLAN e EXECUTION permanecem **NOT AUTHORIZED**; deploy, real providers,
+remote infra e frontend permanecem não autorizados.
 
 ### Post-closure PR #27 governance
 
@@ -320,7 +322,9 @@ Phase 16 remains **CLOSED — HUMAN APPROVED** as historical closure status.
 PR #28 post-closure remediation is **HUMAN APPROVED — PASS** and **MERGED — CLOSED**.
 FIN-01..FIN-04 and R6 are **CLOSED — PASS**.
 The post-closure remediation did not reopen Phase 16 and did not change MRG-01..MRG-08 completion.
-Phase 17 remains **NOT STARTED — NOT AUTHORIZED**.
+At the PR #28 post-closure closeout, Phase 17 was **NOT STARTED — NOT AUTHORIZED**.
+Current state: Phase 17 CONTEXT is **TECHNICAL DRAFT — HUMAN REVIEW REQUIRED**;
+RESEARCH, PLAN and EXECUTION remain **NOT AUTHORIZED**.
 
 Milestone counters: phases closed `4/10`; requirements `34/91`; open
 requirements `57`; plans `50/50`; percent `40`.
@@ -335,7 +339,7 @@ requirements `57`; plans `50/50`; percent `40`.
 
 **Goal:** criar checkout autenticado para pessoa física no Brasil sem armazenar CPF cru no caminho atual.
 
-**Status:** **NOT STARTED — NOT AUTHORIZED**. Depends on Phase 16 CLOSED — HUMAN APPROVED. CONTEXT, RESEARCH, PLAN, EXECUTION and implementation remain unauthorized until a separate human decision.
+**Status:** CONTEXT **TECHNICAL DRAFT — HUMAN REVIEW REQUIRED**. Depends on Phase 16 CLOSED — HUMAN APPROVED. RESEARCH, PLAN, EXECUTION and implementation remain unauthorized until a separate human decision.
 
 ## Phase 18: Gelato Shipping Quote & Selection
 
@@ -375,5 +379,5 @@ Phase 15 CONTEXT, RESEARCH, PLAN and closure are HUMAN APPROVED — PASS;
 Plans 15-01..15-08 are **8/8 HUMAN APPROVED — PASS** and Plans 15-07 and
 15-08 are DOCUMENTALLY CLOSED. CART-01..CART-09 are 9/9 COMPLETE. Phase 16
 is **CLOSED — HUMAN APPROVED**; Plans `16-01`..`16-14` are **14/14 COMPLETE**;
-`MRG-01..MRG-08` are **8/8 COMPLETE**. Phase 17 is **NOT STARTED — NOT AUTHORIZED**.
-Real providers, infraestrutura remota, deploy and frontend remain unauthorized.
+`MRG-01..MRG-08` are **8/8 COMPLETE**. Phase 17 CONTEXT is **TECHNICAL DRAFT — HUMAN REVIEW REQUIRED**; RESEARCH, PLAN and EXECUTION remain unauthorized.
+Real providers, infraestrutura remota, push, deploy and frontend remain unauthorized.

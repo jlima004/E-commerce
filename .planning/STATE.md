@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
-status: ready
-last_updated: "2026-09-08T15:05:00-03:00"
+status: discussing
+last_updated: "2026-09-08T23:23:33.483Z"
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 50
   completed_plans: 50
   percent: 40
-stopped_at: PHASE 16 HUMAN APPROVED — CLOSED
+stopped_at: PHASE 17 CONTEXT — TECHNICAL DRAFT — HUMAN REVIEW REQUIRED
 current_phase: 17
 current_phase_name: authenticated-br-checkout-privacy
 current_plan: null
@@ -24,9 +24,9 @@ See: `.planning/PROJECT.md`.
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, duplicate order or improper fulfillment.
 
-**Current focus:** Phase 16 is **HUMAN APPROVED — CLOSED**; Plans `16-01`..`16-14` are **14/14 COMPLETE**; `MRG-01..MRG-08` are **8/8 COMPLETE**.
-`current_phase: 17` is a documentary pointer only — **Phase 17: NOT STARTED — NOT AUTHORIZED**.
-Phase 17+ and all unrelated operational gates remain **NOT AUTHORIZED**.
+**Current focus:** Phase 17 CONTEXT is **TECHNICAL DRAFT — HUMAN REVIEW REQUIRED**; Phase 16 remains **HUMAN APPROVED — CLOSED**.
+Phase 17 RESEARCH, PLAN and EXECUTION remain **NOT AUTHORIZED**.
+Phase 18+ and all unrelated operational gates remain **NOT AUTHORIZED**.
 
 ## Execution Policy
 
@@ -49,8 +49,8 @@ are documentally closed, and CART-01..CART-09 are 9/9 COMPLETE. Phase 16
 CONTEXT, RESEARCH, PLAN and EXECUTION are HUMAN APPROVED — PASS; R16-HR-01..R16-HR-08
 and B16-PLAN-HR-01..B16-PLAN-HR-02 are CLOSED — PASS. Phase 16 is
 **HUMAN APPROVED — CLOSED**; Plans `16-01`..`16-14` are **14/14 COMPLETE**;
-`MRG-01..MRG-08` are **8/8 COMPLETE**. Phase 17 is **NOT STARTED — NOT AUTHORIZED**;
-Phase 18+ and all unrelated operational gates remain unauthorized.
+`MRG-01..MRG-08` are **8/8 COMPLETE**. Phase 17 CONTEXT is **TECHNICAL DRAFT — HUMAN REVIEW REQUIRED**;
+Phase 17 RESEARCH, PLAN and EXECUTION, Phase 18+ and all unrelated operational gates remain unauthorized.
 
 ## Current Gate
 
@@ -90,10 +90,11 @@ MRG-01..MRG-08: 8/8 COMPLETE
 Phase 16 closure: HUMAN APPROVED — CLOSED
 Phase 16 active blockers: 0
 
-Phase 17: NOT STARTED — NOT AUTHORIZED
+Phase 17 CONTEXT: TECHNICAL DRAFT — HUMAN REVIEW REQUIRED
+Phase 17 RESEARCH / PLAN / EXECUTION: NOT AUTHORIZED
 
 Next permitted action:
-Human decision on Phase 17 CONTEXT
+Human review of Phase 17 CONTEXT
 
 Push: NOT AUTHORIZED
 Deploy / release: NOT AUTHORIZED
@@ -176,7 +177,7 @@ Milestone v1.1:
 - known plans human-approved executed: **50/50** (Phase 13: 7; Phase 14: 21; Phase 15: 8; Phase 16: 16-01..16-14)
 - Phase 15: **CLOSED — HUMAN APPROVED** (Plans 15-01..15-08 HUMAN APPROVED — PASS; 15-07 and 15-08 documentally closed; CART-01..CART-09 9/9 COMPLETE)
 - Phase 16: **CLOSED — HUMAN APPROVED** (Plans 16-01..16-14 **14/14 COMPLETE**; MRG-01..MRG-08 **8/8 COMPLETE**)
-- Phase 17: **NOT STARTED — NOT AUTHORIZED** (`current_phase: 17` is a documentary pointer only)
+- Phase 17 CONTEXT: **TECHNICAL DRAFT — HUMAN REVIEW REQUIRED**; RESEARCH, PLAN and EXECUTION remain **NOT AUTHORIZED**
 - frontend: BLOCKED
 
 ## Accepted Evidence References
@@ -494,19 +495,20 @@ Closed Phase-15 PLAN-review blockers:
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md
+**Resume file:** .planning/phases/17-authenticated-br-checkout-privacy/17-CONTEXT.md
 
-Last session: 2026-09-08T18:05:00.000Z
+Last session: 2026-09-08T23:23:33.441Z
 
 Stopped at:
 
 ```text
-PHASE 16 HUMAN APPROVED — CLOSED
+PHASE 17 CONTEXT: TECHNICAL DRAFT — HUMAN REVIEW REQUIRED
+PHASE 17 RESEARCH / PLAN / EXECUTION: NOT AUTHORIZED
+PHASE 18+: NOT AUTHORIZED
+PHASE 16: HUMAN APPROVED — CLOSED
 PR #28 POST-CLOSURE REMEDIATION: HUMAN APPROVED — PASS — MERGED
 FIN-01..FIN-04: CLOSED — PASS
 R6: CLOSED — PASS
-Phase 16 active blockers: 0
-Phase 17: NOT STARTED — NOT AUTHORIZED
 FRONTEND: BLOCKED
 PUSH: NOT AUTHORIZED
 DEPLOY: NOT AUTHORIZED
@@ -515,7 +517,8 @@ REAL PROVIDERS / REMOTE INFRA: NOT AUTHORIZED
 
 Resume with:
 
-- `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md`
+- `.planning/phases/17-authenticated-br-checkout-privacy/17-CONTEXT.md`
+- `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md` as accepted financial authority
 - `.planning/phases/16-cart-merge-review/16-CLOSURE.md` as historical closure authority
 
-**Next permitted step:** Human decision on Phase 17 CONTEXT. Deploy, real providers, remote infra, frontend and Phase 17 CONTEXT/PLAN/EXECUTION remain NOT AUTHORIZED.
+**Next permitted step:** Human review of Phase 17 CONTEXT. Phase 17 RESEARCH/PLAN/EXECUTION, deploy, real providers, remote infra, push and frontend remain NOT AUTHORIZED.
