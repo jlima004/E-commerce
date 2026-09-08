@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
 status: ready
-last_updated: "2026-08-29T14:30:00-03:00"
+last_updated: "2026-09-08T15:05:00-03:00"
 progress:
   total_phases: 10
   completed_phases: 4
@@ -126,6 +126,44 @@ Push/deploy/providers/remote infrastructure: NOT AUTHORIZED
 This acceptance changes no milestone counters and does not rewrite the accepted
 historical Phase-15 closure artifacts.
 
+## Post-Closure PR #28 Remediation Acceptance
+
+Phase 16 remains historically **HUMAN APPROVED — CLOSED**. The subsequent
+PR #28 post-closure remediation received human approval and was merged into main:
+
+```text
+Phase 16 remains historically HUMAN APPROVED — CLOSED.
+
+PR #28 post-closure remediation:
+HUMAN APPROVED — PASS
+MERGED — CLOSED
+
+Final accepted PR head:
+bcd474eb8c9f8879cf3cf81092f822b066b06828
+
+Merge commit:
+09554f827fb485712a5422495a82be386d0e153e
+
+FIN-01..FIN-04:
+CLOSED — PASS
+
+R6:
+CLOSED — PASS
+
+Review threads:
+4/4 RESOLVED
+
+Remote CI:
+GREEN
+
+Phase 17:
+NOT STARTED — NOT AUTHORIZED
+```
+
+This post-closure remediation did not reopen Phase 16, does not change the
+historical closure date, does not change MRG-01..MRG-08 completion, does not
+alter milestone counters, and creates additive historical evidence only.
+
 ## Current Position
 
 Milestone v1.1:
@@ -150,6 +188,7 @@ Phase 16 accepted research review authority:
 - `.planning/phases/16-cart-merge-review/16-01-PLAN.md` … `16-14-PLAN.md` — accepted plan set; checker VERIFICATION PASSED; HUMAN PLAN REVIEW PASS.
 - `.planning/phases/16-cart-merge-review/16-PLAN-REVIEW.md` — PLAN HUMAN APPROVED — PASS; B16-PLAN-HR-01..02 CLOSED — PASS; EXECUTION COMPLETE.
 - `.planning/phases/16-cart-merge-review/16-CLOSURE.md` — human-approved Phase-16 closure authority
+- `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md` — human-approved post-closure PR #28 remediation (FIN-01..FIN-04, R6 CLOSED — PASS; PR #28 MERGED — CLOSED)
 - Decision-coverage handler: `could-not-parse` for the approved `D16-NN` namespace; retained as INFO with independent exact-set proof `D16-01..D16-42 = 42/42`. The binding decisions were not renamed.
 
 Phase 15 accepted evidence is preserved in:
@@ -455,16 +494,17 @@ Closed Phase-15 PLAN-review blockers:
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/16-cart-merge-review/16-CLOSURE.md
+**Resume file:** .planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md
 
-Last session: 2026-08-29T17:30:00.000Z
+Last session: 2026-09-08T18:05:00.000Z
 
 Stopped at:
 
 ```text
 PHASE 16 HUMAN APPROVED — CLOSED
-Plans 16-01..16-14: 14/14 COMPLETE
-MRG-01..MRG-08: 8/8 COMPLETE
+PR #28 POST-CLOSURE REMEDIATION: HUMAN APPROVED — PASS — MERGED
+FIN-01..FIN-04: CLOSED — PASS
+R6: CLOSED — PASS
 Phase 16 active blockers: 0
 Phase 17: NOT STARTED — NOT AUTHORIZED
 FRONTEND: BLOCKED
@@ -475,6 +515,7 @@ REAL PROVIDERS / REMOTE INFRA: NOT AUTHORIZED
 
 Resume with:
 
-- `.planning/phases/16-cart-merge-review/16-CLOSURE.md`
+- `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md`
+- `.planning/phases/16-cart-merge-review/16-CLOSURE.md` as historical closure authority
 
 **Next permitted step:** Human decision on Phase 17 CONTEXT. Deploy, real providers, remote infra, frontend and Phase 17 CONTEXT/PLAN/EXECUTION remain NOT AUTHORIZED.

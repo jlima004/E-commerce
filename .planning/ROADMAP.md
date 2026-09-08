@@ -29,6 +29,7 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 15 está **CLOSED — HUMAN APPROVED**; Plans `15-01`..`15-08` estão **8/8 HUMAN APPROVED — PASS**, `15-07` e `15-08` estão documentally closed, e CART-01..CART-09 estão **9/9 COMPLETE**
 - Phase 16 está **CLOSED — HUMAN APPROVED**; Plans `16-01`..`16-14` estão **14/14 COMPLETE**; `MRG-01..MRG-08` estão **8/8 COMPLETE**; Phase 17 permanece **NOT STARTED — NOT AUTHORIZED**; Phase 18+ permanecem não autorizadas
 - A remediação pós-closure do PR #27 recebeu PASS humano; B15-PR27-HR-01..HR-06 estão CLOSED — PASS. Phase 16 CONTEXT, RESEARCH, PLAN e EXECUTION são HUMAN APPROVED — PASS; Phase 16 está **CLOSED — HUMAN APPROVED**; remediações `16-11-R1`, `16-11-R2` e `16-13-R1` são artefatos históricos de suporte, não planos seriais adicionais
+- A remediação pós-closure do PR #28 recebeu aprovação humana (HUMAN APPROVED — PASS) e foi mergeada (MERGED — CLOSED). A remediação pós-closure não reabriu a Phase 16 e não alterou a conclusão de MRG-01..MRG-08. Phase 16 permanece CLOSED — HUMAN APPROVED. Phase 17 permanece NOT STARTED — NOT AUTHORIZED. Evidência aditiva em `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md`
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
 ## Milestones
@@ -312,6 +313,23 @@ Cross-cutting constraints:
 
 Primary plans: **14/14 COMPLETE**.
 Remediations `16-11-R1`, `16-11-R2`, `16-13-R1`: historical supporting artifacts, not additional serial-plan count.
+
+### Post-closure PR #28 governance
+
+Phase 16 remains **CLOSED — HUMAN APPROVED** as historical closure status.
+PR #28 post-closure remediation is **HUMAN APPROVED — PASS** and **MERGED — CLOSED**.
+FIN-01..FIN-04 and R6 are **CLOSED — PASS**.
+The post-closure remediation did not reopen Phase 16 and did not change MRG-01..MRG-08 completion.
+Phase 17 remains **NOT STARTED — NOT AUTHORIZED**.
+
+Milestone counters: phases closed `4/10`; requirements `34/91`; open
+requirements `57`; plans `50/50`; percent `40`.
+
+### Accepted Phase-16 evidence
+
+- `16-14-SUMMARY.md` — final merge/review/OpenAPI ledger and human verify
+- `16-CLOSURE.md` — human-approved Phase-16 closure authority
+- `16-PR28-REMEDIATION.md` — human-approved post-closure PR #28 remediation (FIN-01..FIN-04, R6 CLOSED — PASS; PR #28 MERGED — CLOSED)
 
 ## Phase 17: Authenticated BR Checkout & Privacy
 
