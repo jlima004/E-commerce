@@ -27,9 +27,9 @@ Este milestone backend-only fecha as depend√™ncias que impedem o Frontend Milest
 - Phase 15 RESEARCH est√° **HUMAN APPROVED ‚Äî PASS**
 - Phase 15 PLAN est√° **HUMAN APPROVED ‚Äî PASS** (8 plans / 8 serial waves)
 - Phase 15 est√° **CLOSED ‚Äî HUMAN APPROVED**; Plans `15-01`..`15-08` est√£o **8/8 HUMAN APPROVED ‚Äî PASS**, `15-07` e `15-08` est√£o documentally closed, e CART-01..CART-09 est√£o **9/9 COMPLETE**
-- Phase 16 est√° **CLOSED ‚Äî HUMAN APPROVED**; Plans `16-01`..`16-14` est√£o **14/14 COMPLETE**; `MRG-01..MRG-08` est√£o **8/8 COMPLETE**; Phase 17 CONTEXT est√° **HUMAN APPROVED ‚Äî PASS ‚Äî CLOSED**; Phase 17 RESEARCH est√° **TECHNICAL RESEARCH COMPLETE ‚Äî HUMAN REVIEW REQUIRED**; PLAN e EXECUTION permanecem **NOT AUTHORIZED**; Phase 18+ permanecem n√£o autorizadas
+- Phase 16 est√° **CLOSED ‚Äî HUMAN APPROVED**; Plans `16-01`..`16-14` est√£o **14/14 COMPLETE**; `MRG-01..MRG-08` est√£o **8/8 COMPLETE**; Phase 17 CONTEXT e RESEARCH est√£o **HUMAN APPROVED ‚Äî PASS ‚Äî CLOSED**; `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` e `R17-BLOCK-01` permanecem OPEN; PLAN e EXECUTION permanecem **NOT AUTHORIZED**; Phase 18+ permanecem n√£o autorizadas
 - A remedia√ß√£o p√≥s-closure do PR #27 recebeu PASS humano; B15-PR27-HR-01..HR-06 est√£o CLOSED ‚Äî PASS. Phase 16 CONTEXT, RESEARCH, PLAN e EXECUTION s√£o HUMAN APPROVED ‚Äî PASS; Phase 16 est√° **CLOSED ‚Äî HUMAN APPROVED**; remedia√ß√µes `16-11-R1`, `16-11-R2` e `16-13-R1` s√£o artefatos hist√≥ricos de suporte, n√£o planos seriais adicionais
-- A remedia√ß√£o p√≥s-closure do PR #28 recebeu aprova√ß√£o humana (HUMAN APPROVED ‚Äî PASS) e foi mergeada (MERGED ‚Äî CLOSED). A remedia√ß√£o p√≥s-closure n√£o reabriu a Phase 16 e n√£o alterou a conclus√£o de MRG-01..MRG-08. Phase 16 permanece CLOSED ‚Äî HUMAN APPROVED. Phase 17 CONTEXT est√° HUMAN APPROVED ‚Äî PASS ‚Äî CLOSED; Phase 17 RESEARCH est√° TECHNICAL RESEARCH COMPLETE ‚Äî HUMAN REVIEW REQUIRED; PLAN e EXECUTION permanecem NOT AUTHORIZED. Evid√™ncia aditiva em `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md`
+- A remedia√ß√£o p√≥s-closure do PR #28 recebeu aprova√ß√£o humana (HUMAN APPROVED ‚Äî PASS) e foi mergeada (MERGED ‚Äî CLOSED). A remedia√ß√£o p√≥s-closure n√£o reabriu a Phase 16 e n√£o alterou a conclus√£o de MRG-01..MRG-08. Phase 16 permanece CLOSED ‚Äî HUMAN APPROVED. Phase 17 CONTEXT e RESEARCH est√£o HUMAN APPROVED ‚Äî PASS ‚Äî CLOSED; `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` e `R17-BLOCK-01` permanecem OPEN; PLAN e EXECUTION permanecem NOT AUTHORIZED. Evid√™ncia aditiva em `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md`
 - deploy, real Resend/real providers, remote infra e frontend permanecem n√£o autorizados/bloqueados
 
 ## Milestones
@@ -49,7 +49,7 @@ O snapshot hist√≥rico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | 14 | Customer Auth & Verification | 13 | 9 | **CLOSED ‚Äî HUMAN APPROVED; 21/21 plans; 63/63 tasks; 9/9 requirements** |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CLOSED ‚Äî HUMAN APPROVED; 8/8 plans; CART-01..CART-09 = 9/9 COMPLETE** |
 | 16 | Cart Merge & Review | 15 | 8 | **CLOSED ‚Äî HUMAN APPROVED; 14/14 plans COMPLETE; MRG-01..MRG-08 = 8/8 COMPLETE** |
-| 17 | Authenticated BR Checkout & Privacy | 16 | 10 | **CONTEXT HUMAN APPROVED ‚Äî PASS ‚Äî CLOSED; RESEARCH TECHNICAL COMPLETE ‚Äî HUMAN REVIEW REQUIRED; PLAN / EXECUTION NOT AUTHORIZED** |
+| 17 | Authenticated BR Checkout & Privacy | 16 | 10 | **CONTEXT / RESEARCH HUMAN APPROVED ‚Äî PASS ‚Äî CLOSED; R17-HR-01..10 + R17-CONFLICT-01 + R17-BLOCK-01 OPEN; PLAN / EXECUTION NOT AUTHORIZED** |
 | 18 | Gelato Shipping Quote & Selection | 17 | 8 | Not started |
 | 19 | Storefront PaymentAttempt Hardening | 18 | 9 | Not started |
 | 20 | Async Payment Confirmation | 19 | 10 | Not started |
@@ -106,280 +106,4 @@ Closure authority: `.planning/phases/13-storefront-contract-foundation-surface-l
 - [x] `14-09-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
 - [x] `14-10-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
 - [x] `14-11-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
-- [x] `14-12-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
-- [x] `14-13-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
-- [x] `14-14-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
-- [x] `14-15-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
-- [x] `14-16-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
-- [x] `14-17-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
-- [x] `14-18-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
-- [x] `14-19-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
-- [x] `14-20-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
-- [x] `14-21-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED
-
-### Accepted closure references
-
-Detailed accepted evidence is preserved in:
-
-- `14-07-SUMMARY.md` ‚Äî persistence/collision audit/migration exact-set
-- `14-08-SUMMARY.md` ‚Äî auth rate limits/timing/Redis fail-closed
-- `14-09-SUMMARY.md` ‚Äî auth notification outbox/reconciliation
-- `14-10-SUMMARY.md` ‚Äî session/JWT/refresh rotation
-- `14-11-SUMMARY.md` ‚Äî PostgreSQL access guard/custom refresh-revoke
-- `14-12-SUMMARY.md` ‚Äî verification latest-wins/one-winner domain
-- `14-13-SUMMARY.md` ‚Äî exact verification Store surface and HTTP contracts
-- `14-14-SUMMARY.md` ‚Äî registration coordinator/recovery/concurrency
-- `14-15-SUMMARY.md` ‚Äî signup/login/me surface and BFF service boundary
-- `14-16-SUMMARY.md` ‚Äî composed password reset and guarded recovery
-- `14-17-SUMMARY.md` ‚Äî current-password proof and lineage-bound password change
-- `14-18-SUMMARY.md` ‚Äî secretless reconciliation and final runtime exact-set
-- `14-19-SUMMARY.md` ‚Äî API Docs registry and BFF OpenAPI caller authority
-- `14-20-SUMMARY.md` ‚Äî writer-generated Store artifact and deterministic bytes
-- `14-21-SUMMARY.md` ‚Äî final AUTH/Order/regression gate and human verify
-- `14-CLOSURE.md` ‚Äî Phase-14 closure authority
-
-### Phase 14 final authority
-
-Final accepted Store runtime:
-
-```text
-total: 63
-native identity: 51
-local-only: 12
-DENY: 50
-PRESERVE_LEGACY: 7
-M1_ENABLED: 6
-```
-
-Final Phase-14 Store `M1_ENABLED` exact-set:
-
-- `GET /store/customers/me`
-- `POST /store/customers/me/verify`
-- `POST /store/customers/verify/resend`
-- `POST /store/customers/verify`
-- `GET /store/customers/me/verify/status`
-- `POST /store/customers/me/password`
-
-Final approved local Auth exact-set:
-
-- `POST /auth/customer/emailpass/register`
-- `POST /auth/customer/emailpass`
-- `POST /auth/token/refresh`
-- `POST /auth/customer/emailpass/revoke-current-lineage`
-- `POST /auth/customer/emailpass/reset-password`
-- `POST /auth/customer/emailpass/update`
-
-Native Auth primitives and raw `POST /store/customers` remain DENY; `/auth/session`, callbacks, MFA and social/passwordless aliases remain absent/denied as applicable.
-
-Final 14-21 regression authority:
-
-```text
-openapi:check: PASS
-quick units: 16/16 PASS
-focused HTTP: 144/144 PASS
-dedicated multiprocess: 10/10 PASS + cleanup
-PG ledger: 11/11 PASS + 11/11 cleanup
-Full Unit: 89/89 suites / 1648/1648 PASS
-Modules: 52/52 suites / 749/749 PASS
-HTTP combined: 37/37 suites / 478/478 accounted for
-API Docs units: 6 suites / 258 tests PASS
-openapi:lint: PASS
-lint: 0 errors
-build: PASS
-negative/leakage scans: PASS
-```
-
-Canonical Order invariant remains: all 12 Phase-14 operations create zero Orders; canonical `payment_intent.succeeded` is the positive Order-birth control and replay remains one Order.
-
-Technical head consumed by closure:
-
-`3d12565d74e9688883d6e042fdebca79ffebf7de`
-
-## Phase 15: Guest Cart Capability & Concurrency
-
-**Goal:** substituir a sess√£o como prova principal de posse por capability opaca e tornar muta√ß√µes concorrentes seguras.
-
-**Status:** **CLOSED ‚Äî HUMAN APPROVED (CONTEXT, RESEARCH, PLAN and EXECUTION PASS; 15-01..15-08 HUMAN APPROVED ‚Äî PASS, 8/8; 15-07 e 15-08 DOCUMENTALLY CLOSED; CART-01..CART-09 = 9/9 COMPLETE).** Depends on Phase 14 CLOSED.
-
-**Plans:** 8 plans / 8 serial waves (replaces the superseded 18-plan set)
-
-Plans:
-**Wave 0**
-
-- [x] 15-01-PLAN.md ‚Äî HUMAN APPROVED ‚Äî PASS ‚Äî Validation Foundation & PLAN locks P15-D01..P15-D10
-
-**Wave 1** *(blocked on Wave 0 completion)*
-
-- [x] 15-02-PLAN.md ‚Äî HUMAN APPROVED ‚Äî PASS ‚Äî Guest Capability Domain & Persistence
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 15-03-PLAN.md ‚Äî HUMAN APPROVED ‚Äî PASS ‚Äî Active Cart M1 Boundary & Tracer (Guest + Customer)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 15-04-PLAN.md ‚Äî HUMAN APPROVED ‚Äî PASS ‚Äî Active Cart Lifecycle, Idempotency & Concurrency
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 15-05-PLAN.md ‚Äî HUMAN APPROVED ‚Äî PASS ‚Äî Line-Item Mutation Core: Add & Update
-
-**Wave 5** *(blocked on Wave 4 completion)*
-
-- [x] 15-06-PLAN.md ‚Äî HUMAN APPROVED ‚Äî PASS ‚Äî Delete, Clear & Final Cart Surface
-
-**Wave 6** *(blocked on Wave 5 completion)*
-
-- [x] 15-07-PLAN.md ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED ‚Äî Store API Contract (B15-07-HR-01 CLOSED ‚Äî PASS)
-
-**Wave 7** *(blocked on Wave 6 completion)*
-
-- [x] 15-08-PLAN.md ‚Äî HUMAN APPROVED ‚Äî PASS / DOCUMENTALLY CLOSED ‚Äî Final Phase Verification (mandatory ledger)
-
-The accepted Phase-15 CONTEXT, RESEARCH, human-approved PLAN and closure
-artifact are the authorities for this phase. Plans `15-01` through `15-08`
-are **8/8 HUMAN APPROVED ‚Äî PASS**; Plans `15-07` and `15-08` are documentally
-closed, with `B15-07-HR-01` CLOSED ‚Äî PASS. Plan `15-08` technical ledger 01‚Äì17
-and final human checkpoint are PASS. The final Store authority is
-`64/51/13/16/47/5/12`, with Auth M1 6 intact, Cart M1 6 and Global M1 12. Cart
-Store/BFF synchronous Order birth is zero, the canonical
-`payment_intent.succeeded` webhook remains the only accepted Order-birth
-authority, and capability leakage is ZERO. No deploy, provider or remote
-infrastructure action is authorized. Phase 16 est√° **CLOSED ‚Äî HUMAN APPROVED**;
-Plans `16-01`..`16-14` est√£o **14/14 COMPLETE**; `MRG-01..MRG-08` est√£o **8/8 COMPLETE**.
-Closure authority: `.planning/phases/16-cart-merge-review/16-CLOSURE.md`.
-Phase 17 CONTEXT est√° **TECHNICAL DRAFT ‚Äî HUMAN REVIEW REQUIRED**; Phase 17
-RESEARCH, PLAN e EXECUTION permanecem **NOT AUTHORIZED**; deploy, real providers,
-remote infra e frontend permanecem n√£o autorizados.
-
-### Post-closure PR #27 governance
-
-Phase 15 remains **CLOSED ‚Äî HUMAN APPROVED** as historical closure status.
-PR #27 post-closure remediation is **HUMAN APPROVED ‚Äî PASS**;
-B15-PR27-HR-01..HR-06 are **CLOSED ‚Äî PASS**. Phase 16 is **CLOSED ‚Äî HUMAN APPROVED**;
-Plans `16-01`..`16-14` are **14/14 COMPLETE**; `MRG-01..MRG-08` are **8/8 COMPLETE**.
-Remedia√ß√µes `16-11-R1`, `16-11-R2` e `16-13-R1` s√£o artefatos hist√≥ricos de suporte, n√£o planos seriais adicionais.
-
-Milestone counters: phases closed `4/10`; requirements `34/91`; open
-requirements `57`; plans `50/50`; percent `40`.
-
-### Accepted Phase-15 evidence
-
-- `15-08-SUMMARY.md` ‚Äî final CART/Order/regression/leakage ledger and human verify
-- `15-CLOSURE.md` ‚Äî human-approved Phase-15 closure authority
-- `15-PR27-REMEDIATION.md` ‚Äî human-approved post-closure PR #27 remediation (6/6 CLOSED ‚Äî PASS)
-
-## Phase 16: Cart Merge & Review
-
-**Goal:** substituir attach simples por merge transacional, idempotente, parcial e revis√°vel.
-
-**Status:** **CLOSED ‚Äî HUMAN APPROVED** (CONTEXT, RESEARCH, PLAN and EXECUTION PASS; `16-01`..`16-14` **14/14 COMPLETE**; `MRG-01..MRG-08` **8/8 COMPLETE**). Depends on Phase 15 CLOSED.
-
-Closure authority: `.planning/phases/16-cart-merge-review/16-CLOSURE.md`.
-
-Context authority: `.planning/phases/16-cart-merge-review/16-CONTEXT.md` ‚Äî HUMAN APPROVED ‚Äî PASS.
-
-Research authority: `.planning/phases/16-cart-merge-review/16-RESEARCH.md`, reviewed by `.planning/phases/16-cart-merge-review/16-RESEARCH-REVIEW.md` ‚Äî HUMAN APPROVED ‚Äî PASS; `R16-HR-01..R16-HR-08` CLOSED ‚Äî APPROVED.
-
-Pattern authority: `.planning/phases/16-cart-merge-review/16-PATTERNS.md` ‚Äî official typed `gsd-pattern-mapper` output.
-
-Plan review authority: `.planning/phases/16-cart-merge-review/16-PLAN-REVIEW.md` ‚Äî PLAN HUMAN APPROVED ‚Äî PASS; B16-PLAN-HR-01..02 CLOSED ‚Äî PASS; EXECUTION COMPLETE; Phase 16 CLOSED ‚Äî HUMAN APPROVED.
-
-Plan-checker result: **VERIFICATION PASSED ‚Äî 0 BLOCKER / 0 WARNING**. Human PLAN review: **HUMAN APPROVED ‚Äî PASS**; `B16-PLAN-HR-01` and `B16-PLAN-HR-02` are **CLOSED ‚Äî PASS**. Historical execution authorization is recorded in `.planning/phases/16-cart-merge-review/16-PLAN-REVIEW.md`. Executable coverage is `D16-01..D16-42` 42/42, `R16-HR-01..R16-HR-08` 8/8 and `MRG-01..MRG-08` 8/8 COMPLETE. The generic decision-coverage parser reports `could-not-parse` for the approved `D16-NN` namespace; this remains a non-blocking INFO backed by the independent exact-set proof and does not authorize renaming the binding decisions.
-
-### Phase 16 plans ‚Äî human-approved execution set
-
-- **Wave 0:** `16-01-PLAN.md` ‚Äî production tracer for transactional guest promotion.
-- **Wave 1** *(blocked on Wave 0 completion):* `16-02-PLAN.md` ‚Äî closed decision engine, serializers and persistence models.
-- **Wave 2** *(blocked on Wave 1 completion):* `16-03-PLAN.md` ‚Äî Medusa module wiring and generated schema identity.
-- **Wave 3** *(blocked on Wave 2 completion):* `16-04-PLAN.md` ‚Äî blocking human DDL decision checkpoint.
-- **Wave 4** *(blocked on Wave 3 approval):* `16-05-PLAN.md` ‚Äî transactional claim, receipt, replay and rollback.
-- **Wave 5** *(blocked on Wave 4 completion):* `16-06-PLAN.md` ‚Äî canonical Customer cart authority.
-- **Wave 6** *(blocked on Wave 5 completion):* `16-07-PLAN.md` ‚Äî full reachable merge outcomes and partial review.
-- **Wave 7** *(blocked on Wave 6 completion):* `16-08-PLAN.md` ‚Äî exact versioned review acknowledge.
-- **Wave 8** *(blocked on Wave 7 completion):* `16-09-PLAN.md` ‚Äî review barrier for structural mutations and checkout.
-- **Wave 9** *(blocked on Wave 8 completion):* `16-10-PLAN.md` ‚Äî controlled legacy attach adapter.
-- **Wave 10** *(blocked on Wave 9 completion):* `16-11-PLAN.md` ‚Äî Store surface/security exact-set and leakage proofs.
-- **Wave 11** *(blocked on Wave 10 completion):* `16-12-PLAN.md` ‚Äî authoritative TypeScript Store contract.
-- **Wave 12** *(blocked on Wave 11 completion):* `16-13-PLAN.md` ‚Äî blocking human Store-contract decision checkpoint.
-- **Wave 13** *(blocked on Wave 12 approval):* `16-14-PLAN.md` ‚Äî approved writer output and final technical ledger.
-
-Cross-cutting constraints:
-
-- the plan set `16-01..16-14` is **14/14 COMPLETE**; Phase 16 is **CLOSED ‚Äî HUMAN APPROVED**;
-- PostgreSQL and real Medusa persistence are correctness authorities; Redis is auxiliary;
-- synchronous Phase-16 cart paths create zero Orders; canonical `payment_intent.succeeded` remains the sole accepted Order-birth authority;
-- `MRG-01..MRG-08` are **8/8 COMPLETE**;
-- registry TypeScript is OpenAPI authority; generated JSON is writer output only and Swagger remains non-interactive;
-- deploy, real providers, remote infra and frontend remain NOT AUTHORIZED.
-
-Primary plans: **14/14 COMPLETE**.
-Remediations `16-11-R1`, `16-11-R2`, `16-13-R1`: historical supporting artifacts, not additional serial-plan count.
-
-### Post-closure PR #28 governance
-
-Phase 16 remains **CLOSED ‚Äî HUMAN APPROVED** as historical closure status.
-PR #28 post-closure remediation is **HUMAN APPROVED ‚Äî PASS** and **MERGED ‚Äî CLOSED**.
-FIN-01..FIN-04 and R6 are **CLOSED ‚Äî PASS**.
-The post-closure remediation did not reopen Phase 16 and did not change MRG-01..MRG-08 completion.
-At the PR #28 post-closure closeout, Phase 17 was **NOT STARTED ‚Äî NOT AUTHORIZED**.
-Current state: Phase 17 CONTEXT is **HUMAN APPROVED ‚Äî PASS ‚Äî CLOSED**;
-RESEARCH is **TECHNICAL RESEARCH COMPLETE ‚Äî HUMAN REVIEW REQUIRED**; PLAN and EXECUTION remain **NOT AUTHORIZED**.
-
-Milestone counters: phases closed `4/10`; requirements `34/91`; open
-requirements `57`; plans `50/50`; percent `40`.
-
-### Accepted Phase-16 evidence
-
-- `16-14-SUMMARY.md` ‚Äî final merge/review/OpenAPI ledger and human verify
-- `16-CLOSURE.md` ‚Äî human-approved Phase-16 closure authority
-- `16-PR28-REMEDIATION.md` ‚Äî human-approved post-closure PR #28 remediation (FIN-01..FIN-04, R6 CLOSED ‚Äî PASS; PR #28 MERGED ‚Äî CLOSED)
-
-## Phase 17: Authenticated BR Checkout & Privacy
-
-**Goal:** criar checkout autenticado para pessoa f√≠sica no Brasil sem armazenar CPF cru no caminho atual.
-
-**Status:** CONTEXT **HUMAN APPROVED ‚Äî PASS ‚Äî CLOSED**. RESEARCH **TECHNICAL RESEARCH COMPLETE ‚Äî HUMAN REVIEW REQUIRED**. Depends on Phase 16 CLOSED ‚Äî HUMAN APPROVED. PLAN, EXECUTION and implementation remain unauthorized until a separate human decision.
-
-Research authority: `.planning/phases/17-authenticated-br-checkout-privacy/17-RESEARCH.md`; adversarial review: `17-RESEARCH-REVIEW.md` ‚Äî P0=0, P1=0, material P2=0; human review pending.
-
-## Phase 18: Gelato Shipping Quote & Selection
-
-**Goal:** substituir frete operacional fixo por cota√ß√£o e sele√ß√£o autoritativas preservadas at√© o dispatch.
-
-**Status:** Not started. Depends on Phase 17.
-
-## Phase 19: Storefront PaymentAttempt Hardening
-
-**Goal:** endurecer o m√≥dulo existente para cart√£o autenticado M1, mantendo todo o fluxo pr√©-Order.
-
-**Status:** Not started. Depends on Phase 18.
-
-## Phase 20: Async Payment Confirmation
-
-**Goal:** materializar confirma√ß√£o BFF-only recuper√°vel, rate-limited e financeiramente segura sob refresh, m√∫ltiplas abas e sucesso tardio.
-
-**Status:** Not started. Depends on Phase 19.
-
-## Phase 21: Order Confirmation & Catalog Handoff
-
-**Goal:** entregar confirma√ß√£o de pedido segura e cat√°logo resolv√≠vel/revalid√°vel para o BFF.
-
-**Status:** Not started. Depends on Phase 20.
-
-## Phase 22: Contract Kit, Verification & Release
-
-**Goal:** provar que o backend est√° pronto e entregar o kit que permite ao frontend desenvolver sem inventar contrato.
-
-**Status:** Not started. Depends on Phase 21.
-
-## Definition of Done
-
-O milestone s√≥ pode fechar quando houver evid√™ncia PASS para todos os gates previstos: contratos Store/OpenAPI, autentica√ß√£o, capability/concorr√™ncia e merge de carrinho, checkout BR/privacidade, Gelato shipping, PaymentAttempt/confirmation, order/catalog handoff, kit types/Zod/fixtures/mocks, contract tests, suites backend, migrations/constraints, drift/lint/build, security negative proofs e release verification aplic√°vel.
-
-Phase 15 CONTEXT, RESEARCH, PLAN and closure are HUMAN APPROVED ‚Äî PASS;
-Plans 15-01..15-08 are **8/8 HUMAN APPROVED ‚Äî PASS** and Plans 15-07 and
-15-08 are DOCUMENTALLY CLOSED. CART-01..CART-09 are 9/9 COMPLETE. Phase 16
-is **CLOSED ‚Äî HUMAN APPROVED**; Plans `16-01`..`16-14` are **14/14 COMPLETE**;
-`MRG-01..MRG-08` are **8/8 COMPLETE**. Phase 17 CONTEXT is **HUMAN APPROVED ‚Äî PASS ‚Äî CLOSED**; RESEARCH is **TECHNICAL RESEARCH COMPLETE ‚Äî HUMAN REVIEW REQUIRED**; PLAN and EXECUTION remain unauthorized.
-Real providers, infraestrutura remota, push, deploy and frontend remain unauthorized.
+- [x] `14-12-PLAN.md` ‚Äî HUMAN APPROVED ‚Äî PA≤»="25ML∏()IïÕïÖ…ç†ÅÖ’—°Ω…•—‰ËÅÄπ¡±Öππ•πúΩ¡°ÖÕïÃºƒÿµçÖ…–µµï…ùîµ…ïŸ•ï‹ºƒÿµIMI πµëÄ∞Å…ïŸ•ï›ïêÅâ‰ÅÄπ¡±Öππ•πúΩ¡°ÖÕïÃºƒÿµçÖ…–µµï…ùîµ…ïŸ•ï‹ºƒÿµIMI µIY%\πµëÄÉäPÅ!U58ÅAAI=YÉäPÅAMLÏÅÅHƒÿµ!H¥¿ƒ∏πHƒÿµ!H¥¿·ÄÅ1=MÉäPÅAAI=Y∏()AÖ——ï…∏ÅÖ’—°Ω…•—‰ËÅÄπ¡±Öππ•πúΩ¡°ÖÕïÃºƒÿµçÖ…–µµï…ùîµ…ïŸ•ï‹ºƒÿµAQQI9LπµëÄÉäPÅΩôô•ç•Ö∞Å—Â¡ïêÅÅùÕêµ¡Ö——ï…∏µµÖ¡¡ï…ÄÅΩ’—¡’–∏()A±Ö∏Å…ïŸ•ï‹ÅÖ’—°Ω…•—‰ËÅÄπ¡±Öππ•πúΩ¡°ÖÕïÃºƒÿµçÖ…–µµï…ùîµ…ïŸ•ï‹ºƒÿµA18µIY%\πµëÄÉäPÅA18Å!U58ÅAAI=YÉäPÅAMLÏÅƒÿµA18µ!H¥¿ƒ∏∏¿»Å1=MÉäPÅAMLÏÅaUQ%=8Å=5A1QÏÅA°ÖÕîÄƒÿÅ1=MÉäPÅ!U58ÅAAI=Y∏()A±Ö∏µç°ïç≠ï»Å…ïÕ’±–ËÄ®©YI%%Q%=8ÅAMMÉäPÄ¿Å	1=-HÄºÄ¿Å]I9%9®®∏Å!’µÖ∏ÅA18Å…ïŸ•ï‹ËÄ®©!U58ÅAAI=YÉäPÅAML®®ÏÅÅƒÿµA18µ!H¥¿≈ÄÅÖπêÅÅƒÿµA18µ!H¥¿…ÄÅÖ…îÄ®©1=MÉäPÅAML®®∏Å!•Õ—Ω…•çÖ∞Åï·ïç’—•Ω∏ÅÖ’—°Ω…•ÈÖ—•Ω∏Å•ÃÅ…ïçΩ…ëïêÅ•∏ÅÄπ¡±Öππ•πúΩ¡°ÖÕïÃºƒÿµçÖ…–µµï…ùîµ…ïŸ•ï‹ºƒÿµA18µIY%\πµëÄ∏Å·ïç’—Öâ±îÅçΩŸï…ÖùîÅ•ÃÅÅƒÿ¥¿ƒ∏πƒÿ¥–…ÄÄ–»º–»∞ÅÅHƒÿµ!H¥¿ƒ∏πHƒÿµ!H¥¿·ÄÄ‡º‡ÅÖπêÅÅ5I¥¿ƒ∏π5I¥¿·ÄÄ‡º‡Å=5A1Q∏ÅQ°îÅùïπï…•åÅëïç•Õ•Ω∏µçΩŸï…ÖùîÅ¡Ö…Õï»Å…ï¡Ω…—ÃÅÅçΩ’±êµπΩ–µ¡Ö…ÕïÄÅôΩ»Å—°îÅÖ¡¡…ΩŸïêÅÅƒÿµ99ÄÅπÖµïÕ¡ÖçîÏÅ—°•ÃÅ…ïµÖ•πÃÅÑÅπΩ∏µâ±Ωç≠•πúÅ%9<ÅâÖç≠ïêÅâ‰Å—°îÅ•πëï¡ïπëïπ–Åï·Öç–µÕï–Å¡…ΩΩòÅÖπêÅëΩïÃÅπΩ–ÅÖ’—°Ω…•ÈîÅ…ïπÖµ•πúÅ—°îÅâ•πë•πúÅëïç•Õ•ΩπÃ∏((åååÅA°ÖÕîÄƒÿÅ¡±ÖπÃÉäPÅ°’µÖ∏µÖ¡¡…ΩŸïêÅï·ïç’—•Ω∏ÅÕï–((¥Ä®©]ÖŸîÄ¿Ë®®ÅÄƒÿ¥¿ƒµA18πµëÄÉäPÅ¡…Ωë’ç—•Ω∏Å—…Öçï»ÅôΩ»Å—…ÖπÕÖç—•ΩπÖ∞Åù’ïÕ–Å¡…ΩµΩ—•Ω∏∏(¥Ä®©]ÖŸîÄƒ®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄ¿ÅçΩµ¡±ï—•Ω∏§Ë®ÅÄƒÿ¥¿»µA18πµëÄÉäPÅç±ΩÕïêÅëïç•Õ•Ω∏Åïπù•πî∞ÅÕï…•Ö±•Èï…ÃÅÖπêÅ¡ï…Õ•Õ—ïπçîÅµΩëï±Ã∏(¥Ä®©]ÖŸîÄ»®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄƒÅçΩµ¡±ï—•Ω∏§Ë®ÅÄƒÿ¥¿ÃµA18πµëÄÉäPÅ5ïë’ÕÑÅµΩë’±îÅ›•…•πúÅÖπêÅùïπï…Ö—ïêÅÕç°ïµÑÅ•ëïπ—•—‰∏(¥Ä®©]ÖŸîÄÃ®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄ»ÅçΩµ¡±ï—•Ω∏§Ë®ÅÄƒÿ¥¿–µA18πµëÄÉäPÅâ±Ωç≠•πúÅ°’µÖ∏Å0Åëïç•Õ•Ω∏Åç°ïç≠¡Ω•π–∏(¥Ä®©]ÖŸîÄ–®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄÃÅÖ¡¡…ΩŸÖ∞§Ë®ÅÄƒÿ¥¿‘µA18πµëÄÉäPÅ—…ÖπÕÖç—•ΩπÖ∞Åç±Ö•¥∞Å…ïçï•¡–∞Å…ï¡±Ö‰ÅÖπêÅ…Ω±±âÖç¨∏(¥Ä®©]ÖŸîÄ‘®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄ–ÅçΩµ¡±ï—•Ω∏§Ë®ÅÄƒÿ¥¿ÿµA18πµëÄÉäPÅçÖπΩπ•çÖ∞Å’Õ—Ωµï»ÅçÖ…–ÅÖ’—°Ω…•—‰∏(¥Ä®©]ÖŸîÄÿ®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄ‘ÅçΩµ¡±ï—•Ω∏§Ë®ÅÄƒÿ¥¿‹µA18πµëÄÉäPÅô’±∞Å…ïÖç°Öâ±îÅµï…ùîÅΩ’—çΩµïÃÅÖπêÅ¡Ö…—•Ö∞Å…ïŸ•ï‹∏(¥Ä®©]ÖŸîÄ‹®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄÿÅçΩµ¡±ï—•Ω∏§Ë®ÅÄƒÿ¥¿‡µA18πµëÄÉäPÅï·Öç–ÅŸï…Õ•ΩπïêÅ…ïŸ•ï‹ÅÖç≠πΩ›±ïëùî∏(¥Ä®©]ÖŸîÄ‡®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄ‹ÅçΩµ¡±ï—•Ω∏§Ë®ÅÄƒÿ¥¿‰µA18πµëÄÉäPÅ…ïŸ•ï‹ÅâÖ……•ï»ÅôΩ»ÅÕ—…’ç—’…Ö∞Åµ’—Ö—•ΩπÃÅÖπêÅç°ïç≠Ω’–∏(¥Ä®©]ÖŸîÄ‰®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄ‡ÅçΩµ¡±ï—•Ω∏§Ë®ÅÄƒÿ¥ƒ¿µA18πµëÄÉäPÅçΩπ—…Ω±±ïêÅ±ïùÖç‰ÅÖ——Öç†ÅÖëÖ¡—ï»∏(¥Ä®©]ÖŸîÄƒ¿®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄ‰ÅçΩµ¡±ï—•Ω∏§Ë®ÅÄƒÿ¥ƒƒµA18πµëÄÉäPÅM—Ω…îÅÕ’…ôÖçîΩÕïç’…•—‰Åï·Öç–µÕï–ÅÖπêÅ±ïÖ≠ÖùîÅ¡…ΩΩôÃ∏(¥Ä®©]ÖŸîÄƒƒ®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄƒ¿ÅçΩµ¡±ï—•Ω∏§Ë®ÅÄƒÿ¥ƒ»µA18πµëÄÉäPÅÖ’—°Ω…•—Ö—•ŸîÅQÂ¡ïMç…•¡–ÅM—Ω…îÅçΩπ—…Öç–∏(¥Ä®©]ÖŸîÄƒ»®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄƒƒÅçΩµ¡±ï—•Ω∏§Ë®ÅÄƒÿ¥ƒÃµA18πµëÄÉäPÅâ±Ωç≠•πúÅ°’µÖ∏ÅM—Ω…îµçΩπ—…Öç–Åëïç•Õ•Ω∏Åç°ïç≠¡Ω•π–∏(¥Ä®©]ÖŸîÄƒÃ®®Ä®°â±Ωç≠ïêÅΩ∏Å]ÖŸîÄƒ»ÅÖ¡¡…ΩŸÖ∞§Ë®ÅÄƒÿ¥ƒ–µA18πµëÄÉäPÅÖ¡¡…ΩŸïêÅ›…•—ï»ÅΩ’—¡’–ÅÖπêÅô•πÖ∞Å—ïç°π•çÖ∞Å±ïëùï»∏()…ΩÕÃµç’——•πúÅçΩπÕ—…Ö•π—ÃË((¥Å—°îÅ¡±Ö∏ÅÕï–ÅÄƒÿ¥¿ƒ∏∏ƒÿ¥ƒ—ÄÅ•ÃÄ®®ƒ–ºƒ–Å=5A1Q®®ÏÅA°ÖÕîÄƒÿÅ•ÃÄ®©1=MÉäPÅ!U58ÅAAI=Y®®Ï(¥ÅAΩÕ—ù…ïME0ÅÖπêÅ…ïÖ∞Å5ïë’ÕÑÅ¡ï…Õ•Õ—ïπçîÅÖ…îÅçΩ……ïç—πïÕÃÅÖ’—°Ω…•—•ïÃÏÅIïë•ÃÅ•ÃÅÖ’·•±•Ö…‰Ï(¥ÅÕÂπç°…ΩπΩ’ÃÅA°ÖÕî¥ƒÿÅçÖ…–Å¡Ö—°ÃÅç…ïÖ—îÅÈï…ºÅ=…ëï…ÃÏÅçÖπΩπ•çÖ∞ÅÅ¡ÖÂµïπ—}•π—ïπ–πÕ’ççïïëïëÄÅ…ïµÖ•πÃÅ—°îÅÕΩ±îÅÖççï¡—ïêÅ=…ëï»µâ•…—†ÅÖ’—°Ω…•—‰Ï(¥ÅÅ5I¥¿ƒ∏π5I¥¿·ÄÅÖ…îÄ®®‡º‡Å=5A1Q®®Ï(¥Å…ïù•Õ—…‰ÅQÂ¡ïMç…•¡–Å•ÃÅ=¡ïπA$ÅÖ’—°Ω…•—‰ÏÅùïπï…Ö—ïêÅ)M=8Å•ÃÅ›…•—ï»ÅΩ’—¡’–ÅΩπ±‰ÅÖπêÅM›Öùùï»Å…ïµÖ•πÃÅπΩ∏µ•π—ï…Öç—•ŸîÏ(¥Åëï¡±Ω‰∞Å…ïÖ∞Å¡…ΩŸ•ëï…Ã∞Å…ïµΩ—îÅ•πô…ÑÅÖπêÅô…Ωπ—ïπêÅ…ïµÖ•∏Å9=PÅUQ!=I%i∏()A…•µÖ…‰Å¡±ÖπÃËÄ®®ƒ–ºƒ–Å=5A1Q®®∏)Iïµïë•Ö—•ΩπÃÅÄƒÿ¥ƒƒµH≈Ä∞ÅÄƒÿ¥ƒƒµH…Ä∞ÅÄƒÿ¥ƒÃµH≈ÄËÅ°•Õ—Ω…•çÖ∞ÅÕ’¡¡Ω…—•πúÅÖ…—•ôÖç—Ã∞ÅπΩ–ÅÖëë•—•ΩπÖ∞ÅÕï…•Ö∞µ¡±Ö∏ÅçΩ’π–∏((åååÅAΩÕ–µç±ΩÕ’…îÅAHÄå»‡ÅùΩŸï…πÖπçî()A°ÖÕîÄƒÿÅ…ïµÖ•πÃÄ®©1=MÉäPÅ!U58ÅAAI=Y®®ÅÖÃÅ°•Õ—Ω…•çÖ∞Åç±ΩÕ’…îÅÕ—Ö—’Ã∏)AHÄå»‡Å¡ΩÕ–µç±ΩÕ’…îÅ…ïµïë•Ö—•Ω∏Å•ÃÄ®©!U58ÅAAI=YÉäPÅAML®®ÅÖπêÄ®©5IÉäPÅ1=M®®∏)%8¥¿ƒ∏π%8¥¿–ÅÖπêÅHÿÅÖ…îÄ®©1=MÉäPÅAML®®∏)Q°îÅ¡ΩÕ–µç±ΩÕ’…îÅ…ïµïë•Ö—•Ω∏Åë•êÅπΩ–Å…ïΩ¡ï∏ÅA°ÖÕîÄƒÿÅÖπêÅë•êÅπΩ–Åç°ÖπùîÅ5I¥¿ƒ∏π5I¥¿‡ÅçΩµ¡±ï—•Ω∏∏)–Å—°îÅAHÄå»‡Å¡ΩÕ–µç±ΩÕ’…îÅç±ΩÕïΩ’–∞ÅA°ÖÕîÄƒ‹Å›ÖÃÄ®©9=PÅMQIQÉäPÅ9=PÅUQ!=I%i®®∏)’……ïπ–ÅÕ—Ö—îËÅA°ÖÕîÄƒ‹Å=9QaPÅÖπêÅIMI ÅÖ…îÄ®©!U58ÅAAI=YÉäPÅAMLÉäPÅ1=M®®Ï)ÅHƒ‹µ!H¥¿ƒ∏πHƒ‹µ!H¥ƒ¡Ä∞ÅÅHƒ‹µ=91%P¥¿≈ÄÅÖπêÅÅHƒ‹µ	1=,¥¿≈ÄÅ…ïµÖ•∏Å=A8ÏÅA18ÅÖπêÅaUQ%=8Å…ïµÖ•∏Ä®©9=PÅUQ!=I%i®®∏()5•±ïÕ—ΩπîÅçΩ’π—ï…ÃËÅ¡°ÖÕïÃÅç±ΩÕïêÅÄ–ºƒ¡ÄÏÅ…ï≈’•…ïµïπ—ÃÅÄÃ–º‰≈ÄÏÅΩ¡ï∏)…ï≈’•…ïµïπ—ÃÅÄ‘›ÄÏÅ¡±ÖπÃÅÄ‘¿º‘¡ÄÏÅ¡ï…çïπ–ÅÄ–¡Ä∏((åååÅççï¡—ïêÅA°ÖÕî¥ƒÿÅïŸ•ëïπçî((¥ÅÄƒÿ¥ƒ–µMU55IdπµëÄÉäPÅô•πÖ∞Åµï…ùîΩ…ïŸ•ï‹Ω=¡ïπA$Å±ïëùï»ÅÖπêÅ°’µÖ∏ÅŸï…•ô‰(¥ÅÄƒÿµ1=MUIπµëÄÉäPÅ°’µÖ∏µÖ¡¡…ΩŸïêÅA°ÖÕî¥ƒÿÅç±ΩÕ’…îÅÖ’—°Ω…•—‰(¥ÅÄƒÿµAH»‡µI5%Q%=8πµëÄÉäPÅ°’µÖ∏µÖ¡¡…ΩŸïêÅ¡ΩÕ–µç±ΩÕ’…îÅAHÄå»‡Å…ïµïë•Ö—•Ω∏Ä°%8¥¿ƒ∏π%8¥¿–∞ÅHÿÅ1=MÉäPÅAMLÏÅAHÄå»‡Å5IÉäPÅ1=M§((ååÅA°ÖÕîÄƒ‹ËÅ’—°ïπ—•çÖ—ïêÅ	HÅ°ïç≠Ω’–ÄòÅA…•ŸÖç‰((®©ΩÖ∞Ë®®Åç…•Ö»Åç°ïç≠Ω’–ÅÖ’—ïπ—•çÖëºÅ¡Ö…ÑÅ¡ïÕÕΩÑÅõµÕ•çÑÅπºÅ	…ÖÕ•∞ÅÕï¥ÅÖ…µÖÈïπÖ»ÅAÅç…‘ÅπºÅçÖµ•π°ºÅÖ—’Ö∞∏((®©M—Ö—’ÃË®®Å=9QaPÅÖπêÅIMI Ä®©!U58ÅAAI=YÉäPÅAMLÉäPÅ1=M®®∏Åï¡ïπëÃÅΩ∏ÅA°ÖÕîÄƒÿÅ1=MÉäPÅ!U58ÅAAI=Y∏ÅÅHƒ‹µ!H¥¿ƒ∏πHƒ‹µ!H¥ƒ¡Ä∞ÅÅHƒ‹µ=91%P¥¿≈ÄÅÖπêÅÅHƒ‹µ	1=,¥¿≈ÄÅ…ïµÖ•∏Å=A8∏ÅA18∞ÅaUQ%=8ÅÖπêÅ•µ¡±ïµïπ—Ö—•Ω∏Å…ïµÖ•∏Å’πÖ’—°Ω…•ÈïêÅ’π—•∞ÅÑÅÕï¡Ö…Ö—îÅ°’µÖ∏Åëïç•Õ•Ω∏∏()IïÕïÖ…ç†ÅÖ’—°Ω…•—‰ËÅÄπ¡±Öππ•πúΩ¡°ÖÕïÃºƒ‹µÖ’—°ïπ—•çÖ—ïêµâ»µç°ïç≠Ω’–µ¡…•ŸÖç‰ºƒ‹µIMI πµëÄÏÅÖëŸï…ÕÖ…•Ö∞Å…ïŸ•ï‹ËÅÄƒ‹µIMI µIY%\πµëÄÉäPÅ@¿Ù¿∞Å@ƒÙ¿∞ÅµÖ—ï…•Ö∞Å@»Ù¿ÏÅ°’µÖ∏ÅÖççï¡—ÖπçîÅÖ’—°Ω…•—‰ËÅÄƒ‹µIMI µ!U58µIY%\πµëÄ∏ÅÅHƒ‹µ	1=,¥¿≈ÄÅ…ïµÖ•πÃÅΩ¡ï∏ÅôΩ»ÅπºµAÅï±Ö—ºÅçΩµ¡Ö—•â•±•—‰∏((ååÅA°ÖÕîÄƒ‡ËÅï±Ö—ºÅM°•¡¡•πúÅE’Ω—îÄòÅMï±ïç—•Ω∏((®©ΩÖ∞Ë®®ÅÕ’âÕ—•—’•»Åô…ï—îÅΩ¡ï…Öç•ΩπÖ∞Åô•·ºÅ¡Ω»ÅçΩ—áüçºÅîÅÕï±óüçºÅÖ’—Ω…•—Ö—•ŸÖÃÅ¡…ïÕï…ŸÖëÖÃÅÖ”§ÅºÅë•Õ¡Ö—ç†∏((®©M—Ö—’ÃË®®Å9Ω–ÅÕ—Ö…—ïê∏Åï¡ïπëÃÅΩ∏ÅA°ÖÕîÄƒ‹∏((ååÅA°ÖÕîÄƒ‰ËÅM—Ω…ïô…Ωπ–ÅAÖÂµïπ———ïµ¡–Å!Ö…ëïπ•πú((®©ΩÖ∞Ë®®Åïπë’…ïçï»ÅºÅ∑Õë’±ºÅï·•Õ—ïπ—îÅ¡Ö…ÑÅçÖ…”çºÅÖ’—ïπ—•çÖëºÅ4ƒ∞ÅµÖπ—ïπëºÅ—ΩëºÅºÅô±’·ºÅ¡À§µ=…ëï»∏((®©M—Ö—’ÃË®®Å9Ω–ÅÕ—Ö…—ïê∏Åï¡ïπëÃÅΩ∏ÅA°ÖÕîÄƒ‡∏((ååÅA°ÖÕîÄ»¿ËÅÕÂπåÅAÖÂµïπ–ÅΩπô•…µÖ—•Ω∏((®©ΩÖ∞Ë®®ÅµÖ—ï…•Ö±•ÈÖ»ÅçΩπô•…µáüçºÅ	µΩπ±‰Å…ïç’¡ïÀÖŸï∞∞Å…Ö—îµ±•µ•—ïêÅîÅô•πÖπçï•…Öµïπ—îÅÕïù’…ÑÅÕΩàÅ…ïô…ïÕ†∞Å∑È±—•¡±ÖÃÅÖâÖÃÅîÅÕ’çïÕÕºÅ—Ö…ë•º∏((®©M—Ö—’ÃË®®Å9Ω–ÅÕ—Ö…—ïê∏Åï¡ïπëÃÅΩ∏ÅA°ÖÕîÄƒ‰∏((ååÅA°ÖÕîÄ»ƒËÅ=…ëï»ÅΩπô•…µÖ—•Ω∏ÄòÅÖ—Ö±ΩúÅ!ÖπëΩôò((®©ΩÖ∞Ë®®Åïπ—…ïùÖ»ÅçΩπô•…µáüçºÅëîÅ¡ïë•ëºÅÕïù’…ÑÅîÅçÖ”Ö±ΩùºÅ…ïÕΩ±€µŸï∞Ω…ïŸÖ±•ìÖŸï∞Å¡Ö…ÑÅºÅ	∏((®©M—Ö—’ÃË®®Å9Ω–ÅÕ—Ö…—ïê∏Åï¡ïπëÃÅΩ∏ÅA°ÖÕîÄ»¿∏((ååÅA°ÖÕîÄ»»ËÅΩπ—…Öç–Å-•–∞ÅYï…•ô•çÖ—•Ω∏ÄòÅIï±ïÖÕî((®©ΩÖ∞Ë®®Å¡…ΩŸÖ»Å≈’îÅºÅâÖç≠ïπêÅïÕ”ÑÅ¡…Ωπ—ºÅîÅïπ—…ïùÖ»ÅºÅ≠•–Å≈’îÅ¡ï…µ•—îÅÖºÅô…Ωπ—ïπêÅëïÕïπŸΩ±Ÿï»ÅÕï¥Å•πŸïπ—Ö»ÅçΩπ—…Ö—º∏((®©M—Ö—’ÃË®®Å9Ω–ÅÕ—Ö…—ïê∏Åï¡ïπëÃÅΩ∏ÅA°ÖÕîÄ»ƒ∏((ååÅïô•π•—•Ω∏ÅΩòÅΩπî()<Åµ•±ïÕ—ΩπîÅœÃÅ¡ΩëîÅôïç°Ö»Å≈’ÖπëºÅ°Ω’Ÿï»ÅïŸ•ì©πç•ÑÅAMLÅ¡Ö…ÑÅ—ΩëΩÃÅΩÃÅùÖ—ïÃÅ¡…ïŸ•Õ—ΩÃËÅçΩπ—…Ö—ΩÃÅM—Ω…îΩ=¡ïπA$∞ÅÖ’—ïπ—•çáüçº∞ÅçÖ¡Öâ•±•—‰ΩçΩπçΩ…À©πç•ÑÅîÅµï…ùîÅëîÅçÖ……•π°º∞Åç°ïç≠Ω’–Å	HΩ¡…•ŸÖç•ëÖëî∞Åï±Ö—ºÅÕ°•¡¡•πú∞ÅAÖÂµïπ———ïµ¡–ΩçΩπô•…µÖ—•Ω∏∞ÅΩ…ëï»ΩçÖ—Ö±ΩúÅ°ÖπëΩôò∞Å≠•–Å—Â¡ïÃΩiΩêΩô•·—’…ïÃΩµΩç≠Ã∞ÅçΩπ—…Öç–Å—ïÕ—Ã∞ÅÕ’•—ïÃÅâÖç≠ïπê∞Åµ•ù…Ö—•ΩπÃΩçΩπÕ—…Ö•π—Ã∞Åë…•ô–Ω±•π–Ωâ’•±ê∞ÅÕïç’…•—‰ÅπïùÖ—•ŸîÅ¡…ΩΩôÃÅîÅ…ï±ïÖÕîÅŸï…•ô•çÖ—•Ω∏ÅÖ¡±•èÖŸï∞∏()A°ÖÕîÄƒ‘Å=9QaP∞ÅIMI ∞ÅA18ÅÖπêÅç±ΩÕ’…îÅÖ…îÅ!U58ÅAAI=YÉäPÅAMLÏ)A±ÖπÃÄƒ‘¥¿ƒ∏∏ƒ‘¥¿‡ÅÖ…îÄ®®‡º‡Å!U58ÅAAI=YÉäPÅAML®®ÅÖπêÅA±ÖπÃÄƒ‘¥¿‹ÅÖπê(ƒ‘¥¿‡ÅÖ…îÅ=U59Q11dÅ1=M∏ÅIP¥¿ƒ∏πIP¥¿‰ÅÖ…îÄ‰º‰Å=5A1Q∏ÅA°ÖÕîÄƒÿ)•ÃÄ®©1=MÉäPÅ!U58ÅAAI=Y®®ÏÅA±ÖπÃÅÄƒÿ¥¿≈Ä∏πÄƒÿ¥ƒ—ÄÅÖ…îÄ®®ƒ–ºƒ–Å=5A1Q®®Ï)Å5I¥¿ƒ∏π5I¥¿·ÄÅÖ…îÄ®®‡º‡Å=5A1Q®®∏ÅA°ÖÕîÄƒ‹Å=9QaPÅÖπêÅIMI ÅÖ…îÄ®©!U58ÅAAI=YÉäPÅAMLÉäPÅ1=M®®ÏÅÅHƒ‹µ!H¥¿ƒ∏πHƒ‹µ!H¥ƒ¡Ä∞ÅÅHƒ‹µ=91%P¥¿≈ÄÅÖπêÅÅHƒ‹µ	1=,¥¿≈ÄÅ…ïµÖ•∏Å=A8ÏÅA18ÅÖπêÅaUQ%=8Å…ïµÖ•∏Å’πÖ’—°Ω…•Èïê∏)IïÖ∞Å¡…ΩŸ•ëï…Ã∞Å•πô…ÖïÕ—…’—’…ÑÅ…ïµΩ—Ñ∞Å¡’Õ†∞Åëï¡±Ω‰ÅÖπêÅô…Ωπ—ïπêÅ…ïµÖ•∏Å’πÖ’—°Ω…•Èïê∏(
