@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
-status: researching
-last_updated: "2026-09-10T13:55:16Z"
+status: discussing
+last_updated: "2026-09-10T15:30:00Z"
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 50
   completed_plans: 50
   percent: 40
-stopped_at: PHASE 17 RESEARCH — TECHNICAL RESEARCH COMPLETE — HUMAN REVIEW REQUIRED
+stopped_at: PHASE 17 RESEARCH — HUMAN APPROVED — PASS — CLOSED; R17 HUMAN DECISION GATE REQUIRED
 current_phase: 17
 current_phase_name: authenticated-br-checkout-privacy
 current_plan: null
@@ -24,8 +24,8 @@ See: `.planning/PROJECT.md`.
 
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, duplicate order or improper fulfillment.
 
-**Current focus:** Phase 17 CONTEXT is **HUMAN APPROVED — PASS — CLOSED**; Phase 17 RESEARCH is **TECHNICAL RESEARCH COMPLETE — HUMAN REVIEW REQUIRED**; Phase 16 remains **HUMAN APPROVED — CLOSED**.
-Phase 17 PLAN and EXECUTION remain **NOT AUTHORIZED**.
+**Current focus:** Phase 17 CONTEXT is **HUMAN APPROVED — PASS — CLOSED**; Phase 17 RESEARCH is **HUMAN APPROVED — PASS — CLOSED**; Phase 16 remains **HUMAN APPROVED — CLOSED**.
+`R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` and `R17-BLOCK-01` remain OPEN and require separate human adjudication before PLAN may be considered. Phase 17 PLAN and EXECUTION remain **NOT AUTHORIZED**.
 Phase 18+ and all unrelated operational gates remain **NOT AUTHORIZED**.
 
 ## Execution Policy
@@ -36,7 +36,7 @@ Execution remains manual-review gated.
 
 - **Harness:** Codex
 - **Orchestrator:** GPT-5.6 Sol — Extra High on Codex
-- **Subagents (current Phase 17 RESEARCH):** A–J, serial, maximum concurrency 1; GPT-5.6 Sol High/Extra High as recorded in `17-RESEARCH.md`
+- **Subagents (Phase 17 RESEARCH, historical):** A–J, serial, maximum concurrency 1; GPT-5.6 Sol High/Extra High as recorded in `17-RESEARCH.md`
 - `mode=interactive`
 - `parallelization=false`
 - `auto-chain=false`
@@ -50,7 +50,7 @@ CONTEXT, RESEARCH, PLAN and EXECUTION are HUMAN APPROVED — PASS; R16-HR-01..R1
 and B16-PLAN-HR-01..B16-PLAN-HR-02 are CLOSED — PASS. Phase 16 is
 **HUMAN APPROVED — CLOSED**; Plans `16-01`..`16-14` are **14/14 COMPLETE**;
 `MRG-01..MRG-08` are **8/8 COMPLETE**. Phase 17 CONTEXT is **HUMAN APPROVED — PASS — CLOSED**;
-Phase 17 RESEARCH is **TECHNICAL RESEARCH COMPLETE — HUMAN REVIEW REQUIRED**. Phase 17 PLAN and EXECUTION, Phase 18+ and all unrelated operational gates remain unauthorized.
+Phase 17 RESEARCH is **HUMAN APPROVED — PASS — CLOSED**. `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` and `R17-BLOCK-01` remain OPEN; Phase 17 PLAN and EXECUTION, Phase 18+ and all unrelated operational gates remain unauthorized.
 
 ## Current Gate
 
@@ -91,13 +91,16 @@ Phase 16 closure: HUMAN APPROVED — CLOSED
 Phase 16 active blockers: 0
 
 Phase 17 CONTEXT: HUMAN APPROVED — PASS — CLOSED
-Phase 17 RESEARCH: TECHNICAL RESEARCH COMPLETE — HUMAN REVIEW REQUIRED
+Phase 17 RESEARCH: HUMAN APPROVED — PASS — CLOSED
+R17-HR-01..R17-HR-10: OPEN — HUMAN DECISIONS REQUIRED
+R17-CONFLICT-01: OPEN — CONFIRMED
+R17-BLOCK-01: OPEN — CONFIRMED
 Phase 17 PLAN / EXECUTION: NOT AUTHORIZED
 
 Next permitted action:
-Human review of Phase 17 RESEARCH
+Human adjudication of R17-HR-01..R17-HR-10 and R17-BLOCK-01
 
-Push: NOT AUTHORIZED
+Push: NOT AUTHORIZED except explicit documentary synchronization already requested by the human
 Deploy / release: NOT AUTHORIZED
 REAL RESEND / REAL PROVIDERS: NOT AUTHORIZED
 REMOTE DB / REDIS: NOT AUTHORIZED
@@ -158,7 +161,7 @@ Review threads:
 Remote CI:
 GREEN
 
-Phase 17:
+Phase 17 at PR #28 closeout:
 NOT STARTED — NOT AUTHORIZED
 ```
 
@@ -178,10 +181,17 @@ Milestone v1.1:
 - known plans human-approved executed: **50/50** (Phase 13: 7; Phase 14: 21; Phase 15: 8; Phase 16: 16-01..16-14)
 - Phase 15: **CLOSED — HUMAN APPROVED** (Plans 15-01..15-08 HUMAN APPROVED — PASS; 15-07 and 15-08 documentally closed; CART-01..CART-09 9/9 COMPLETE)
 - Phase 16: **CLOSED — HUMAN APPROVED** (Plans 16-01..16-14 **14/14 COMPLETE**; MRG-01..MRG-08 **8/8 COMPLETE**)
-- Phase 17 CONTEXT: **HUMAN APPROVED — PASS — CLOSED**; RESEARCH is **TECHNICAL RESEARCH COMPLETE — HUMAN REVIEW REQUIRED**; PLAN and EXECUTION remain **NOT AUTHORIZED**
+- Phase 17 CONTEXT / RESEARCH: **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` and `R17-BLOCK-01` remain OPEN; PLAN and EXECUTION remain **NOT AUTHORIZED**
 - frontend: BLOCKED
 
 ## Accepted Evidence References
+
+Phase 17 accepted research authority:
+
+- `.planning/phases/17-authenticated-br-checkout-privacy/17-CONTEXT.md` — CONTEXT HUMAN APPROVED — PASS — CLOSED.
+- `.planning/phases/17-authenticated-br-checkout-privacy/17-RESEARCH.md` — technical research authority; 13/13 questions researched/classified.
+- `.planning/phases/17-authenticated-br-checkout-privacy/17-RESEARCH-REVIEW.md` — adversarial technical review; final P0=0, P1=0, material P2=0, INFO=0.
+- `.planning/phases/17-authenticated-br-checkout-privacy/17-RESEARCH-HUMAN-REVIEW.md` — RESEARCH HUMAN APPROVED — PASS — CLOSED; `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01`, `R17-BLOCK-01` remain OPEN; PLAN not authorized.
 
 Phase 16 accepted research review authority:
 
@@ -226,7 +236,7 @@ Documentary ancestry before closure: fbc1182efa8a82ae5c37ce85176dd5b022459085
 Closure artifact commit: 049848feef2abcc5f92a0b265a445a10a3cc57cc
 ```
 
-No open Phase-15 blocker remains. Phase 16 is **HUMAN APPROVED — CLOSED**; Plans `16-01`..`16-14` are **14/14 COMPLETE**; `MRG-01..MRG-08` are **8/8 COMPLETE**. Phase 17 is **NOT STARTED — NOT AUTHORIZED**.
+No open Phase-15 blocker remains. Phase 16 is **HUMAN APPROVED — CLOSED**; Plans `16-01`..`16-14` are **14/14 COMPLETE**; `MRG-01..MRG-08` are **8/8 COMPLETE**.
 
 ## Phase 16 Accepted Closure
 
@@ -238,11 +248,10 @@ Plans 16-01..16-14: 14/14 COMPLETE
 MRG-01..MRG-08: 8/8 COMPLETE
 Remediations 16-11-R1, 16-11-R2, 16-13-R1: historical supporting artifacts (not additional serial plans)
 Phase 16 active blockers: 0
-Phase 17: NOT STARTED — NOT AUTHORIZED
 Closure artifact: .planning/phases/16-cart-merge-review/16-CLOSURE.md
 ```
 
-No open Phase-16 blocker remains. Phase 17 is **NOT STARTED — NOT AUTHORIZED** until a separate human decision on Phase 17 CONTEXT.
+No open Phase-16 blocker remains.
 
 Phase 14 accepted evidence is preserved in:
 
@@ -394,7 +403,7 @@ This historical Phase-15 execution authorization did **not** extend to:
 - remote infrastructure;
 - bypassing the blocking human checkpoint after Plan 15-06.
 
-A separate human decision on 2026-08-22 authorized Phase 16 CONTEXT; that CONTEXT is HUMAN APPROVED — PASS. Phase 16 RESEARCH is HUMAN APPROVED — PASS, with R16-HR-01..R16-HR-08 CLOSED — APPROVED. The Phase 16 PLAN is HUMAN APPROVED — PASS after B16-PLAN-HR-01..B16-PLAN-HR-02 were remediated and closed. Phase 16 EXECUTION completed for the accepted 14-plan serial set. Phase 16 is **HUMAN APPROVED — CLOSED**. Phase 17 is **NOT STARTED — NOT AUTHORIZED**.
+A separate human decision on 2026-08-22 authorized Phase 16 CONTEXT; that CONTEXT is HUMAN APPROVED — PASS. Phase 16 RESEARCH is HUMAN APPROVED — PASS, with R16-HR-01..R16-HR-08 CLOSED — APPROVED. The Phase 16 PLAN is HUMAN APPROVED — PASS after B16-PLAN-HR-01..B16-PLAN-HR-02 were remediated and closed. Phase 16 EXECUTION completed for the accepted 14-plan serial set. Phase 16 is **HUMAN APPROVED — CLOSED**. Phase 17 CONTEXT and RESEARCH are **HUMAN APPROVED — PASS — CLOSED**; its human decision gate remains open and PLAN/EXECUTION are not authorized.
 
 Plan 15-05 final checkpoint:
 
@@ -432,7 +441,7 @@ human checkpoint. Phase 15 CONTEXT, RESEARCH, PLAN and closure are
 human-approved. Plans 15-01..15-08 are human-approved. Phase 16 is
 **HUMAN APPROVED — CLOSED**; Plans `16-01`..`16-14` are **14/14 COMPLETE**;
 `MRG-01..MRG-08` are **8/8 COMPLETE**. No open Phase-16 blocker remains.
-Phase 17 is **NOT STARTED — NOT AUTHORIZED**.
+Phase 17 CONTEXT and RESEARCH are **HUMAN APPROVED — PASS — CLOSED**. `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` and `R17-BLOCK-01` remain OPEN and require human adjudication before PLAN may be considered.
 Deploy, real providers, remote infrastructure and frontend remain unauthorized.
 
 Plan 15-04 final human review:
@@ -496,15 +505,18 @@ Closed Phase-15 PLAN-review blockers:
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/17-authenticated-br-checkout-privacy/17-RESEARCH.md
+**Resume file:** .planning/phases/17-authenticated-br-checkout-privacy/17-RESEARCH-HUMAN-REVIEW.md
 
-Last session: 2026-09-10T13:55:16Z
+Last session: 2026-09-10T15:30:00Z
 
 Stopped at:
 
 ```text
 PHASE 17 CONTEXT: HUMAN APPROVED — PASS — CLOSED
-PHASE 17 RESEARCH: TECHNICAL RESEARCH COMPLETE — HUMAN REVIEW REQUIRED
+PHASE 17 RESEARCH: HUMAN APPROVED — PASS — CLOSED
+R17-HR-01..R17-HR-10: OPEN — HUMAN DECISIONS REQUIRED
+R17-CONFLICT-01: OPEN — CONFIRMED
+R17-BLOCK-01: OPEN — CONFIRMED
 PHASE 17 PLAN / EXECUTION: NOT AUTHORIZED
 PHASE 18+: NOT AUTHORIZED
 PHASE 16: HUMAN APPROVED — CLOSED
@@ -512,17 +524,17 @@ PR #28 POST-CLOSURE REMEDIATION: HUMAN APPROVED — PASS — MERGED
 FIN-01..FIN-04: CLOSED — PASS
 R6: CLOSED — PASS
 FRONTEND: BLOCKED
-PUSH: NOT AUTHORIZED
 DEPLOY: NOT AUTHORIZED
 REAL PROVIDERS / REMOTE INFRA: NOT AUTHORIZED
 ```
 
 Resume with:
 
+- `.planning/phases/17-authenticated-br-checkout-privacy/17-RESEARCH-HUMAN-REVIEW.md`
 - `.planning/phases/17-authenticated-br-checkout-privacy/17-RESEARCH.md`
 - `.planning/phases/17-authenticated-br-checkout-privacy/17-RESEARCH-REVIEW.md`
 - `.planning/phases/17-authenticated-br-checkout-privacy/17-CONTEXT.md`
 - `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md` as accepted financial authority
 - `.planning/phases/16-cart-merge-review/16-CLOSURE.md` as historical closure authority
 
-**Next permitted step:** Human review of Phase 17 RESEARCH. Phase 17 PLAN/EXECUTION, deploy, real providers, remote infra, push and frontend remain NOT AUTHORIZED.
+**Next permitted step:** Human adjudication of `R17-HR-01..R17-HR-10` and `R17-BLOCK-01`. Phase 17 PLAN/EXECUTION, deploy, real providers, remote infra and frontend remain NOT AUTHORIZED.
