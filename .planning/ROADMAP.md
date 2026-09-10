@@ -27,9 +27,9 @@ Este milestone backend-only fecha as dependências que impedem o Frontend Milest
 - Phase 15 RESEARCH está **HUMAN APPROVED — PASS**
 - Phase 15 PLAN está **HUMAN APPROVED — PASS** (8 plans / 8 serial waves)
 - Phase 15 está **CLOSED — HUMAN APPROVED**; Plans `15-01`..`15-08` estão **8/8 HUMAN APPROVED — PASS**, `15-07` e `15-08` estão documentally closed, e CART-01..CART-09 estão **9/9 COMPLETE**
-- Phase 16 está **CLOSED — HUMAN APPROVED**; Plans `16-01`..`16-14` estão **14/14 COMPLETE**; `MRG-01..MRG-08` estão **8/8 COMPLETE**; Phase 17 CONTEXT e RESEARCH estão **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` e `R17-BLOCK-01` permanecem OPEN; PLAN e EXECUTION permanecem **NOT AUTHORIZED**; Phase 18+ permanecem não autorizadas
+- Phase 16 está **CLOSED — HUMAN APPROVED**; Plans `16-01`..`16-14` estão **14/14 COMPLETE**; `MRG-01..MRG-08` estão **8/8 COMPLETE**; Phase 17 CONTEXT e RESEARCH estão **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-ADJ-01` está **HUMAN APPROVED — PASS**; `R17-HR-01..R17-HR-10` estão HUMAN APPROVED; `R17-BLOCK-01` permanece **ADJUDICATED — EXTERNAL BLOCKER RETAINED / PHASE 17 EXIT/CLOSURE BLOCKER**; PLAN está elegível para autorização humana separada, mas PLAN e EXECUTION permanecem **NOT AUTHORIZED**; Phase 17 CLOSURE permanece BLOCKED; Phase 18 como um todo e Phase 18+ permanecem **NOT AUTHORIZED**
 - A remediação pós-closure do PR #27 recebeu PASS humano; B15-PR27-HR-01..HR-06 estão CLOSED — PASS. Phase 16 CONTEXT, RESEARCH, PLAN e EXECUTION são HUMAN APPROVED — PASS; Phase 16 está **CLOSED — HUMAN APPROVED**; remediações `16-11-R1`, `16-11-R2` e `16-13-R1` são artefatos históricos de suporte, não planos seriais adicionais
-- A remediação pós-closure do PR #28 recebeu aprovação humana (HUMAN APPROVED — PASS) e foi mergeada (MERGED — CLOSED). A remediação pós-closure não reabriu a Phase 16 e não alterou a conclusão de MRG-01..MRG-08. Phase 16 permanece CLOSED — HUMAN APPROVED. Phase 17 CONTEXT e RESEARCH estão HUMAN APPROVED — PASS — CLOSED; `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` e `R17-BLOCK-01` permanecem OPEN; PLAN e EXECUTION permanecem NOT AUTHORIZED. Evidência aditiva em `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md`
+- A remediação pós-closure do PR #28 recebeu aprovação humana (HUMAN APPROVED — PASS) e foi mergeada (MERGED — CLOSED). A remediação pós-closure não reabriu a Phase 16 e não alterou a conclusão de MRG-01..MRG-08. Phase 16 permanece CLOSED — HUMAN APPROVED. Phase 17 CONTEXT e RESEARCH estão HUMAN APPROVED — PASS — CLOSED; `R17-HR-ADJ-01` está HUMAN APPROVED — PASS; `R17-BLOCK-01` permanece external blocker e Phase 17 exit/closure blocker; PLAN é elegível para autorização humana separada mas PLAN/EXECUTION permanecem NOT AUTHORIZED; Phase 18 como um todo e Phase 18+ permanecem NOT AUTHORIZED. Evidência aditiva em `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md`
 - deploy, real Resend/real providers, remote infra e frontend permanecem não autorizados/bloqueados
 
 ## Milestones
@@ -49,12 +49,12 @@ O snapshot histórico de v1.0 permanece em `milestones/v1.0-ROADMAP.md`. A tag e
 | 14 | Customer Auth & Verification | 13 | 9 | **CLOSED — HUMAN APPROVED; 21/21 plans; 63/63 tasks; 9/9 requirements** |
 | 15 | Guest Cart Capability & Concurrency | 14 | 9 | **CLOSED — HUMAN APPROVED; 8/8 plans; CART-01..CART-09 = 9/9 COMPLETE** |
 | 16 | Cart Merge & Review | 15 | 8 | **CLOSED — HUMAN APPROVED; 14/14 plans COMPLETE; MRG-01..MRG-08 = 8/8 COMPLETE** |
-| 17 | Authenticated BR Checkout & Privacy | 16 | 10 | **CONTEXT / RESEARCH HUMAN APPROVED — PASS — CLOSED; R17-HR-01..10 + R17-CONFLICT-01 + R17-BLOCK-01 OPEN; PLAN / EXECUTION NOT AUTHORIZED** |
-| 18 | Gelato Shipping Quote & Selection | 17 | 8 | Not started |
-| 19 | Storefront PaymentAttempt Hardening | 18 | 9 | Not started |
-| 20 | Async Payment Confirmation | 19 | 10 | Not started |
-| 21 | Order Confirmation & Catalog Handoff | 20 | 8 | Not started |
-| 22 | Contract Kit, Verification & Release | 21 | 12 | Not started |
+| 17 | Authenticated BR Checkout & Privacy | 16 | 10 | **CONTEXT / RESEARCH HUMAN APPROVED — PASS — CLOSED; R17-HR-ADJ-01 HUMAN APPROVED — PASS; PLAN ELIGIBLE FOR SEPARATE HUMAN AUTHORIZATION / NOT AUTHORIZED; EXECUTION NOT AUTHORIZED; CLOSURE BLOCKED BY R17-BLOCK-01** |
+| 18 | Gelato Shipping Quote & Selection | 17 | 8 | **NOT AUTHORIZED — blocked by Phase 17 closure** |
+| 19 | Storefront PaymentAttempt Hardening | 18 | 9 | **NOT AUTHORIZED — linear predecessor blocked** |
+| 20 | Async Payment Confirmation | 19 | 10 | **NOT AUTHORIZED — linear predecessor blocked** |
+| 21 | Order Confirmation & Catalog Handoff | 20 | 8 | **NOT AUTHORIZED — linear predecessor blocked** |
+| 22 | Contract Kit, Verification & Release | 21 | 12 | **NOT AUTHORIZED — linear predecessor blocked; release BLOCKED** |
 
 ## Phase 13: Storefront Contract Foundation & Surface Lockdown
 
@@ -248,7 +248,13 @@ authority, and capability leakage is ZERO. No deploy, provider or remote
 infrastructure action is authorized. Phase 16 está **CLOSED — HUMAN APPROVED**;
 Plans `16-01`..`16-14` estão **14/14 COMPLETE**; `MRG-01..MRG-08` estão **8/8 COMPLETE**.
 Closure authority: `.planning/phases/16-cart-merge-review/16-CLOSURE.md`.
-Phase 17 CONTEXT e RESEARCH estão **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` e `R17-BLOCK-01` permanecem OPEN; Phase 17 PLAN e EXECUTION permanecem **NOT AUTHORIZED**; deploy, real providers, remote infra e frontend permanecem não autorizados.
+Phase 17 CONTEXT e RESEARCH estão **HUMAN APPROVED — PASS — CLOSED**;
+`R17-HR-ADJ-01` está **HUMAN APPROVED — PASS**; `R17-BLOCK-01` permanece
+external blocker e Phase 17 exit/closure blocker. Phase 17 PLAN está elegível
+para autorização humana separada, mas PLAN e EXECUTION permanecem **NOT
+AUTHORIZED**; Phase 17 CLOSURE permanece BLOCKED; Phase 18 como um todo e
+Phase 18+ permanecem NOT AUTHORIZED; deploy, release, real providers, remote
+infra e frontend permanecem não autorizados/bloqueados.
 
 ### Post-closure PR #27 governance
 
@@ -321,7 +327,12 @@ PR #28 post-closure remediation is **HUMAN APPROVED — PASS** and **MERGED — 
 FIN-01..FIN-04 and R6 are **CLOSED — PASS**.
 The post-closure remediation did not reopen Phase 16 and did not change MRG-01..MRG-08 completion.
 At the PR #28 post-closure closeout, Phase 17 was **NOT STARTED — NOT AUTHORIZED**.
-Current state: Phase 17 CONTEXT and RESEARCH are **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` and `R17-BLOCK-01` remain OPEN; PLAN and EXECUTION remain **NOT AUTHORIZED**.
+Current state: Phase 17 CONTEXT and RESEARCH are **HUMAN APPROVED — PASS —
+CLOSED** and `R17-HR-ADJ-01` is **HUMAN APPROVED — PASS**. `R17-BLOCK-01`
+remains an external Phase 17 exit/closure blocker. PLAN is eligible for
+separate human authorization but PLAN and EXECUTION remain **NOT AUTHORIZED**;
+Phase 17 closure remains BLOCKED; Phase 18 as a whole and Phase 18+ remain NOT
+AUTHORIZED.
 
 Milestone counters: phases closed `4/10`; requirements `34/91`; open
 requirements `57`; plans `50/50`; percent `40`.
@@ -336,39 +347,57 @@ requirements `57`; plans `50/50`; percent `40`.
 
 **Goal:** criar checkout autenticado para pessoa física no Brasil sem armazenar CPF cru no caminho atual.
 
-**Status:** CONTEXT and RESEARCH **HUMAN APPROVED — PASS — CLOSED**. Depends on Phase 16 CLOSED — HUMAN APPROVED. `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` and `R17-BLOCK-01` remain OPEN and require separate human adjudication. PLAN, EXECUTION and implementation remain unauthorized until a separate human decision after those adjudications are materialized.
+**Status:** CONTEXT and RESEARCH **HUMAN APPROVED — PASS — CLOSED**. Depends
+on Phase 16 CLOSED — HUMAN APPROVED. `R17-HR-ADJ-01` is **HUMAN APPROVED —
+PASS** and `R17-HR-01..R17-HR-10` are HUMAN APPROVED; `R17-HR-04` and
+`R17-HR-05` retain LEGAL REVIEW REQUIRED. `R17-CONFLICT-01` is EXTERNAL
+CONFLICT RETAINED / PRODUCT DIRECTION ADJUDICATED / NOT RESOLVED.
+`R17-BLOCK-01` is ADJUDICATED — EXTERNAL BLOCKER RETAINED and remains a Phase
+17 exit/closure blocker. PLAN is ELIGIBLE FOR SEPARATE HUMAN AUTHORIZATION but
+remains NOT AUTHORIZED; EXECUTION is NOT AUTHORIZED; CLOSURE is BLOCKED until
+`R17-BLOCK-01` is resolved.
 
-Research authority: `.planning/phases/17-authenticated-br-checkout-privacy/17-RESEARCH.md`; adversarial review: `17-RESEARCH-REVIEW.md` — P0=0, P1=0, material P2=0; human approval authority: `17-RESEARCH-HUMAN-REVIEW.md` — HUMAN APPROVED — PASS — CLOSED.
+Decision authority:
+`.planning/phases/17-authenticated-br-checkout-privacy/17-DECISION-ADJUDICATION.md`
+— `R17-HR-ADJ-01` HUMAN APPROVED — PASS; final adversarial review P0=0,
+P1=0, material P2=0. Research authority:
+`.planning/phases/17-authenticated-br-checkout-privacy/17-RESEARCH.md`;
+research adversarial review: `17-RESEARCH-REVIEW.md` — P0=0, P1=0, material
+P2=0; research human approval authority: `17-RESEARCH-HUMAN-REVIEW.md` — HUMAN
+APPROVED — PASS — CLOSED.
 
 ## Phase 18: Gelato Shipping Quote & Selection
 
 **Goal:** substituir frete operacional fixo por cotação e seleção autoritativas preservadas até o dispatch.
 
-**Status:** Not started. Depends on Phase 17.
+**Status:** NOT AUTHORIZED. Depends on Phase 17 closure, which is blocked by
+retained `R17-BLOCK-01`. The whole phase is unauthorized; this is not limited
+to provider implementation.
 
 ## Phase 19: Storefront PaymentAttempt Hardening
 
 **Goal:** endurecer o módulo existente para cartão autenticado M1, mantendo todo o fluxo pré-Order.
 
-**Status:** Not started. Depends on Phase 18.
+**Status:** NOT AUTHORIZED. Depends on blocked Phase 18.
 
 ## Phase 20: Async Payment Confirmation
 
 **Goal:** materializar confirmação BFF-only recuperável, rate-limited e financeiramente segura sob refresh, múltiplas abas e sucesso tardio.
 
-**Status:** Not started. Depends on Phase 19.
+**Status:** NOT AUTHORIZED. Depends on its unauthorized linear predecessor.
 
 ## Phase 21: Order Confirmation & Catalog Handoff
 
 **Goal:** entregar confirmação de pedido segura e catálogo resolvível/revalidável para o BFF.
 
-**Status:** Not started. Depends on Phase 20.
+**Status:** NOT AUTHORIZED. Depends on its unauthorized linear predecessor.
 
 ## Phase 22: Contract Kit, Verification & Release
 
 **Goal:** provar que o backend está pronto e entregar o kit que permite ao frontend desenvolver sem inventar contrato.
 
-**Status:** Not started. Depends on Phase 21.
+**Status:** NOT AUTHORIZED. Depends on its unauthorized linear predecessor;
+release remains BLOCKED.
 
 ## Definition of Done
 
@@ -378,5 +407,10 @@ Phase 15 CONTEXT, RESEARCH, PLAN and closure are HUMAN APPROVED — PASS;
 Plans 15-01..15-08 are **8/8 HUMAN APPROVED — PASS** and Plans 15-07 and
 15-08 are DOCUMENTALLY CLOSED. CART-01..CART-09 are 9/9 COMPLETE. Phase 16
 is **CLOSED — HUMAN APPROVED**; Plans `16-01`..`16-14` are **14/14 COMPLETE**;
-`MRG-01..MRG-08` are **8/8 COMPLETE**. Phase 17 CONTEXT and RESEARCH are **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-01..R17-HR-10`, `R17-CONFLICT-01` and `R17-BLOCK-01` remain OPEN; PLAN and EXECUTION remain unauthorized.
-Real providers, infraestrutura remota, push, deploy and frontend remain unauthorized.
+`MRG-01..MRG-08` are **8/8 COMPLETE**. Phase 17 CONTEXT and RESEARCH are
+**HUMAN APPROVED — PASS — CLOSED**; `R17-HR-ADJ-01` is **HUMAN APPROVED —
+PASS**; PLAN is eligible for separate human authorization but PLAN and
+EXECUTION remain unauthorized; Phase 17 closure remains blocked by retained
+`R17-BLOCK-01`. Phase 18 as a whole and Phase 18+ remain NOT AUTHORIZED.
+Real providers, infraestrutura remota, push, deploy, release and frontend
+remain unauthorized/blocked.
