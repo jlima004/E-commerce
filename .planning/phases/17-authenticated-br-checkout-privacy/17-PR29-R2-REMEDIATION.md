@@ -31,12 +31,12 @@ Post-Perspective H6 Human Residual Review finding 4 residual defects:
   - B17-PR29-HR-22 — material P2 (Eliminate all 23-logical / 26-physical schema ambiguity)
   - B17-PR29-HR-23 — documental P2 (Validation status header is stale)
 
-Authority Status:
-P17-PLAN-HR-01: OPEN — REVISE
-Phase 17 PLAN: PR29-R2 REMEDIATED — AWAITING HUMAN RE-APPROVAL (NOT HUMAN APPROVED)
+Authority Status (Historical PR29-R2 Snapshot — Superseded by PR29-R3 and Final Human Re-Approval):
+Historical P17-PLAN-HR-01 at R2: OPEN — REVISE (Historical; closed via subsequent PR29-R3 and final human re-approval)
+Historical Phase 17 PLAN at R2: PR29-R2 REMEDIATED (Historical; subsequently PR29-R3 remediated and HUMAN APPROVED — PASS)
 Phase 17 Execution: NOT AUTHORIZED (Execute 17-01: NOT AUTHORIZED)
 PR #29 Merge: NOT AUTHORIZED
-Phase 17 Closure: BLOCKED by retained R17-BLOCK-01
+Phase 17 Closure: BLOCKED by retained R17-BLOCK-01 (RETAINED)
 Phase 18 / Phase 18+: NOT AUTHORIZED
 ```
 
@@ -248,12 +248,12 @@ THIS IS STRICTLY A PLANNING RECONCILIATION AND REMEDIATION SESSION.
 - **Root Cause & Analysis:**
   `17-VALIDATION.md` retained a stale status line referencing an earlier review cycle: `POST-PLANNING VALIDATION STRATEGY (Remediated for B17-PLAN-HR-30..B17-PLAN-HR-32)`.
 
-- **Remediation:**
-  Updated `17-VALIDATION.md` header to:
+- **Remediation (Historical PR29-R2 Record):**
+  Historically updated `17-VALIDATION.md` header during R2 to:
   ```markdown
-  **Status:** POST-APPROVAL PR #29 PLAN VALIDATION — PR29-R2 REMEDIATION IN PROGRESS (P17-PLAN-HR-01 OPEN)
+  **Status:** POST-APPROVAL PR #29 PLAN VALIDATION — PR29-R2 REMEDIATION IN PROGRESS (Historical: P17-PLAN-HR-01 was OPEN at R2)
   ```
-  (Transitioning upon Perspective H7 PASS to `POST-APPROVAL PR #29 PLAN VALIDATION — PR29-R2 REMEDIATED (PERSPECTIVE H7 PASS — AWAITING HUMAN RE-APPROVAL)`).
+  (Subsequently superseded by PR29-R3 and final Human Re-Approval: `P17-PLAN-HR-01 HUMAN RE-APPROVED — PASS — CLOSED`).
   Synchronized `STATE.md` and `ROADMAP.md` to reflect the residual review findings and the PR29-R2 remediation state, ensuring historical references to H6 remain marked as historical PASS.
 
 - **Files Reconciled:** `17-VALIDATION.md`, `STATE.md`, `ROADMAP.md`.

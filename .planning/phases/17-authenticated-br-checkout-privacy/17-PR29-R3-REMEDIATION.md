@@ -30,11 +30,14 @@ Post-Perspective H7 Human Residual Review identifying 2 residual defects:
   - B17-PR29-HR-25 — P2 DOCUMENTAL (ROADMAP has stale `plans 50/50`)
 
 Authority Status:
-P17-PLAN-HR-01: OPEN — REVISE (Awaiting Human Decision post-PR29-R3)
-Phase 17 PLAN: PR29-R3 TECHNICALLY REMEDIATED — PERSPECTIVE H8 PASS — AWAITING HUMAN RE-APPROVAL (NOT HUMAN APPROVED)
+P17-PLAN-HR-01: HUMAN RE-APPROVED — PASS — CLOSED
+Phase 17 PLAN: HUMAN APPROVED — PASS
+B17-PR29-HR-01..HR-25: CLOSED — PASS
+Perspective H8: PASS (P0=0 / P1=0 / P2=0 / P3=0)
 Phase 17 Execution: NOT AUTHORIZED (Execute 17-01: NOT AUTHORIZED)
 PR #29 Merge: NOT AUTHORIZED
-Phase 17 Closure: BLOCKED by retained R17-BLOCK-01
+R17-BLOCK-01: RETAINED
+Phase 17 Closure: BLOCKED
 Phase 18 / Phase 18+: NOT AUTHORIZED
 ```
 

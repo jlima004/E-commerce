@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Backend Storefront Readiness
 status: planning
-last_updated: "2026-09-13T16:00:00Z"
+last_updated: "2026-09-13T20:00:00Z"
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 61
   completed_plans: 50
   percent: 40
-stopped_at: P17-PLAN-HR-01 — POST-APPROVAL PR #29 RESIDUAL REVIEW REMEDIATION (PR29-R3: B17-PR29-HR-24..HR-25; PERSPECTIVE H8 PASS) — CHECKPOINT P17-PLAN-HR-01 REOPENED — AWAITING HUMAN RE-APPROVAL; PHASE 17 EXECUTION NOT AUTHORIZED; PHASE 17 CLOSURE BLOCKED
+stopped_at: P17-PLAN-HR-01 HUMAN RE-APPROVED — PASS — CLOSED; PHASE 17 PLAN HUMAN APPROVED — PASS; PHASE 17 EXECUTION NOT AUTHORIZED; PHASE 17 CLOSURE BLOCKED (R17-BLOCK-01 RETAINED)
 current_phase: 17
 current_phase_name: authenticated-br-checkout-privacy
 current_plan: null
@@ -25,9 +25,9 @@ See: `.planning/PROJECT.md`.
 **Core value:** An Order exists and ships to Gelato only after reliable, validated, idempotent Stripe-webhook payment confirmation — no phantom charge, duplicate order or improper fulfillment.
 
 **Current focus:** Phase 17 CONTEXT and RESEARCH are **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-ADJ-01` is **HUMAN APPROVED — PASS**; Phase 16 remains **HUMAN APPROVED — CLOSED**.
-Phase 17 PLAN previously received human approval, but post-approval reviews of PR #29 by Codex and GitHub Copilot raised 19 findings (`B17-PR29-HR-01` through `B17-PR29-HR-19`), superseding historical approval and placing the plan into review remediation (`Remediation PR29-R1`). Subsequent human residual review raised 4 findings (`B17-PR29-HR-20` through `B17-PR29-HR-23`), addressed in `Remediation PR29-R2` with adversarial audit `Perspective H7` passing (P0=0, P1=0, P2=0, P3=0). Post-H7 human residual review raised 2 findings (`B17-PR29-HR-24` and `B17-PR29-HR-25`), addressed in `Remediation PR29-R3` with adversarial audit `Perspective H8` passing (P0=0, P1=0, P2=0, P3=0). All findings have been technically reconciled across all planning artifacts (`17-01-PLAN.md`..`17-11-PLAN.md`, `17-PATTERNS.md`, `17-VALIDATION.md`, `17-PR29-R1-REMEDIATION.md`, `17-PR29-R2-REMEDIATION.md`, `17-PR29-R3-REMEDIATION.md`). Checkpoint `P17-PLAN-HR-01` is resubmitted for human review (11 plans across 11 serial waves, Waves 0 to 10) — **HUMAN REVIEW REQUIRED — NOT HUMAN APPROVED**.
+Phase 17 PLAN previously received human approval, but post-approval reviews of PR #29 by Codex and GitHub Copilot raised 19 findings (`B17-PR29-HR-01` through `B17-PR29-HR-19`), superseding historical approval and placing the plan into review remediation (`Remediation PR29-R1`). Subsequent human residual review raised 4 findings (`B17-PR29-HR-20` through `B17-PR29-HR-23`), addressed in `Remediation PR29-R2` with adversarial audit `Perspective H7` passing (P0=0, P1=0, P2=0, P3=0). Post-H7 human residual review raised 2 findings (`B17-PR29-HR-24` and `B17-PR29-HR-25`), addressed in `Remediation PR29-R3` with adversarial audit `Perspective H8` passing (P0=0, P1=0, P2=0, P3=0). All findings have been technically reconciled across all planning artifacts (`17-01-PLAN.md`..`17-11-PLAN.md`, `17-PATTERNS.md`, `17-VALIDATION.md`, `17-PR29-R1-REMEDIATION.md`, `17-PR29-R2-REMEDIATION.md`, `17-PR29-R3-REMEDIATION.md`). Following Perspective H8 PASS, Checkpoint `P17-PLAN-HR-01` received formal human re-approval: **HUMAN RE-APPROVED — PASS — CLOSED**; Phase 17 PLAN is **HUMAN APPROVED — PASS**; `B17-PR29-HR-01..HR-25` are **CLOSED — PASS**.
 `R17-HR-01..R17-HR-10` are HUMAN APPROVED; `R17-HR-04` and `R17-HR-05` retain **LEGAL REVIEW REQUIRED**. `R17-CONFLICT-01` is **EXTERNAL CONFLICT RETAINED / PRODUCT DIRECTION ADJUDICATED / NOT RESOLVED**. `R17-BLOCK-01` is **ADJUDICATED — EXTERNAL BLOCKER RETAINED / PHASE 17 EXIT/CLOSURE BLOCKER**.
-Phase 17 EXECUTION is **NOT AUTHORIZED** (plan approval is strictly decoupled from execution) and Phase 17 CLOSURE is blocked until `R17-BLOCK-01` is resolved. Phase 18 as a whole, Phase 18+, release and all unrelated operational gates remain **NOT AUTHORIZED/BLOCKED**.
+Phase 17 EXECUTION is **NOT AUTHORIZED** (Execute 17-01: NOT AUTHORIZED; plan approval is strictly decoupled from execution), `R17-BLOCK-01` is **RETAINED**, and Phase 17 CLOSURE remains **BLOCKED**. Phase 18 as a whole, Phase 18+, release and all unrelated operational gates remain **NOT AUTHORIZED/BLOCKED**.
 
 ## Execution Policy
 
@@ -52,9 +52,10 @@ and B16-PLAN-HR-01..B16-PLAN-HR-02 are CLOSED — PASS. Phase 16 is
 **HUMAN APPROVED — CLOSED**; Plans `16-01`..`16-14` are **14/14 COMPLETE**;
 `MRG-01..MRG-08` are **8/8 COMPLETE**. Phase 17 CONTEXT and RESEARCH are
 **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-ADJ-01` is **HUMAN APPROVED —
-PASS**. Phase 17 PLAN is technical complete and human review required at
-Checkpoint `P17-PLAN-HR-01` (NOT HUMAN APPROVED); Phase 17 EXECUTION is
-NOT AUTHORIZED; Phase 17 CLOSURE is blocked by retained `R17-BLOCK-01`. Phase 18
+PASS**. Checkpoint `P17-PLAN-HR-01` is **HUMAN RE-APPROVED — PASS — CLOSED**;
+Phase 17 PLAN is **HUMAN APPROVED — PASS**; `B17-PR29-HR-01..HR-25` are
+**CLOSED — PASS**; Phase 17 EXECUTION is **NOT AUTHORIZED** (Execute 17-01: NOT AUTHORIZED);
+`R17-BLOCK-01` is **RETAINED**; Phase 17 CLOSURE is **BLOCKED**. Phase 18
 as a whole, Phase 18+ and all unrelated operational gates remain unauthorized.
 
 ## Current Gate
@@ -102,11 +103,14 @@ R17-HR-04 / R17-HR-05: LEGAL REVIEW REQUIRED RETAINED
 R17-HR-09: HUMAN APPROVED — BINDING PRODUCT DIRECTION
 BR/Gelato dispatch: FAIL CLOSED BEFORE PROVIDER REQUEST
 D17-12: PRESERVED
-R17-BLOCK-01: ADJUDICATED — EXTERNAL BLOCKER RETAINED
+R17-BLOCK-01: RETAINED
 R17-BLOCK-01: PHASE 17 EXIT/CLOSURE BLOCKER
 R17-CONFLICT-01: EXTERNAL CONFLICT RETAINED / PRODUCT DIRECTION ADJUDICATED / NOT RESOLVED
 R17-HR-ADJ-01: HUMAN APPROVED — PASS
-Phase 17 PLAN: REMEDIATED (PR29-R1 + PR29-R2 + PR29-R3; PERSPECTIVE H8 PASS) FOR B17-PR29-HR-01..HR-25 — CHECKPOINT P17-PLAN-HR-01 REOPENED — NOT HUMAN APPROVED
+P17-PLAN-HR-01: HUMAN RE-APPROVED — PASS — CLOSED
+Phase 17 PLAN: HUMAN APPROVED — PASS
+B17-PR29-HR-01..HR-25: CLOSED — PASS
+Perspective H8: PASS (P0=0 / P1=0 / P2=0 / P3=0)
 Phase 17 Governance Chronology:
   Perspective H3: Historical PASS prior to Human Review R3
   Human Review R3: REVISE — B17-PLAN-HR-17..B17-PLAN-HR-29
@@ -127,16 +131,18 @@ Phase 17 Governance Chronology:
   Human Residual Review PR29-R3: 2 findings raised (B17-PR29-HR-24 — P1, B17-PR29-HR-25 — P2 DOCUMENTAL)
   Plan Remediation PR29-R3: COMPLETE across 17-03, 17-11, 17-PATTERNS.md, 17-VALIDATION.md, 17-PLAN-REVIEW.md, 17-PR29-R2-REMEDIATION.md, 17-PR29-R3-REMEDIATION.md, STATE.md, ROADMAP.md
   Perspective H8: Adversarial test discoverability, executable evidence & governance counter audit — PASS (P0=0 / P1=0 / P2=0 / P3=0)
-Phase 17 Plans: 11 plans in 11 serial waves (Waves 0 to 10, 17-01..17-11)
-Phase 17 EXECUTION: NOT AUTHORIZED (Strictly decoupled from plan approval)
+  Human Re-Approval Checkpoint P17-PLAN-HR-01: HUMAN RE-APPROVED — PASS — CLOSED (B17-PR29-HR-01..HR-25 CLOSED — PASS; Perspective H8 PASS)
+Phase 17 Plans: 11 plans in 11 serial waves (Waves 0 to 10, 17-01..17-11) — HUMAN APPROVED — PASS
+Phase 17 EXECUTION: NOT AUTHORIZED (Execute 17-01: NOT AUTHORIZED; strictly decoupled from plan approval)
+R17-BLOCK-01: RETAINED
 Phase 17 CLOSURE: BLOCKED UNTIL R17-BLOCK-01 IS RESOLVED
 Phase 18: NOT AUTHORIZED
 Phase 18+: NOT AUTHORIZED
 Release: BLOCKED
 
 Next permitted action:
-Human review at Checkpoint P17-PLAN-HR-01 (options: A — APPROVE PLAN AS WRITTEN, B — APPROVE WITH CHANGES, C — REJECT / REWORK)
-Note on Option A: Approves Phase 17 PLAN only. Does NOT authorize execution of Phase 17, Wave 0, or Plan 17-01.
+Human authorization decision on Phase 17 Execution / Wave 0 (Plan 17-01)
+Note: Plan approval is strictly decoupled from execution; Phase 17 execution remains NOT AUTHORIZED.
 
 Commit / push / PR / merge: NOT AUTHORIZED
 Deploy: NOT AUTHORIZED
@@ -221,7 +227,7 @@ Milestone v1.1:
 - Phase 17 plans materialized: **11/11** (17-01..17-11 across 11 serial waves, Waves 0 to 10; total milestone plans = 61)
 - Phase 15: **CLOSED — HUMAN APPROVED** (Plans 15-01..15-08 HUMAN APPROVED — PASS; 15-07 and 15-08 documentally closed; CART-01..CART-09 9/9 COMPLETE)
 - Phase 16: **CLOSED — HUMAN APPROVED** (Plans 16-01..16-14 **14/14 COMPLETE**; MRG-01..MRG-08 **8/8 COMPLETE**)
-- Phase 17 CONTEXT / RESEARCH: **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-ADJ-01` **HUMAN APPROVED — PASS**; `R17-HR-01..R17-HR-10` HUMAN APPROVED; `R17-BLOCK-01` retained as Phase 17 exit/closure blocker; PLAN is **MATERIALIZED — TECHNICAL PLAN COMPLETE — HUMAN REVIEW REQUIRED (Checkpoint P17-PLAN-HR-01) — NOT HUMAN APPROVED**; EXECUTION remains **NOT AUTHORIZED**
+- Phase 17 CONTEXT / RESEARCH: **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-ADJ-01` **HUMAN APPROVED — PASS**; `R17-HR-01..R17-HR-10` HUMAN APPROVED; `R17-BLOCK-01` **RETAINED** as Phase 17 exit/closure blocker; Checkpoint `P17-PLAN-HR-01` is **HUMAN RE-APPROVED — PASS — CLOSED**; Phase 17 PLAN is **HUMAN APPROVED — PASS**; `B17-PR29-HR-01..HR-25` are **CLOSED — PASS**; EXECUTION remains **NOT AUTHORIZED** (Execute 17-01: NOT AUTHORIZED); Phase 17 CLOSURE is **BLOCKED**
 - frontend: BLOCKED
 
 ## Accepted Evidence References
@@ -448,7 +454,7 @@ This historical Phase-15 execution authorization did **not** extend to:
 - remote infrastructure;
 - bypassing the blocking human checkpoint after Plan 15-06.
 
-A separate human decision on 2026-08-22 authorized Phase 16 CONTEXT; that CONTEXT is HUMAN APPROVED — PASS. Phase 16 RESEARCH is HUMAN APPROVED — PASS, with R16-HR-01..R16-HR-08 CLOSED — APPROVED. The Phase 16 PLAN is HUMAN APPROVED — PASS after B16-PLAN-HR-01..B16-PLAN-HR-02 were remediated and closed. Phase 16 EXECUTION completed for the accepted 14-plan serial set. Phase 16 is **HUMAN APPROVED — CLOSED**. Phase 17 CONTEXT and RESEARCH are **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-ADJ-01` is HUMAN APPROVED — PASS. Phase 17 PLAN is eligible for separate human authorization but PLAN/EXECUTION remain not authorized, and Phase 17 closure remains blocked by `R17-BLOCK-01`.
+A separate human decision on 2026-08-22 authorized Phase 16 CONTEXT; that CONTEXT is HUMAN APPROVED — PASS. Phase 16 RESEARCH is HUMAN APPROVED — PASS, with R16-HR-01..R16-HR-08 CLOSED — APPROVED. The Phase 16 PLAN is HUMAN APPROVED — PASS after B16-PLAN-HR-01..B16-PLAN-HR-02 were remediated and closed. Phase 16 EXECUTION completed for the accepted 14-plan serial set. Phase 16 is **HUMAN APPROVED — CLOSED**. Phase 17 CONTEXT and RESEARCH are **HUMAN APPROVED — PASS — CLOSED**; `R17-HR-ADJ-01` is HUMAN APPROVED — PASS. Historically, at that earlier gate, Phase 17 PLAN/EXECUTION were not authorized. Current authority: Phase 17 PLAN is HUMAN APPROVED — PASS; Phase 17 EXECUTION remains NOT AUTHORIZED, and Phase 17 closure remains blocked by `R17-BLOCK-01`.
 
 Plan 15-05 final checkpoint:
 
@@ -487,9 +493,11 @@ human-approved. Plans 15-01..15-08 are human-approved. Phase 16 is
 **HUMAN APPROVED — CLOSED**; Plans `16-01`..`16-14` are **14/14 COMPLETE**;
 `MRG-01..MRG-08` are **8/8 COMPLETE**. No open Phase-16 blocker remains.
 Phase 17 CONTEXT and RESEARCH are **HUMAN APPROVED — PASS — CLOSED** and
-`R17-HR-ADJ-01` is **HUMAN APPROVED — PASS**. `R17-BLOCK-01` remains an
-external Phase 17 exit/closure blocker; Phase 17 PLAN is **MATERIALIZED — TECHNICAL PLAN COMPLETE — HUMAN REVIEW REQUIRED (Checkpoint P17-PLAN-HR-01) — NOT HUMAN APPROVED**, and EXECUTION is NOT
-AUTHORIZED. Phase 18 as a whole and Phase 18+ remain NOT AUTHORIZED; release,
+`R17-HR-ADJ-01` is **HUMAN APPROVED — PASS**. `R17-BLOCK-01` is **RETAINED** as an
+external Phase 17 exit/closure blocker; Checkpoint `P17-PLAN-HR-01` is **HUMAN RE-APPROVED — PASS — CLOSED**;
+Phase 17 PLAN is **HUMAN APPROVED — PASS**; `B17-PR29-HR-01..HR-25` are **CLOSED — PASS**;
+EXECUTION is **NOT AUTHORIZED** (Execute 17-01: NOT AUTHORIZED); Phase 17 CLOSURE remains **BLOCKED**.
+Phase 18 as a whole and Phase 18+ remain NOT AUTHORIZED; release,
 deploy, real providers, remote infrastructure and frontend remain blocked or
 unauthorized.
 
@@ -556,11 +564,15 @@ Closed Phase-15 PLAN-review blockers:
 
 **Resume file:** .planning/phases/17-authenticated-br-checkout-privacy/17-VALIDATION.md
 
-Last session: 2026-09-10T20:45:00Z
+Last session: 2026-09-13T20:00:00Z
 
 Stopped at:
 
 ```text
+P17-PLAN-HR-01: HUMAN RE-APPROVED — PASS — CLOSED
+PHASE 17 PLAN: HUMAN APPROVED — PASS
+B17-PR29-HR-01..HR-25: CLOSED — PASS
+PERSPECTIVE H8: PASS (P0=0 / P1=0 / P2=0 / P3=0)
 PHASE 17 CONTEXT: HUMAN APPROVED — PASS — CLOSED
 PHASE 17 RESEARCH: HUMAN APPROVED — PASS — CLOSED
 R17-HR-01..R17-HR-10: HUMAN APPROVED
@@ -568,21 +580,11 @@ R17-HR-04 / R17-HR-05: LEGAL REVIEW REQUIRED RETAINED
 R17-HR-09: HUMAN APPROVED — BINDING PRODUCT DIRECTION
 BR/Gelato dispatch: FAIL CLOSED BEFORE PROVIDER REQUEST
 D17-12: PRESERVED
-R17-BLOCK-01: ADJUDICATED — EXTERNAL BLOCKER RETAINED / PHASE 17 EXIT/CLOSURE BLOCKER
+R17-BLOCK-01: RETAINED / PHASE 17 EXIT/CLOSURE BLOCKER
 R17-CONFLICT-01: EXTERNAL CONFLICT RETAINED / PRODUCT DIRECTION ADJUDICATED / NOT RESOLVED
 R17-HR-ADJ-01: HUMAN APPROVED — PASS
-PHASE 17 PLAN: REMEDIATED (PR29-R1 + PR29-R2; PERSPECTIVE H7 PASS) FOR B17-PR29-HR-01..HR-23 — CHECKPOINT P17-PLAN-HR-01 REOPENED — NOT HUMAN APPROVED
-PHASE 17 PLAN REVIEW (PERSPECTIVE H5): Historical PASS (P0=0 / P1=0 / P2=0 / P3=0)
-POST-APPROVAL PR #29 REVIEW: 19 FINDINGS RAISED (B17-PR29-HR-01..HR-19) — SUPERSEDED HISTORICAL APPROVAL
-REMEDIATION PR29-R1: COMPLETE ACROSS 17-01..17-11-PLAN, 17-PATTERNS, 17-VALIDATION, 17-PR29-R1-REMEDIATION
-PHASE 17 PLAN REVIEW — PERSPECTIVE H6: PASS (P0=0 / P1=0 / P2=0 / P3=0)
-HUMAN RESIDUAL REVIEW PR29-R2: 4 FINDINGS RAISED (B17-PR29-HR-20..HR-23)
-REMEDIATION PR29-R2: COMPLETE ACROSS 17-02, 17-03, 17-07, 17-PATTERNS, 17-VALIDATION, 17-PR29-R1-REMEDIATION, 17-PR29-R2-REMEDIATION
-PHASE 17 PLAN REVIEW — PERSPECTIVE H7:
-PASS — ALL PR29-R2 REMEDIATIONS VERIFIED
-P0=0 / P1=0 / P2=0 / P3=0
-PHASE 17 PLANS: 11 plans in 11 serial waves (Waves 0 to 10, 17-01..17-11)
-PHASE 17 EXECUTION: NOT AUTHORIZED
+PHASE 17 PLANS: 11 plans in 11 serial waves (Waves 0 to 10, 17-01..17-11) — HUMAN APPROVED — PASS
+PHASE 17 EXECUTION: NOT AUTHORIZED (Execute 17-01: NOT AUTHORIZED)
 PHASE 17 CLOSURE: BLOCKED UNTIL R17-BLOCK-01 IS RESOLVED
 PHASE 18: NOT AUTHORIZED
 PHASE 18+: NOT AUTHORIZED
@@ -607,5 +609,5 @@ Resume with:
 - `.planning/phases/16-cart-merge-review/16-PR28-REMEDIATION.md` as accepted financial authority
 - `.planning/phases/16-cart-merge-review/16-CLOSURE.md` as historical closure authority
 
-**Next permitted step:** Human review at Checkpoint `P17-PLAN-HR-01` (`A — APPROVE PLAN AS WRITTEN`, `B — APPROVE WITH CHANGES`, `C — REJECT / REWORK`).
-Execution of Phase 17 plans is NOT AUTHORIZED. Phase 17 CLOSURE is blocked by retained `R17-BLOCK-01`; Phase 18 as a whole, Phase 18+, deploy, release, real providers, remote infra and frontend remain NOT AUTHORIZED/BLOCKED.
+**Next permitted step:** Human decision on Phase 17 Execution authorization / Wave 0 (Plan 17-01).
+Execution of Phase 17 plans is NOT AUTHORIZED (Execute 17-01: NOT AUTHORIZED). R17-BLOCK-01 is RETAINED and Phase 17 CLOSURE remains BLOCKED; Phase 18 as a whole, Phase 18+, deploy, release, real providers, remote infra and frontend remain NOT AUTHORIZED/BLOCKED.

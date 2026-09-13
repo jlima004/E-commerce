@@ -34,10 +34,11 @@ This independent adversarial review (Perspective H8) conducted an exhaustive, go
 16. **Perspective H7:** Historical PASS on PR29-R2 remediations (P0=0 / P1=0 / P2=0 / P3=0).
 17. **Human Residual Review after H7:** Formal verdict `REVISE`, raising 2 residual findings (`B17-PR29-HR-24` — P1, `B17-PR29-HR-25` — P2 DOCUMENTAL).
 18. **Plan Remediation PR29-R3:** Comprehensive test discoverability reconciliation and governance counter alignment completed across `17-03-PLAN.md`, `17-11-PLAN.md`, `17-PATTERNS.md`, `17-VALIDATION.md`, `17-PR29-R2-REMEDIATION.md`, `17-PR29-R3-REMEDIATION.md`, `STATE.md`, and `ROADMAP.md`.
-19. **Perspective H8 (Current Review):** Independent adversarial post-PR-review audit confirming zero P0, zero P1, zero P2, and zero P3 findings across HR-24 and HR-25, full test discoverability in Jest/module runners, Item 03 PostgreSQL disposable executable evidence, 0 unreachable test artifacts, `EXPECTED_MODULE_SPECS 21` integrity, and canonical milestone counters (`50 completed / 61 materialized`).
+19. **Perspective H8:** Independent adversarial post-PR-review audit confirming zero P0, zero P1, zero P2, and zero P3 findings across HR-24 and HR-25, full test discoverability in Jest/module runners, Item 03 PostgreSQL disposable executable evidence, 0 unreachable test artifacts, `EXPECTED_MODULE_SPECS 21` integrity, and canonical milestone counters (`50 completed / 61 materialized`) — PASS (P0=0 / P1=0 / P2=0 / P3=0).
+20. **Human Re-Approval (Checkpoint P17-PLAN-HR-01):** Following Perspective H8 PASS, Checkpoint `P17-PLAN-HR-01` was formally re-approved by human review: **HUMAN RE-APPROVED — PASS — CLOSED**; Phase 17 PLAN: **HUMAN APPROVED — PASS**; `B17-PR29-HR-01..HR-25`: **CLOSED — PASS**; Phase 17 EXECUTION: **NOT AUTHORIZED** (Execute 17-01: NOT AUTHORIZED); `R17-BLOCK-01`: **RETAINED**; Phase 17 CLOSURE: **BLOCKED**; Phase 18+: **NOT AUTHORIZED**.
 
-### Final Verdict: **PASS**
-All residual findings (`B17-PR29-HR-01..HR-25`), all historical findings, all 42 failure modes, and all GSD validators are fully satisfied. Plan approval is strictly decoupled from execution authorization: human approval of the plan set at Checkpoint `P17-PLAN-HR-01` approves the technical specification only, leaving Phase 17 execution NOT AUTHORIZED until a separate human execution gate is granted. Phase 17 closure remains formally blocked by `R17-BLOCK-01`.
+### Final Verdict: **PASS — HUMAN RE-APPROVED — CLOSED**
+All residual findings (`B17-PR29-HR-01..HR-25`), all historical findings, all 42 failure modes, and all GSD validators are fully satisfied. Checkpoint `P17-PLAN-HR-01` is **HUMAN RE-APPROVED — PASS — CLOSED** and Phase 17 PLAN is **HUMAN APPROVED — PASS**. Plan approval is strictly decoupled from execution authorization: human approval of the plan set approves the technical specification only, leaving Phase 17 execution NOT AUTHORIZED (Execute 17-01: NOT AUTHORIZED) until a separate human execution gate is granted. `R17-BLOCK-01` is **RETAINED** and Phase 17 closure remains formally **BLOCKED**.
 
 ---
 
@@ -316,19 +317,28 @@ All 42 classic failure modes were re-audited against the PR29-R1 specifications:
 - **Perspective H4:** Historical PASS (P0=0, P1=0, P2=0, P3=0) for R3 remediations.
 - **Perspective H5:** Historical PASS (P0=0, P1=0, P2=0, P3=0) for R4 remediations.
 - **Perspective H6:** Historical PASS on PR29-R1 remediations (P0=0, P1=0, P2=0, P3=0) prior to Human Residual Review.
-- **Perspective H7 (Current Review):** **PASS — ALL 4 RESIDUAL FINDINGS VERIFIED, DOUBLE-KEYRING FROZEN, PRODUCER/CONSUMER AUDITED & ZERO REGRESSIONS** (P0=0, P1=0, P2=0, P3=0).
+- **Perspective H7:** Historical PASS on PR29-R2 remediations (P0=0, P1=0, P2=0, P3=0).
+- **Perspective H8:** PASS — ALL RESIDUAL PR #29 FINDINGS (HR-24..25) VERIFIED, HR-01..23 PRESERVED, ZERO UNREACHABLE TESTS, ACCURATE CANONICAL COUNTERS & GSD CHECKERS GREEN (P0=0, P1=0, P2=0, P3=0).
 
 ---
 
-## 9. Gate Sign-Off Recommendation
+## 9. Gate Sign-Off Recommendation & Human Re-Approval
 
-### **Verdict: PASS — APPROVE REMEDIATED PLAN SET (PR29-R2)**
+### **Verdict: PASS — HUMAN RE-APPROVED — CLOSED**
 
-The Phase 17 technical PLAN set (`17-01-PLAN.md` through `17-11-PLAN.md`), `17-PATTERNS.md`, `17-VALIDATION.md`, `17-PR29-R1-REMEDIATION.md`, and `17-PR29-R2-REMEDIATION.md` successfully fulfill all architectural, privacy, security, and governance standards without any unresolved defects. All 11 plans strictly comply with GSD validation rules, with zero errors.
+The Phase 17 technical PLAN set (`17-01-PLAN.md` through `17-11-PLAN.md`), `17-PATTERNS.md`, `17-VALIDATION.md`, `17-PR29-R1-REMEDIATION.md`, `17-PR29-R2-REMEDIATION.md`, and `17-PR29-R3-REMEDIATION.md` successfully fulfill all architectural, privacy, security, and governance standards without any unresolved defects. All 11 plans strictly comply with GSD validation rules, with zero errors.
 
-**Adversarial Review Recommendation:** **PASS — APPROVE PLAN SET AS WRITTEN** at Human Checkpoint `P17-PLAN-HR-01`.
+Following Perspective H8 PASS, Checkpoint `P17-PLAN-HR-01` was formally re-approved by human review:
+- `P17-PLAN-HR-01`: **HUMAN RE-APPROVED — PASS — CLOSED**
+- `Phase 17 PLAN`: **HUMAN APPROVED — PASS**
+- `B17-PR29-HR-01..HR-25`: **CLOSED — PASS**
+- `Perspective H8`: **PASS (P0=0 / P1=0 / P2=0 / P3=0)**
+- `Phase 17 EXECUTION`: **NOT AUTHORIZED** (Execute 17-01: NOT AUTHORIZED)
+- `R17-BLOCK-01`: **RETAINED**
+- `Phase 17 CLOSURE`: **BLOCKED**
+- `Phase 18+`: **NOT AUTHORIZED**
 
-*Note on Plan Approval:* Approving the Phase 17 plan set (Option A) approves the technical plan specification only. Phase 17 execution remains NOT AUTHORIZED until a separate, explicit human execution authorization is granted. Phase 17 closure remains formally BLOCKED by `R17-BLOCK-01`. Phase 18 and subsequent phases remain NOT AUTHORIZED.
+*Note on Plan Approval Decoupling:* Plan approval is strictly decoupled from execution authorization: human approval of the plan set at Checkpoint `P17-PLAN-HR-01` approves the technical specification only, leaving Phase 17 execution NOT AUTHORIZED (Execute 17-01: NOT AUTHORIZED) until a separate human execution gate is granted. Phase 17 closure remains formally BLOCKED by retained `R17-BLOCK-01`. Phase 18 and subsequent phases remain NOT AUTHORIZED.
 
 ---
 
@@ -417,8 +427,8 @@ The Phase 17 technical PLAN set (`17-01-PLAN.md` through `17-11-PLAN.md`), `17-P
   Every occurrence across `17-02-PLAN.md`, `17-PATTERNS.md`, `17-VALIDATION.md`, and `17-PLAN-REVIEW.md` adheres to `23 mandatory logical snapshot fields mapped to 26 physical PostgreSQL columns including Medusa framework metadata columns`. Physical PK `id` with prefix `posnap_...` maps to logical `snapshot_id`.
 - **Verdict:** **DEFEATED — PASS**.
 
-#### Attack D: Governance & Authorization Boundary
-- **Attack Vector:** Verify that H6 is preserved as historical, HR-20..23 are closed, H7 is current, PLAN is awaiting human re-approval, and EXECUTION remains unauthorized.
+#### Attack D: Governance & Authorization Boundary (Historical H7 Attack)
+- **Attack Vector (Historical H7):** Verify that H6 is preserved as historical, HR-20..23 are closed, H7 was evaluated prior to PR29-R3 and final human re-approval, and EXECUTION remains unauthorized.
 - **Audit Findings:**
   1. H6 is preserved as historical PASS on PR29-R1.
   2. HR-20..23 are documented and remediated in PR29-R2.
@@ -609,3 +619,50 @@ Both findings were addressed strictly within the Phase 17 planning and governanc
 | Order Birth Pipeline (Option B-R) | `integration-tests/modules/checkout-privacy.postgres.spec.ts` | Disposable PostgreSQL Module | `run-disposable-postgres-tests.mjs -- npm run test:integration:modules -- --runTestsByPath ...` | YES | 09 | **PASS** |
 | 17-Sink Multi-Canary Negative PII Audit | `integration-tests/modules/checkout-privacy-canary.spec.ts` | Disposable PostgreSQL Module | `run-disposable-postgres-tests.mjs -- npm run test:integration:modules -- --runTestsByPath ...` | YES | 10 | **PASS** |
 | E2E Integrated Synthesis | `integration-tests/modules/phase17-e2e.spec.ts` | Disposable PostgreSQL Module | `run-disposable-postgres-tests.mjs -- npm run test:integration:modules -- --runTestsByPath ...` | YES | 11 | **PASS** |
+
+---
+
+## 12. Human Re-Approval & Final Plan Authorization (Checkpoint P17-PLAN-HR-01)
+
+```text
+P17-PLAN-HR-01:
+HUMAN RE-APPROVED — PASS — CLOSED
+
+Phase 17 PLAN:
+HUMAN APPROVED — PASS
+
+B17-PR29-HR-01..HR-25:
+CLOSED — PASS
+
+Perspective H8:
+PASS
+P0=0 / P1=0 / P2=0 / P3=0
+
+Phase 17 EXECUTION:
+NOT AUTHORIZED
+
+Execute 17-01:
+NOT AUTHORIZED
+
+R17-BLOCK-01:
+RETAINED
+
+Phase 17 CLOSURE:
+BLOCKED
+
+Phase 18+:
+NOT AUTHORIZED
+```
+
+### Authorization Scope & Decoupling Notice
+
+By explicit human re-approval of Checkpoint `P17-PLAN-HR-01`:
+1. The complete Phase 17 technical PLAN set (`17-01-PLAN.md` through `17-11-PLAN.md`), `17-PATTERNS.md`, `17-VALIDATION.md`, and all PR #29 remediations (PR29-R1, PR29-R2, PR29-R3) are **HUMAN APPROVED — PASS**.
+2. All 25 review findings (`B17-PR29-HR-01` through `B17-PR29-HR-25`) are formally **CLOSED — PASS**.
+3. Perspective H8 adversarial counter audit is **PASS (P0=0 / P1=0 / P2=0 / P3=0)**.
+4. Plan approval is strictly decoupled from execution authorization:
+   - Phase 17 EXECUTION is **NOT AUTHORIZED**.
+   - Execution of Wave 0 / Plan 17-01 is **NOT AUTHORIZED**.
+   - Starting execution requires a separate, explicit human execution authorization gate.
+5. `R17-BLOCK-01` is **RETAINED** as an external exit blocker; Phase 17 CLOSURE remains **BLOCKED**.
+6. Phase 18 as a whole, Phase 18+, release, deploy, real providers, remote infrastructure, and frontend remain **NOT AUTHORIZED / BLOCKED**.
