@@ -132,12 +132,20 @@
     - Encrypted envelope: `encrypted_cpf`, `cpf_nonce`, `cpf_tag`, `cpf_wrapped_dek`
     - Key & AAD versions: `key_version` (text), `aad_version` (text)
     - Timestamps & clocks: `pii_last_meaningful_activity_at`, `cpf_purge_due_at`, `purged_at`, `purge_reason`, `created_at`, `updated_at`, `deleted_at`
-  - Atomic envelope constraint:
+  - Atomic envelope constraint (HR-01 3-branch envelope):
     ```sql
-    CONSTRAINT CK_protected_checkout_data_envelope_atomicidade CHECK (
-      (lifecycle_state = 'purged' AND encrypted_cpf IS NULL AND cpf_nonce IS NULL AND cpf_tag IS NULL AND cpf_wrapped_dek IS NULL)
+    CONSTRAINT "CK_protected_checkout_data_envelope_atomicidade" CHECK (
+      (lifecycle_state = 'draft' AND (
+        (encrypted_cpf IS NULL AND cpf_nonce IS NULL AND cpf_tag IS NULL AND cpf_wrapped_dek IS NULL)
+        OR
+        (encrypted_cpf IS NOT NULL AND cpf_nonce IS NOT NULL AND cpf_tag IS NOT NULL AND cpf_wrapped_dek IS NOT NULL)
+      ))
       OR
-      (lifecycle_state != 'purged' AND encrypted_cpf IS NOT NULL AND cpf_nonce IS NOT NULL AND cpf_tag IS NOT NULL AND cpf_wrapped_dek IS NOT NULL)
+      (lifecycle_state IN ('ready', 'snapshot_prepared') AND
+       encrypted_cpf IS NOT NULL AND cpf_nonce IS NOT NULL AND cpf_tag IS NOT NULL AND cpf_wrapped_dek IS NOT NULL)
+      OR
+      (lifecycle_state = 'purged' AND
+       encrypted_cpf IS NULL AND cpf_nonce IS NULL AND cpf_tag IS NULL AND cpf_wrapped_dek IS NULL)
     )
     ```
   - Purge state coherence constraint:
@@ -166,9 +174,9 @@
   - Partial unique index:
     `CREATE UNIQUE INDEX UQ_protected_checkout_data_active_cart ON protected_checkout_data (cart_id) WHERE lifecycle_state != 'purged' AND deleted_at IS NULL;`
 
-- **ProtectedOrderSnapshot Schema & Cardinality Constraints (B17-PLAN-HR-17, B17-PLAN-HR-18):**
-  - Minimum approved exact 23-column schema:
-    1. `snapshot_id`: primary key (`posnap_...`, mapped to entity ID in Medusa v2 / PostgreSQL)
+- **ProtectedOrderSnapshot Schema & Cardinality Constraints (B17-PLAN-HR-17, B17-PLAN-HR-18, B17-PR29-HR-09):**
+  - Mapeamento relacional: 23 campos lógicos obrigatórios mapeados para PK `id` (`posnap_...`) e colunas padrão Medusa v2 (26 colunas físicas no banco):
+    1. `id`: primary key física (`posnap_...`, correspondente ao campo lógico `snapshot_id`)
     2. `schema_version`: integer (default `1`)
     3. `envelope_version`: text (default `'v1'`)
     4. `aad_version`: text (default `'v1'`)
@@ -191,6 +199,9 @@
     21. `prepared_at`: timestamptz (immutable snapshot generation timestamp)
     22. `bound_at`: timestamptz nullable (timestamp of correlation to physical Medusa Order)
     23. `purged_at`: timestamptz nullable (timestamp of eventual legal lifecycle purge)
+    24. `created_at`: timestamptz (coluna padrão Medusa)
+    25. `updated_at`: timestamptz (coluna padrão Medusa)
+    26. `deleted_at`: timestamptz nullable (coluna padrão Medusa)
   - Strict Relational Cardinality (B17-PLAN-HR-18):
     ```sql
     CONSTRAINT UQ_protected_order_snapshot_ccl_id UNIQUE ("checkout_completion_log_id");
@@ -199,13 +210,21 @@
     ```
   - Error separation: `23505` (`unique_violation`) indicates concurrent relational collision on CCL/PaymentAttempt/Order; `55000` indicates invalid lifecycle state transitions (e.g. attempting to bind an already bound snapshot).
 
-- **LegalReceipt Schema & Complete Immutability (B17-PLAN-HR-27):**
-  - Columns: `id`, `customer_id`, `cart_id`, `purpose`, `legal_act_type` (`'contract_acceptance'`, `'policy_acknowledgement'`, `'privacy_notice_acknowledgement'`, `'consent'`), `document_version`, `document_digest` (64-char SHA-256), `policy_version`, `accepted_at`, `correlation_id`, `superseded_by_receipt_id` (nullable), `revoked_at` (nullable), `created_at`.
+- **LegalReceipt Schema & Complete Immutability (B17-PLAN-HR-27, B17-PR29-HR-16):**
+  - Columns: `id`, `customer_id`, `cart_id`, `purpose`, `legal_act_type` (`'contract_acceptance'`, `'policy_acknowledgement'`, `'privacy_notice_acknowledgement'`, `'consent'`), `document_version`, `document_digest` (64-char SHA-256), `policy_version`, `accepted_at`, `correlation_id`, `superseded_by_receipt_id` (nullable), `revoked_at` (nullable), `created_at`, `updated_at`, `deleted_at`.
   - Zero user agent, zero IP, zero device fingerprints.
   - Partial unique index:
     `CREATE UNIQUE INDEX UQ_legal_receipt_cart_purpose_version ON legal_receipt (cart_id, purpose, document_version, legal_act_type) WHERE deleted_at IS NULL;`
+  - Soft-delete prevention constraint:
+    `CONSTRAINT "CK_legal_receipt_deleted_at_null" CHECK ("deleted_at" IS NULL);`
   - Append-only immutability trigger (`trg_legal_receipt_immutable`):
     - Unconditionally blocks `DELETE` (`RAISE EXCEPTION 'LEGAL_RECEIPT_DELETE_FORBIDDEN' USING ERRCODE = '55000'`).
+    - Unconditionally blocks soft-delete via `deleted_at` mutation:
+      ```sql
+      IF NEW.deleted_at IS DISTINCT FROM OLD.deleted_at OR NEW.deleted_at IS NOT NULL THEN
+        RAISE EXCEPTION 'LEGAL_RECEIPT_SOFT_DELETE_PROHIBITED' USING ERRCODE = '55000';
+      END IF;
+      ```
     - Unconditionally blocks `UPDATE` for non-consent act types.
     - For `consent`, permits `UPDATE` ONLY when transitioning `OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL`.
     - Enforces bit-for-bit immutability on ALL historical fields using `IS DISTINCT FROM`, including `superseded_by_receipt_id`:
@@ -242,9 +261,11 @@
     ```
   - Traps `reconciliation_required`, `prepared`, `bound`, and all active records with `SQLSTATE 55000`.
 
-### 3.3 Cryptography, AWS KMS Adapter & Lifecycle Management (B17-PLAN-HR-22)
+### 3.3 Cryptography, AWS KMS Adapter & Lifecycle Management (B17-PLAN-HR-22, B17-PR29-HR-15)
 - **Pattern Source:** Node.js native `crypto` module (`createCipheriv`, `createDecipheriv`, `randomBytes`, `timingSafeEqual`) and `@aws-sdk/client-kms`.
-- **KmsProvider Interface with EncryptionContext (B17-PLAN-HR-22):**
+- **KmsProvider Canonical Single Source of Truth (HR-15):**
+  - A interface `KmsProvider` reside exclusivamente em `apps/backend/src/modules/checkout-privacy/crypto/kms-provider.ts`.
+  - DTOs e tipos de valor (`EncryptedEnvelope`, `KmsDataKeyResult`, `KmsDecryptResult`, `KmsReEncryptResult`, `KmsEncryptionContext`, `EnvelopeAadContext`) residem em `types.ts`.
   ```typescript
   export type KmsEncryptionContext = {
     application: string
@@ -299,38 +320,88 @@
   - Zero-dependency inventory gate: Destruction of any KEK version requires proving 0 dependent live records in `protected_checkout_data`, 0 in `protected_order_snapshot`, and no active backup hold.
   - Pending-deletion gate: 7-30 day KMS waiting period and multi-person administrative approval.
 
-### 3.4 Double Keyring System (R17-HR-10)
-- **Keyring 1 (Locator):**
-  - Scope: `checkout-privacy:locator:v1|<operation>|<customer_id>|<cart_id>|<idempotency_key>`.
-  - Evaluated in single query across all retained locator keys:
-    - 0 matches + complete keyring -> first claim.
-    - 1 match -> replay verified.
-    - \>1 matches -> fail closed (500).
-    - Incomplete/corrupt keyring -> fail closed (503).
+### 3.4 Double Keyring System & Persisted Idempotency Authority (R17-HR-10, B17-PR29-HR-02, B17-PR29-HR-20)
+- **Persisted Authority & Canonical Schema Contract:**
+  - Reutiliza e estende a entidade canônica `StoreIdempotencyRecord` (`store_idempotency_record`), sem criar engine concorrente.
+  - Tabela canônica de colunas persistidas e papéis de rotação:
+
+| Coluna Persistida | Significado Semântico | Tipo de Dados | Papel na Rotação |
+|---|---|---|---|
+| `idempotency_key_hash` | Locator HMAC persistido | `text` | Consultado via HMACs candidatos gerados com as chaves retidas |
+| `hash_version` | Locator hash scheme (algoritmo estável) | `text` | Esquema estável `'hmac-sha256-v1'` (NUNCA versão de chave) |
+| `pepper_version` | Locator HMAC key version | `integer` (>= 1) | Versão numérica da chave do Keyring 1 usada no locator |
+| `request_fingerprint` | Fingerprint HMAC semântico sensível persistido | `text` | Comparado via `crypto.timingSafeEqual` no replay |
+| `fingerprint_scheme` | Fingerprint algorithm + canonicalization scheme | `text` | Esquema canônico estável `'rfc8785-hmac-sha256-v1'` |
+| `fingerprint_key_version` | Sensitive semantic fingerprint key version | `integer` (>= 1) | Versão numérica da chave do Keyring 2 necessária para recomputar |
+| `operation` | Identificador canônico da operação | `text` | Escopo de claim |
+| `actor_scope_hash` | Hash SHA-256 do escopo do ator | `text` | Escopo de claim |
+| `resource_scope_hash` | Hash SHA-256 do escopo do recurso | `text` | Escopo de claim |
+
+  - **Proibições Estritas de Nomenclatura e Semântica:**
+    - `fingerprint_version` é TERMINANTEMENTE PROIBIDO como coluna ou autoridade concorrente.
+    - `hash_version` NUNCA deve ser reinterpretado como versão de chave (é o esquema do hash).
+    - A chave de idempotência crua e o CPF cru NUNCA são persistidos na autoridade de idempotência.
+- **Keyring 1 (Locator HMAC):**
+  - Prefixo canônico: `indicio:checkout-privacy:locator:v1|<operation>|<customer_id>|<cart_id>|<idempotency_key>`.
+  - Gera candidatos `idempotency_key_hash` sob `hash_version` ('hmac-sha256-v1') para todas as versões de chaves HMAC retidas (`{ pepper_version, secret }`: chave ativa + chaves antigas em janela de rotação).
+  - Consulta atômica:
+    `SELECT * FROM store_idempotency_record WHERE operation = $op AND actor_scope_hash = $actor AND resource_scope_hash = $cart AND idempotency_key_hash IN ($candidates) FOR UPDATE;`
+- **Matriz de Decisão Canônica (4 Ramos):**
+  - **0 matches + keyring completo:** primeira reivindicação (`first_claim`). Insere novo registro com a versão de chave ativa (`pepper_version`), esquema de hash ativo (`hash_version = 'hmac-sha256-v1'`), versão de chave ativa do Keyring 2 (`fingerprint_key_version`), esquema ativo (`fingerprint_scheme = 'rfc8785-hmac-sha256-v1'`) e `request_fingerprint` calculado com a chave ativa do Keyring 2.
+  - **1 match:** lê `fingerprint_scheme` e `fingerprint_key_version` do registro persistido. Recomputa o request fingerprint utilizando o esquema registrado e a chave retida do Keyring 2 correspondente à `fingerprint_key_version`. Compara com o `request_fingerprint` persistido via `crypto.timingSafeEqual`:
+    - Mesmo fingerprint -> `replay` (devolve resposta cacheada ou 409 locked se ainda em processamento).
+    - Fingerprint divergente -> `409 IDEMPOTENCY_KEY_REUSE_CONFLICT`.
+    - Versão de chave ou esquema desconhecido no keyring retido -> fail closed (`500 IDEMPOTENCY_KEYRING_UNKNOWN_VERSION`).
+  - **>1 matches:** colisão de chave HMAC (`500 IDEMPOTENCY_KEYRING_COLLISION`) + alerta operacional imediato.
+  - **Keyring incompleto ou corrompido:** fail-closed (`503 PRIVACY_KEYRING_UNAVAILABLE`) antes da consulta SQL para evitar falso `first_claim`.
 - **Keyring 2 (Sensitive Semantic Fingerprint):**
   - RFC 8785 Canonical JSON representation domain-separated: `indicio/store/checkout-fingerprint/v1/<operation>`.
-  - Ephemeral HMAC-SHA-256 computed with dedicated 256-bit key; compared via `timingSafeEqual`. Canonical string discarded immediately.
+  - Ephemeral HMAC-SHA-256 computado com chave dedicada de 256 bits sob `fingerprint_scheme` ('rfc8785-hmac-sha256-v1'); comparado via `timingSafeEqual`. Payload canônico e dados crus são descartados imediatamente da memória.
+- **Persistence and Concurrency Verification (HR-24):** Proved in PostgreSQL via `apps/backend/integration-tests/modules/checkout-privacy.postgres.spec.ts` (15 mandatory cases: first claim, active pepper_version persistence, locator rotation N -> N+1, hash_version stable scheme 'hmac-sha256-v1', retained fingerprint_key_version replay, new fingerprint_key_version persistence, fingerprint_scheme stable scheme, unknown versions fail-closed, >1 collision fail-closed, incomplete keyring fail-closed 503 before claim, concurrent FOR UPDATE serialization, zero raw Idempotency-Key/CPF persistence).
 
-### 3.5 Abandonment Clock & Purge State Machine (B17-PLAN-HR-20, B17-PLAN-HR-30)
-- **Pattern Source:** `apps/backend/src/modules/guest-cart-capability/service.ts` and `17-DECISION-ADJUDICATION.md` R17-HR-01.
+### 3.5 Abandonment Clock, Purge State Machine & Anti-Starvation (B17-PLAN-HR-20, B17-PLAN-HR-30, B17-PR29-HR-12)
+- **Pattern Source:** `apps/backend/src/modules/guest-cart-capability/service.ts` e `17-DECISION-ADJUDICATION.md` R17-HR-01.
 - **Clock Logic:**
   - Starts on first valid protected CPF persistence.
   - Resets on: 1) valid field change via PATCH, 2) required receipt change, 3) successful POST /validate.
   - NEVER resets on: GET, no-op PATCH, replay, worker, retry, Order recovery, or technical activity.
   - Strict 7-day hard deadline (`cpf_purge_due_at = pii_last_meaningful_activity_at + INTERVAL '7 days'`).
   - Suspension (FIN-03/FIN-04): Unresolved financial freeze, `reconciliation_required`, or CCL recovery in flight.
-  - Row marked with `purge_state = 'freeze_suspended'`, `deferred_financial_authority = true`, alerted immediately, daily rechecks, 30-day escalation (`purge_state = 'manual_intervention_required'`, `deferred_financial_authority = true`).
-  - When suspension clears: `deferred_financial_authority = false`; if `now() >= cpf_purge_due_at`, row marked `purge_state = 'due_now'` and purged immediately in tx or claimed within 15 minutes; if `now() < cpf_purge_due_at`, row marked `purge_state = 'active'` with original due time unchanged.
+  - Row marked with `purge_state = 'freeze_suspended'`, `deferred_financial_authority = true`, alerted immediately, daily rechecks.
+- **Varredura do Worker Sem Inanição (Anti-Starvation Query - HR-12):**
+  - O worker de expurgo NÃO exclui `freeze_suspended` da varredura, garantindo monitoramento ativo e escalonamento de prazos:
+    ```sql
+    SELECT id FROM protected_checkout_data
+    WHERE lifecycle_state != 'purged'
+      AND (purge_state = 'due_now'
+           OR (purge_state IN ('active', 'freeze_suspended', 'manual_intervention_required') AND cpf_purge_due_at <= NOW()))
+    ORDER BY cpf_purge_due_at ASC
+    LIMIT $batchSize
+    FOR UPDATE SKIP LOCKED;
+    ```
+  - **Escalonamento de 30 Dias:** Se `NOW() >= cpf_purge_due_at + INTERVAL '30 days'` e o congelamento financeiro persiste, a máquina de estados transiciona para `purge_state = 'manual_intervention_required'`, mantendo `deferred_financial_authority = true` e disparando alerta crítico de incidente operacional (`CHECKOUT_CPF_PURGE_EXTREME_PROLONGED_FREEZE`), sem expurgo cego que destrua a reconciliação financeira.
+  - **Liberação de Autoridade Financeira:**
+    - `deferred_financial_authority` é redefinido para `false`.
+    - Se `NOW() >= cpf_purge_due_at`: transiciona para `purge_state = 'due_now'` e executa expurgo em até 15 minutos pelo worker.
+    - Se `NOW() < cpf_purge_due_at`: transiciona para `purge_state = 'active'` mantendo o prazo original inalterado.
   - Cryptographic erasure in PostgreSQL: live ciphertext, nonce, tag, wrapped DEK set to `NULL`; `lifecycle_state = 'purged'`, `purge_state = 'purged'`, `deferred_financial_authority = false`, `purged_at = now()`, `purge_reason` recorded.
   - Tombstone & backup replay protection: once purged, any update attempting to un-purge or partially restore ciphertext is rejected by PostgreSQL constraints.
 
-### 3.6 Gelato Zero-Request Privacy Boundary & Canonical State (B17-PLAN-HR-21)
-- **Pattern Source:** `apps/backend/src/modules/gelato-fulfillment/service.ts` and `apps/backend/src/jobs/gelato-dispatch-relay.ts`.
-- **Fail-Closed Guard & Canonical State Contract:**
-  - Entry point of Gelato fulfillment service checks `shipping_address.country_code === 'BR'`.
-  - Aborts immediately before any HTTP client invocation, socket creation, or body assembly.
-  - Canonical state mapping:
-    - `status: "dead_letter"` (valid canonical terminal status in `GELATO_FULFILLMENT_STATUSES`)
+### 3.6 Gelato Zero-Request Privacy Boundary & Canonical State (B17-PLAN-HR-21, B17-PR29-HR-03, B17-PR29-HR-04)
+- **Pattern Source:** `apps/backend/src/modules/gelato-fulfillment/service.ts` e `apps/backend/src/jobs/gelato-dispatch-relay.ts`.
+- **Normalização Fechada de País (HR-03):**
+  - `normalizeCountryCode(val: unknown): string`: executa `typeof val === 'string' ? val.trim().toUpperCase() : ''`.
+  - Cobre de forma determinística variações como `'BR'`, `'br'`, `'Br'`, `'bR'`, `' BR '`, `' br '`.
+  - Fixtures brasileiras de teste NUNCA podem ser convertidas para `'US'` para contornar a guarda.
+- **Ponto Autoritativo da Guarda de Privacidade (HR-04):**
+  - A guarda autoritativa opera na entrada de `dispatchSingleFulfillment()` em `apps/backend/src/jobs/gelato-dispatch-relay.ts`:
+    - Avalia `normalizeCountryCode(shippingAddress.country_code) === 'BR'`.
+    - Ocorre ANTES de `buildGelatoDispatchPayload()`.
+    - Ocorre ANTES do cálculo de hash de idempotência de requisição.
+    - Ocorre ANTES de transicionar o fulfillment para `queued` ou `dispatching`.
+    - Ocorre ANTES de invocar o cliente HTTP e de qualquer conexão de rede.
+  - **Transição Canônica Autoritativa:**
+    - `status: "dead_letter"` (status canônico terminal em `GELATO_FULFILLMENT_STATUSES`)
     - `requires_operator_attention: true`
     - `operator_alert_code: "GELATO_DISPATCH_BLOCKED_PRIVACY_BOUNDARY"`
     - `operator_alert_message: "Dispatch bloqueado: fronteira de privacidade BR e incompatibilidade de compliance (R17-BLOCK-01)."`
@@ -339,23 +410,32 @@
     - `last_error_code: "GELATO_DISPATCH_BLOCKED_PRIVACY_BOUNDARY"`
     - `next_retry_at: null`
     - `attempt_count: 0`
-  - In `service.ts:resolveGelatoDispatchCandidateDecision()`, `status === "dead_letter"` returns `{ action: "skip", reason: "terminal_status" }`.
+    - Emite alerta crítico via `OperationalAlertModule` sem dados pessoais.
+    - Retorna `"dead_lettered"`, congelando redispatches automáticos.
+  - **Defesa em Profundidade:**
+    - `createGelatoDispatchClient().createOrder()` e `service.ts:createOrder()` checam `normalizeCountryCode(country_code) === 'BR'` e abortam imediatamente sem rede caso invocados.
   - Guarantees:
     - Zero automatic redispatch by background relay jobs.
     - Zero transition to `dispatching`.
     - Zero provider network requests.
     - Medusa Order remains paid and intact.
     - Operator alert is recorded cleanly without recipient PII.
+    - Medusa Order remains paid and intact.
+    - Operator alert is recorded cleanly without recipient PII.
     - `R17-BLOCK-01` remains retained as an exit/closure blocker.
 
-### 3.7 Store HTTP Surface & Middleware Wiring
+### 3.7 Store HTTP Surface & Middleware Wiring (B17-PR29-HR-10, B17-PR29-HR-11)
 - **Pattern Source:** `apps/backend/src/api/middlewares.ts` and `apps/backend/src/api/store-surface/guard.ts`.
 - **Manifest & Surface Integration:**
-  - 3 operations added to `STORE_SURFACE_MANIFEST`:
+  - 3 operações adicionadas ao `STORE_SURFACE_MANIFEST`:
     1. `GET /store/carts/{id}/checkout-details` (`operationId: "getStoreCartCheckoutDetails"`)
     2. `PATCH /store/carts/{id}/checkout-details` (`operationId: "patchStoreCartCheckoutDetails"`)
     3. `POST /store/carts/{id}/checkout-details/validate` (`operationId: "validateStoreCartCheckoutDetails"`)
-  - Classification: `EXTENDED`, Policy: `M1_ENABLED`, Enablement: `enabled`.
+  - Chaves em `STORE_SURFACE_M1_ENABLED_OPERATIONS` formatadas estritamente como `"METHOD /path-template"` (HR-11):
+    - `"GET /store/carts/{id}/checkout-details"`
+    - `"PATCH /store/carts/{id}/checkout-details"`
+    - `"POST /store/carts/{id}/checkout-details/validate"`
+  - Classificação: `EXTENDED`, Policy: `M1_ENABLED`, Enablement: `enabled`.
   - Store surface exact inventory locked at:
     - Total: 69 operations (51 native + 18 local)
     - Policies: `DENY` 46, `PRESERVE_LEGACY` 6, `M1_ENABLED` 17
@@ -367,18 +447,16 @@
     5. `coverage.unit.spec.ts`
     6. `store-foundation-final.spec.ts`
     7. `store-surface-lockdown.spec.ts` & `guest-cart-contract-matrix.spec.ts`
-- **Middleware Chain:**
-  ```typescript
-  {
-    matcher: "/store/carts/:id/checkout-details*",
-    middlewares: [
-      customerAuthBffServiceGuardMiddleware,
-      authenticate("customer", ["bearer"]),
-    ],
-  }
-  ```
+- **BFF Protected Operations & Middleware Exact-Set (HR-10):**
+  - `STORE_CART_BFF_PROTECTED_OPERATIONS` em `bff-protected-operations.ts` é um conjunto exato fechado de 3 tuplas (SEM prefixo ou wildcard):
+    - `"GET /store/carts/:id/checkout-details"`
+    - `"PATCH /store/carts/:id/checkout-details"`
+    - `"POST /store/carts/:id/checkout-details/validate"`
+  - Em `apps/backend/src/api/middlewares.ts`, `storeCartBffProtectedRouteEntries()` atualiza o cast de métodos para incluir `"PATCH"`:
+    `const method = rawMethod as "GET" | "POST" | "PATCH" | "DELETE";`
+  - Rotas exatas vinculam `customerAuthBffServiceGuardMiddleware` e `authenticate("customer", ["bearer"])`.
 
-### 3.8 Authority & Error Precedence Chain (R17-HR-07)
+### 3.8 Authority, Error Precedence Chain & Payment Start (R17-HR-07, B17-PR29-HR-05, B17-PR29-HR-06)
 - **12-Stage Pipeline:**
   1. Surface Guard -> 404
   2. BFF Service Auth (`x-customer-auth-bff`) -> 404 / 503
@@ -392,10 +470,37 @@
   10. Request Schema & Complete Domain Validation -> 400 (`VALIDATION_ERROR`) / 422 with deterministic top-level code (`FEDERAL_TAX_ID_REQUIRED` > `INVALID_CPF` > `ZERO_TOTAL_NOT_SUPPORTED` > `CHECKOUT_DETAILS_INVALID`)
   11. Crypto / Integrity Capability -> 500 / 503
   12. Commit & Result (200)
-- **Rejection of Billing Address:** `billing_address` payload in request body fails at Stage 10 with 400 `VALIDATION_ERROR`.
+- **Rejection of Billing Address via Zod Schema Omission (HR-05):**
+  - `PatchCheckoutDetailsBodySchema` e `ValidateCheckoutDetailsBodySchema` omitem `billing_address` do schema `.strict()` (sem usar `z.never()`).
+  - Ausente: passa.
+  - Presente (`{}`, `null`, objeto): rejeitado pelo `.strict()` com 400 `VALIDATION_ERROR` e `fieldErrors: { billing_address: 'Invalid value' }` sem ecoar dados do cliente.
+- **Migração de Payment-Start Eligibility & Produtor de Elegibilidade (HR-06, HR-21):**
+  - `validateBrazilShippingAddress` aceita `{ requireFederalTaxId: false }`, permitindo validar o endereço físico independentemente de CPF.
+  - **Produtor Explícito de Projeção:** `CheckoutPrivacyModuleService.getPaymentEligibilityProjection(cartId, sharedContext?)` em `apps/backend/src/modules/checkout-privacy/service.ts`:
+    - Retorna `ProtectedCheckoutEligibilityProjection`:
+      ```typescript
+      type ProtectedCheckoutEligibilityProjection = {
+        protected_data_id: string
+        cart_id: string
+        customer_id: string
+        lifecycle_state: "draft" | "ready" | "snapshot_prepared" | "purged"
+        data_revision: number
+        has_valid_cpf: boolean
+      }
+      ```
+    - **Derivação de `has_valid_cpf` (não-persistido, derivado, saneado):**
+      `has_valid_cpf = (row != null && row.lifecycle_state === "ready" && row.encrypted_cpf != null && row.cpf_nonce != null && row.cpf_tag != null && row.cpf_wrapped_dek != null && row.deleted_at == null)`
+      O produtor NÃO decifra o CPF em runtime para responder elegibilidade. Como o envelope cifrado só é persistido após validação server-side de 11 dígitos e checksum módulo 11, um envelope completo no estado 'ready' garante CPF válido.
+    - **Fronteira Sanitária Estrita (Zero PII):** A projeção contém zero raw CPF, zero ciphertext (`encrypted_cpf`), zero nonce, zero tag e zero wrapped DEK. Nenhum material criptográfico ou sensível cruza para o módulo `payment-attempt`.
+  - **Autoridade Transacional & Consumo em Payment Start:**
+    - `evaluatePaymentStartEligibility()` adquire a projeção sob o lock canônico de autoridade do carrinho (`lockCartOrderAuthority(transaction, cartId)` via `pg_advisory_xact_lock(hashtextextended(?, 1515))`).
+    - Valida customer ownership (`projection.customer_id === actor.customerId`).
+    - Valida estado M1: `projection.lifecycle_state === 'ready'` e `projection.has_valid_cpf === true`.
+    - Valida endereço físico com `validateBrazilShippingAddress(cart.shipping_address, { requireFederalTaxId: false })`.
+    - Zero consulta a `shipping_address.metadata.federal_tax_id`; zero raw CPF em metadata, PaymentAttempt, Stripe, logs ou responses.
 - **Safe Cart Snapshot:** Attached ONLY after Customer auth & ownership verification for 412, 409 review, and 422 domain errors. Strictly absent for 400, 401, 404, 409 locked, 500, 503.
 
-### 3.9 API Docs Registry Contract & One-Way-Door Checkpoint
+### 3.9 API Docs Registry Contract, One-Way-Door Checkpoint & Fail-Fast Runner (B17-PR29-HR-13, B17-PR29-HR-14)
 - **Pattern Source:** `apps/backend/src/api-docs/`.
 - **Operations File:** `apps/backend/src/api-docs/operations/store/checkout-details.ts`.
 - **Security Schemes:** `STORE_AUTH_ACCESS_BEARER` (`bffServiceCredential`, `publishableApiKey`, `customerBearer`).
@@ -409,48 +514,46 @@
   5. Writer runs: `npm run openapi:generate -- --surface store`
   6. Lint check: `npm run openapi:lint`
   7. Store scope verify: `npm run openapi:verify:store` (permits untracked/dirty during dev)
-  8. Final global check: `npm run openapi:check` (read-only, requires clean/tracked tree) executed exclusively at Phase 17 final gate (Plan 17-11).
+  8. **Clean Candidate Gate `P17-11-CLEAN-CANDIDATE-HR-01` (HR-13):** Precondição obrigatória para openapi:check. O repositório deve estar limpo e commitado sob autorização humana prévia. É estritamente proibido rodar gerador imediatamente antes ou dentro desse gate.
+  9. **Canonical Fail-Fast Runner (HR-14):** `apps/backend/scripts/validate-phase17-final.mjs` coordena a execução de todos os 17 itens do ledger, garantindo que nenhum item seja marcado como aprovado sem evidência real e falhando na primeira divergência.
 
-#### 3.10 Recoverable Order-Birth & Pre-CAS Snapshot Durability (B17-PLAN-HR-24)
+#### 3.10 Recoverable Order-Birth, Pre-CAS Durability & Option B-R (B17-PLAN-HR-24, B17-PR29-HR-07, B17-PR29-HR-08)
 - **Pattern Source:** `apps/backend/src/workflows/order/webhook-order-entrypoint.ts` and `apps/backend/src/modules/checkout-completion/service.ts`.
-- **Pre-CAS Durability Semantics: Option B Canonical Adoption (B17-PLAN-HR-24):**
-  - Archaeology of `withCartOrderAuthorityLock` proves that it opens a PostgreSQL transaction on `PaymentAttemptSqlConnection` and acquires an advisory transaction lock (`pg_advisory_xact_lock(cart_id)`).
-  - Snapshot preparation occurs strictly within this outer transaction before the execution-start CAS (`tryAcquireExecutionStartInTransaction`).
-  - **Durability Guarantee:**
-    - If a crash occurs **before CAS**, the outer transaction rolls back cleanly.
-    - **Zero uncommitted or orphaned snapshots persist in PostgreSQL**.
-    - The subsequent retry does **NOT** "reuse" a persisted snapshot; instead, it safely **re-creates** a semantically equivalent snapshot with brand-new CSPRNG-generated DEK, nonce, and timestamp (`prepared_at = NOW()`), ensuring GCM nonces are never reused.
-    - Unique constraints on `checkout_completion_log_id` and `payment_attempt_id` guarantee that at most one snapshot can ever exist concurrently.
+- **Durabilidade Pré-CAS e Fronteira Transacional Compartilhada (HR-08):**
+  - `withCartOrderAuthorityLock` abre transação PostgreSQL fornecendo `PaymentAttemptSqlTransaction`.
+  - `CheckoutPrivacySqlTransactionAdapter` encapsula essa transação, assegurando que operações do CheckoutPrivacy compartilhem a mesma conexão física e limite de commit/rollback, proibindo transações aninhadas independentes.
+- **Opção B-R: Recuperação de Snapshot Ausente com Order Durável (HR-07):**
+  - Se `runCompleteCart()` comitar a Order no Medusa core, mas a transação externa abortar antes da vinculação do snapshot:
+    - Order existe e é durável (Orders = 1).
+    - Snapshot sofreu rollback e está ausente no banco (snapshots = 0).
+  - No retry subsequente, a rotina de autoridade descobre a Order durável, detecta a ausência de snapshot, consulta o `protected_checkout_data` ativo, recria o snapshot com nova DEK e nonce gerados por CSPRNG e AAD canônica do snapshot, vincula diretamente em estado `'bound'`, expurga o envelope do carrinho para NULL e marca o CCL como completed, **sem chamar runCompleteCart novamente**.
 - **Order-Birth Pipeline Execution Flow:**
   1. Acquire `withCartOrderAuthorityLock` on cart/order authority (transaction-scoped advisory lock).
-  2. Execute recovery candidate scan and canonical authority validation.
-  3. Execute pre-execution cart validation.
-  4. Invoke `prepareProtectedOrderSnapshot()` inside the transaction:
-     - If re-entering after a post-CAS crash where a snapshot was previously committed: discovers existing snapshot via `checkout_completion_log_id` or `payment_attempt_id` and reuses it without re-encrypting.
-     - If initial attempt or after a pre-CAS rollback: reads active `protected_checkout_data` (`FOR UPDATE`), decrypts CPF in ephemeral buffer, calls KMS `generateDataKey`, encrypts with fresh CSPRNG DEK/nonce and canonical snapshot AAD (`indicio:checkout-privacy:aad:v1|<env>|order|<snapshot_id>|cpf|v1|<key_version>`), inserts `protected_order_snapshot` (`lifecycle_state = 'prepared'`, `order_id = NULL`, `prepared_at = NOW()`), and immediately zeroes plaintext buffer (`buffer.fill(0)` in `finally`).
-  5. Irreversible execution gate CAS: `markOrderBirthExecutionStartedInTransaction` updates `execution_started_at: NULL -> CURRENT_TIMESTAMP`.
+  2. Adapt transaction with `CheckoutPrivacySqlTransactionAdapter`.
+  3. Execute recovery candidate scan and canonical authority validation.
+  4. Invoke `prepareProtectedOrderSnapshot()` inside the transaction.
+  5. Irreversible execution gate CAS: `markOrderBirthExecutionStartedInTransaction`.
   6. CAS won: execute exactly-one `runCompleteCart(container, cart.id, ccl.id)` creating physical Medusa Order.
   7. Common finalizer `ensureProtectedSnapshotBoundOrReconciled()`:
-     - Executed across all 5 recovery branches:
-       a) existing `PaymentAttempt.order_id`
-       b) already-completed CCL
-       c) first EXACT_ONE recovery scan
-       d) second EXACT_ONE recovery scan after execution-gate race
-       e) newly created Order
+     - Suporta os 5 ramos normais e o ramo de recuperação Option B-R para Orders recuperadas sem snapshot.
      - Idempotently binds snapshot to Order: `order_id = orderId`, `bound_at = NOW()`, `lifecycle_state = 'bound'`.
-     - Cryptographically purges current cart CPF envelope columns: `encrypted_cpf = NULL`, `cpf_nonce = NULL`, `cpf_tag = NULL`, `cpf_wrapped_dek = NULL`, `lifecycle_state = 'purged'`, `purge_state = 'purged'`, `purged_at = NOW()`, `purge_reason = 'order_created'`.
+     - Cryptographically purges cart CPF envelope columns to `NULL` (`lifecycle_state = 'purged'`, `purge_state = 'purged'`, `purge_reason = 'order_created'`).
      - Inserts audit row in `sanitized_purge_ledger`.
-     - If binding encounters mismatch or ambiguity, marks `reconciliation_required` without throwing destructive error.
 - **Failpoint Test Matrix (FP1 to FP6):**
   1. **FP1 (Failure during snapshot prepare before CAS):** Failure thrown during KMS call or insert. Transaction rolls back; committed DB state: 0 snapshots, 0 Orders, cart envelope intact; retry branch: safe recreation; completeCart may run; reconciliation: none.
   2. **FP2 (Crash after snapshot prepare success before CAS):** Process crashes after snapshot row inserted but before CAS. Transaction rolls back; committed DB state: 0 snapshots, 0 Orders; retry branch: safe recreation with fresh CSPRNG DEK/nonce; completeCart may run; reconciliation: none.
   3. **FP3 (CAS won, failure before `runCompleteCart`):** CAS won (`execution_started_at` is set), but crash occurs before `runCompleteCart`. Committed DB state: 1 prepared snapshot, 0 Orders; retry branch: rescan finds 0 Orders with `execution_started_at` set -> marks `reconciliation_required` (`ORDER_BIRTH_EXECUTION_AMBIGUOUS`); completeCart calls = 0; Order count = 0; reconciliation: operator attention required.
-  4. **FP4 (Order physically created, failure before snapshot bind):** Physical Order created, but crash before `ensureProtectedSnapshotBoundOrReconciled`. Committed DB state: 1 Order, 1 snapshot (`prepared`, `order_id = NULL`); retry branch: rescan finds `EXACT_ONE` matching Order -> binds `order_id` to snapshot (`lifecycle_state = 'bound'`, `bound_at = NOW()`), purges cart envelope to `NULL`, marks CCL completed; completeCart calls = 0; Order count = 1.
+  4. **FP4 (Order physically created, outer transaction rolled back / crash - Option B-R):** Physical Order created by runCompleteCart, but outer transaction rolled back. Committed DB state: 1 Order, 0 snapshots; retry branch: rescan finds recovered Order -> detects snapshot missing -> Option B-R recria snapshot com fresh DEK/nonce gerados por CSPRNG, vincula ao Order existente (`bound`), expurga envelope do carrinho para NULL, marca CCL completed; completeCart calls = 0 no retry (1 total histórico); Order count = 1.
   5. **FP5 (Snapshot bound, failure before cart purge completed):** Snapshot bound to `order_id`, but crash before cart purge commit. Committed DB state: 1 Order, 1 bound snapshot, cart envelope unpurged; retry branch: detects snapshot already bound -> completes cart envelope purge to `NULL`, marks completed; completeCart calls = 0; Order count = 1.
   6. **FP6 (Replay after each failpoint):** Idempotent webhook delivery after completion or failure. Verified: zero duplicate Orders, zero duplicate snapshots, zero duplicate purges.
 
-### 3.11 Negative PII Canary Verification with Checksum-Valid Synthetic Generator (CHK-08, B17-PLAN-HR-23)
-- **Pattern Source:** `apps/backend/integration-tests/helpers/guest-cart-leakage.ts` and `apps/backend/integration-tests/modules/checkout-privacy-canary.spec.ts`.
+### 3.11 Negative PII Canary Verification & E2E Synthesis Role (CHK-08, B17-PLAN-HR-23, B17-PR29-HR-18, B17-PR29-HR-19)
+- **Pattern Source:** `apps/backend/integration-tests/helpers/guest-cart-leakage.ts` e `apps/backend/integration-tests/modules/checkout-privacy-canary.spec.ts`.
+- **E2E Role vs Formal Requirements Proof (HR-18):**
+  - A suíte E2E (`phase17-e2e.spec.ts`) demonstra a síntese de integração de ponta a ponta entre os domínios da Phase 17.
+  - A prova formal e estrita de cada requisito CHK-01..CHK-10 é atestada pelas suítes e evidências dedicadas dos itens 01 a 10 do ledger de validação canonical.
+- **Fixed Artifact Path (HR-19):**
+  - A suíte de testes de erros reside estritamente em `apps/backend/src/api/store-surface/__tests__/errors.unit.spec.ts` (nunca no caminho órfão `api-surface`).
 - **Synthetic Checksum-Valid CPF Canary Generator (B17-PLAN-HR-23):**
   - Hardcoded invalid dummy CPF (`123.456.789-01`) is strictly forbidden as canary fixture because it fails real checksum validators.
   - Implements `generateSyntheticValidCpf(seed: string)` helper:
